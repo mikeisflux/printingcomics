@@ -1,0 +1,3215 @@
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Pricom\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-07-02 07:18+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: \n"
+"Language: \n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Loco https://localise.biz/\n"
+"X-Loco-Version: 2.6.10; wp-6.5.5\n"
+"X-Domain: pricom"
+
+#: framework/includes/theme-functions.php:888
+#, php-format
+msgid " ( Page %s )"
+msgstr ""
+
+#: templates/single/post-meta.php:26 templates/archive/post-meta.php:19
+msgid " Comments"
+msgstr ""
+
+#. 1: plugin name.
+#: plugins/class-tgm-plugin-activation.php:3666
+#, php-format
+msgid "%1$s installed and activated successfully."
+msgstr ""
+
+#. 1: plugin name.
+#: plugins/class-tgm-plugin-activation.php:3674
+#, php-format
+msgid "%1$s installed successfully."
+msgstr ""
+
+#: framework/includes/theme-hooks.php:239
+#, php-format
+msgid "%s"
+msgstr ""
+
+#: dokan/store-lists-loop.php:71
+#, php-format
+msgid "%s out of 5"
+msgstr ""
+
+#: woocommerce/content-product-cat.php:54
+#, php-format
+msgid "%s product"
+msgid_plural "%s products"
+msgstr[0] ""
+msgstr[1] ""
+
+#. %s: Quantity.
+#: woocommerce/global/quantity-input.php:24
+#, php-format
+msgid "%s quantity"
+msgstr ""
+
+#: dokan/store-lists-loop.php:135
+msgid "&larr; Previous"
+msgstr ""
+
+#. %s location.
+#: woocommerce/cart/cart-totals.php:76
+#, php-format
+msgid "(estimated for %s)"
+msgstr ""
+
+#: templates/single/post-meta.php:28 templates/archive/post-meta.php:21
+msgid "1 Comment"
+msgstr ""
+
+#: framework/includes/theme-options.php:2282
+msgid "3"
+msgstr ""
+
+#: framework/includes/theme-options.php:2639
+msgid "3D Unfold"
+msgstr ""
+
+#: framework/includes/theme-options.php:2283
+msgid "4"
+msgstr ""
+
+#: 404.php:15
+msgid "404"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:319
+#, php-format
+msgid ""
+"<div class=\"comment-require-login\">You must be <a href=\"%1$s\">logged "
+"in</a> to post a comment!</div>"
+msgstr ""
+
+#: woocommerce/single-product/meta.php:38
+msgid "<span class=\"label\">Category:</span>"
+msgid_plural "<span class=\"label\">Categories:</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: woocommerce/single-product/meta.php:40
+msgid "<span class=\"label\">Tag:</span>"
+msgid_plural "<span class=\"label\">Tags:</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: framework/includes/theme-functions.php:683
+#, php-format
+msgid ""
+"<span>Update Required</span> To play the media you will need to either "
+"update your browser to a recent version or update your <a href=\"%s\" "
+"target=\"_blank\">Flash plugin</a>."
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:98
+msgid "A link to set a new password will be sent to your email address."
+msgstr ""
+
+#: woocommerce/myaccount/navigation.php:25
+msgid "Account pages"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2876
+msgid "Activate"
+msgstr ""
+
+#. %2$s: plugin name in screen reader markup
+#: plugins/class-tgm-plugin-activation.php:2762
+#, php-format
+msgid "Activate %2$s"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2469
+msgid "Active"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:144
+msgid "Add new"
+msgstr ""
+
+#: framework/includes/plugin-functions.php:17
+msgid "Add Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1870
+msgid "Add To Compare Button"
+msgstr ""
+
+#: woocommerce/add-to-wishlist-button.php:42
+msgid "Add to wishlist"
+msgstr ""
+
+#: framework/includes/theme-options.php:1863
+msgid "Add To Wishlist Button"
+msgstr ""
+
+#: framework/includes/theme-options.php:2447
+msgid "After Add to Cart"
+msgstr ""
+
+#: framework/includes/theme-options.php:2469
+msgid "After Price"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:705
+msgid "All"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3667
+msgid "All installations and activations have been completed."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3675
+msgid "All installations have been completed."
+msgstr ""
+
+#. 1: dashboard link.
+#: plugins/class-tgm-plugin-activation.php:407
+#, php-format
+msgid "All plugins installed and activated successfully. %1$s"
+msgstr ""
+
+#: woocommerce/archive-product-ajax.php:189
+msgid "All products loaded."
+msgstr ""
+
+#: framework/includes/theme-options.php:1146
+msgid "Allow to change Element height base, border radius, font weights, ..."
+msgstr ""
+
+#. 1: plugin name, 2: error message.
+#: plugins/class-tgm-plugin-activation.php:3658
+#, php-format
+msgid "An error occurred while installing %1$s: <strong>%2$s</strong>."
+msgstr ""
+
+#: framework/includes/theme-options.php:343
+msgid "Appearance"
+msgstr ""
+
+#: dokan/store-lists-filter.php:85
+msgid "Apply"
+msgstr ""
+
+#: woocommerce/cart/cart.php:169
+msgid "Apply Coupon"
+msgstr ""
+
+#: framework/includes/theme-options.php:1511
+msgid "Archive (Blog) Setting"
+msgstr ""
+
+#: framework/includes/theme-options.php:1566
+msgid "Archive Blog Style"
+msgstr ""
+
+#: framework/includes/theme-options.php:2456
+msgid "Archive Buy Now Button"
+msgstr ""
+
+#: framework/includes/theme-options.php:1579
+msgid "Archive Display Columns"
+msgstr ""
+
+#: framework/includes/theme-options.php:1617
+msgid "Archive Page Title"
+msgstr ""
+
+#: framework/includes/theme-options.php:2465
+msgid "Archive Position"
+msgstr ""
+
+#: framework/includes/theme-options.php:1879
+msgid "Archive Product (Shop)"
+msgstr ""
+
+#: framework/includes/theme-options.php:1943
+msgid "Archive Product Hidden Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:2010
+msgid "Archive Product Hidden Sidebar Mobile"
+msgstr ""
+
+#: framework/includes/theme-options.php:1910
+msgid "Archive Product Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1968
+msgid "Archive Product Left Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1978
+msgid "Archive Product Right Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1953
+msgid "Archive Product Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:2034
+msgid "Archive Product Style"
+msgstr ""
+
+#: framework/includes/theme-options.php:2057
+msgid "Archive Product Title"
+msgstr ""
+
+#: framework/includes/theme-options.php:2093
+msgid "Archive Product Title Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:2078
+#: framework/includes/theme-options.php:2335
+msgid "Archive Product Title Content Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:2064
+msgid "Archive Product Title Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1653
+msgid "Archive Title Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:1638
+msgid "Archive Title Content Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1624
+msgid "Archive Title Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1611
+msgid "Archive Title Setting"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2630
+msgctxt "as in: \"version nr unknown\""
+msgid "unknown"
+msgstr ""
+
+#: templates/page-heading.php:131
+msgid "Asides"
+msgstr ""
+
+#: templates/page-heading.php:145
+msgid "Audios"
+msgstr ""
+
+#: framework/includes/theme-functions.php:833
+msgid "Author archive for "
+msgstr ""
+
+#: framework/includes/theme-options.php:1744
+msgid "Author Info"
+msgstr ""
+
+#: templates/page-heading.php:121
+#, php-format
+msgid "Author: %s"
+msgstr ""
+
+#: woocommerce/cart/cart.php:110
+msgid "Available on backorder"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2658
+msgid "Available version:"
+msgstr ""
+
+#: 404.php:19
+msgid "Back to home"
+msgstr ""
+
+#: framework/includes/theme-options.php:224
+msgid "Back To Top"
+msgstr ""
+
+#: framework/includes/theme-options.php:121
+msgid "Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:149
+msgid "Background Pattern"
+msgstr ""
+
+#: framework/includes/theme-options.php:432
+msgid ""
+"Because gradient have many colors, Currently you can set Background Gradient "
+"of Icon Box or Element have background gradient. With Container of Elementor "
+"you can change manually by setttings."
+msgstr ""
+
+#: framework/includes/theme-options.php:2448
+msgid "Before Add to Cart"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:393
+msgid "Begin activating plugin"
+msgid_plural "Begin activating plugins"
+msgstr[0] ""
+msgstr[1] ""
+
+#: plugins/class-tgm-plugin-activation.php:383
+msgid "Begin installing plugin"
+msgid_plural "Begin installing plugins"
+msgstr[0] ""
+msgstr[1] ""
+
+#: plugins/class-tgm-plugin-activation.php:388
+msgid "Begin updating plugin"
+msgid_plural "Begin updating plugins"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/page-heading.php:93
+msgid "Blog"
+msgstr ""
+
+#: framework/includes/theme-options.php:1593
+msgid "Blog Paging Style"
+msgstr ""
+
+#: framework/includes/enqueue-admin.php:15
+msgctxt "Bodoni Moda font: on or off"
+msgid "on"
+msgstr ""
+
+#: framework/includes/theme-options.php:132
+msgid "Body Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:133
+msgid "Body background (Use only for Boxed layout style)."
+msgstr ""
+
+#: framework/includes/theme-options.php:117
+msgid "Body Background Mode"
+msgstr ""
+
+#: framework/includes/theme-options.php:150
+msgid "Body background pattern (Use only for Boxed layout style)"
+msgstr ""
+
+#: framework/includes/theme-options.php:561
+#: framework/includes/theme-options.php:567
+#: framework/includes/theme-options.php:853
+#: framework/includes/theme-options.php:859
+msgid "Body Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:531
+msgid "Bold 700"
+msgstr ""
+
+#: framework/includes/theme-options.php:527
+msgid "Book 300"
+msgstr ""
+
+#: framework/includes/theme-options.php:1250
+#: framework/includes/theme-options.php:1317
+msgid "Border Radius Base (px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:1243
+msgid "Border Radius Elements"
+msgstr ""
+
+#: framework/includes/theme-options.php:1300
+#: framework/includes/theme-options.php:1367
+msgid "Border Radius Extra Large (px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:1290
+#: framework/includes/theme-options.php:1357
+msgid "Border Radius Large (px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:1310
+msgid "Border Radius Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1280
+#: framework/includes/theme-options.php:1347
+msgid "Border Radius Medium (px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:1270
+#: framework/includes/theme-options.php:1337
+msgid "Border Radius Small (px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:1260
+#: framework/includes/theme-options.php:1327
+msgid "Border Radius Tiny (px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:2528
+#: framework/includes/theme-options.php:2536
+msgid "Bottom Toolbar"
+msgstr ""
+
+#: framework/includes/theme-options.php:2538
+msgid "Bottom Toolbar show only on Mobile Devices."
+msgstr ""
+
+#: framework/includes/theme-options.php:2548
+msgid "Bottom Toolbar Template"
+msgstr ""
+
+#: framework/includes/theme-options.php:91
+msgid "Boxed"
+msgstr ""
+
+#: dokan/store.php:41
+msgctxt "breadcrumb"
+msgid "Home"
+msgstr ""
+
+#: framework/includes/theme-options.php:1501
+#: framework/includes/theme-options.php:1670
+#: framework/includes/theme-options.php:1819
+#: framework/includes/theme-options.php:2110
+#: framework/includes/theme-options.php:2367
+msgid "Breadcrumbs"
+msgstr ""
+
+#: woocommerce/add-to-wishlist-added.php:45
+msgid "Browse wishlist"
+msgstr ""
+
+#: framework/includes/theme-options.php:2466
+msgid "Buy Now Archive Position"
+msgstr ""
+
+#: framework/includes/theme-options.php:2436
+msgid "Buy Now Button"
+msgstr ""
+
+#: framework/includes/theme-options.php:2458
+msgid "Buy Now button may show only on Simple Product"
+msgstr ""
+
+#: framework/includes/theme-options.php:2484
+msgid "Buy Now Categories Display"
+msgstr ""
+
+#: framework/includes/theme-options.php:2428
+msgid "Buy Now Options"
+msgstr ""
+
+#: framework/includes/theme-options.php:2502
+msgid "Buy Now Redirect"
+msgstr ""
+
+#: framework/includes/theme-options.php:2444
+msgid "Buy Now Single Position"
+msgstr ""
+
+#: templates/single/post-meta.php:17 templates/archive/post-meta.php:10
+msgid "by"
+msgstr ""
+
+#: woocommerce/content-widget-reviews.php:36
+#, php-format
+msgid "by %s"
+msgstr ""
+
+#: dokan/store-lists-filter.php:84
+msgid "Cancel"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:304
+msgid "Cancel Reply"
+msgstr ""
+
+#: framework/includes/theme-options.php:2506
+msgid "Cart"
+msgstr ""
+
+#: woocommerce/cart/cart-totals.php:25
+msgid "Cart totals"
+msgstr ""
+
+#: woocommerce/archive-product-ajax.php:101
+msgid "Categories"
+msgstr ""
+
+#: framework/includes/theme-options.php:2483
+msgid "Categories Display"
+msgstr ""
+
+#: framework/includes/theme-options.php:1154
+msgid ""
+"Change SCSS Variables is not recommended because it can break the design "
+"structure! Please use our default settings for the best design display."
+msgstr ""
+
+#: templates/page-heading.php:147
+msgid "Chats"
+msgstr ""
+
+#: framework/includes/theme-options.php:2505
+msgid "Checkout"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:176
+#: framework/includes/woocommerce-hooks.php:263
+#: framework/includes/woocommerce-hooks.php:348
+msgid "Choose an option"
+msgstr ""
+
+#: framework/includes/theme-options.php:1838
+msgid "Choose Sale Badge Mode"
+msgstr ""
+
+#: framework/includes/theme-options.php:1424
+msgid "Choose the default left sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1434
+msgid "Choose the default right sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1580
+msgid "Choose the number of columns to display on archive pages."
+msgstr ""
+
+#: framework/includes/theme-options.php:2163
+msgid "Choose the number of columns to display thumbnails."
+msgstr ""
+
+#: framework/includes/theme-options.php:118
+msgid "Chose Background Mode"
+msgstr ""
+
+#: framework/includes/woocommerce-functions.php:627
+msgid "Clear filters"
+msgstr ""
+
+#: woocommerce/single-product/add-to-cart/variable.php:95
+msgid "Clear selection"
+msgstr ""
+
+#: woocommerce/single-product/product-image-slide.php:182
+#: woocommerce/single-product/product-image-gallery.php:167
+#: woocommerce/single-product/product-image-grid.php:167
+msgid "Click to enlarge"
+msgstr ""
+
+#: woocommerce/archive-product.php:295 woocommerce/archive-product.php:319
+#: framework/includes/theme-hooks.php:108
+msgid "Close"
+msgstr ""
+
+#: woocommerce/compare.php:102
+msgid "Close window [X]"
+msgstr ""
+
+#: dokan/store-lists-loop.php:52
+msgid "Closed"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:80
+msgid "Color"
+msgstr ""
+
+#: framework/includes/theme-options.php:360
+msgid "Color Scheme"
+msgstr ""
+
+#: woocommerce/compare.php:29
+msgid "Compare products"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:94
+msgid "Contact Form 7"
+msgstr ""
+
+#: framework/includes/theme-options.php:1401
+#: framework/includes/theme-options.php:1461
+#: framework/includes/theme-options.php:1475
+#: framework/includes/theme-options.php:1524
+#: framework/includes/theme-options.php:1629
+#: framework/includes/theme-options.php:1643
+#: framework/includes/theme-options.php:1693
+#: framework/includes/theme-options.php:1778
+#: framework/includes/theme-options.php:1792
+#: framework/includes/theme-options.php:1915
+#: framework/includes/theme-options.php:2069
+#: framework/includes/theme-options.php:2083
+#: framework/includes/theme-options.php:2140
+#: framework/includes/theme-options.php:2326
+#: framework/includes/theme-options.php:2340
+msgid "Container"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:506
+msgid "Continue shopping"
+msgstr ""
+
+#: woocommerce/cart/cart.php:169
+msgid "Coupon code"
+msgstr ""
+
+#: woocommerce/cart/cart.php:169
+msgid "Coupon:"
+msgstr ""
+
+#: framework/includes/theme-options.php:502
+msgid ""
+"Currently we don't allow change Color for Dark Mode to keep the structure of "
+"our design. Please notice Pricom does't have design for Dark Mode and this "
+"function is not working now."
+msgstr ""
+
+#: framework/includes/theme-options.php:334
+msgid "Custom favicon"
+msgstr ""
+
+#: framework/includes/theme-options.php:546
+#: framework/includes/theme-options.php:554
+#: framework/includes/theme-options.php:838
+#: framework/includes/theme-options.php:846
+msgid "Custom Fonts"
+msgstr ""
+
+#: framework/includes/theme-options.php:235
+msgid "Custom JS"
+msgstr ""
+
+#: framework/includes/theme-options.php:2515
+msgid "Custom Redirect URL"
+msgstr ""
+
+#: framework/includes/theme-options.php:2507
+msgid "Custom URL"
+msgstr ""
+
+#: templates/page-heading.php:123
+#, php-format
+msgid "Daily Archives: %s"
+msgstr ""
+
+#: templates/switch-theme-mode.php:13 templates/switch-theme-mode.php:17
+#: framework/includes/theme-options.php:271
+msgid "Dark"
+msgstr ""
+
+#: framework/includes/theme-options.php:501
+#: framework/includes/theme-options.php:508
+msgid "Dark Mode"
+msgstr ""
+
+#: framework/includes/theme-options.php:1597
+msgid "Default"
+msgstr ""
+
+#: framework/includes/theme-options.php:1160
+msgid ""
+"Define font size. Example almost fonts is 14px but some fonts is 15px or "
+"16px!"
+msgstr ""
+
+#: framework/includes/theme-options.php:1177
+msgid ""
+"Define font weights. Example almost fonts is 700 but some fonts Bold is 600!"
+msgstr ""
+
+#: framework/includes/theme-options.php:1244
+msgid "Define some border radius value to use for Button, Input, Label."
+msgstr ""
+
+#: framework/includes/theme-options.php:1311
+msgid ""
+"Define some border radius value to use for Elements ( not Button, Input, "
+"Label ) like images, products, section,..."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:408
+msgid "Dismiss this notice"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:123
+msgid "Dokan – Best WooCommerce Multivendor Marketplace Solution"
+msgstr ""
+
+#: templates/newsletter-popup.php:33
+msgid "Don't show this popup again"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:111
+msgid "Drag and Drop Multiple File Upload (Pro) - WooCommerce"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:255
+msgid "Edit"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:89
+msgid "Elementor"
+msgstr ""
+
+#: framework/includes/theme-options.php:2577
+msgid "Email"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:86
+msgid "Email address"
+msgstr ""
+
+#: woocommerce/cart/mini-cart.php:107
+msgid "Empty cart"
+msgstr ""
+
+#: framework/includes/theme-options.php:1871
+msgid "Enable/Disable Add To Compare Button"
+msgstr ""
+
+#: framework/includes/theme-options.php:1864
+msgid "Enable/Disable Add To Wishlist Button"
+msgstr ""
+
+#: framework/includes/theme-options.php:2437
+msgid "Enable/Disable Buy Now Button"
+msgstr ""
+
+#: framework/includes/theme-options.php:2457
+msgid "Enable/Disable Buy Now Button on Archive"
+msgstr ""
+
+#: framework/includes/theme-options.php:2493
+msgid "Enable/Disable hide Add To Cart button"
+msgstr ""
+
+#: framework/includes/theme-options.php:1857
+msgid "Enable/Disable Quick View"
+msgstr ""
+
+#: framework/includes/plugin-functions.php:16
+msgid "Enter Custom Sidebar Name"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:289
+#: framework/includes/theme-hooks.php:314
+msgid "Enter Your Comment"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:288
+msgid "Enter Your Email*"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:287
+msgid "Enter Your Name*"
+msgstr ""
+
+#: framework/includes/theme-functions.php:882
+msgid "Error 404"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2443
+msgid "External Source"
+msgstr ""
+
+#: framework/includes/theme-options.php:2390
+#: framework/includes/theme-options.php:2397
+msgid "Extra Options"
+msgstr ""
+
+#: framework/includes/theme-options.php:2404
+msgid "Extra Options Style"
+msgstr ""
+
+#: woocommerce/content-single-product.php:93
+msgid "Extra Product Options"
+msgstr ""
+
+#: framework/includes/theme-options.php:532
+msgid "Extra-Bold 800"
+msgstr ""
+
+#: framework/includes/theme-options.php:2569
+msgid "Facebook"
+msgstr ""
+
+#: dokan/store-lists-loop.php:32 dokan/store-lists-loop.php:61
+msgid "Featured"
+msgstr ""
+
+#: framework/includes/theme-options.php:2416
+msgid "File Size Limit"
+msgstr ""
+
+#: woocommerce/archive-product-ajax.php:106 dokan/store-lists-filter.php:33
+msgid "Filter"
+msgstr ""
+
+#: woocommerce/archive-product.php:166 woocommerce/archive-product.php:177
+msgid "Filters"
+msgstr ""
+
+#: woocommerce/archive-product-results-bar.php:32
+#, php-format
+msgid "Filters active %s(%s)%s"
+msgstr ""
+
+#: framework/includes/theme-options.php:2816
+msgid "Find us on LinkedIn"
+msgstr ""
+
+#: framework/includes/theme-options.php:1934
+#: framework/includes/theme-options.php:2001
+msgid "Fixed"
+msgstr ""
+
+#: framework/includes/theme-options.php:95
+msgid "Float"
+msgstr ""
+
+#: framework/includes/theme-options.php:2811
+msgid "Follow us on Twitter"
+msgstr ""
+
+#: framework/includes/theme-options.php:1166
+msgid "Font Size Base"
+msgstr ""
+
+#: framework/includes/theme-options.php:1159
+msgid "Font Size Define"
+msgstr ""
+
+#: framework/includes/theme-options.php:1223
+msgid "Font Weight Bold"
+msgstr ""
+
+#: framework/includes/theme-options.php:1233
+msgid "Font Weight Extra Bold"
+msgstr ""
+
+#: framework/includes/theme-options.php:1183
+msgid "Font Weight Light"
+msgstr ""
+
+#: framework/includes/theme-options.php:1203
+msgid "Font Weight Medium"
+msgstr ""
+
+#: framework/includes/theme-options.php:1193
+msgid "Font Weight Normal"
+msgstr ""
+
+#: framework/includes/theme-options.php:1213
+msgid "Font Weight Semi Bold"
+msgstr ""
+
+#: framework/includes/theme-options.php:1176
+msgid "Font Weights Define"
+msgstr ""
+
+#: framework/includes/theme-options.php:301
+msgid "Footer"
+msgstr ""
+
+#: framework/includes/theme-options.php:308
+msgid "Footer Builder Type"
+msgstr ""
+
+#: framework/includes/theme-options.php:1400
+#: framework/includes/theme-options.php:1460
+#: framework/includes/theme-options.php:1474
+#: framework/includes/theme-options.php:1523
+#: framework/includes/theme-options.php:1628
+#: framework/includes/theme-options.php:1642
+#: framework/includes/theme-options.php:1692
+#: framework/includes/theme-options.php:1777
+#: framework/includes/theme-options.php:1791
+#: framework/includes/theme-options.php:1914
+#: framework/includes/theme-options.php:2068
+#: framework/includes/theme-options.php:2082
+#: framework/includes/theme-options.php:2139
+#: framework/includes/theme-options.php:2325
+#: framework/includes/theme-options.php:2339
+msgid "Full Width"
+msgstr ""
+
+#: templates/page-heading.php:133
+msgid "Galleries"
+msgstr ""
+
+#: framework/includes/theme-options.php:75
+msgid "General Setting"
+msgstr ""
+
+#: framework/includes/woocommerce-functions.php:959
+msgid "Go to Shop"
+msgstr ""
+
+#: framework/includes/theme-options.php:547
+#: framework/includes/theme-options.php:839
+msgid ""
+"Google Font will disabled when you Activate Custom Fonts plugin & follow "
+"Custom Fonts tutorial."
+msgstr ""
+
+#: framework/includes/theme-options.php:431
+msgid "Gradient Color"
+msgstr ""
+
+#: framework/includes/theme-options.php:438
+msgid "Gradient Color 1"
+msgstr ""
+
+#: framework/includes/theme-options.php:447
+msgid "Gradient Color 2"
+msgstr ""
+
+#: framework/includes/theme-options.php:456
+msgid "Gradient Color 3"
+msgstr ""
+
+#: framework/includes/theme-options.php:465
+msgid "Gradient Color 4"
+msgstr ""
+
+#: framework/includes/theme-options.php:474
+msgid "Gradient Color 8"
+msgstr ""
+
+#: framework/includes/theme-options.php:483
+msgid "Gradient Heading 1"
+msgstr ""
+
+#: framework/includes/theme-options.php:492
+msgid "Gradient Heading 2"
+msgstr ""
+
+#: framework/includes/theme-options.php:1572
+#: framework/includes/theme-options.php:2296
+msgid "Grid"
+msgstr ""
+
+#: framework/includes/theme-options.php:2155
+msgid "Grid Gallery"
+msgstr ""
+
+#: framework/includes/theme-options.php:618
+#: framework/includes/theme-options.php:912
+msgid "H1 Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:639
+#: framework/includes/theme-options.php:935
+msgid "H2 Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:660
+#: framework/includes/theme-options.php:958
+msgid "H3 Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:681
+#: framework/includes/theme-options.php:981
+msgid "H4 Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:702
+#: framework/includes/theme-options.php:1004
+msgid "H5 Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:723
+#: framework/includes/theme-options.php:1027
+msgid "H6 Font"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:67
+msgid "Haru Pricom"
+msgstr ""
+
+#. Author of the theme
+msgid "HaruTheme"
+msgstr ""
+
+#: framework/includes/theme-options.php:246
+#: framework/includes/theme-options.php:289
+msgid "Header"
+msgstr ""
+
+#: framework/includes/theme-options.php:253
+msgid "Header Builder Type"
+msgstr ""
+
+#: framework/includes/theme-options.php:279
+msgid "Header Sticky"
+msgstr ""
+
+#: framework/includes/theme-options.php:286
+msgid "Header Sticky Element"
+msgstr ""
+
+#: framework/includes/theme-options.php:260
+msgid "Header Transparent"
+msgstr ""
+
+#: framework/includes/theme-options.php:267
+msgid "Header Transparent Skin"
+msgstr ""
+
+#: framework/includes/theme-options.php:1493
+#: framework/includes/theme-options.php:1662
+#: framework/includes/theme-options.php:1811
+#: framework/includes/theme-options.php:2102
+#: framework/includes/theme-options.php:2359
+msgid "Heading"
+msgstr ""
+
+#: framework/includes/theme-options.php:410
+msgid "Heading Color"
+msgstr ""
+
+#: framework/includes/theme-options.php:612
+#: framework/includes/theme-options.php:906
+msgid "Heading Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:1923
+msgid "Hidden Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1988
+msgid "Hidden Sidebar Mobile"
+msgstr ""
+
+#: framework/includes/theme-options.php:1997
+msgid "Hidden Sidebar Mobile Style"
+msgstr ""
+
+#: framework/includes/theme-options.php:1930
+msgid "Hidden Sidebar Style"
+msgstr ""
+
+#: framework/includes/theme-options.php:2252
+#: framework/includes/theme-options.php:2540
+msgid "Hide"
+msgstr ""
+
+#: framework/includes/theme-options.php:2492
+msgid "Hide Add To Cart Button"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3682
+msgid "Hide Details"
+msgstr ""
+
+#: framework/includes/theme-options.php:2494
+msgid ""
+"Hide the default Add To Cart button on products that already has Buy Now "
+"button"
+msgstr ""
+
+#: framework/includes/theme-options.php:2641
+msgid "Hinge"
+msgstr ""
+
+#: templates/breadcrumb.php:19 framework/includes/theme-functions.php:704
+msgid "Home"
+msgstr ""
+
+#: 404.php:18
+msgid "Home Page"
+msgstr ""
+
+#: framework/includes/theme-options.php:2152
+msgid "Horizontal Slide"
+msgstr ""
+
+#: woocommerce/loop/sale-flash.php:43
+#: woocommerce/single-product/sale-flash.php:44
+#: framework/includes/woocommerce-functions.php:78
+msgid "Hot"
+msgstr ""
+
+#. Author URI of the theme
+msgid "http://harutheme.com/"
+msgstr ""
+
+#. URI of the theme
+msgid "http://harutheme.com/pricom"
+msgstr ""
+
+#: framework/includes/theme-options.php:1990
+msgid ""
+"If you use Hidden Sidebar on Mobile the Archive Product Sidebar above will "
+"hidden on mobile."
+msgstr ""
+
+#: framework/includes/theme-options.php:344
+msgid ""
+"If you want to change Color Scheme or Typography you must turn ON SCSS "
+"Compiler."
+msgstr ""
+
+#: woocommerce/cart/cart.php:32 framework/includes/woocommerce-hooks.php:81
+msgid "Image"
+msgstr ""
+
+#: templates/page-heading.php:135
+msgid "Images"
+msgstr ""
+
+#: framework/includes/theme-options.php:2516
+msgid "Insert Custom Redirect URL after click Buy Now button."
+msgstr ""
+
+#: framework/includes/theme-options.php:236
+msgid ""
+"Insert your Javscript code here. You can add your Google Analytics Code here."
+" Please do not place any <script> tags in here! From WordPress version 4.7+ "
+"you can add Custom CSS in Appearance » Customize » Additional CSS."
+msgstr ""
+
+#: framework/includes/woocommerce-functions.php:49
+msgid "Insert Youtube or Vimeo Url"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2867
+msgid "Install"
+msgstr ""
+
+#. %2$s: plugin name in screen reader markup
+#: plugins/class-tgm-plugin-activation.php:2751
+#, php-format
+msgid "Install %2$s"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:341
+msgid "Install Plugins"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:340
+msgid "Install Required Plugins"
+msgstr ""
+
+#. 1: install status, 2: update status
+#: plugins/class-tgm-plugin-activation.php:2490
+#, php-format
+msgctxt "Install/Update Status"
+msgid "%1$s, %2$s"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2467
+msgid "Installed But Not Activated"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2638
+msgid "Installed version:"
+msgstr ""
+
+#. 1: plugin name, 2: action number 3: total number of actions.
+#: plugins/class-tgm-plugin-activation.php:3669
+#, php-format
+msgid "Installing and Activating Plugin %1$s (%2$d/%3$d)"
+msgstr ""
+
+#. 1: plugin name, 2: action number 3: total number of actions.
+#: plugins/class-tgm-plugin-activation.php:3677
+#, php-format
+msgid "Installing Plugin %1$s (%2$d/%3$d)"
+msgstr ""
+
+#. %s: plugin name.
+#: plugins/class-tgm-plugin-activation.php:343
+#, php-format
+msgid "Installing Plugin: %s"
+msgstr ""
+
+#: framework/includes/woocommerce-functions.php:41
+msgid "Is Hot?"
+msgstr ""
+
+#: framework/includes/woocommerce-functions.php:35
+msgid "Is New?"
+msgstr ""
+
+#: templates/archive/content-none.php:20
+msgid ""
+"It seems we can&rsquo;t find what you&rsquo;re looking for. Perhaps "
+"searching can help."
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:82
+msgid "Label"
+msgstr ""
+
+#: framework/includes/theme-options.php:1402
+#: framework/includes/theme-options.php:1462
+#: framework/includes/theme-options.php:1476
+#: framework/includes/theme-options.php:1525
+#: framework/includes/theme-options.php:1630
+#: framework/includes/theme-options.php:1644
+#: framework/includes/theme-options.php:1694
+#: framework/includes/theme-options.php:1779
+#: framework/includes/theme-options.php:1793
+#: framework/includes/theme-options.php:1916
+#: framework/includes/theme-options.php:2070
+#: framework/includes/theme-options.php:2084
+#: framework/includes/theme-options.php:2141
+#: framework/includes/theme-options.php:2327
+#: framework/includes/theme-options.php:2341
+msgid "Large Container"
+msgstr ""
+
+#: framework/includes/theme-options.php:1570
+msgid "Large Image"
+msgstr ""
+
+#: framework/includes/theme-options.php:1397
+#: framework/includes/theme-options.php:1519
+#: framework/includes/theme-options.php:1688
+msgid "Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1904
+#: framework/includes/theme-options.php:2129
+msgid "Layout Options"
+msgstr ""
+
+#: framework/includes/theme-options.php:82
+msgid "Layout Style"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:302
+#, php-format
+msgid "Leave a reply to %s"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:301
+msgid "Leave us a comment"
+msgstr ""
+
+#: framework/includes/theme-options.php:2181
+msgid "Left"
+msgstr ""
+
+#: framework/includes/theme-options.php:1423
+#: framework/includes/theme-options.php:1546
+#: framework/includes/theme-options.php:1715
+msgid "Left Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1605
+msgid "Length of excerpt (words)"
+msgstr ""
+
+#: templates/switch-theme-mode.php:13 templates/switch-theme-mode.php:16
+#: framework/includes/theme-options.php:270
+msgid "Light"
+msgstr ""
+
+#: framework/includes/theme-options.php:526
+msgid "Light 200"
+msgstr ""
+
+#: framework/includes/theme-options.php:368
+msgid "Light Mode"
+msgstr ""
+
+#: framework/includes/theme-options.php:2806
+msgid "Like us on Facebook"
+msgstr ""
+
+#: framework/includes/theme-options.php:419
+msgid "Link Color"
+msgstr ""
+
+#: framework/includes/theme-options.php:2571
+msgid "Linkedin"
+msgstr ""
+
+#: templates/page-heading.php:141
+msgid "Links"
+msgstr ""
+
+#: woocommerce/archive-product-ajax.php:187
+#: framework/includes/woocommerce-hooks.php:572
+#: framework/includes/theme-functions.php:311
+#: framework/includes/theme-options.php:1598
+msgid "Load More"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:571
+#: framework/includes/theme-functions.php:310
+msgid "Loading..."
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:54
+msgid "Log in"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:296
+#, php-format
+msgid "Logged in as <a href=\"%1$s\">%2$s</a>. <a href=\"%3$s\">Log out?</a>"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:32
+msgid "Login"
+msgstr ""
+
+#: framework/includes/theme-options.php:326
+msgid "Logo"
+msgstr ""
+
+#: framework/includes/theme-options.php:318
+msgid "Logo & Favicon"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:57
+msgid "Lost your password?"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:138
+msgid "MC4WP: Mailchimp for WordPress"
+msgstr ""
+
+#: framework/includes/theme-options.php:529
+msgid "Medium 500"
+msgstr ""
+
+#: framework/includes/theme-options.php:1571
+msgid "Medium Image"
+msgstr ""
+
+#: framework/includes/theme-options.php:290
+msgid "Menu"
+msgstr ""
+
+#: framework/includes/theme-options.php:744
+#: framework/includes/theme-options.php:750
+#: framework/includes/theme-options.php:1050
+#: framework/includes/theme-options.php:1056
+msgid "Menu Font"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2646
+msgid "Minimum required version:"
+msgstr ""
+
+#: framework/includes/theme-setup.php:54
+msgid "Mobile Menu"
+msgstr ""
+
+#: templates/page-heading.php:125
+msgctxt "monthly archives date format"
+msgid "F Y"
+msgstr ""
+
+#: templates/page-heading.php:125
+#, php-format
+msgid "Monthly Archives: %s"
+msgstr ""
+
+#: framework/includes/theme-options.php:2638
+msgid "Move From Top"
+msgstr ""
+
+#: framework/includes/theme-options.php:2637
+msgid "Move Horizontal"
+msgstr ""
+
+#: framework/includes/theme-functions.php:650
+msgid "mute"
+msgstr ""
+
+#: woocommerce/myaccount/my-account.php:24
+msgid "My account"
+msgstr ""
+
+#: woocommerce/single-product/meta.php:33
+msgid "N/A"
+msgstr ""
+
+#: framework/includes/theme-options.php:2249
+msgid "Navigation"
+msgstr ""
+
+#: woocommerce/loop/sale-flash.php:37
+#: woocommerce/single-product/sale-flash.php:38
+#: framework/includes/woocommerce-functions.php:77
+msgid "New"
+msgstr ""
+
+#: templates/newsletter-popup.php:22
+msgid "Newsletter"
+msgstr ""
+
+#: framework/includes/theme-options.php:2598
+msgid "Newsletter Popup"
+msgstr ""
+
+#: framework/includes/theme-options.php:2636
+msgid "Newspaper"
+msgstr ""
+
+#: templates/single/post-nav.php:42
+#: framework/includes/woocommerce-hooks.php:635
+#: framework/includes/theme-functions.php:347
+#: framework/includes/woocommerce-functions.php:965
+msgid "Next"
+msgstr ""
+
+#: dokan/store-lists-loop.php:136
+msgid "Next &rarr;"
+msgstr ""
+
+#. 1: plugin name.
+#: plugins/class-tgm-plugin-activation.php:403
+#, php-format
+msgid "No action taken. Plugin %1$s was already active."
+msgstr ""
+
+#: templates/comments.php:17 templates/single/post-meta.php:24
+#: templates/archive/post-meta.php:17
+msgid "No Comments"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3085
+msgid "No plugins are available to be activated at this time."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2950
+msgid "No plugins are available to be installed at this time."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2952
+msgid "No plugins are available to be updated at this time."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2681
+msgid "No plugins to install, update or activate."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3059
+msgid "No plugins were selected to be activated. No action taken."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2907
+msgid "No plugins were selected to be installed. No action taken."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2909
+msgid "No plugins were selected to be updated. No action taken."
+msgstr ""
+
+#: woocommerce/compare.php:137
+msgid "No products added in the compare table."
+msgstr ""
+
+#: woocommerce/cart/mini-cart.php:108
+msgid "No products in the cart."
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:866
+#: framework/includes/woocommerce-hooks.php:949
+msgid "No products were found matching your selection."
+msgstr ""
+
+#: dokan/store.php:89
+msgid "No products were found of this vendor!"
+msgstr ""
+
+#: framework/includes/theme-options.php:2194
+#: framework/includes/theme-options.php:2241
+msgid "No Sticky"
+msgstr ""
+
+#: dokan/store-lists-loop.php:162
+msgid "No vendor found!"
+msgstr ""
+
+#: framework/includes/theme-options.php:1954
+#: framework/includes/theme-options.php:2204
+msgid "None, Left or Right Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:528
+msgid "Normal 400"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2463
+msgid "Not Installed"
+msgstr ""
+
+#: woocommerce/order/order-details.php:102
+msgid "Note:"
+msgstr ""
+
+#: templates/page-heading.php:295
+msgid "Nothing Found"
+msgstr ""
+
+#: templates/comments.php:17
+msgid "One Comment"
+msgstr ""
+
+#: dokan/store-lists-loop.php:50
+msgid "Open"
+msgstr ""
+
+#: woocommerce/add-to-wishlist-remove.php:50
+msgid "or"
+msgstr ""
+
+#: woocommerce/order/order-details.php:50
+msgid "Order details"
+msgstr ""
+
+#: framework/includes/enqueue-frontend.php:14
+#: framework/includes/enqueue-admin.php:14
+msgctxt "Outfit font: on or off"
+msgid "on"
+msgstr ""
+
+#: framework/includes/theme-options.php:174
+msgid "Page Preloader"
+msgstr ""
+
+#: framework/includes/theme-options.php:804
+#: framework/includes/theme-options.php:1114
+msgid "Page Sub Title Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:1485
+msgid "Page Title Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:1470
+msgid "Page Title Content Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:773
+#: framework/includes/theme-options.php:779
+#: framework/includes/theme-options.php:1081
+#: framework/includes/theme-options.php:1087
+msgid "Page Title Font"
+msgstr ""
+
+#: framework/includes/theme-options.php:1456
+msgid "Page Title Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:2051
+#: framework/includes/theme-options.php:2308
+msgid "Page Title Options"
+msgstr ""
+
+#: framework/includes/theme-options.php:1443
+msgid "Page Title Setting"
+msgstr ""
+
+#: framework/includes/theme-options.php:1389
+msgid "Pages Setting"
+msgstr ""
+
+#: templates/page/content-page.php:15 framework/includes/theme-hooks.php:151
+msgid "Pages:"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:43
+#: woocommerce/myaccount/form-login.php:93
+msgid "Password"
+msgstr ""
+
+#: framework/includes/theme-options.php:122
+msgid "Pattern"
+msgstr ""
+
+#: framework/includes/theme-functions.php:639
+msgid "pause"
+msgstr ""
+
+#: framework/includes/theme-options.php:1842
+msgid "Percent"
+msgstr ""
+
+#: framework/includes/theme-options.php:2573
+msgid "Pinterest"
+msgstr ""
+
+#: framework/includes/theme-functions.php:638
+msgid "play"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:410
+msgid "Please contact the administrator of this site for help."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:1042
+#: plugins/class-tgm-plugin-activation.php:1052
+msgid ""
+"Please contact the plugin provider and ask them to package their plugin "
+"according to the WordPress guidelines."
+msgstr ""
+
+#: framework/includes/theme-options.php:591
+#: framework/includes/theme-options.php:884
+msgid "Please don't set Font Size for Secondary Font!"
+msgstr ""
+
+#: framework/includes/theme-options.php:2549
+msgid "Please go to Footer Builder to create Bottom Toolbar."
+msgstr ""
+
+#: framework/includes/theme-options.php:309
+msgid "Please go to Footer Builder to create Footer."
+msgstr ""
+
+#: framework/includes/theme-options.php:328
+msgid ""
+"Please go to Header Builder & Footer Builder to manage site Logo. You need "
+"to activate Haru Pricom plugin to see Header Builder & Footer Builder."
+msgstr ""
+
+#: framework/includes/theme-options.php:254
+msgid "Please go to Header Builder to create Header."
+msgstr ""
+
+#: framework/includes/theme-options.php:175
+msgid "Please leave empty if you don't want to use this!"
+msgstr ""
+
+#: framework/includes/theme-options.php:2661
+msgid "Please set content of popup. You can use shortcode here."
+msgstr ""
+
+#: templates/archive/content-audio.php:41
+msgid "Please set correct audio!"
+msgstr ""
+
+#: templates/archive/content-link.php:43
+msgid "Please set correct link!"
+msgstr ""
+
+#: templates/archive/content-quote.php:42
+msgid "Please set correct quote!"
+msgstr ""
+
+#: framework/includes/theme-options.php:2651
+msgid "Please set delay of popup (caculate by miliseconds)"
+msgstr ""
+
+#: framework/includes/theme-options.php:2623
+msgid "Please set height of popup (number only in px)"
+msgstr ""
+
+#: framework/includes/theme-options.php:2613
+msgid "Please set with of popup (number only in px)"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2695
+msgid "Plugin"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:1243
+#: plugins/class-tgm-plugin-activation.php:3099
+msgctxt "plugin A *and* plugin B"
+msgid "and"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:400
+#: plugins/class-tgm-plugin-activation.php:3311
+msgid "Plugin activated successfully."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3310
+msgid "Plugin activation failed."
+msgstr ""
+
+#. 1: plugin name.
+#: plugins/class-tgm-plugin-activation.php:405
+#, php-format
+msgid ""
+"Plugin not activated. A higher version of %s is needed for this theme. "
+"Please update the plugin."
+msgstr ""
+
+#. 1: number of plugins.
+#: plugins/class-tgm-plugin-activation.php:2536
+#, php-format
+msgctxt "plugins"
+msgid "All <span class=\"count\">(%s)</span>"
+msgid_plural "All <span class=\"count\">(%s)</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: framework/includes/theme-options.php:2669
+msgid "Popup Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:2660
+msgid "Popup Content"
+msgstr ""
+
+#: framework/includes/theme-options.php:2650
+msgid "Popup Delay"
+msgstr ""
+
+#: framework/includes/theme-options.php:2632
+msgid "Popup Effect"
+msgstr ""
+
+#: framework/includes/theme-options.php:2622
+msgid "Popup Height"
+msgstr ""
+
+#: framework/includes/theme-options.php:2612
+msgid "Popup Width"
+msgstr ""
+
+#: framework/includes/theme-hooks.php:308
+msgid "Post Comment"
+msgstr ""
+
+#: framework/includes/theme-options.php:1736
+msgid "Post Navigation"
+msgstr ""
+
+#: framework/includes/theme-options.php:1752
+msgid "Post Related"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2446
+msgid "Pre-Packaged"
+msgstr ""
+
+#: framework/includes/theme-options.php:203
+msgid "Preloader background color"
+msgstr ""
+
+#: framework/includes/theme-options.php:214
+msgid "Preloader spinner color"
+msgstr ""
+
+#: woocommerce/archive-product-ajax.php:145
+#, php-format
+msgid "press %sEnter%s to search"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:634
+#: framework/includes/theme-functions.php:346
+#: framework/includes/woocommerce-functions.php:938
+msgid "Prev"
+msgstr ""
+
+#: templates/single/post-nav.php:30
+msgid "Previous"
+msgstr ""
+
+#: woocommerce/cart/cart.php:34 woocommerce/cart/cart.php:115
+msgid "Price"
+msgstr ""
+
+#. Name of the theme
+msgid "Pricom"
+msgstr ""
+
+#. Description of the theme
+msgid ""
+"Pricom is the Printing Company &amp; Design Services WordPress theme from "
+"HaruTheme have many features to create Print site"
+msgstr ""
+
+#: framework/includes/theme-options.php:374
+msgid "Primary Color"
+msgstr ""
+
+#: framework/includes/theme-setup.php:53
+msgid "Primary Menu"
+msgstr ""
+
+#: woocommerce/order/order-details.php:60 woocommerce/cart/cart.php:33
+#: woocommerce/cart/cart.php:90
+msgid "Product"
+msgstr ""
+
+#: framework/includes/theme-options.php:1849
+msgid "Product Attribute"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:518
+msgid "Product Guide"
+msgstr ""
+
+#: framework/includes/theme-options.php:2250
+msgid "Product Next, Previous products navigation."
+msgstr ""
+
+#: woocommerce/global/quantity-input.php:45
+msgid "Product quantity"
+msgstr ""
+
+#: framework/includes/theme-options.php:2162
+msgid "Product Thumbnail Columns"
+msgstr ""
+
+#: framework/includes/theme-options.php:2177
+msgid "Product Thumbnails Position"
+msgstr ""
+
+#: woocommerce/compare.php:143
+msgid "Products"
+msgstr ""
+
+#: framework/includes/theme-options.php:1887
+msgid "Products Per Page"
+msgstr ""
+
+#: framework/includes/theme-options.php:1897
+msgid "Products per row ( Columns )"
+msgstr ""
+
+#: woocommerce/archive-product-results-bar.php:57
+#, php-format
+msgid "Products tagged %s&ldquo;%s&rdquo;%s"
+msgstr ""
+
+#: woocommerce/global/quantity-input.php:24 woocommerce/cart/cart.php:35
+#: woocommerce/cart/cart.php:121
+msgid "Quantity"
+msgstr ""
+
+#: woocommerce/loop/quick-view.php:19
+msgid "Quick view"
+msgstr ""
+
+#: framework/includes/theme-options.php:1856
+msgid "Quick View Button"
+msgstr ""
+
+#: templates/page-heading.php:139
+msgid "Quotes"
+msgstr ""
+
+#: dokan/store-lists-loop.php:68
+#, php-format
+msgid "Rated %s out of 5"
+msgstr ""
+
+#: templates/archive/content-quote.php:66 templates/archive/content.php:71
+#: templates/archive/content-link.php:69 templates/archive/content-audio.php:66
+msgid "Read more"
+msgstr ""
+
+#: templates/archive/content-none.php:11
+#, php-format
+msgid ""
+"Ready to publish your first post? <a href=\"%1$s\">Get started here</a>."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2424
+msgid "Recommended"
+msgstr ""
+
+#: framework/includes/theme-options.php:2501
+msgid "Redirect"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:84
+msgid "Redux Framework"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:70
+#: woocommerce/myaccount/form-login.php:106
+#: woocommerce/myaccount/form-login.php:106
+msgid "Register"
+msgstr ""
+
+#: framework/includes/theme-options.php:2279
+msgid "Related Product Display Columns"
+msgstr ""
+
+#: framework/includes/theme-options.php:2291
+msgid "Related Product Display Type"
+msgstr ""
+
+#: framework/includes/theme-options.php:2265
+msgid "Related Product Options"
+msgstr ""
+
+#: woocommerce/single-product/related.php:31
+msgid "Related Products"
+msgstr ""
+
+#: framework/includes/theme-options.php:2271
+msgid "Related Products Number"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:51
+msgid "Remember me"
+msgstr ""
+
+#: woocommerce/compare.php:156
+msgid "Remove"
+msgstr ""
+
+#. %s is the product name
+#: woocommerce/cart/mini-cart.php:88 woocommerce/cart/cart.php:69
+#, php-format
+msgid "Remove %s from cart"
+msgstr ""
+
+#: framework/includes/theme-functions.php:674
+msgid "repeat"
+msgstr ""
+
+#: framework/includes/theme-functions.php:677
+msgid "repeat off"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2421
+msgid "Required"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2475
+msgid "Required Update not Available"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2478
+msgid "Requires Update"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:398
+msgid "Return to Required Plugins Installer"
+msgstr ""
+
+#: woocommerce/cart/mini-cart.php:109
+msgid "Return to Shop"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:399
+msgid "Return to the Dashboard"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:77
+msgid "Revolution Slider"
+msgstr ""
+
+#: framework/includes/theme-options.php:2182
+msgid "Right"
+msgstr ""
+
+#: framework/includes/theme-options.php:1433
+#: framework/includes/theme-options.php:1556
+#: framework/includes/theme-options.php:1725
+msgid "Right Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:187
+msgid "Round 01"
+msgstr ""
+
+#: framework/includes/theme-options.php:188
+msgid "Round 02"
+msgstr ""
+
+#: framework/includes/theme-options.php:189
+msgid "Round 03"
+msgstr ""
+
+#: framework/includes/theme-options.php:190
+msgid "Round 04"
+msgstr ""
+
+#: framework/includes/theme-options.php:191
+msgid "Round 05"
+msgstr ""
+
+#: framework/includes/theme-options.php:192
+msgid "Round 06"
+msgstr ""
+
+#: framework/includes/theme-options.php:193
+msgid "Round 07"
+msgstr ""
+
+#: framework/includes/theme-options.php:194
+msgid "Round 08"
+msgstr ""
+
+#: framework/includes/theme-options.php:195
+msgid "Round 09"
+msgstr ""
+
+#: framework/includes/theme-options.php:1837
+msgid "Sale Badge Mode"
+msgstr ""
+
+#: woocommerce/loop/sale-flash.php:31
+#: woocommerce/single-product/sale-flash.php:32
+msgid "Sale!"
+msgstr ""
+
+#: framework/includes/theme-options.php:350
+msgid "SCSS Compiler"
+msgstr ""
+
+#: framework/includes/theme-options.php:1145
+#: framework/includes/theme-options.php:1152
+msgid "SCSS Variables"
+msgstr ""
+
+#: searchform.php:15 woocommerce/archive-product-ajax.php:115
+msgid "Search"
+msgstr ""
+
+#: searchform.php:12
+msgid "Search for:"
+msgstr ""
+
+#: woocommerce/archive-product-ajax.php:140
+msgid "Search Products"
+msgstr ""
+
+#: framework/includes/theme-functions.php:877
+msgid "Search query for: "
+msgstr ""
+
+#: woocommerce/archive-product-results-bar.php:41
+#, php-format
+msgid "Search results for %s&ldquo;%s&rdquo;%s"
+msgstr ""
+
+#: templates/page-heading.php:129
+#, php-format
+msgid "Search Results for: %s"
+msgstr ""
+
+#: dokan/store-lists-filter.php:76
+msgid "Search Vendors"
+msgstr ""
+
+#: searchform.php:13
+msgid "Search..."
+msgstr ""
+
+#: framework/includes/theme-options.php:589
+#: framework/includes/theme-options.php:882
+msgid "Secondary Font"
+msgstr ""
+
+#: woocommerce/archive-product.php:197
+msgid "See"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:142
+msgid "Select all"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:143
+msgid "Select none"
+msgstr ""
+
+#: framework/includes/custom-plugins.php:116
+msgid "Select options"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:130
+msgid "Select terms"
+msgstr ""
+
+#: framework/includes/theme-options.php:530
+msgid "Semi-Bold 600"
+msgstr ""
+
+#: framework/includes/theme-options.php:568
+#: framework/includes/theme-options.php:860
+msgid "Set body font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:1251
+#: framework/includes/theme-options.php:1318
+msgid "Set border radius base"
+msgstr ""
+
+#: framework/includes/theme-options.php:1301
+#: framework/includes/theme-options.php:1368
+msgid "Set border radius extra large"
+msgstr ""
+
+#: framework/includes/theme-options.php:1291
+#: framework/includes/theme-options.php:1358
+msgid "Set border radius large"
+msgstr ""
+
+#: framework/includes/theme-options.php:1281
+#: framework/includes/theme-options.php:1348
+msgid "Set border radius medium"
+msgstr ""
+
+#: framework/includes/theme-options.php:1271
+#: framework/includes/theme-options.php:1338
+msgid "Set border radius small"
+msgstr ""
+
+#: framework/includes/theme-options.php:1261
+#: framework/includes/theme-options.php:1328
+msgid "Set border radius tiny"
+msgstr ""
+
+#: framework/includes/theme-options.php:2485
+msgid ""
+"Set Categories to display Buy Now button. If not set will display on all "
+"Product Categories"
+msgstr ""
+
+#: framework/includes/theme-options.php:1167
+msgid "Set font size base"
+msgstr ""
+
+#: framework/includes/theme-options.php:1224
+msgid "Set font weight bold"
+msgstr ""
+
+#: framework/includes/theme-options.php:1234
+msgid "Set font weight extra bold"
+msgstr ""
+
+#: framework/includes/theme-options.php:1184
+msgid "Set font weight light"
+msgstr ""
+
+#: framework/includes/theme-options.php:1204
+msgid "Set font weight medium"
+msgstr ""
+
+#: framework/includes/theme-options.php:1194
+msgid "Set font weight normal"
+msgstr ""
+
+#: framework/includes/theme-options.php:1214
+msgid "Set font weight semi bold"
+msgstr ""
+
+#: framework/includes/theme-options.php:439
+msgid "Set Gradient Color 1."
+msgstr ""
+
+#: framework/includes/theme-options.php:448
+msgid "Set Gradient Color 2."
+msgstr ""
+
+#: framework/includes/theme-options.php:457
+msgid "Set Gradient Color 3."
+msgstr ""
+
+#: framework/includes/theme-options.php:466
+msgid "Set Gradient Color 4."
+msgstr ""
+
+#: framework/includes/theme-options.php:475
+msgid "Set Gradient Color 8."
+msgstr ""
+
+#: framework/includes/theme-options.php:493
+msgid "Set Gradient Heading 2."
+msgstr ""
+
+#: framework/includes/theme-options.php:484
+msgid "Set Gradient Heading 4."
+msgstr ""
+
+#: framework/includes/theme-options.php:619
+#: framework/includes/theme-options.php:913
+msgid "Set H1 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:640
+#: framework/includes/theme-options.php:936
+msgid "Set H2 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:661
+#: framework/includes/theme-options.php:959
+msgid "Set H3 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:682
+#: framework/includes/theme-options.php:982
+msgid "Set H4 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:703
+#: framework/includes/theme-options.php:1005
+msgid "Set H5 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:724
+#: framework/includes/theme-options.php:1028
+msgid "Set H6 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:411
+msgid "Set Heading Color."
+msgstr ""
+
+#: framework/includes/theme-options.php:420
+msgid "Set Link Color."
+msgstr ""
+
+#: framework/includes/theme-options.php:751
+#: framework/includes/theme-options.php:1057
+msgid "Set Menu Level 0 font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:805
+#: framework/includes/theme-options.php:1115
+msgid "Set page sub title font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:780
+#: framework/includes/theme-options.php:1088
+msgid "Set page title font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:2467
+msgid "Set position for Buy Now button on Archive Product page"
+msgstr ""
+
+#: framework/includes/theme-options.php:2445
+msgid "Set position for Buy Now button on Single Product page"
+msgstr ""
+
+#: framework/includes/theme-options.php:375
+msgid "Set Primary Color"
+msgstr ""
+
+#: framework/includes/theme-options.php:2503
+msgid "Set redirect after click Buy Now button"
+msgstr ""
+
+#: framework/includes/theme-options.php:590
+#: framework/includes/theme-options.php:883
+msgid "Set secondary font properties."
+msgstr ""
+
+#: framework/includes/theme-options.php:393
+msgid "Set Text Color Secondary."
+msgstr ""
+
+#: framework/includes/theme-options.php:402
+msgid "Set Text Color Tertiary."
+msgstr ""
+
+#: framework/includes/theme-options.php:384
+msgid "Set Text Color."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:735
+msgid "Set the parent_slug config variable instead."
+msgstr ""
+
+#: framework/includes/theme-options.php:106
+msgid "Set the site max width of body"
+msgstr ""
+
+#: framework/includes/theme-options.php:509
+msgid "Set Theme to Dark Mode"
+msgstr ""
+
+#: framework/includes/theme-options.php:2418
+msgid ""
+"Setting for File Upload field. This must be numeric or empty (default is 1), "
+"unit is MB. "
+msgstr ""
+
+#: templates/social-share.php:25
+msgid "Share: "
+msgstr ""
+
+#: woocommerce/cart/cart-totals.php:56 woocommerce/cart/cart-totals.php:57
+msgid "Shipping"
+msgstr ""
+
+#: woocommerce/loop/orderby.php:40
+msgid "Shop order"
+msgstr ""
+
+#: woocommerce/cart/cart.php:22
+msgid "Shopping Cart"
+msgstr ""
+
+#: templates/header/header-default.php:85
+msgid "Shopping cart"
+msgstr ""
+
+#: framework/includes/theme-options.php:2253
+#: framework/includes/theme-options.php:2408
+#: framework/includes/theme-options.php:2541
+msgid "Show"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3682
+msgid "Show Details"
+msgstr ""
+
+#: woocommerce/archive-product.php:162 woocommerce/archive-product.php:173
+msgid "Show filters"
+msgstr ""
+
+#: framework/includes/theme-options.php:1449
+msgid "Show Page Title"
+msgstr ""
+
+#: framework/includes/theme-options.php:2605
+msgid "Show Popup"
+msgstr ""
+
+#: framework/includes/theme-options.php:1850
+msgid ""
+"Show Product Attribute (Apply for Color, Image & Label attribute type in "
+"Products -> Attributes)"
+msgstr ""
+
+#: framework/includes/theme-options.php:2564
+msgid "Show the social sharing in blog posts or custom posttype"
+msgstr ""
+
+#: framework/includes/theme-options.php:1745
+msgid "Show/Hide Author Info"
+msgstr ""
+
+#: framework/includes/theme-options.php:1737
+msgid "Show/Hide Next/Pre post"
+msgstr ""
+
+#: framework/includes/theme-options.php:1753
+msgid "Show/Hide Post Related"
+msgstr ""
+
+#: woocommerce/archive-product-results-bar.php:54
+#, php-format
+msgid "Showing %s&ldquo;%s&rdquo;%s"
+msgstr ""
+
+#: framework/includes/theme-functions.php:668
+msgid "shuffle"
+msgstr ""
+
+#: framework/includes/theme-functions.php:671
+msgid "shuffle off"
+msgstr ""
+
+#: framework/includes/theme-options.php:1409
+#: framework/includes/theme-options.php:1532
+#: framework/includes/theme-options.php:1701
+msgid "Sidebar"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:17
+msgid "Sidebar Blog 1"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:29
+msgid "Sidebar Blog 2"
+msgstr ""
+
+#: framework/includes/theme-options.php:1533
+#: framework/includes/theme-options.php:1702
+msgid "Sidebar Style: None, Left, Right or Two Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1410
+msgid "Sidebar Style: None, Left, Right, Two Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:1680
+msgid "Single (Blog) Setting"
+msgstr ""
+
+#: framework/includes/theme-options.php:1766
+msgid "Single Blog Title"
+msgstr ""
+
+#: framework/includes/theme-options.php:1802
+msgid "Single Blog Title Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:1787
+msgid "Single Blog Title Content Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1773
+msgid "Single Blog Title Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1760
+msgid "Single Blog Title Setting"
+msgstr ""
+
+#: framework/includes/theme-options.php:2443
+msgid "Single Position"
+msgstr ""
+
+#: framework/includes/theme-options.php:2121
+msgid "Single Product"
+msgstr ""
+
+#: framework/includes/theme-options.php:2135
+msgid "Single Product Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:2217
+msgid "Single Product Left Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:2382
+msgid "Single Product Options"
+msgstr ""
+
+#: framework/includes/theme-options.php:2227
+msgid "Single Product Right Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:2203
+msgid "Single Product Sidebar"
+msgstr ""
+
+#: framework/includes/theme-options.php:2148
+msgid "Single Product Style"
+msgstr ""
+
+#: framework/includes/theme-options.php:2350
+msgid "Single Product Title Background"
+msgstr ""
+
+#: framework/includes/theme-options.php:2321
+msgid "Single Product Title Layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:2314
+msgid "Single Title"
+msgstr ""
+
+#: framework/includes/theme-options.php:105
+msgid "Site Max Width (px)"
+msgstr ""
+
+#: woocommerce/single-product/meta.php:32
+msgid "SKU:"
+msgstr ""
+
+#: framework/includes/theme-options.php:2295
+msgid "Slideshow"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:143
+msgid "Smash Balloon Instagram Feed"
+msgstr ""
+
+#: framework/includes/theme-options.php:2558
+msgid "Social Settings"
+msgstr ""
+
+#: framework/includes/theme-options.php:2563
+msgid "Social Share"
+msgstr ""
+
+#: woocommerce/loop/sale-flash.php:49
+#: woocommerce/single-product/sale-flash.php:50
+msgid "Sold"
+msgstr ""
+
+#: woocommerce/loop/add-to-cart.php:27 woocommerce/loop/add-to-cart.php:28
+msgid "Sold out"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:346
+msgid "Something went wrong with the plugin API."
+msgstr ""
+
+#: templates/archive/content-none.php:15
+msgid ""
+"Sorry, but nothing matched your search terms. Please try again with "
+"different keywords."
+msgstr ""
+
+#: 404.php:16
+msgid "Sorry, looks like this page doesn't exist"
+msgstr ""
+
+#: dokan/store-lists-filter.php:48 dokan/store-lists-filter.php:50
+msgid "Sort by"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2696
+msgid "Source"
+msgstr ""
+
+#: framework/includes/theme-options.php:178
+msgid "Square 01"
+msgstr ""
+
+#: framework/includes/theme-options.php:179
+msgid "Square 02"
+msgstr ""
+
+#: framework/includes/theme-options.php:180
+msgid "Square 03"
+msgstr ""
+
+#: framework/includes/theme-options.php:181
+msgid "Square 04"
+msgstr ""
+
+#: framework/includes/theme-options.php:182
+msgid "Square 05"
+msgstr ""
+
+#: framework/includes/theme-options.php:183
+msgid "Square 06"
+msgstr ""
+
+#: framework/includes/theme-options.php:184
+msgid "Square 07"
+msgstr ""
+
+#: framework/includes/theme-options.php:185
+msgid "Square 08"
+msgstr ""
+
+#: framework/includes/theme-options.php:186
+msgid "Square 09"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2702
+msgid "Status"
+msgstr ""
+
+#: templates/page-heading.php:143
+msgid "Statuses"
+msgstr ""
+
+#: templates/single/post-meta.php:34 templates/archive/post-meta.php:28
+#: framework/includes/theme-options.php:2195
+#: framework/includes/theme-options.php:2242
+msgid "Sticky"
+msgstr ""
+
+#: framework/includes/theme-options.php:2237
+msgid "Sticky Add To Cart"
+msgstr ""
+
+#: framework/includes/theme-options.php:2238
+msgid "Sticky Add To Cart button when scroll on Desktop."
+msgstr ""
+
+#: framework/includes/theme-options.php:2190
+msgid "Sticky Product Images"
+msgstr ""
+
+#: dokan/store-lists-loop.php:52
+msgid "Store is Closed"
+msgstr ""
+
+#: dokan/store-lists-loop.php:50
+msgid "Store is Open"
+msgstr ""
+
+#: framework/includes/theme-options.php:2038
+msgid "Style 1"
+msgstr ""
+
+#: framework/includes/theme-options.php:2039
+msgid "Style 2"
+msgstr ""
+
+#: woocommerce/cart/cart-totals.php:34 woocommerce/cart/cart-totals.php:35
+msgid "Subtotal"
+msgstr ""
+
+#: framework/includes/theme-options.php:516
+msgid "Switch Mode Button"
+msgstr ""
+
+#: templates/single/post-tags.php:10
+msgid "Tags"
+msgstr ""
+
+#: templates/page-heading.php:119
+msgid "Tags: "
+msgstr ""
+
+#: framework/includes/theme-options.php:2575
+msgid "Telegram"
+msgstr ""
+
+#: dokan/store-toc.php:37
+msgid "Terms And Conditions"
+msgstr ""
+
+#: framework/includes/theme-options.php:1841
+msgid "Text"
+msgstr ""
+
+#: framework/includes/theme-options.php:383
+msgid "Text Color"
+msgstr ""
+
+#: framework/includes/theme-options.php:392
+msgid "Text Color Secondary"
+msgstr ""
+
+#: framework/includes/theme-options.php:401
+msgid "Text Color Tertiary"
+msgstr ""
+
+#. %s: version number
+#: plugins/class-tgm-plugin-activation.php:2112
+#, php-format
+msgid "TGMPA v%s"
+msgstr ""
+
+#. 1: plugin name(s).
+#: plugins/class-tgm-plugin-activation.php:360
+#, php-format
+msgid ""
+"The following plugin needs to be updated to its latest version to ensure "
+"maximum compatibility with this theme: %1$s."
+msgid_plural ""
+"The following plugins need to be updated to their latest version to ensure "
+"maximum compatibility with this theme: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: plugins/class-tgm-plugin-activation.php:401
+#: plugins/class-tgm-plugin-activation.php:3103
+msgid "The following plugin was activated successfully:"
+msgstr ""
+
+#. 1: plugin name(s).
+#: plugins/class-tgm-plugin-activation.php:378
+#, php-format
+msgid "The following recommended plugin is currently inactive: %1$s."
+msgid_plural "The following recommended plugins are currently inactive: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#. 1: plugin name(s).
+#: plugins/class-tgm-plugin-activation.php:372
+#, php-format
+msgid "The following required plugin is currently inactive: %1$s."
+msgid_plural "The following required plugins are currently inactive: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: plugins/class-tgm-plugin-activation.php:3664
+msgid ""
+"The installation and activation process is starting. This process may take a "
+"while on some hosts, so please be patient."
+msgstr ""
+
+#. 1: plugin name.
+#: plugins/class-tgm-plugin-activation.php:3660
+#, php-format
+msgid "The installation of %1$s failed."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:3672
+msgid ""
+"The installation process is starting. This process may take a while on some "
+"hosts, so please be patient."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:1052
+msgid ""
+"The remote plugin package consists of more than one file, but the files are "
+"not packaged in a folder."
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:1042
+msgid ""
+"The remote plugin package does not contain a folder with the desired slug "
+"and renaming did not work."
+msgstr ""
+
+#: framework/includes/theme-options.php:2707
+#: framework/includes/theme-options.php:2708
+msgid "Theme Options"
+msgstr ""
+
+#: templates/comments.php:17
+msgid "There are % comments"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:409
+msgid ""
+"There are one or more required or recommended plugins to install, update or "
+"activate."
+msgstr ""
+
+#. 1: plugin name(s).
+#: plugins/class-tgm-plugin-activation.php:366
+#, php-format
+msgid "There is an update available for: %1$s."
+msgid_plural "There are updates available for the following plugins: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: framework/includes/theme-options.php:1888
+msgid "This must be numeric or empty (default 12)."
+msgstr ""
+
+#: framework/includes/theme-options.php:310
+msgid "This option can be override by Page Metabox -> Footer of each page."
+msgstr ""
+
+#: framework/includes/theme-options.php:255
+#: framework/includes/theme-options.php:261
+#: framework/includes/theme-options.php:268
+#: framework/includes/theme-options.php:280
+msgid "This option can be override by Page Metabox -> Header of each page."
+msgstr ""
+
+#: framework/includes/theme-options.php:1398
+#: framework/includes/theme-options.php:1411
+#: framework/includes/theme-options.php:1426
+#: framework/includes/theme-options.php:1436
+#: framework/includes/theme-options.php:1450
+#: framework/includes/theme-options.php:1458
+#: framework/includes/theme-options.php:1472
+#: framework/includes/theme-options.php:1486
+#: framework/includes/theme-options.php:1502
+msgid "This option can be override by Page Metabox of each page."
+msgstr ""
+
+#: framework/includes/theme-options.php:2239
+msgid ""
+"This option can be override by Page Metabox of each Product and will hide on "
+"Mobile Devices."
+msgstr ""
+
+#: framework/includes/theme-options.php:2192
+msgid "This option can be override by Page Metabox of each Product."
+msgstr ""
+
+#: framework/includes/theme-options.php:2406
+msgid "This option can be override by Product Metabox of each Product."
+msgstr ""
+
+#: framework/includes/theme-options.php:510
+msgid "This option to change Theme style to Dark Mode."
+msgstr ""
+
+#: framework/includes/theme-options.php:2550
+msgid "This option will show on mobile devices only."
+msgstr ""
+
+#: framework/includes/theme-options.php:1457
+msgid "This option will use for Background Image layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1471
+msgid "This option will use for Title, Sub Title and Breadcrumbs layout"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:616
+msgid "This plugin needs to be updated to be compatible with your theme."
+msgstr ""
+
+#: woocommerce/single-product/add-to-cart/variable.php:33
+msgid "This product is currently out of stock and unavailable."
+msgstr ""
+
+#. 1: plugin name(s).
+#: plugins/class-tgm-plugin-activation.php:354
+#, php-format
+msgid "This theme recommends the following plugin: %1$s."
+msgid_plural "This theme recommends the following plugins: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#. 1: plugin name(s).
+#: plugins/class-tgm-plugin-activation.php:348
+#, php-format
+msgid "This theme requires the following plugin: %1$s."
+msgid_plural "This theme requires the following plugins: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#. 1: number of plugins.
+#: plugins/class-tgm-plugin-activation.php:2548
+#, php-format
+msgid "To Activate <span class=\"count\">(%s)</span>"
+msgid_plural "To Activate <span class=\"count\">(%s)</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#. 1: number of plugins.
+#: plugins/class-tgm-plugin-activation.php:2540
+#, php-format
+msgid "To Install <span class=\"count\">(%s)</span>"
+msgid_plural "To Install <span class=\"count\">(%s)</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: framework/includes/theme-options.php:361
+#: framework/includes/theme-options.php:541
+#: framework/includes/theme-options.php:833
+msgid ""
+"To make sure Typograhpy works you need enable SCSS Compiler and Save Changes "
+"2 times to Regenerate Custom CSS file."
+msgstr ""
+
+#: framework/includes/theme-options.php:351
+msgid ""
+"To make this option work you need make sure PHP settings as Theme "
+"Requirement."
+msgstr ""
+
+#: framework/includes/theme-options.php:1935
+#: framework/includes/theme-options.php:2002
+#: framework/includes/theme-options.php:2409
+msgid "Toggle"
+msgstr ""
+
+#: woocommerce/order/order-details.php:61 woocommerce/cart/cart-totals.php:102
+#: woocommerce/cart/cart-totals.php:103 woocommerce/cart/cart.php:36
+#: woocommerce/cart/cart.php:147
+msgid "Total"
+msgstr ""
+
+#: dokan/store-lists-filter.php:39
+msgid "Total store showing: %d"
+msgid_plural "Total stores showing: %d"
+msgstr[0] ""
+msgstr[1] ""
+
+#: framework/includes/theme-options.php:2572
+msgid "Tumblr"
+msgstr ""
+
+#: framework/includes/theme-options.php:2570
+msgid "Twitter"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2697
+msgid "Type"
+msgstr ""
+
+#: framework/includes/theme-options.php:540
+#: framework/includes/theme-options.php:832
+msgid "Typograhpy"
+msgstr ""
+
+#: framework/includes/theme-options.php:533
+msgid "Ultra-Bold 900"
+msgstr ""
+
+#: framework/includes/theme-options.php:525
+msgid "Ultra-Light 100"
+msgstr ""
+
+#: framework/includes/theme-functions.php:653
+msgid "unmute"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2873
+msgid "Update"
+msgstr ""
+
+#. %2$s: plugin name in screen reader markup
+#: plugins/class-tgm-plugin-activation.php:2756
+#, php-format
+msgid "Update %2$s"
+msgstr ""
+
+#. 1: number of plugins.
+#: plugins/class-tgm-plugin-activation.php:2544
+#, php-format
+msgid "Update Available <span class=\"count\">(%s)</span>"
+msgid_plural "Update Available <span class=\"count\">(%s)</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: woocommerce/cart/cart.php:175
+msgid "Update Cart"
+msgstr ""
+
+#: woocommerce/cart/cart.php:175
+msgid "Update cart"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2481
+msgid "Update recommended"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:617
+msgid "Update Required"
+msgstr ""
+
+#. 1: plugin name, 2: action number 3: total number of actions.
+#: plugins/class-tgm-plugin-activation.php:3655
+#, php-format
+msgid "Updating Plugin %1$s (%2$d/%3$d)"
+msgstr ""
+
+#. %s: plugin name.
+#: plugins/class-tgm-plugin-activation.php:345
+#, php-format
+msgid "Updating Plugin: %s"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2834
+msgid "Upgrade message from the plugin author:"
+msgstr ""
+
+#: framework/includes/theme-options.php:335
+msgid "Upload a 16px x 16px Png/Gif/ico image."
+msgstr ""
+
+#: framework/includes/theme-options.php:1924
+msgid "Use Hidden Sidebar layout"
+msgstr ""
+
+#: framework/includes/theme-options.php:1989
+msgid "Use Hidden Sidebar layout on Mobile"
+msgstr ""
+
+#: framework/includes/theme-options.php:2021
+msgid "Use Scroll when widget is too long."
+msgstr ""
+
+#: framework/includes/theme-options.php:2028
+msgid "Use Toggle when widget is too long."
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:79
+msgid "Username"
+msgstr ""
+
+#: woocommerce/myaccount/form-login.php:39
+msgid "Username or email address"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2701
+msgid "Version"
+msgstr ""
+
+#: framework/includes/theme-options.php:2154
+msgid "Vertical Gallery"
+msgstr ""
+
+#: framework/includes/theme-options.php:2153
+msgid "Vertical Slide"
+msgstr ""
+
+#: framework/includes/woocommerce-functions.php:47
+msgid "Video Url"
+msgstr ""
+
+#: templates/page-heading.php:137
+msgid "Videos"
+msgstr ""
+
+#: woocommerce/add-to-wishlist-remove.php:51
+msgid "View &rsaquo;"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:842
+#: framework/includes/woocommerce-hooks.php:925
+msgid "View More"
+msgstr ""
+
+#: templates/archive/content.php:73
+msgid "View product"
+msgstr ""
+
+#: dokan/store-lists-loop.php:95 dokan/store-lists-loop.php:112
+msgid "Visit Store"
+msgstr ""
+
+#: framework/includes/theme-options.php:2801
+msgid "Visit us on GitHub"
+msgstr ""
+
+#: framework/includes/theme-options.php:2574
+msgid "VK"
+msgstr ""
+
+#: woocommerce/single-product/product-image-slide.php:178
+#: woocommerce/single-product/product-image-gallery.php:163
+#: woocommerce/single-product/product-image-grid.php:163
+msgid "Watch Video"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:104
+msgid "WC Designer Pro"
+msgstr ""
+
+#: templates/single/post-author.php:25
+msgid "Website"
+msgstr ""
+
+#: framework/includes/theme-options.php:76
+msgid ""
+"Welcome to Haru Pricom theme options panel! You can easy to customize the "
+"theme for your purpose! Please note some settings in here can be override by "
+"settings in Page Metabox of each page."
+msgstr ""
+
+#: framework/includes/theme-options.php:2576
+msgid "WhatsApp"
+msgstr ""
+
+#: framework/includes/theme-options.php:87
+msgid "Wide"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:19
+msgid "Widget Area 1 for Archive or Single Blog"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:31
+msgid "Widget Area 2 for Archive or Single Blog"
+msgstr ""
+
+#: framework/includes/theme-options.php:2020
+msgid "Widget Scroll"
+msgstr ""
+
+#: framework/includes/theme-options.php:2027
+msgid "Widget Toggle"
+msgstr ""
+
+#: framework/includes/woocommerce-hooks.php:43
+msgid "Wishlist"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:41
+#: framework/includes/theme-options.php:1830
+#: framework/includes/tgmpa-register.php:99
+msgid "WooCommerce"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:54
+msgid "WooCommerce Ajax Filter"
+msgstr ""
+
+#: framework/includes/theme-options.php:2537
+msgid "WooCommerce bottom toolbar for quick access on Mobile Devices."
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:43
+msgid "WooCommerce Sidebar"
+msgstr ""
+
+#: framework/includes/theme-sidebar.php:56
+msgid "WooCommerce Sidebar Ajax Filter"
+msgstr ""
+
+#: plugins/class-tgm-plugin-activation.php:2440
+msgid "WordPress Repository"
+msgstr ""
+
+#: framework/includes/theme-options.php:1379
+msgid "WordPress Setting"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:118
+msgid "WPC Product Options for WooCommerce"
+msgstr ""
+
+#: templates/page-heading.php:127
+msgctxt "yearly archives date format"
+msgid "Y"
+msgstr ""
+
+#: templates/page-heading.php:127
+#, php-format
+msgid "Yearly Archives: %s"
+msgstr ""
+
+#: framework/includes/enqueue-frontend.php:15
+msgctxt "Yellowtail font: on or off"
+msgid "on"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:133
+msgid "YITH WooCommerce Compare"
+msgstr ""
+
+#: framework/includes/tgmpa-register.php:128
+msgid "YITH WooCommerce Wishlist"
+msgstr ""
+
+#: framework/includes/theme-options.php:287
+msgid ""
+"You can choose sticky Header or only Menu (section include Haru Nav Menu "
+"widget in Elementor)."
+msgstr ""
+
+#: framework/includes/theme-options.php:1899
+msgid ""
+"You can set Products per row in Appearence -> Customize -> WooCommerce ( "
+"Closest Additional CSS ) -> Product Catalog."
+msgstr ""
+
+#: framework/includes/theme-options.php:517
+msgid "You can show/hide Theme Switch Mode button at Frontend."
+msgstr ""
+
+#: 404.php:17
+msgid "You could either go to homepage"
+msgstr ""
+
+#: templates/single/post-related.php:13
+msgid "You may also like this"
+msgstr ""
+
+#: woocommerce/single-product/up-sells.php:30
+msgid "You may also like&hellip;"
+msgstr ""
+
+#: woocommerce/cart/cross-sells.php:26
+msgid "You may be interested in&hellip;"
+msgstr ""
+
+#: woocommerce/checkout/form-checkout.php:26
+msgid "You must be logged in to checkout."
+msgstr ""
+
+#: woocommerce/single-product-sticky.php:36
+msgid "You're viewing: "
+msgstr ""
+
+#: framework/includes/theme-hooks.php:244
+msgid "Your comment is awaiting moderation."
+msgstr ""
+
+#: woocommerce/checkout/form-checkout.php:62
+msgid "Your order"
+msgstr ""
+
+#: framework/includes/theme-options.php:2635
+msgid "ZoomIn"
+msgstr ""
+
+#: framework/includes/theme-options.php:2640
+msgid "ZoomOut"
+msgstr ""

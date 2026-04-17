@@ -1,0 +1,6 @@
+/* CUSTOM VARS START */
+/* REAL_TABLE_NAME: `wp_shortpixel_meta`; */
+/* PRE_TABLE_NAME: `1776400480_wp_shortpixel_meta`; */
+/* CUSTOM VARS END */
+
+CREATE TABLE IF NOT EXISTS `1776400480_wp_shortpixel_meta` ( `id` mediumint NOT NULL AUTO_INCREMENT, `folder_id` mediumint NOT NULL, `ext_meta_id` int DEFAULT NULL, `path` varchar(512) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL, `name` varchar(150) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL, `path_md5` char(32) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL, `compressed_size` int NOT NULL DEFAULT '0', `compression_type` tinyint DEFAULT NULL, `keep_exif` tinyint DEFAULT '0', `cmyk2rgb` tinyint DEFAULT '0', `resize` tinyint DEFAULT NULL, `resize_width` smallint DEFAULT NULL, `resize_height` smallint DEFAULT NULL, `backup` tinyint DEFAULT '0', `status` smallint NOT NULL DEFAULT '0', `retries` tinyint NOT NULL DEFAULT '0', `message` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL, `ts_added` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, `ts_optimized` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00', `extra_info` longtext COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (`id`), KEY `path` (`path`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;

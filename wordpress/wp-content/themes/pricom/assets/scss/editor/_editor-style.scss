@@ -1,0 +1,122 @@
+/*!
+Haru Pricom Editor Styles
+*/
+
+// Style for Blocks
+$cl-primary:                 #af6464 !default; // use the !default flag to prevent your preset variables from being overridden
+$cl-secondary:               #9c4343 !default;
+$cl-text:                    #696969 !default;
+$cl-heading:                 #312d2e !default;
+$cl-link:                    #696969 !default;
+$cl-link-hover:              #af6464 !default;
+$cl-link-active:             #af6464 !default;
+
+$font-primary: 'Outfit' !default; 
+$font-secondary: 'Yellowtail' !default;
+$font-weight-normal: 400;
+
+
+// .editor-styles-wrapper will auto generate
+body {
+  color: $cl-text!important;
+  line-height: 1.8!important;
+  font-family: $font-primary; // Will override by Theme Options
+  font-weight: $font-weight-normal;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: $cl-heading;
+  font-family: "Outfit"; // Will override by Theme Options
+  font-weight: $fw-semi-bold;
+}
+
+h1 {
+  font-size: 36px;
+}
+
+h2 {
+  font-size: 28px;
+}
+
+h3 {
+  font-size: 24px;
+}
+
+h4 {
+  font-size: 21px;
+}
+
+h5 {
+  font-size: 18px;
+}
+
+h6 {
+  font-size: 14px;
+}
+
+p {
+  font-size: 14px;
+}
+
+a {
+  text-decoration: none;
+  color: $cl-link;
+
+  &:hover {
+    color: $cl-link-hover;
+    text-decoration: none;
+  }
+
+  &:active {
+    color: $cl-link-active;
+    text-decoration: none;
+  }
+
+  &:focus {
+    color: $cl-link-active;
+    outline: none;
+    text-decoration: none;
+  }
+}
+
+.editor-post-title__block .editor-post-title__input {
+  font-family: $font-secondary;
+  color: $cl-heading;
+  font-size: 34px;
+  margin-top: 0;
+}
+
+blockquote {
+  border-left: none;
+  font-size: 16px;
+  font-style: italic;
+  margin: 3% 5%;
+  font-family: "Yellowtail";
+
+  p {
+    color: $cl-heading;
+    font-size: 16px;
+  }
+
+  .wp-block-quote__citation {
+    font-style: italic;
+    font-size: 16px;
+  }
+}
+
+.wp-block-pullquote {
+  color: $cl-heading;
+
+  .wp-block-pullquote__citation {
+    font-style: italic; 
+    text-transform: none;
+    font-size: 16px;
+  }
+}

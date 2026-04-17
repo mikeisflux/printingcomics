@@ -1,0 +1,79 @@
+/**
+ *
+ * @package    HaruTheme
+ * @version    1.0.0
+ * @author     Administrator <admin@harutheme.com>
+ * @copyright  Copyright 2022, HaruTheme
+*/
+
+/* Form Add Sidebar */
+#haru-form-add-sidebar {
+  background-color: #fafafa;
+  border: 1px solid #e5e5e5;
+  padding: 30px 10px;
+  margin: 20px 0;
+  color: #23282d;
+  text-align: center;
+  -webkit-box-shadow: 0 1px 1px rgba(0,0,0,.04); 
+  box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+#haru-form-add-sidebar input[type="text"] {
+  width: 350px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+#haru-add-sidebar {
+  border: none;
+  border-radius: 0;
+}
+
+.sidebar-haru-custom-sidebar .delete-sidebar {
+  position: absolute;
+  top: 14px;
+  right: -4px;
+  color: #ccc;
+  z-index: 9;
+}
+
+.sidebar-haru-custom-sidebar .delete-sidebar:hover {
+  color: #000;
+}
+
+/* WPBakery notice */
+.vc_license-activation-notice {
+  display: none;
+}
+
+/* Revolution Slider notice */
+.rs-update-notice-wrap {
+  display: none;
+}
+
+/* Widgets */
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>.wp-block, 
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>div>.wp-block {
+  position: relative;
+  margin-bottom: 60px;
+}
+
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>.wp-block:last-child, 
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>div>.wp-block:last-child {
+  margin-bottom: 30px;
+}
+
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>.wp-block:after, 
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>div>.wp-block:after {
+  display: block;
+  border-bottom: 1px solid rgba(119,119,119,0.1);
+  content: "";
+  bottom: -30px;
+  right: 0;
+  left: 0;
+}
+
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>.wp-block:nth-last-child(2):after, 
+.block-editor-writing-flow .wp-block-widget-area .block-editor-block-list__layout>div>.wp-block:nth-last-child(2):after {
+  /*display: none;*/
+}

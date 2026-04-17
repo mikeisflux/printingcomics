@@ -1,0 +1,4 @@
+2026-03-18T20:10:26+00:00 INFO Automatic database update triggered.
+2026-03-18T20:10:26+00:00 INFO Scheduling database updates (from 10.5.2)...
+2026-03-18T20:10:26+00:00 INFO   [10.6.0] Scheduled 'wc_update_1060_add_woo_idx_comment_approved_type_index'.
+2026-03-18T20:10:26+00:00 INFO Database updates scheduled.

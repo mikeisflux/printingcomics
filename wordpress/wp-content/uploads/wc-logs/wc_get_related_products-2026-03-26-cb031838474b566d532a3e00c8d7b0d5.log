@@ -1,0 +1,7 @@
+2026-03-26T18:21:48+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"
+2026-03-26T22:59:48+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"
+2026-03-26T22:59:50+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"
+2026-03-26T23:00:07+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"
+2026-03-26T23:00:07+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"
+2026-03-26T23:01:48+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"
+2026-03-26T23:05:02+00:00 ERROR Invalid limit type passed to wc_get_related_products. Expected integer, got string with value: "6"

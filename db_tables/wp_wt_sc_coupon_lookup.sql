@@ -1,0 +1,7 @@
+/* CUSTOM VARS START */
+/* REAL_TABLE_NAME: `wp_wt_sc_coupon_lookup`; */
+/* PRE_TABLE_NAME: `1776400480_wp_wt_sc_coupon_lookup`; */
+/* CUSTOM VARS END */
+
+CREATE TABLE IF NOT EXISTS `1776400480_wp_wt_sc_coupon_lookup` ( `id` bigint NOT NULL AUTO_INCREMENT, `coupon_id` bigint NOT NULL DEFAULT '0', `is_auto_coupon` int NOT NULL DEFAULT '0', `auto_coupon_priority` bigint NOT NULL DEFAULT '0', `my_account_display` int NOT NULL DEFAULT '0', `cart_display` int NOT NULL DEFAULT '0', `checkout_display` int NOT NULL DEFAULT '0', `post_status` varchar(100) NOT NULL, `email_restriction` text NOT NULL, `user_roles` text NOT NULL, `exclude_user_roles` text NOT NULL, `expiry` varchar(100) NOT NULL, `discount_type` varchar(100) NOT NULL, `amount` decimal(10,2) NOT NULL DEFAULT '0.00', `usage_limit` bigint NOT NULL DEFAULT '0', `usage_count` bigint NOT NULL DEFAULT '0', `usage_limit_per_user` int NOT NULL DEFAULT '0', `is_wt_gc_wallet_coupon` int NOT NULL DEFAULT '0', PRIMARY KEY (`id`), KEY `COUPON_ID` (`coupon_id`), KEY `coupon_id_2` (`coupon_id`)) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb3;
+INSERT INTO `1776400480_wp_wt_sc_coupon_lookup` (`id`, `coupon_id`, `is_auto_coupon`, `auto_coupon_priority`, `my_account_display`, `cart_display`, `checkout_display`, `post_status`, `email_restriction`, `user_roles`, `exclude_user_roles`, `expiry`, `discount_type`, `amount`, `usage_limit`, `usage_count`, `usage_limit_per_user`, `is_wt_gc_wallet_coupon`) VALUES (1,18109,0,0,0,0,0,'auto-draft','a:0:{}','','','','fixed_cart',0,0,0,0,0);
