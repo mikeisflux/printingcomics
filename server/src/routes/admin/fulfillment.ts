@@ -143,12 +143,37 @@ router.get('/packlink/test', async (_req, res) => {
 });
 
 /** Raw probe — lets us try arbitrary paths against the configured base URL to
- *  figure out which Packlink endpoint shape is right for the account. */
+ *  figure out which Packlink endpoint shape is right for the account.
+ *  Any query params other than `path` are forwarded to Packlink (with their
+ *  bracket notation preserved), so you can write:
+ *    /packlink/raw?path=/services&from[country]=ES&from[zip]=28001&...
+ *  instead of URL-encoding the whole thing into `path`. */
 router.get('/packlink/raw', async (req, res) => {
   const pathQ = typeof req.query.path === 'string' ? req.query.path : '/services';
   const cfg = await getPacklinkConfig();
   if (!cfg.apiKey) return res.status(400).json({ error: 'API key not set' });
-  const url = cfg.baseUrl.replace(/\/$/, '') + (pathQ.startsWith('/') ? pathQ : '/' + pathQ);
+
+  // If the caller already put a querystring inside `path`, respect it.
+  // Otherwise, forward every other top-level query param (preserving
+  // bracket syntax like `from[country]`).
+  const [basePath, embeddedQuery] = pathQ.split('?', 2);
+  const forwarded = new URLSearchParams();
+  if (embeddedQuery) {
+    // embeddedQuery may itself contain already-encoded brackets — keep as-is.
+    // (We can't just merge into URLSearchParams without losing the raw form,
+    // so append it to the final URL verbatim.)
+  }
+  for (const [k, v] of Object.entries(req.query)) {
+    if (k === 'path') continue;
+    if (Array.isArray(v)) {
+      v.forEach((vv) => forwarded.append(k, String(vv)));
+    } else if (v != null) {
+      forwarded.append(k, String(v));
+    }
+  }
+  const prefix = cfg.baseUrl.replace(/\/$/, '') + (basePath.startsWith('/') ? basePath : '/' + basePath);
+  const qs = [embeddedQuery, forwarded.toString()].filter(Boolean).join('&');
+  const url = qs ? `${prefix}?${qs}` : prefix;
   try {
     const r = await fetch(url, {
       headers: {
