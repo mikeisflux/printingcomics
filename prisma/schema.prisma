@@ -1,0 +1,325 @@
+// Printing Comics storefront schema.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  IN_PRODUCTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  phone        String?
+  role         Role      @default(CUSTOMER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses    Address[]
+  orders       Order[]
+  carts        Cart[]
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  label      String?
+  firstName  String
+  lastName   String
+  company    String?
+  line1      String
+  line2      String?
+  city       String
+  region     String
+  postalCode String
+  country    String   @default("US")
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  description String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  parentId    String?
+  children    Category[] @relation("CategoryTree")
+  sortOrder   Int        @default(0)
+  products    ProductCategory[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  shortDescription String?
+  description     String?
+  // Base price in cents (USD). Variants can override.
+  priceCents      Int      @default(0)
+  // If true, show variant price range instead of base price.
+  hasVariants     Boolean  @default(false)
+  sku             String?  @unique
+  stock           Int      @default(0)
+  // True for custom-print products where stock is not tracked.
+  madeToOrder     Boolean  @default(false)
+  active          Boolean  @default(true)
+  minQuantity     Int      @default(1)
+  weightGrams     Int      @default(0)
+  // Tier-based volume discounts: JSON array of { minQty, pricePerUnitCents }.
+  volumeTiers     Json?
+  seoTitle        String?
+  seoDescription  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  categories      ProductCategory[]
+  images          ProductImage[]
+  variants        ProductVariant[]
+  options         ProductOption[]
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
+}
+
+model ProductCategory {
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+// Configurable option on a product (e.g. "Page Count", "Cover Type").
+model ProductOption {
+  id        String               @id @default(cuid())
+  product   Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  name      String
+  sortOrder Int                  @default(0)
+  values    ProductOptionValue[]
+
+  @@index([productId])
+}
+
+model ProductOptionValue {
+  id            String        @id @default(cuid())
+  option        ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId      String
+  label         String
+  priceModifierCents Int      @default(0)
+  sortOrder     Int           @default(0)
+
+  @@index([optionId])
+}
+
+// A specific variant SKU (e.g. page count 48, soft cover).
+model ProductVariant {
+  id         String   @id @default(cuid())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  sku        String?  @unique
+  // Human-readable label like "48pg / Soft Cover".
+  label      String
+  priceCents Int
+  stock      Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+model Cart {
+  id         String     @id @default(cuid())
+  // Null if guest cart; linked by sessionToken cookie.
+  user       User?      @relation(fields: [userId], references: [id])
+  userId     String?
+  sessionKey String?    @unique
+  items      CartItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+model CartItem {
+  id         String          @id @default(cuid())
+  cart       Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cartId     String
+  product    Product         @relation(fields: [productId], references: [id])
+  productId  String
+  variant    ProductVariant? @relation(fields: [variantId], references: [id])
+  variantId  String?
+  quantity   Int
+  // Snapshot selected options JSON, e.g. { "Page Count": "48", ... }.
+  options    Json?
+  // Unit price at add-to-cart time, after variant/option/volume adjustments.
+  unitPriceCents Int
+  createdAt  DateTime        @default(now())
+
+  @@index([cartId])
+  @@index([productId])
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  number          String        @unique
+  user            User?         @relation(fields: [userId], references: [id])
+  userId          String?
+  email           String
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+
+  subtotalCents   Int
+  shippingCents   Int           @default(0)
+  taxCents        Int           @default(0)
+  discountCents   Int           @default(0)
+  totalCents      Int
+
+  shippingAddress Json
+  billingAddress  Json
+  shippingMethod  String?
+  trackingNumber  String?
+  notes           String?
+
+  items           OrderItem[]
+  payments        Payment[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id         String          @id @default(cuid())
+  order      Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId    String
+  product    Product         @relation(fields: [productId], references: [id])
+  productId  String
+  variant    ProductVariant? @relation(fields: [variantId], references: [id])
+  variantId  String?
+  name       String
+  options    Json?
+  quantity   Int
+  unitPriceCents Int
+  totalCents Int
+
+  @@index([orderId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId         String
+  provider        String        @default("stripe")
+  providerRef     String?
+  amountCents     Int
+  status          PaymentStatus @default(PENDING)
+  rawPayload      Json?
+  createdAt       DateTime      @default(now())
+
+  @@index([orderId])
+}
+
+model ShippingZone {
+  id        String         @id @default(cuid())
+  name      String
+  countries String[]
+  rates     ShippingRate[]
+  createdAt DateTime       @default(now())
+}
+
+model ShippingRate {
+  id               String       @id @default(cuid())
+  zone             ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  zoneId           String
+  name             String
+  // Flat rate in cents OR per-kg in cents (when perKg is true).
+  rateCents        Int
+  perKg            Boolean      @default(false)
+  minSubtotalCents Int          @default(0)
+  maxSubtotalCents Int?
+  estimatedDays    String?
+
+  @@index([zoneId])
+}
+
+model TaxRate {
+  id        String   @id @default(cuid())
+  name      String
+  region    String
+  country   String   @default("US")
+  rateBps   Int // basis points: 825 = 8.25%
+  createdAt DateTime @default(now())
+}
+
+model Coupon {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  description    String?
+  // Either percent off (bps) or fixed amount off (cents).
+  percentOffBps  Int?
+  amountOffCents Int?
+  minSubtotalCents Int    @default(0)
+  usageLimit     Int?
+  usageCount     Int      @default(0)
+  expiresAt      DateTime?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value Json
+}

@@ -1,0 +1,20 @@
+import { Router } from 'express';
+import dashboard from './dashboard.js';
+import products from './products.js';
+import orders from './orders.js';
+import users from './users.js';
+import categories from './categories.js';
+import settings from './settings.js';
+import { requireAdmin } from '../../middleware/auth.js';
+
+const router = Router();
+router.use(requireAdmin);
+
+router.use('/dashboard', dashboard);
+router.use('/products', products);
+router.use('/orders', orders);
+router.use('/users', users);
+router.use('/categories', categories);
+router.use('/settings', settings);
+
+export default router;

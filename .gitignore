@@ -1,2 +1,12 @@
-
-db_tables/wp_options.sql
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vite/
+coverage/
+prisma/migrations/dev.db*
+siteold/db_tables/wp_options.sql
