@@ -95,6 +95,7 @@ router.get('/:slug/related', async (req, res) => {
 router.get('/_meta/categories', async (_req, res) => {
   const categories = await prisma.category.findMany({
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    include: { _count: { select: { products: true } } },
   });
   res.json({ categories });
 });

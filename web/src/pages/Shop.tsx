@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 
@@ -6,9 +6,11 @@ interface ProductCard {
   id: string;
   slug: string;
   name: string;
+  shortDescription?: string | null;
   priceCents: number;
   hasVariants: boolean;
   image: string | null;
+  categories?: string[];
 }
 
 interface Category {
@@ -17,13 +19,19 @@ interface Category {
   name: string;
   description?: string | null;
   heroImageUrl?: string | null;
+  iconUrl?: string | null;
   _count: { products: number };
 }
+
+type SortKey = 'newest' | 'price-asc' | 'price-desc' | 'name';
 
 export function Shop() {
   const { category } = useParams();
   const [products, setProducts] = useState<ProductCard[]>([]);
+  const [allCats, setAllCats] = useState<Category[]>([]);
   const [cat, setCat] = useState<Category | null>(null);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortKey>('newest');
 
   useEffect(() => {
     const qs = category ? `?category=${encodeURIComponent(category)}` : '';
@@ -37,9 +45,27 @@ export function Shop() {
     }
   }, [category]);
 
+  useEffect(() => {
+    void api.get<{ categories: Category[] }>('/products/_meta/categories').then((r) => setAllCats(r.categories)).catch(() => undefined);
+  }, []);
+
+  const visible = useMemo(() => {
+    let list = products.slice();
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.shortDescription ?? '').toLowerCase().includes(q));
+    }
+    switch (sort) {
+      case 'price-asc': list.sort((a, b) => a.priceCents - b.priceCents); break;
+      case 'price-desc': list.sort((a, b) => b.priceCents - a.priceCents); break;
+      case 'name': list.sort((a, b) => a.name.localeCompare(b.name)); break;
+    }
+    return list;
+  }, [products, search, sort]);
+
   return (
     <>
-      {cat && (
+      {cat ? (
         <section
           style={{
             background: cat.heroImageUrl
@@ -62,31 +88,104 @@ export function Shop() {
             </p>
           </div>
         </section>
+      ) : (
+        <section style={{ padding: '2rem 0 1rem' }}>
+          <div className="container">
+            <h1 style={{ marginBottom: '.25rem' }}>Shop</h1>
+            <p className="muted">Browse our full catalog of comic-book printing services.</p>
+          </div>
+        </section>
       )}
 
-      <div className="container" style={{ padding: cat ? '0 1.25rem 2rem' : '2rem 0' }}>
-        {!cat && <h1 style={{ textTransform: 'capitalize' }}>{category ? category.replace(/-/g, ' ') : 'Shop'}</h1>}
-
-        {products.length === 0 ? (
-          <p className="muted">No products yet.</p>
-        ) : (
-          <div className="product-grid">
-            {products.map((p) => (
-              <Link key={p.id} to={`/product/${p.slug}`} className="product-card">
-                <div
-                  className="image"
-                  style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}
-                />
-                <div className="body">
-                  <h3>{p.name}</h3>
-                  <div className="price">
-                    {p.hasVariants ? 'From ' : ''}{formatMoney(p.priceCents)}
-                  </div>
-                </div>
+      <div className="container" style={{ padding: '0 1.25rem 3rem', display: 'grid', gridTemplateColumns: 'minmax(180px, 220px) 1fr', gap: '2rem' }}>
+        <aside>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h4 style={{ marginTop: 0, marginBottom: '.5rem', textTransform: 'uppercase', fontSize: '.75rem', color: 'var(--muted)', fontWeight: 700, letterSpacing: '.05em' }}>
+              Categories
+            </h4>
+            <nav style={{ display: 'flex', flexDirection: 'column', gap: '.15rem' }}>
+              <Link
+                to="/shop"
+                style={{
+                  padding: '.4rem .65rem', borderRadius: 4, textDecoration: 'none',
+                  background: !category ? 'var(--brand)' : 'transparent',
+                  color: !category ? '#fff' : 'var(--ink)',
+                  fontWeight: !category ? 600 : 500,
+                }}
+              >
+                All products
               </Link>
-            ))}
+              {allCats.map((c) => (
+                <Link
+                  key={c.id}
+                  to={`/shop/${c.slug}`}
+                  style={{
+                    padding: '.4rem .65rem', borderRadius: 4, textDecoration: 'none',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: category === c.slug ? 'var(--brand)' : 'transparent',
+                    color: category === c.slug ? '#fff' : 'var(--ink)',
+                    fontWeight: category === c.slug ? 600 : 500,
+                  }}
+                >
+                  <span>{c.name}</span>
+                  <span style={{ opacity: 0.7, fontSize: '.8rem' }}>({c._count.products})</span>
+                </Link>
+              ))}
+            </nav>
           </div>
-        )}
+        </aside>
+
+        <div>
+          <div className="spread" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '.5rem' }}>
+            <input
+              placeholder="Search products"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ maxWidth: 280 }}
+            />
+            <div className="row" style={{ gap: '.5rem', alignItems: 'center' }}>
+              <span className="muted" style={{ fontSize: '.85rem' }}>Sort:</span>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                style={{ width: 'auto' }}
+              >
+                <option value="newest">Newest</option>
+                <option value="name">Name (A–Z)</option>
+                <option value="price-asc">Price (low to high)</option>
+                <option value="price-desc">Price (high to low)</option>
+              </select>
+            </div>
+          </div>
+
+          {visible.length === 0 ? (
+            <p className="muted">
+              {search ? 'No products match your search.' : 'No products yet.'}
+            </p>
+          ) : (
+            <div className="product-grid">
+              {visible.map((p) => (
+                <Link key={p.id} to={`/product/${p.slug}`} className="product-card">
+                  <div
+                    className="image"
+                    style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}
+                  />
+                  <div className="body">
+                    <h3>{p.name}</h3>
+                    <div className="price">
+                      {p.hasVariants ? 'From ' : ''}{formatMoney(p.priceCents)}
+                    </div>
+                    {p.shortDescription && (
+                      <p className="muted" style={{ fontSize: '.8rem', marginTop: '.4rem' }}>
+                        {p.shortDescription}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

@@ -10,6 +10,8 @@ import { PaypalCheckout } from './pages/PaypalCheckout';
 import { OrderConfirmation } from './pages/OrderConfirmation';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 import { AccountLayout, AccountDashboard, AccountProfile, AccountPassword, AccountAddresses } from './pages/Account';
 import { OrdersPage } from './pages/OrdersPage';
 import { PaypalReturn } from './pages/PaypalReturn';
@@ -58,6 +60,8 @@ export const router = createBrowserRouter([
       { path: 'order/:number', element: <OrderConfirmation /> },
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
+      { path: 'forgot-password', element: <ForgotPassword /> },
+      { path: 'reset-password', element: <ResetPassword /> },
       {
         path: 'account',
         element: <AccountLayout />,

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
+import { StatusBadge } from '../Account';
 
 interface Address {
   id: string;
@@ -64,7 +65,20 @@ export function AdminUserDetail() {
     finally { setSaving(false); }
   };
 
-  if (!user) return <div>Loading…</div>;
+  const stats = useMemo(() => {
+    if (!user) return null;
+    const completed = user.orders.filter((o) => o.status !== 'CANCELLED' && o.status !== 'REFUNDED');
+    const lifetime = completed.reduce((s, o) => s + o.totalCents, 0);
+    const lastOrder = user.orders[0]?.createdAt ?? null;
+    return {
+      orderCount: completed.length,
+      lifetime,
+      avg: completed.length ? Math.round(lifetime / completed.length) : 0,
+      lastOrder,
+    };
+  }, [user]);
+
+  if (!user || !stats) return <div>Loading…</div>;
 
   return (
     <div>
@@ -74,6 +88,13 @@ export function AdminUserDetail() {
       <div className="spread" style={{ marginBottom: '1rem' }}>
         <h1 style={{ margin: 0 }}>{user.firstName || user.lastName ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : user.email}</h1>
         <span className="badge">{user.role}</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+        <Stat label="Orders" value={String(stats.orderCount)} />
+        <Stat label="Lifetime spend" value={formatMoney(stats.lifetime)} />
+        <Stat label="Avg order" value={formatMoney(stats.avg)} />
+        <Stat label="Last order" value={stats.lastOrder ? new Date(stats.lastOrder).toLocaleDateString() : '—'} />
       </div>
 
       <div className="admin-card">
@@ -175,7 +196,7 @@ export function AdminUserDetail() {
                 <tr key={o.id}>
                   <td><Link to={`/admin/orders/${o.id}`}>{o.number}</Link></td>
                   <td>{new Date(o.createdAt).toLocaleDateString()}</td>
-                  <td><span className="badge">{o.status}</span></td>
+                  <td><StatusBadge status={o.status} /></td>
                   <td>{formatMoney(o.totalCents)}</td>
                 </tr>
               ))}
@@ -185,6 +206,15 @@ export function AdminUserDetail() {
       </div>
 
       {saving && <p className="muted">Saving…</p>}
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="admin-card" style={{ margin: 0, padding: '1rem' }}>
+      <div style={{ fontSize: '.7rem', textTransform: 'uppercase', color: 'var(--muted)', fontWeight: 700, letterSpacing: '.05em' }}>{label}</div>
+      <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: '.25rem' }}>{value}</div>
     </div>
   );
 }

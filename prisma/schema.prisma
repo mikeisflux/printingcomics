@@ -43,10 +43,25 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  addresses    Address[]
-  orders       Order[]
-  carts        Cart[]
-  mediaUploads MediaFile[]
+  addresses      Address[]
+  orders         Order[]
+  carts          Cart[]
+  mediaUploads   MediaFile[]
+  passwordResets PasswordReset[]
+}
+
+// Single-use password reset tokens. tokenHash is sha256(rawToken) so
+// even DB access doesn't leak a working reset link.
+model PasswordReset {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Address {
