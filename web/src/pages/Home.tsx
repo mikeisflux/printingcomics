@@ -1,25 +1,6 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, formatMoney } from '../api/client';
-
-interface ProductCard {
-  id: string;
-  slug: string;
-  name: string;
-  shortDescription?: string | null;
-  priceCents: number;
-  hasVariants: boolean;
-  image: string | null;
-  categories: string[];
-}
 
 export function Home() {
-  const [products, setProducts] = useState<ProductCard[]>([]);
-
-  useEffect(() => {
-    void api.get<{ products: ProductCard[] }>('/products?limit=8').then((r) => setProducts(r.products));
-  }, []);
-
   return (
     <>
       {/* Hero */}
@@ -63,32 +44,6 @@ export function Home() {
       </section>
 
       {/* Featured products */}
-      {products.length > 0 && (
-        <section className="container" style={{ padding: '3rem 0' }}>
-          <div className="spread" style={{ marginBottom: '1rem' }}>
-            <h2 style={{ margin: 0 }}>Popular services</h2>
-            <Link to="/shop">View all &rarr;</Link>
-          </div>
-          <div className="product-grid" style={{ paddingTop: 0 }}>
-            {products.map((p) => (
-              <Link key={p.id} to={`/product/${p.slug}`} className="product-card">
-                <div
-                  className="image"
-                  style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}
-                />
-                <div className="body">
-                  <h3>{p.name}</h3>
-                  <div className="price">
-                    {p.hasVariants ? 'From ' : ''}{formatMoney(p.priceCents)}
-                  </div>
-                  {p.shortDescription && <p className="muted" style={{ fontSize: '.85rem', marginTop: '.5rem' }}>{p.shortDescription}</p>}
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* Why us */}
       <section style={{ background: 'var(--bg-alt)', padding: '3rem 0' }}>
         <div className="container">
