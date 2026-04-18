@@ -208,20 +208,24 @@ function Book({ spec }: { spec: BookSpec }) {
   const w = spec.widthIn * k;
   const h = spec.heightIn * k;
 
-  // Saddle-stitched comics: fixed cover-thickness with the two covers'
-  // inside faces kissing at z = 0 — no page stack in between, regardless
-  // of pageCount. Perfect-bound scales with pageCount as the spine grows.
+  // Saddle-stitched comics: the book forms a WEDGE — covers meet at the
+  // left fold (spine = 0 thickness) and splay open to the right (fore-edge)
+  // where the page count determines the stack height. Achieved by pivoting
+  // each cover around the left edge at z=0 and rotating slightly around Y.
+  // Perfect-bound keeps its uniform-thickness page block + flat covers.
   const COVER_T_SADDLE = 0.006;
   const COVER_T_PERFECT = 0.022;
   const coverT = isSaddle ? COVER_T_SADDLE : COVER_T_PERFECT;
+  // Fore-edge thickness (saddle) or spine thickness (perfect-bound).
   const t = isSaddle
-    ? 0  // no page block between saddle-stitched covers
+    ? Math.max(0.02, Math.min(0.28, spec.pageCount * 0.0025 * k * 6))
     : Math.max(0.06, Math.min(1.4, spec.pageCount * 0.0035 * k * 6));
-  // Offset from page-block face to cover centre. For saddle we want the
-  // covers flush against z = 0 — inside faces kiss, with a 0.0002-unit
-  // sliver to avoid z-fighting (not visible at this distance). For
-  // perfect-bound the cover sits just outside the page block.
-  const coverOffset = isSaddle ? coverT / 2 + 0.0002 : coverT / 2 + 0.001;
+  // Tilt angle for saddle-stitched covers: how many radians each cover is
+  // rotated around the left-edge pivot so the right edges spread by `t`.
+  // Small-angle approximation — sin ≈ θ at these sizes.
+  const saddleTilt = isSaddle ? t / (2 * w) : 0;
+  // Offset from page-block face to cover centre (perfect-bound only).
+  const coverOffset = coverT / 2 + 0.001;
 
   const frontImageTex = useImageTexture(spec.frontCoverImageUrl);
   const backImageTex  = useImageTexture(spec.backCoverImageUrl);
@@ -263,7 +267,11 @@ function Book({ spec }: { spec: BookSpec }) {
 
   return (
     <group ref={ref}>
-      {/* Page block (interior). Omitted on saddle-stitch (no stack). */}
+      {/* Page block (interior). Omitted on saddle-stitch — the pages fan
+          out between the tilted covers, so there's no flat stack to render.
+          A real saddle-stitched comic's pages form the same wedge as the
+          covers (zero at spine, full thickness at fore-edge), which the
+          tilted cover meshes already communicate visually. */}
       {!isSaddle && (
         <mesh castShadow receiveShadow>
           <boxGeometry args={[w * 0.97, h * 0.97, t * 0.93]} />
@@ -271,34 +279,64 @@ function Book({ spec }: { spec: BookSpec }) {
         </mesh>
       )}
 
-      {/* Front cover — textured. Paper-thin on saddle-stitched comics, card
-          stock on perfect-bound. On saddle-stitch, positioned so the inside
-          faces of front and back cover meet at z = 0 (touching). */}
-      <mesh
-        position={[0, 0, t / 2 + coverOffset]}
-        castShadow receiveShadow
-      >
-        <boxGeometry args={[w, h, coverT]} />
-        <meshStandardMaterial
-          map={frontMap}
-          metalness={coverMetalness}
-          roughness={coverRoughness}
-          envMapIntensity={1.2 + (spec.hasFoil ? 1.4 : 0)}
-        />
-      </mesh>
+      {isSaddle ? (
+        <>
+          {/* Front cover — pivots around the left fold (x=-w/2, z=0) and
+              tilts up so the right edge sits at +t/2 in z. The mesh-local
+              bottom-left corner coincides with the pivot. */}
+          <group position={[-w / 2, 0, 0]} rotation={[0, -saddleTilt, 0]}>
+            <mesh position={[w / 2, 0, coverT / 2]} castShadow receiveShadow>
+              <boxGeometry args={[w, h, coverT]} />
+              <meshStandardMaterial
+                map={frontMap}
+                metalness={coverMetalness}
+                roughness={coverRoughness}
+                envMapIntensity={1.2 + (spec.hasFoil ? 1.4 : 0)}
+              />
+            </mesh>
+          </group>
 
-      {/* Back cover — uploaded image, or solid cover color */}
-      <mesh
-        position={[0, 0, -t / 2 - coverOffset]}
-        castShadow receiveShadow
-      >
-        <boxGeometry args={[w, h, coverT]} />
-        <meshStandardMaterial
-          {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
-          metalness={coverMetalness}
-          roughness={coverRoughness}
-        />
-      </mesh>
+          {/* Back cover — mirrored tilt so the right edge is at -t/2. */}
+          <group position={[-w / 2, 0, 0]} rotation={[0, saddleTilt, 0]}>
+            <mesh position={[w / 2, 0, -coverT / 2]} castShadow receiveShadow>
+              <boxGeometry args={[w, h, coverT]} />
+              <meshStandardMaterial
+                {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
+                metalness={coverMetalness}
+                roughness={coverRoughness}
+              />
+            </mesh>
+          </group>
+        </>
+      ) : (
+        <>
+          {/* Perfect-bound: flat cover panels parallel to the page block. */}
+          <mesh
+            position={[0, 0, t / 2 + coverOffset]}
+            castShadow receiveShadow
+          >
+            <boxGeometry args={[w, h, coverT]} />
+            <meshStandardMaterial
+              map={frontMap}
+              metalness={coverMetalness}
+              roughness={coverRoughness}
+              envMapIntensity={1.2 + (spec.hasFoil ? 1.4 : 0)}
+            />
+          </mesh>
+
+          <mesh
+            position={[0, 0, -t / 2 - coverOffset]}
+            castShadow receiveShadow
+          >
+            <boxGeometry args={[w, h, coverT]} />
+            <meshStandardMaterial
+              {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
+              metalness={coverMetalness}
+              roughness={coverRoughness}
+            />
+          </mesh>
+        </>
+      )}
 
       {/* Spine — only on perfect-bound. Saddle-stitched comics fold along
           the left edge instead of having a spine. Uploaded spine art
