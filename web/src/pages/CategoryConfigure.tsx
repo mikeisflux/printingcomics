@@ -186,14 +186,24 @@ export function CategoryConfigure() {
     const cover = (selections['cover_paper'] ?? selections['cover'] ?? 'White') as string;
     const embellishment = (selections['embellishments'] ?? '') as string;
     const lamStyle = (selections['lamination_style'] ?? '') as string;
+    const title = (selections['title'] as string | undefined)?.trim() || product.name.replace(/^.*?[—-]\s*/, '').replace(/\s*\(.*?\)/, '');
+
+    let paperStyle: 'uncoated' | 'matte' | 'gloss' | 'foil' | 'uv' = 'uncoated';
+    if (/foil/i.test(embellishment)) paperStyle = 'foil';
+    else if (/uv/i.test(embellishment)) paperStyle = 'uv';
+    else if (/gloss/i.test(lamStyle)) paperStyle = 'gloss';
+    else if (/matte/i.test(lamStyle)) paperStyle = 'matte';
+
     return {
       widthIn: dim.widthIn,
       heightIn: dim.heightIn,
       pageCount,
       coverColor: colorForCover(cover),
       pageColor: '#fbf8f3',
-      foilIntensity: /foil/i.test(embellishment) ? 0.85 : 0,
-      laminationGloss: /gloss/i.test(lamStyle) ? 1 : /matte/i.test(lamStyle) ? 0.1 : 0.5,
+      hasFoil: /foil/i.test(embellishment),
+      paperStyle,
+      title,
+      subtitle: product.name.split('—')[0]?.trim(),
     };
   }, [product, selections]);
 
@@ -317,9 +327,9 @@ export function CategoryConfigure() {
       </section>
 
       <div className="container" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 460px)', gap: '2rem', alignItems: 'flex-start' }}>
-        {/* Left: 3D preview pinned */}
-        <div style={{ position: 'sticky', top: 16 }}>
-          <Suspense fallback={<div style={{ height: 480, background: '#0f172a', borderRadius: 16 }} />}>
+        {/* Left: 3D preview pinned, vertically centered in the viewport */}
+        <div style={{ position: 'sticky', top: 'max(6rem, calc(50vh - 16rem))' }}>
+          <Suspense fallback={<div style={{ height: 520, background: '#0f172a', borderRadius: 16 }} />}>
             {bookSpec && <BookPreview3D spec={bookSpec} />}
           </Suspense>
           <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '.85rem', color: 'var(--muted)' }}>

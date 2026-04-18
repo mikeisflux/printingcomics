@@ -355,8 +355,8 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
           },
           // Finalize
           {
-            name: 'I would like a CWS Ad!',
-            internalKey: 'cws_ad',
+            name: 'I would like a Printing Comics ad',
+            internalKey: 'printing_comics_ad',
             section: 'Finalize Setup',
             type: 'RADIO' as const,
             required: true,
