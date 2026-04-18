@@ -48,7 +48,12 @@ async function loadCartFull(cartId: string) {
     include: {
       items: {
         include: {
-          product: { include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 } } },
+          product: {
+            include: {
+              images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+              options: { include: { values: true } },
+            },
+          },
           variant: true,
         },
       },

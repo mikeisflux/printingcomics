@@ -20,6 +20,7 @@ import orderRoutes from './routes/orders.js';
 import adminRoutes from './routes/admin/index.js';
 import configRoutes from './routes/config.js';
 import uploadRoutes from './routes/uploads.js';
+import newsletterRoutes from './routes/newsletter.js';
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/checkout', checkoutRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Public: serve uploaded email attachments (behind auth check in routes)

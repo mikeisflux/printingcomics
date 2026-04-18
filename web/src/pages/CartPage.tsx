@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { formatMoney } from '../api/client';
 import { useCart } from '../store/cart';
+import { formatCartItemOptions } from '../lib/cart-options';
 
 export function CartPage() {
   const { cart, load, update, remove, subtotal } = useCart();
@@ -37,11 +38,17 @@ export function CartPage() {
                   <td>
                     <Link to={`/product/${item.product.slug}`}>{item.product.name}</Link>
                     {item.variant && <div className="muted" style={{ fontSize: '.85rem' }}>{item.variant.label}</div>}
-                    {item.options && Object.entries(item.options).length > 0 && (
-                      <div className="muted" style={{ fontSize: '.85rem' }}>
-                        {Object.entries(item.options).map(([k, v]) => `${k}: ${v}`).join(' · ')}
-                      </div>
-                    )}
+                    {(() => {
+                      const pairs = formatCartItemOptions(item);
+                      if (pairs.length === 0) return null;
+                      return (
+                        <ul className="muted" style={{ fontSize: '.85rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
+                          {pairs.map((p, i) => (
+                            <li key={i}><strong>{p.label}:</strong> {p.value}</li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
                   </td>
                   <td>
                     <input

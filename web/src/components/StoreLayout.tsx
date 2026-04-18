@@ -103,24 +103,7 @@ export function StoreLayout() {
               Sign up for our newsletter for exclusive deals, print promotions, and first access to news and giveaways.
             </p>
           </div>
-          <form
-            onSubmit={(e) => { e.preventDefault(); alert('Thanks! (Newsletter form stub — wire to Brevo contact list next.)'); }}
-            style={{ display: 'flex', gap: '.5rem', background: '#fff', borderRadius: '999px', padding: '.25rem' }}
-          >
-            <input
-              type="email"
-              placeholder="Email address"
-              required
-              style={{ border: 'none', padding: '.75rem 1rem', flex: 1, borderRadius: '999px', background: 'transparent' }}
-            />
-            <button
-              className="btn"
-              style={{ borderRadius: '50%', width: 44, height: 44, padding: 0, fontSize: '1.1rem' }}
-              aria-label="Sign up"
-            >
-              →
-            </button>
-          </form>
+          <NewsletterForm />
         </div>
       </section>
 
@@ -163,6 +146,64 @@ export function StoreLayout() {
         </div>
       </footer>
     </>
+  );
+}
+
+function NewsletterForm() {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus('sending');
+    setMessage(null);
+    try {
+      const r = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, source: 'footer' }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Failed' }))).error);
+      setStatus('ok');
+      setMessage('Thanks — you\'re in!');
+      setEmail('');
+    } catch (err: any) {
+      setStatus('error');
+      setMessage(err.message ?? 'Signup failed');
+    }
+  }
+
+  return (
+    <div>
+      <form
+        onSubmit={submit}
+        style={{ display: 'flex', gap: '.5rem', background: '#fff', borderRadius: '999px', padding: '.25rem' }}
+      >
+        <input
+          type="email"
+          placeholder="Email address"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={status === 'sending'}
+          style={{ border: 'none', padding: '.75rem 1rem', flex: 1, borderRadius: '999px', background: 'transparent' }}
+        />
+        <button
+          type="submit"
+          className="btn"
+          disabled={status === 'sending'}
+          style={{ borderRadius: '50%', width: 44, height: 44, padding: 0, fontSize: '1.1rem' }}
+          aria-label="Sign up"
+        >
+          {status === 'sending' ? '…' : '→'}
+        </button>
+      </form>
+      {message && (
+        <div style={{ marginTop: '.5rem', fontSize: '.85rem', opacity: 0.95 }}>{message}</div>
+      )}
+    </div>
   );
 }
 

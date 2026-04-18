@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
+import { formatCartItemOptions } from '../lib/cart-options';
+import { useCart } from '../store/cart';
 
 interface Order {
   number: string;
@@ -11,7 +13,19 @@ interface Order {
   shippingCents: number;
   taxCents: number;
   trackingNumber?: string | null;
-  items: { id: string; name: string; quantity: number; totalCents: number; options?: any }[];
+  items: {
+    id: string;
+    name: string;
+    quantity: number;
+    totalCents: number;
+    options?: any;
+    product: {
+      id: string;
+      slug: string;
+      name: string;
+      options: { id: string; name: string; internalKey?: string | null; type: string; values: { label: string; subLabel?: string | null }[] }[];
+    };
+  }[];
   createdAt: string;
 }
 
@@ -21,6 +35,23 @@ export function OrderConfirmation() {
   const { number } = useParams();
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reordering, setReordering] = useState(false);
+  const navigate = useNavigate();
+  const { load: reloadCart } = useCart();
+
+  async function reorder() {
+    if (!number) return;
+    setReordering(true);
+    try {
+      await api.post(`/orders/${number}/reorder`);
+      await reloadCart();
+      navigate('/cart');
+    } catch (e: any) {
+      alert(e.message ?? 'Reorder failed');
+    } finally {
+      setReordering(false);
+    }
+  }
 
   useEffect(() => {
     if (!number) return;
@@ -106,19 +137,24 @@ export function OrderConfirmation() {
 
       <h3>Items</h3>
       <div className="admin-card">
-        {order.items.map((i) => (
-          <div key={i.id} className="spread" style={{ padding: '.75rem 0', borderBottom: '1px solid var(--border)' }}>
-            <div>
-              {i.name} × {i.quantity}
-              {i.options && Object.keys(i.options).length > 0 && (
-                <div className="muted" style={{ fontSize: '.85rem' }}>
-                  {Object.entries(i.options).map(([k, v]) => `${k}: ${v}`).join(' · ')}
-                </div>
+        {order.items.map((i) => {
+          const pairs = formatCartItemOptions(i);
+          return (
+            <div key={i.id} style={{ padding: '.75rem 0', borderBottom: '1px solid var(--border)' }}>
+              <div className="spread">
+                <div>{i.name} × {i.quantity}</div>
+                <span>{formatMoney(i.totalCents)}</span>
+              </div>
+              {pairs.length > 0 && (
+                <ul className="muted" style={{ fontSize: '.85rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
+                  {pairs.map((p, j) => (
+                    <li key={j}>{p.label}: {p.value}</li>
+                  ))}
+                </ul>
               )}
             </div>
-            <span>{formatMoney(i.totalCents)}</span>
-          </div>
-        ))}
+          );
+        })}
         <div className="spread" style={{ padding: '.5rem 0' }}><span>Subtotal</span><span>{formatMoney(order.subtotalCents)}</span></div>
         <div className="spread" style={{ padding: '.5rem 0' }}><span>Shipping</span><span>{formatMoney(order.shippingCents)}</span></div>
         <div className="spread" style={{ padding: '.5rem 0' }}><span>Tax</span><span>{formatMoney(order.taxCents)}</span></div>
@@ -127,8 +163,11 @@ export function OrderConfirmation() {
         </div>
       </div>
 
-      <div className="row" style={{ justifyContent: 'center', marginTop: '1.5rem' }}>
+      <div className="row" style={{ justifyContent: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
         <Link to="/account/orders" className="btn secondary">All orders</Link>
+        <button className="btn secondary" disabled={reordering} onClick={() => void reorder()}>
+          {reordering ? 'Adding to cart…' : 'Reorder these items'}
+        </button>
         <Link to="/shop" className="btn">Keep shopping</Link>
       </div>
     </div>

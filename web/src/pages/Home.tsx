@@ -47,8 +47,9 @@ export function Home() {
           {[
             { slug: 'comic-books', name: 'Comic Books', blurb: 'Saddle-stitched, soft-cover, 24-32 pages.' },
             { slug: 'graphic-novels', name: 'Graphic Novels', blurb: 'Perfect-bound, soft or hard cover.' },
-            { slug: 'trade-paperbacks', name: 'Trade Paperbacks', blurb: 'Collected editions, premium stock.' },
-            { slug: 'hard-cover', name: 'Hardcover Books', blurb: 'Smyth-sewn with dust jacket option.' },
+            { slug: 'manga', name: 'Manga', blurb: 'Right-to-left or left-to-right bound.' },
+            { slug: 'zines', name: 'Zines', blurb: 'Short runs, stapled and folded.' },
+            { slug: 'artist-tools', name: 'Artist Tools', blurb: 'Sketchbooks, templates, panel pads.' },
           ].map((c) => (
             <Link
               key={c.slug}
@@ -144,6 +145,35 @@ export function Home() {
         </div>
       </section>
 
+      {/* Crowdfunding promo */}
+      <section style={{ background: '#0a1f3d', color: '#fff', padding: '3rem 0' }}>
+        <div className="container" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '2rem', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '.85rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.75, marginBottom: '.5rem' }}>Crowdfunding</div>
+            <h2 style={{ color: '#fff', margin: '0 0 .75rem' }}>Print-and-fulfill for your next campaign.</h2>
+            <p style={{ opacity: 0.9, marginBottom: '1.25rem' }}>
+              We print, pick, pack, and ship your Kickstarter or IndieGoGo rewards. One partner,
+              one invoice, one timeline — no broker in the middle.
+            </p>
+            <Link to="/crowdfunding" className="btn" style={{ background: '#fff', color: '#0a1f3d' }}>Learn more →</Link>
+          </div>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e74fc 0%, #7b2cbf 100%)',
+            borderRadius: 16,
+            padding: '2rem',
+            minHeight: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '.9rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.9 }}>Free with every campaign</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '.5rem' }}>Sample pack + proof</div>
+            <div style={{ opacity: 0.85, marginTop: '.5rem', fontSize: '.95rem' }}>See and feel the paper before you commit.</div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA strip */}
       <section style={{ background: 'var(--brand)', padding: '3rem 0', color: '#fff', textAlign: 'center' }}>
         <div className="container">
@@ -151,7 +181,7 @@ export function Home() {
           <p style={{ opacity: 0.9, marginBottom: '1.5rem' }}>Browse our services or get in touch for a custom quote.</p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/shop" className="btn" style={{ background: '#fff', color: 'var(--brand)' }}>Browse services</Link>
-            <a href="mailto:hello@printingcomics.com" className="btn secondary" style={{ borderColor: '#fff', color: '#fff' }}>Contact us</a>
+            <Link to="/contact" className="btn secondary" style={{ borderColor: '#fff', color: '#fff' }}>Contact us</Link>
           </div>
         </div>
       </section>

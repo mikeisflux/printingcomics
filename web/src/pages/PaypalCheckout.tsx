@@ -10,6 +10,7 @@ import {
 import { api, formatMoney } from '../api/client';
 import { useCart } from '../store/cart';
 import { useAuth } from '../store/auth';
+import { formatCartItemOptions } from '../lib/cart-options';
 
 interface Address {
   firstName: string; lastName: string; line1: string; line2?: string;
@@ -149,12 +150,24 @@ export function PaypalCheckout() {
       <aside>
         <div className="admin-card">
           <h3>Order summary</h3>
-          {items.map((i) => (
-            <div key={i.id} className="spread" style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>
-              <span>{i.product.name} × {i.quantity}</span>
-              <span>{formatMoney(i.unitPriceCents * i.quantity)}</span>
-            </div>
-          ))}
+          {items.map((i) => {
+            const pairs = formatCartItemOptions(i);
+            return (
+              <div key={i.id} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div className="spread">
+                  <span>{i.product.name} × {i.quantity}</span>
+                  <span>{formatMoney(i.unitPriceCents * i.quantity)}</span>
+                </div>
+                {pairs.length > 0 && (
+                  <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
+                    {pairs.map((p, j) => (
+                      <li key={j}>{p.label}: {p.value}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
           <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
             <span>Subtotal</span><span>{formatMoney(sub)}</span>
           </div>
