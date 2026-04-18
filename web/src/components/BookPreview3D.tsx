@@ -335,8 +335,17 @@ function Book({ spec }: { spec: BookSpec }) {
               fold; fans out with page count to t*0.92 at the fore-edge.
               Slightly inset on Y and fore-X so the covers visibly wrap. */}
           {saddlePagesGeometry && (
-            <mesh geometry={saddlePagesGeometry} castShadow receiveShadow>
-              <meshStandardMaterial color={spec.pageColor} roughness={0.92} />
+            <mesh geometry={saddlePagesGeometry} receiveShadow>
+              {/* A small emissive term keeps the paper visible even when
+                  the covers cast hard shadow over it — without this the
+                  wedge falls into near-black between the tilted covers
+                  and reads as a plain cover-on-cover book. */}
+              <meshStandardMaterial
+                color={spec.pageColor}
+                emissive={spec.pageColor}
+                emissiveIntensity={0.22}
+                roughness={0.95}
+              />
             </mesh>
           )}
 

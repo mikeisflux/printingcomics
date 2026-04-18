@@ -377,8 +377,9 @@ export function CategoryConfigure() {
               Cover artwork (optional)
             </div>
             <p className="muted" style={{ fontSize: '.8rem', marginTop: 0, marginBottom: '.75rem' }}>
-              Drop your front / back cover images to see them on the preview. Images stay in your
-              browser — nothing is uploaded until you finalize the order.
+              <strong>Preview only.</strong> Drop cover images here to visualize your book in 3D.
+              These are not used for order fulfillment — you'll upload your final print-ready
+              artwork separately when you finalize the order.
             </p>
             <div
               style={{
