@@ -247,6 +247,51 @@ function Book({ spec }: { spec: BookSpec }) {
     return tex;
   }, [spec.coverColor, spec.hasFoil, spec.title, t, isSaddle]);
 
+  // Wedge-shaped page block for saddle-stitched comics: zero thickness at
+  // the spine fold (x=-w/2, z=0), `t` thick at the fore-edge. Sits snugly
+  // between the two tilted covers, slightly inset on Y (top/bottom) and
+  // fore-edge so the cover visibly wraps around the page block.
+  const saddlePagesGeometry = useMemo(() => {
+    if (!isSaddle) return null;
+    const spineX = -w / 2;
+    const foreX  =  w / 2 - 0.012;
+    const topY   =  h / 2 - 0.008;
+    const botY   = -h / 2 + 0.008;
+    const pt     = t * 0.92;   // page stack fore-edge thickness
+    const g = new THREE.BufferGeometry();
+    // 6 vertices forming a triangular prism on its side:
+    //   0/1 = spine top/bottom (both at z=0)
+    //   2/3 = fore-edge top/bottom on +Z side (front slope)
+    //   4/5 = fore-edge top/bottom on -Z side (back slope)
+    const vertices = new Float32Array([
+      spineX, topY, 0,        // 0
+      spineX, botY, 0,        // 1
+      foreX,  topY,  pt / 2,  // 2
+      foreX,  botY,  pt / 2,  // 3
+      foreX,  topY, -pt / 2,  // 4
+      foreX,  botY, -pt / 2,  // 5
+    ]);
+    const indices = [
+      // top face (+Y)
+      0, 2, 4,
+      // bottom face (-Y)
+      1, 5, 3,
+      // fore-edge (+X) — two triangles
+      2, 3, 5,
+      2, 5, 4,
+      // front slope (+Z) — two triangles
+      0, 1, 3,
+      0, 3, 2,
+      // back slope (-Z) — two triangles
+      0, 4, 5,
+      0, 5, 1,
+    ];
+    g.setIndex(indices);
+    g.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [isSaddle, w, h, t]);
+
   const coverMetalness =
     spec.paperStyle === 'foil' || spec.hasFoil ? 0.85 :
     spec.paperStyle === 'gloss' ? 0.25 :
@@ -281,6 +326,15 @@ function Book({ spec }: { spec: BookSpec }) {
 
       {isSaddle ? (
         <>
+          {/* Page block — custom wedge mesh. Zero thickness at the spine
+              fold; fans out with page count to t*0.92 at the fore-edge.
+              Slightly inset on Y and fore-X so the covers visibly wrap. */}
+          {saddlePagesGeometry && (
+            <mesh geometry={saddlePagesGeometry} castShadow receiveShadow>
+              <meshStandardMaterial color={spec.pageColor} roughness={0.92} />
+            </mesh>
+          )}
+
           {/* Front cover — pivots around the left fold (x=-w/2, z=0) and
               tilts up so the right edge sits at +t/2 in z. The mesh-local
               bottom-left corner coincides with the pivot. */}
