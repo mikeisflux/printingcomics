@@ -1,11 +1,14 @@
 // Printing Comics storefront schema.
 generator client {
-  provider = "prisma-client-js"
+  provider             = "prisma-client"
+  output               = "../server/src/generated/prisma"
+  runtime              = "nodejs"
+  moduleFormat         = "esm"
+  importFileExtension  = "js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum Role {

@@ -1,8 +1,11 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../server/src/generated/prisma/client.js';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
 async function main() {
   const adminEmail = (process.env.ADMIN_EMAIL ?? 'admin@printingcomics.com').toLowerCase();

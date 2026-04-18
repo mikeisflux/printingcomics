@@ -12,5 +12,5 @@
     "noImplicitAny": false,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/generated/**/*.ts"]
 }
