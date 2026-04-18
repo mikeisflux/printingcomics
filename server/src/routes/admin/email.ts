@@ -6,7 +6,7 @@ import multer from 'multer';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
-import { sendEmail } from '../../lib/smtp.js';
+import { sendEmail } from '../../lib/mailgun.js';
 import { runCampaignSend } from '../../lib/email-send.js';
 
 const router = Router();
@@ -346,48 +346,10 @@ router.get('/sends', async (req, res) => {
   res.json({ sends });
 });
 
-// Brevo webhooks retired — we're on self-hosted SMTP now. Open/click
-// events come in through /api/track/*; bounces come in from Postfix via
-// the inbound handler. Leave a 410 here so any lingering configs fail loud.
+// Retired endpoints (Brevo webhooks, self-hosted inbound). Moved to
+// /api/webhooks/mailgun. Leave 410s so stale configs fail loud.
 router.all('/webhooks/brevo', (_req, res) => {
-  res.status(410).json({ error: 'Brevo webhook endpoint has been retired; see /api/track/*' });
-});
-
-// -------- Inbound mailbox --------
-
-router.get('/inbound', async (req, res) => {
-  const kind = req.query.kind as string | undefined;
-  const handled = req.query.handled as string | undefined;
-  const where: any = {};
-  if (kind) where.kind = kind;
-  if (handled === 'true') where.handled = true;
-  else if (handled === 'false') where.handled = false;
-  const items = await prisma.inboundEmail.findMany({
-    where,
-    orderBy: { receivedAt: 'desc' },
-    take: 100,
-  });
-  res.json({ items });
-});
-
-router.get('/inbound/:id', async (req, res) => {
-  const item = await prisma.inboundEmail.findUnique({ where: { id: req.params.id } });
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  res.json({ item });
-});
-
-router.patch('/inbound/:id', async (req, res) => {
-  const handled = typeof req.body?.handled === 'boolean' ? req.body.handled : undefined;
-  const item = await prisma.inboundEmail.update({
-    where: { id: req.params.id },
-    data: { handled: handled ?? false },
-  });
-  res.json({ item });
-});
-
-router.delete('/inbound/:id', async (req, res) => {
-  await prisma.inboundEmail.delete({ where: { id: req.params.id } });
-  res.json({ ok: true });
+  res.status(410).json({ error: 'Retired; see /api/webhooks/mailgun' });
 });
 
 export default router;

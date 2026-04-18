@@ -23,8 +23,7 @@ import uploadRoutes from './routes/uploads.js';
 import newsletterRoutes from './routes/newsletter.js';
 import accountRoutes from './routes/account.js';
 import contactRoutes from './routes/contact.js';
-import trackRoutes from './routes/track.js';
-import inboundRoutes from './routes/inbound.js';
+import mailgunWebhookRoutes from './routes/webhooks/mailgun.js';
 
 const app = express();
 
@@ -62,8 +61,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/contact', contactRoutes);
-app.use('/api/track', trackRoutes);
-app.use('/api/inbound', inboundRoutes);
+app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Public: serve uploaded email attachments (behind auth check in routes)

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { prisma } from '../db.js';
-import { sendEmail } from './smtp.js';
+import { sendEmail } from './mailgun.js';
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? './uploads');
 

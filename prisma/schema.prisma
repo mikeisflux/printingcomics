@@ -633,33 +633,3 @@ model EmailSend {
   @@index([status])
   @@index([providerRef])
 }
-
-// Incoming email parsed out of our own Postfix MTA by the inbound pipe.
-// Used for support replies, bounce notifications, and anything else that
-// lands in the mailbox our "from" address reads from.
-model InboundEmail {
-  id             String   @id @default(cuid())
-  messageId      String?  @unique
-  // inReplyTo lets us thread replies against the EmailSend.providerRef we
-  // stamped on outbound sends (the <trackingId@domain> Message-ID).
-  inReplyTo      String?
-  fromEmail      String
-  fromName       String?
-  toEmail        String
-  subject        String
-  textBody       String?
-  htmlBody       String?
-  rawHeaders     Json?
-  // "inbound" for regular replies, "bounce" when the auto-detected type
-  // matches a DSN / mailer-daemon.
-  kind           String   @default("inbound")
-  bounceType     String?  // "hard" | "soft" | null
-  linkedSendId   String?
-  handled        Boolean  @default(false)
-  receivedAt     DateTime @default(now())
-
-  @@index([receivedAt])
-  @@index([kind])
-  @@index([fromEmail])
-  @@index([inReplyTo])
-}

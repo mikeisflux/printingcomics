@@ -159,47 +159,56 @@ function EmailSection() {
   return (
     <>
       <div className="admin-card">
-        <h3>SMTP</h3>
+        <h3>Mailgun</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          Transactional + campaign email. Point at a local Postfix instance on the same host
-          (<code>localhost:25</code>, no auth) or an external relay. See <code>deploy/SMTP.md</code>
-          for the Postfix + DKIM + SPF + DMARC setup.
+          Transactional + campaign email via Mailgun's HTTP API. Get your API key from
+          Mailgun → <em>Sending → API Keys → Private API key</em>. Recommended sending domain:
+          <code> mail.printingcomics.com</code>.
         </p>
         <div className="grid-2">
-          <Field label="Host" value={settings['smtp.host']} onSave={(v) => save('smtp.host', v)} placeholder="localhost" />
-          <Field label="Port" value={settings['smtp.port']} onSave={(v) => save('smtp.port', Number(v))} placeholder="25" />
-        </div>
-        <Toggle label="Secure (implicit TLS, usually for port 465)" value={settings['smtp.secure']} onSave={(v) => save('smtp.secure', v)} />
-        <div className="grid-2">
-          <Field label="Username (optional)" value={settings['smtp.user']} onSave={(v) => save('smtp.user', v)} />
-          <Field label="Password (optional)" type="password" placeholder="paste to update" value={settings['smtp.password']} onSave={(v) => save('smtp.password', v)} />
+          <Field label="API key" type="password" placeholder="paste to update" value={settings['mailgun.apiKey']} onSave={(v) => save('mailgun.apiKey', v)} />
+          <Field label="Sending domain" value={settings['mailgun.domain']} onSave={(v) => save('mailgun.domain', v)} placeholder="mail.printingcomics.com" />
         </div>
         <div className="grid-2">
-          <Field label="From email" value={settings['smtp.fromEmail']} onSave={(v) => save('smtp.fromEmail', v)} placeholder="hello@printingcomics.com" />
-          <Field label="From name" value={settings['smtp.fromName']} onSave={(v) => save('smtp.fromName', v)} />
+          <div>
+            <label>Region</label>
+            <select value={settings['mailgun.region'] ?? 'us'} onChange={(e) => save('mailgun.region', e.target.value)}>
+              <option value="us">US (api.mailgun.net)</option>
+              <option value="eu">EU (api.eu.mailgun.net)</option>
+            </select>
+          </div>
+          <Field label="From email" value={settings['mailgun.fromEmail']} onSave={(v) => save('mailgun.fromEmail', v)} placeholder="hello@printingcomics.com" />
         </div>
-        <Field label="Reply-to (optional)" value={settings['smtp.replyTo']} onSave={(v) => save('smtp.replyTo', v)} />
-        <Toggle label="Test mode (log only, don't actually send)" value={settings['smtp.testMode']} onSave={(v) => save('smtp.testMode', v)} />
+        <div className="grid-2">
+          <Field label="From name" value={settings['mailgun.fromName']} onSave={(v) => save('mailgun.fromName', v)} />
+          <Field label="Reply-to (optional)" value={settings['mailgun.replyTo']} onSave={(v) => save('mailgun.replyTo', v)} />
+        </div>
+        <Toggle label="Test mode (log only, don't actually send)" value={settings['mailgun.testMode']} onSave={(v) => save('mailgun.testMode', v)} />
       </div>
 
       <div className="admin-card">
-        <h3>Inbound mail</h3>
+        <h3>Webhook</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          Postfix pipes incoming RFC-822 messages to <code>POST /api/inbound</code> authenticated
-          with this secret (sent as <code>Authorization: Bearer …</code>). See
-          <code> deploy/SMTP.md </code> for the aliases / pipe config.
+          In Mailgun → <em>Sending → Webhooks</em>, point all event types (Accepted, Delivered,
+          Opened, Clicked, Permanent Failure, Temporary Failure, Complained, Unsubscribed) at:
+          <br />
+          <code>https://printingcomics.com/api/webhooks/mailgun</code>
+          <br /><br />
+          The signing key below validates the HMAC Mailgun stamps on each request — grab it from
+          the <em>HTTP Webhook Signing Key</em> section of the same page.
         </p>
-        <Field label="Inbound secret" type="password" placeholder="rotate to update" value={settings['smtp.inboundSecret']} onSave={(v) => save('smtp.inboundSecret', v)} />
+        <Field label="Webhook signing key" type="password" placeholder="paste to update" value={settings['mailgun.webhookSigningKey']} onSave={(v) => save('mailgun.webhookSigningKey', v)} />
       </div>
 
       <div className="admin-card">
-        <h3>Tracking</h3>
+        <h3>Inbound</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: 0 }}>
-          Open tracking uses a 1×1 pixel at <code>/api/track/open?t=…</code>. Click tracking
-          rewrites outbound links through <code>/api/track/click?t=…&amp;u=…</code>. Both require
-          <code> store.publicUrl </code> to be set.
+          In Mailgun → <em>Receiving → Create Route</em>, create a <em>catch_all()</em> (or
+          <em>match_recipient(".*@mail.printingcomics.com")</em>) route with action
+          <em> forward("you@yourmailbox.com") </em>
+          to get replies delivered to your normal inbox. No in-app inbox needed — Mailgun handles
+          bounces automatically via the webhook above.
         </p>
-        <Field label="Public site URL" value={settings['store.publicUrl']} onSave={(v) => save('store.publicUrl', v)} placeholder="https://printingcomics.com" />
       </div>
     </>
   );

@@ -8,8 +8,8 @@ import { decryptSecret, encryptSecret, maskSecret } from './crypto.js';
 export const SECRET_KEYS = new Set<string>([
   'paypal.clientSecret',
   'paypal.webhookId',
-  'brevo.apiKey',
-  'smtp.password',
+  'mailgun.apiKey',
+  'mailgun.webhookSigningKey',
   'anthropic.apiKey',
 ]);
 
@@ -40,27 +40,15 @@ export const SETTING_KEYS = {
     enableCard: 'paypal.enableCard',
     enablePaypalButton: 'paypal.enablePaypalButton',
   },
-  smtp: {
-    host: 'smtp.host',
-    port: 'smtp.port',
-    secure: 'smtp.secure',
-    user: 'smtp.user',
-    password: 'smtp.password',
-    fromEmail: 'smtp.fromEmail',
-    fromName: 'smtp.fromName',
-    replyTo: 'smtp.replyTo',
-    testMode: 'smtp.testMode',
-    // Secret for the inbound email pipe auth. Requests to /api/inbound
-    // must present this as a Bearer token.
-    inboundSecret: 'smtp.inboundSecret',
-  },
-  // Kept for migration; remove after settings have been re-entered.
-  brevo: {
-    apiKey: 'brevo.apiKey',
-    fromEmail: 'brevo.fromEmail',
-    fromName: 'brevo.fromName',
-    replyTo: 'brevo.replyTo',
-    testMode: 'brevo.testMode',
+  mailgun: {
+    apiKey: 'mailgun.apiKey',
+    domain: 'mailgun.domain',
+    region: 'mailgun.region',       // "us" | "eu"
+    fromEmail: 'mailgun.fromEmail',
+    fromName: 'mailgun.fromName',
+    replyTo: 'mailgun.replyTo',
+    webhookSigningKey: 'mailgun.webhookSigningKey',
+    testMode: 'mailgun.testMode',
   },
   anthropic: {
     apiKey: 'anthropic.apiKey',
@@ -79,19 +67,14 @@ function envFallback(key: string): unknown {
     case 'paypal.clientId':     return process.env.PAYPAL_CLIENT_ID ?? '';
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
     case 'paypal.webhookId':    return process.env.PAYPAL_WEBHOOK_ID ?? '';
-    case 'brevo.apiKey':        return process.env.BREVO_API_KEY ?? '';
-    case 'brevo.fromEmail':     return process.env.BREVO_FROM_EMAIL ?? '';
-    case 'brevo.fromName':      return process.env.BREVO_FROM_NAME ?? 'Printing Comics';
-    case 'smtp.host':           return process.env.SMTP_HOST ?? 'localhost';
-    case 'smtp.port':           return Number(process.env.SMTP_PORT ?? 25);
-    case 'smtp.secure':         return process.env.SMTP_SECURE === 'true';
-    case 'smtp.user':           return process.env.SMTP_USER ?? '';
-    case 'smtp.password':       return process.env.SMTP_PASSWORD ?? '';
-    case 'smtp.fromEmail':      return process.env.SMTP_FROM_EMAIL ?? '';
-    case 'smtp.fromName':       return process.env.SMTP_FROM_NAME ?? 'Printing Comics';
-    case 'smtp.replyTo':        return process.env.SMTP_REPLY_TO ?? '';
-    case 'smtp.testMode':       return process.env.SMTP_TEST_MODE === 'true';
-    case 'smtp.inboundSecret':  return process.env.SMTP_INBOUND_SECRET ?? '';
+    case 'mailgun.apiKey':            return process.env.MAILGUN_API_KEY ?? '';
+    case 'mailgun.domain':            return process.env.MAILGUN_DOMAIN ?? '';
+    case 'mailgun.region':            return process.env.MAILGUN_REGION ?? 'us';
+    case 'mailgun.fromEmail':         return process.env.MAILGUN_FROM_EMAIL ?? '';
+    case 'mailgun.fromName':          return process.env.MAILGUN_FROM_NAME ?? 'Printing Comics';
+    case 'mailgun.replyTo':           return process.env.MAILGUN_REPLY_TO ?? '';
+    case 'mailgun.webhookSigningKey': return process.env.MAILGUN_WEBHOOK_SIGNING_KEY ?? '';
+    case 'mailgun.testMode':          return process.env.MAILGUN_TEST_MODE === 'true';
     case 'anthropic.apiKey':    return process.env.ANTHROPIC_API_KEY ?? '';
     case 'anthropic.model':     return process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-7';
     case 'store.currency':      return 'USD';
@@ -201,48 +184,26 @@ export async function getPaypalConfig() {
   };
 }
 
-export async function getSmtpConfig() {
-  const [host, port, secure, user, password, fromEmail, fromName, replyTo, testMode, inboundSecret] = await Promise.all([
-    getSetting<string>('smtp.host'),
-    getSetting<number>('smtp.port'),
-    getSetting<boolean>('smtp.secure'),
-    getSetting<string>('smtp.user'),
-    getSetting<string>('smtp.password'),
-    getSetting<string>('smtp.fromEmail'),
-    getSetting<string>('smtp.fromName'),
-    getSetting<string>('smtp.replyTo'),
-    getSetting<boolean>('smtp.testMode'),
-    getSetting<string>('smtp.inboundSecret'),
-  ]);
-  return {
-    host: host ?? '',
-    port: Number(port) || 25,
-    secure: Boolean(secure),
-    user: user ?? '',
-    password: password ?? '',
-    fromEmail: fromEmail ?? '',
-    fromName: fromName ?? 'Printing Comics',
-    replyTo: replyTo ?? null,
-    testMode: Boolean(testMode),
-    inboundSecret: inboundSecret ?? '',
-  };
-}
-
-/** @deprecated — replaced by getSmtpConfig. Kept for existing callers only. */
-export async function getBrevoConfig() {
-  const [apiKey, fromEmail, fromName, replyTo, testMode] = await Promise.all([
-    getSetting<string>('brevo.apiKey'),
-    getSetting<string>('brevo.fromEmail'),
-    getSetting<string>('brevo.fromName'),
-    getSetting<string>('brevo.replyTo'),
-    getSetting<boolean>('brevo.testMode'),
+export async function getMailgunConfig() {
+  const [apiKey, domain, region, fromEmail, fromName, replyTo, webhookSigningKey, testMode] = await Promise.all([
+    getSetting<string>('mailgun.apiKey'),
+    getSetting<string>('mailgun.domain'),
+    getSetting<string>('mailgun.region'),
+    getSetting<string>('mailgun.fromEmail'),
+    getSetting<string>('mailgun.fromName'),
+    getSetting<string>('mailgun.replyTo'),
+    getSetting<string>('mailgun.webhookSigningKey'),
+    getSetting<boolean>('mailgun.testMode'),
   ]);
   return {
     apiKey: apiKey ?? '',
+    domain: domain ?? '',
+    region: (region === 'eu' ? 'eu' : 'us') as 'us' | 'eu',
     fromEmail: fromEmail ?? '',
     fromName: fromName ?? 'Printing Comics',
-    replyTo: replyTo ?? null,
-    testMode: testMode ?? false,
+    replyTo: replyTo ?? '',
+    webhookSigningKey: webhookSigningKey ?? '',
+    testMode: Boolean(testMode),
   };
 }
 
