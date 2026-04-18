@@ -186,7 +186,10 @@ export function CategoryConfigure() {
     const cover = (selections['cover_paper'] ?? selections['cover'] ?? 'White') as string;
     const embellishment = (selections['embellishments'] ?? '') as string;
     const lamStyle = (selections['lamination_style'] ?? '') as string;
-    const title = (selections['title'] as string | undefined)?.trim() || product.name.replace(/^.*?[—-]\s*/, '').replace(/\s*\(.*?\)/, '');
+    // Title is ONLY whatever the customer types into the Title field.
+    // Empty until they type — leaves the cover hero region clean.
+    const userTitle = (selections['title'] as string | undefined)?.trim();
+    const sizeLabel = product.name.replace(/^.*?[—-]\s*/, '').replace(/\s*\(.*?\)/, '');
 
     let paperStyle: 'uncoated' | 'matte' | 'gloss' | 'foil' | 'uv' = 'uncoated';
     if (/foil/i.test(embellishment)) paperStyle = 'foil';
@@ -202,8 +205,8 @@ export function CategoryConfigure() {
       pageColor: '#fbf8f3',
       hasFoil: /foil/i.test(embellishment),
       paperStyle,
-      title,
-      subtitle: product.name.split('—')[0]?.trim(),
+      title: userTitle,   // undefined when blank → no top-of-cover label
+      subtitle: sizeLabel,
     };
   }, [product, selections]);
 

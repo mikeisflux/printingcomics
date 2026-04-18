@@ -83,30 +83,40 @@ function buildCoverCanvas(spec: BookSpec): HTMLCanvasElement {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  // Decorative top bar
-  ctx.fillStyle = `rgba(255,255,255,${spec.paperStyle === 'foil' || spec.hasFoil ? 0.85 : 0.18})`;
-  ctx.fillRect(40, 60, canvas.width - 80, 8);
-
-  // Title text — wrap to fit
   const isLight = isLightColor(spec.coverColor) || spec.hasFoil || spec.paperStyle === 'foil';
-  ctx.fillStyle = isLight ? '#1a1a1a' : '#fff';
-  ctx.textAlign = 'center';
-  const title = (spec.title ?? 'YOUR TITLE').toUpperCase();
-  ctx.font = `900 ${title.length > 12 ? 56 : 76}px "Bebas Neue", "Arial Black", system-ui, sans-serif`;
-  wrapText(ctx, title, canvas.width / 2, canvas.height * 0.42, canvas.width - 80, 78);
 
-  // Subtitle
-  if (spec.subtitle) {
-    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)';
-    ctx.font = '500 26px system-ui, sans-serif';
-    ctx.fillText(spec.subtitle, canvas.width / 2, canvas.height * 0.62);
+  // ---- Comic title — painted at the TOP of the cover in thick white Comic Sans
+  // with a heavy black stroke so it pops against any cover color.
+  const userTitle = spec.title?.trim();
+  if (userTitle) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    const t = userTitle.toUpperCase();
+    const fontSize = t.length > 18 ? 56 : t.length > 12 ? 72 : 92;
+    ctx.font = `900 ${fontSize}px "Comic Sans MS", "Chalkboard SE", "Comic Sans", system-ui, sans-serif`;
+    // Outline first
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(8, fontSize * 0.12);
+    wrapTextStroked(ctx, t, canvas.width / 2, 180, canvas.width - 60, fontSize + 10, '#ffffff');
+    ctx.restore();
   }
 
-  // Decorative bottom bar + tag
+  // Size label (smaller, just under the title area)
+  if (spec.subtitle) {
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
+    ctx.font = '600 28px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(spec.subtitle, canvas.width / 2, canvas.height * 0.6);
+  }
+
+  // Decorative bottom bar + brand tag
   ctx.fillStyle = `rgba(255,255,255,${spec.paperStyle === 'foil' || spec.hasFoil ? 0.85 : 0.18})`;
   ctx.fillRect(40, canvas.height - 80, canvas.width - 80, 4);
   ctx.fillStyle = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
   ctx.font = '600 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
   ctx.fillText('PRINTING COMICS', canvas.width / 2, canvas.height - 36);
 
   return canvas;
@@ -329,6 +339,30 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
   const totalHeight = (lines.length - 1) * lineHeight;
   lineY = y - totalHeight / 2;
   for (const l of lines) {
+    ctx.fillText(l, x, lineY);
+    lineY += lineHeight;
+  }
+}
+
+/** Wraps text and renders each line with a stroke outline behind the fill. */
+function wrapTextStroked(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, fillColor: string) {
+  const words = text.split(/\s+/);
+  let line = '';
+  const lines: string[] = [];
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  let lineY = y;
+  for (const l of lines) {
+    ctx.strokeText(l, x, lineY);
+    ctx.fillStyle = fillColor;
     ctx.fillText(l, x, lineY);
     lineY += lineHeight;
   }
