@@ -113,7 +113,7 @@ function PackagesTab() {
     <div>
       <div className="spread" style={{ marginBottom: '1rem' }}>
         <p className="muted" style={{ margin: 0 }}>
-          Define the box / mailer sizes you ship in. ShipStation uses these to quote rates.
+          Define the box / mailer sizes you ship in. EasyPost uses these dimensions to quote rates.
         </p>
         {editing === null && (
           <button className="btn" onClick={() => { setEditing('new'); setDraft(blankPackage); }}>
@@ -203,12 +203,13 @@ function CarriersTab() {
     <div className="admin-card">
       <h3 style={{ marginTop: 0 }}>Carriers</h3>
       <p className="muted">
-        Packlink Pro aggregates its own carriers — UPS, DHL, USPS, etc. — and surfaces them as
-        services when you request a rate quote for a specific origin / destination / package.
+        EasyPost quotes across every carrier your EasyPost account has enabled — USPS by default,
+        plus UPS / FedEx / DHL / regional carriers if you've connected those accounts.
+        Available rates are returned per order when you click <strong>Get rates</strong> on the order detail page.
       </p>
       <p className="muted">
-        To see which carriers you have access to, open an order in Orders and click
-        <strong> Get rates</strong> (coming soon on the order detail page).
+        To enable or disconnect carriers, use the EasyPost dashboard:{' '}
+        <a href="https://www.easypost.com/account/carriers" target="_blank" rel="noreferrer">Account → Carriers</a>.
       </p>
     </div>
   );
@@ -222,8 +223,8 @@ function ToolsTab() {
     setBusy(true);
     setTestResult(null);
     try {
-      const r = await api.get<{ ok: boolean; sampleServices: number }>('/admin/fulfillment/packlink/test');
-      setTestResult(`✅ Connected. ${r.sampleServices} services returned for the sample quote.`);
+      const r = await api.get<{ ok: boolean; rates: number; shipmentId: string }>('/admin/fulfillment/easypost/test');
+      setTestResult(`✅ Connected. ${r.rates} rates returned for the sample quote (shipment ${r.shipmentId}).`);
     } catch (e: any) {
       setTestResult(`❌ ${e.message ?? 'Connection failed'}`);
     } finally { setBusy(false); }
@@ -232,10 +233,12 @@ function ToolsTab() {
   return (
     <div>
       <div className="admin-card">
-        <h3 style={{ marginTop: 0 }}>Test Packlink Pro connection</h3>
+        <h3 style={{ marginTop: 0 }}>Test EasyPost connection</h3>
         <p className="muted" style={{ fontSize: '.9rem' }}>
-          Runs a sample rate quote using your API key + ship-from postal code configured in{' '}
-          <a href="/admin/settings">Admin → Settings → Packlink Pro</a>.
+          Creates a throwaway sample shipment (9×6×1 in, 8 oz) from your ship-from address
+          to a fixed San Francisco address, then counts how many rates EasyPost returns.
+          No label is purchased. Configure your API key + ship-from address in{' '}
+          <a href="/admin/settings">Admin → Settings → EasyPost</a>.
         </p>
         <button className="btn" disabled={busy} onClick={() => void test()}>
           {busy ? 'Testing…' : 'Run test'}
@@ -248,9 +251,10 @@ function ToolsTab() {
       <div className="admin-card">
         <h3 style={{ marginTop: 0 }}>Shipment sync</h3>
         <p className="muted" style={{ fontSize: '.9rem', margin: 0 }}>
-          Packlink Pro doesn't offer outbound webhooks, so the server polls their API every
-          10 minutes for every order that's been pushed. Status changes, tracking codes, and
-          carrier names auto-sync to the order — no manual refresh needed.
+          EasyPost pushes tracker events (in-transit, out-for-delivery, delivered) to{' '}
+          <code>/api/webhooks/easypost</code>. Orders update automatically; the customer
+          gets a shipping notification email the first time an order moves to SHIPPED.
+          Register the webhook in <em>EasyPost dashboard → Webhooks</em>.
         </p>
       </div>
     </div>

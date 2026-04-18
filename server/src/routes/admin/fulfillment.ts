@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import {
-  plpCreateShipment, plpGetRates, plpTestConnection, plpFetchShipment, plpGetLabels,
-  type PlpCreateShipmentInput,
-} from '../../lib/packlinkpro.js';
-import { getPacklinkConfig } from '../../lib/settings.js';
+  epCreateShipment, epBuyShipment, epFetchShipment, epRefundShipment, epTestConnection,
+  type EpCreateShipmentInput, type EpAddress,
+} from '../../lib/easypost.js';
+import { getEasyPostConfig } from '../../lib/settings.js';
 
 const router = Router();
 
@@ -62,16 +62,27 @@ router.delete('/packages/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ============ Packlink Pro operations ============
+// ============ EasyPost operations ============
 
-function inToCm(inches: number): number { return Math.max(1, Math.round(inches * 2.54)); }
-function ozToKg(oz: number): number { return Math.max(0.01, +(oz * 0.0283495).toFixed(2)); }
-
-async function buildShipmentInput(orderId: string, packageId: string, serviceId?: number): Promise<PlpCreateShipmentInput> {
-  const cfg = await getPacklinkConfig();
+async function fromAddress(): Promise<EpAddress> {
+  const cfg = await getEasyPostConfig();
   if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code in admin settings first');
   if (!cfg.fromName) throw new HttpError(400, 'Set your sender name in admin settings first');
+  return {
+    name: cfg.fromName,
+    company: cfg.fromCompany || undefined,
+    email: cfg.fromEmail || undefined,
+    phone: cfg.fromPhone || undefined,
+    street1: cfg.fromStreet1,
+    street2: cfg.fromStreet2 || undefined,
+    city: cfg.fromCity,
+    state: cfg.fromState || undefined,
+    zip: cfg.fromPostalCode,
+    country: cfg.fromCountry || 'US',
+  };
+}
 
+async function buildShipmentInput(orderId: string, packageId: string): Promise<EpCreateShipmentInput & { orderNumber: string }> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: { include: { product: true } } },
@@ -89,26 +100,12 @@ async function buildShipmentInput(orderId: string, packageId: string, serviceId?
   const totalWeightOz = Math.max(0.5, productWeightOz + pkg.emptyWeightOz);
 
   const ship: any = order.shippingAddress;
-  const summary = order.items.slice(0, 3).map((i) => `${i.quantity}× ${i.name}`).join('; ');
+  const from = await fromAddress();
 
   return {
-    service_id: serviceId ?? 0,
-    content: summary || `Order ${order.number}`,
-    content_value: Math.max(1, Math.round(order.subtotalCents / 100)),
-    currency: 'USD',
-    from: {
-      name: cfg.fromName,
-      company: cfg.fromCompany || undefined,
-      email: cfg.fromEmail || undefined,
-      phone: cfg.fromPhone || undefined,
-      street1: cfg.fromStreet1,
-      street2: cfg.fromStreet2 || undefined,
-      city: cfg.fromCity,
-      state: cfg.fromState || undefined,
-      zip_code: cfg.fromPostalCode,
-      country: cfg.fromCountry,
-    },
-    to: {
+    orderNumber: order.number,
+    from_address: from,
+    to_address: {
       name: `${ship.firstName ?? ''} ${ship.lastName ?? ''}`.trim() || order.email,
       company: ship.company ?? undefined,
       email: order.email,
@@ -117,79 +114,37 @@ async function buildShipmentInput(orderId: string, packageId: string, serviceId?
       street2: ship.line2 ?? undefined,
       city: ship.city,
       state: ship.region ?? undefined,
-      zip_code: ship.postalCode,
+      zip: ship.postalCode,
       country: ship.country ?? 'US',
     },
-    packages: [{
-      length: inToCm(pkg.lengthIn),
-      width: inToCm(pkg.widthIn),
-      height: inToCm(pkg.heightIn),
-      weight: ozToKg(totalWeightOz),
-    }],
-    additional_data: { order_number: order.number },
+    parcel: {
+      length: pkg.lengthIn,
+      width: pkg.widthIn,
+      height: pkg.heightIn,
+      weight: +totalWeightOz.toFixed(2),
+    },
+    options: {
+      label_format: 'PDF',
+      print_custom_1: order.number,
+    },
+    reference: order.number,
   };
 }
 
-router.get('/packlink/test', async (_req, res) => {
-  const cfg = await getPacklinkConfig();
+router.get('/easypost/test', async (_req, res) => {
+  const cfg = await getEasyPostConfig();
   if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code before testing');
+  const from = await fromAddress();
+  // Hit a realistic US→US consumer address for the probe: San Francisco CA.
+  const to: EpAddress = {
+    name: 'EasyPost Test', street1: '417 Montgomery St', city: 'San Francisco',
+    state: 'CA', zip: '94104', country: 'US',
+  };
   try {
-    const result = await plpTestConnection(cfg.fromCountry, cfg.fromPostalCode);
+    const result = await epTestConnection(from, to);
     res.json(result);
   } catch (e: any) {
-    // Return as a 502 with body — don't throw, so admin UI sees the full message.
-    res.status(502).json({ ok: false, error: e.message ?? 'Packlink test failed' });
-  }
-});
-
-/** Raw probe — lets us try arbitrary paths against the configured base URL to
- *  figure out which Packlink endpoint shape is right for the account.
- *  Any query params other than `path` are forwarded to Packlink (with their
- *  bracket notation preserved), so you can write:
- *    /packlink/raw?path=/services&from[country]=ES&from[zip]=28001&...
- *  instead of URL-encoding the whole thing into `path`. */
-router.get('/packlink/raw', async (req, res) => {
-  const pathQ = typeof req.query.path === 'string' ? req.query.path : '/services';
-  const cfg = await getPacklinkConfig();
-  if (!cfg.apiKey) return res.status(400).json({ error: 'API key not set' });
-
-  // If the caller already put a querystring inside `path`, respect it.
-  // Otherwise, forward every other top-level query param (preserving
-  // bracket syntax like `from[country]`).
-  const [basePath, embeddedQuery] = pathQ.split('?', 2);
-  const forwarded = new URLSearchParams();
-  if (embeddedQuery) {
-    // embeddedQuery may itself contain already-encoded brackets — keep as-is.
-    // (We can't just merge into URLSearchParams without losing the raw form,
-    // so append it to the final URL verbatim.)
-  }
-  for (const [k, v] of Object.entries(req.query)) {
-    if (k === 'path') continue;
-    if (Array.isArray(v)) {
-      v.forEach((vv) => forwarded.append(k, String(vv)));
-    } else if (v != null) {
-      forwarded.append(k, String(v));
-    }
-  }
-  const prefix = cfg.baseUrl.replace(/\/$/, '') + (basePath.startsWith('/') ? basePath : '/' + basePath);
-  const qs = [embeddedQuery, forwarded.toString()].filter(Boolean).join('&');
-  const url = qs ? `${prefix}?${qs}` : prefix;
-  try {
-    const r = await fetch(url, {
-      headers: {
-        Authorization: cfg.apiKey,
-        Accept: 'application/json',
-      },
-    });
-    const text = await r.text();
-    res.json({
-      url,
-      status: r.status,
-      contentType: r.headers.get('content-type'),
-      body: text.length > 2000 ? text.slice(0, 2000) + '…' : text,
-    });
-  } catch (e: any) {
-    res.status(502).json({ url, error: e.message });
+    res.status(502).json({ ok: false, error: e.message ?? 'EasyPost test failed' });
   }
 });
 
@@ -197,72 +152,59 @@ const ratesSchema = z.object({
   orderId: z.string(),
   packageId: z.string(),
 });
-router.post('/packlink/rates', async (req, res) => {
+
+/** Create a shipment at EasyPost and return the rate options.
+ *  Does NOT buy postage — the admin picks a rate next. */
+router.post('/easypost/rates', async (req, res) => {
   const { orderId, packageId } = ratesSchema.parse(req.body);
-  const cfg = await getPacklinkConfig();
-  if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code in admin settings first');
-
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: { include: { product: true } } },
+  const input = await buildShipmentInput(orderId, packageId);
+  const shipment = await epCreateShipment(input);
+  res.json({
+    shipmentId: shipment.id,
+    rates: shipment.rates ?? [],
+    weightOz: input.parcel.weight,
   });
-  if (!order) throw new HttpError(404, 'Order not found');
-
-  const pkg = await prisma.package.findUnique({ where: { id: packageId } });
-  if (!pkg) throw new HttpError(404, 'Package not found');
-
-  const productWeightOz = order.items.reduce((sum, i) => {
-    const grams = i.product.weightGrams ?? 0;
-    const oz = (grams * i.quantity) / 28.3495;
-    return sum + oz;
-  }, 0);
-  const totalWeightOz = Math.max(0.5, productWeightOz + pkg.emptyWeightOz);
-  const ship: any = order.shippingAddress;
-
-  const services = await plpGetRates({
-    fromCountry: cfg.fromCountry,
-    fromPostalCode: cfg.fromPostalCode,
-    toCountry: ship.country ?? 'US',
-    toPostalCode: ship.postalCode,
-    priceCents: order.subtotalCents,
-    weightKg: ozToKg(totalWeightOz),
-    lengthCm: inToCm(pkg.lengthIn),
-    widthCm: inToCm(pkg.widthIn),
-    heightCm: inToCm(pkg.heightIn),
-  });
-  res.json({ services, weightKg: ozToKg(totalWeightOz) });
 });
 
-const pushSchema = z.object({ packageId: z.string(), serviceId: z.number() });
-router.post('/packlink/push/:orderId', async (req, res) => {
-  const { packageId, serviceId } = pushSchema.parse(req.body);
-  const input = await buildShipmentInput(req.params.orderId, packageId, serviceId);
-  const shipment = await plpCreateShipment(input);
+const buySchema = z.object({ shipmentId: z.string(), rateId: z.string() });
+/** Buy the selected rate. This creates the label and starts tracking. */
+router.post('/easypost/buy/:orderId', async (req, res) => {
+  const { shipmentId, rateId } = buySchema.parse(req.body);
+  const shipment = await epBuyShipment(shipmentId, rateId);
 
-  // Persist the Packlink reference on the order so the poller can track it.
+  const carrier = shipment.selected_rate?.carrier ?? null;
+  const service = shipment.selected_rate?.service ?? null;
+  const method = [carrier, service].filter(Boolean).join(' ') || null;
+  const tracking = shipment.tracking_code ?? null;
+
   await prisma.order.update({
     where: { id: req.params.orderId },
-    data: { plpReference: shipment.reference },
+    data: {
+      epShipmentId: shipment.id,
+      trackingNumber: tracking,
+      shippingMethod: method,
+      status: 'SHIPPED',
+    },
   });
 
   await prisma.orderStatusEvent.create({
     data: {
       orderId: req.params.orderId,
       kind: 'fulfillment',
-      message: `Pushed to Packlink Pro (ref=${shipment.reference}, ${shipment.carrier_name} ${shipment.service_name})`,
+      message: `EasyPost label purchased (${method ?? 'unknown'}${tracking ? ` — tracking ${tracking}` : ''})`,
     },
   });
   res.json({ ok: true, shipment });
 });
 
-router.get('/packlink/shipments/:reference', async (req, res) => {
-  const shipment = await plpFetchShipment(req.params.reference);
+router.get('/easypost/shipments/:id', async (req, res) => {
+  const shipment = await epFetchShipment(req.params.id);
   res.json({ shipment });
 });
 
-router.get('/packlink/shipments/:reference/labels', async (req, res) => {
-  const labels = await plpGetLabels(req.params.reference);
-  res.json({ labels });
+router.post('/easypost/shipments/:id/refund', async (req, res) => {
+  const shipment = await epRefundShipment(req.params.id);
+  res.json({ shipment });
 });
 
 export default router;

@@ -11,7 +11,8 @@ export const SECRET_KEYS = new Set<string>([
   'mailgun.apiKey',
   'mailgun.webhookSigningKey',
   'anthropic.apiKey',
-  'packlinkpro.apiKey',
+  'easypost.apiKey',
+  'easypost.webhookSecret',
 ]);
 
 /**
@@ -41,21 +42,21 @@ export const SETTING_KEYS = {
     enableCard: 'paypal.enableCard',
     enablePaypalButton: 'paypal.enablePaypalButton',
   },
-  packlinkpro: {
-    apiKey: 'packlinkpro.apiKey',
-    baseUrl: 'packlinkpro.baseUrl',
-    autoPushOnPaid: 'packlinkpro.autoPushOnPaid',
-    webhookSecret: 'packlinkpro.webhookSecret',
-    fromName: 'packlinkpro.fromName',
-    fromCompany: 'packlinkpro.fromCompany',
-    fromEmail: 'packlinkpro.fromEmail',
-    fromPhone: 'packlinkpro.fromPhone',
-    fromStreet1: 'packlinkpro.fromStreet1',
-    fromStreet2: 'packlinkpro.fromStreet2',
-    fromCity: 'packlinkpro.fromCity',
-    fromState: 'packlinkpro.fromState',
-    fromPostalCode: 'packlinkpro.fromPostalCode',
-    fromCountry: 'packlinkpro.fromCountry',
+  easypost: {
+    apiKey: 'easypost.apiKey',
+    baseUrl: 'easypost.baseUrl',
+    autoBuyOnPaid: 'easypost.autoBuyOnPaid',
+    webhookSecret: 'easypost.webhookSecret',
+    fromName: 'easypost.fromName',
+    fromCompany: 'easypost.fromCompany',
+    fromEmail: 'easypost.fromEmail',
+    fromPhone: 'easypost.fromPhone',
+    fromStreet1: 'easypost.fromStreet1',
+    fromStreet2: 'easypost.fromStreet2',
+    fromCity: 'easypost.fromCity',
+    fromState: 'easypost.fromState',
+    fromPostalCode: 'easypost.fromPostalCode',
+    fromCountry: 'easypost.fromCountry',
   },
   mailgun: {
     apiKey: 'mailgun.apiKey',
@@ -84,11 +85,11 @@ function envFallback(key: string): unknown {
     case 'paypal.clientId':     return process.env.PAYPAL_CLIENT_ID ?? '';
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
     case 'paypal.webhookId':    return process.env.PAYPAL_WEBHOOK_ID ?? '';
-    case 'packlinkpro.apiKey':          return process.env.PACKLINK_API_KEY ?? '';
-    case 'packlinkpro.baseUrl':         return process.env.PACKLINK_BASE_URL ?? 'https://api.packlink.com/v1';
-    case 'packlinkpro.autoPushOnPaid':  return process.env.PACKLINK_AUTO_PUSH === 'true';
-    case 'packlinkpro.webhookSecret':   return process.env.PACKLINK_WEBHOOK_SECRET ?? '';
-    case 'packlinkpro.fromCountry':     return 'US';
+    case 'easypost.apiKey':         return process.env.EASYPOST_API_KEY ?? '';
+    case 'easypost.baseUrl':        return process.env.EASYPOST_BASE_URL ?? 'https://api.easypost.com/v2';
+    case 'easypost.autoBuyOnPaid':  return process.env.EASYPOST_AUTO_BUY === 'true';
+    case 'easypost.webhookSecret':  return process.env.EASYPOST_WEBHOOK_SECRET ?? '';
+    case 'easypost.fromCountry':    return 'US';
     case 'mailgun.apiKey':            return process.env.MAILGUN_API_KEY ?? '';
     case 'mailgun.domain':            return process.env.MAILGUN_DOMAIN ?? '';
     case 'mailgun.region':            return process.env.MAILGUN_REGION ?? 'us';
@@ -206,22 +207,22 @@ export async function getPaypalConfig() {
   };
 }
 
-export async function getPacklinkConfig() {
+export async function getEasyPostConfig() {
   const keys = [
-    'packlinkpro.apiKey', 'packlinkpro.baseUrl',
-    'packlinkpro.autoPushOnPaid', 'packlinkpro.webhookSecret',
-    'packlinkpro.fromName', 'packlinkpro.fromCompany', 'packlinkpro.fromEmail',
-    'packlinkpro.fromPhone',
-    'packlinkpro.fromStreet1', 'packlinkpro.fromStreet2',
-    'packlinkpro.fromCity', 'packlinkpro.fromState',
-    'packlinkpro.fromPostalCode', 'packlinkpro.fromCountry',
+    'easypost.apiKey', 'easypost.baseUrl',
+    'easypost.autoBuyOnPaid', 'easypost.webhookSecret',
+    'easypost.fromName', 'easypost.fromCompany', 'easypost.fromEmail',
+    'easypost.fromPhone',
+    'easypost.fromStreet1', 'easypost.fromStreet2',
+    'easypost.fromCity', 'easypost.fromState',
+    'easypost.fromPostalCode', 'easypost.fromCountry',
   ] as const;
   const values = await Promise.all(keys.map((k) => getSetting<string | boolean>(k)));
   const v = (i: number) => (values[i] as string | undefined) ?? '';
   return {
     apiKey: v(0),
-    baseUrl: (v(1) || 'https://api.packlink.com/v1').replace(/\/$/, ''),
-    autoPushOnPaid: Boolean(values[2]),
+    baseUrl: (v(1) || 'https://api.easypost.com/v2').replace(/\/$/, ''),
+    autoBuyOnPaid: Boolean(values[2]),
     webhookSecret: v(3),
     fromName: v(4),
     fromCompany: v(5),

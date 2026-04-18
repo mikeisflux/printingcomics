@@ -14,7 +14,6 @@ import { errorHandler, notFound } from './middleware/error.js';
 import { botBlockerGate } from './middleware/botblocker.js';
 import { cleanupExpiredData } from './lib/bot-blocker.js';
 import { startCampaignScheduler } from './lib/email-send.js';
-import { startPacklinkPoller } from './lib/packlink-poller.js';
 
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
@@ -31,7 +30,7 @@ import aiRoutes from './routes/ai.js';
 import publicRoutes from './routes/public.js';
 import mailgunWebhookRoutes from './routes/webhooks/mailgun.js';
 import paypalWebhookRoutes from './routes/webhooks/paypal.js';
-import packlinkWebhookRoutes from './routes/webhooks/packlinkpro.js';
+import easypostWebhookRoutes from './routes/webhooks/easypost.js';
 
 const app = express();
 
@@ -73,7 +72,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);
 app.use('/api/webhooks/paypal', paypalWebhookRoutes);
-app.use('/api/webhooks/packlinkpro', packlinkWebhookRoutes);
+app.use('/api/webhooks/easypost', easypostWebhookRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Public: serve uploaded email attachments (behind auth check in routes)
@@ -89,10 +88,6 @@ setInterval(() => {
 
 // Poll for scheduled email campaigns every minute.
 startCampaignScheduler(60_000);
-
-// Poll Packlink Pro for shipment status updates every 10 minutes (no webhook
-// available from Packlink, so we pull).
-startPacklinkPoller();
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console

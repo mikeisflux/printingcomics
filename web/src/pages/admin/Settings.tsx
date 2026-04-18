@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
-type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'packlinkpro' | 'taxes' | 'coupons' | 'backup';
+type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'taxes' | 'coupons' | 'backup';
 
 interface SettingsMap {
   [key: string]: unknown;
@@ -15,7 +15,7 @@ export function AdminSettings() {
       <h1>Settings</h1>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'packlinkpro', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
+          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'easypost', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
             <button
               key={s}
               onClick={() => setSection(s)}
@@ -41,7 +41,7 @@ export function AdminSettings() {
       {section === 'ai' && <AiSection />}
       {section === 'seo' && <SeoSection />}
       {section === 'shipping' && <ShippingSection />}
-      {section === 'packlinkpro' && <PacklinkSection />}
+      {section === 'easypost' && <EasyPostSection />}
       {section === 'taxes' && <TaxesSection />}
       {section === 'coupons' && <CouponsSection />}
       {section === 'backup' && <BackupSection />}
@@ -252,25 +252,27 @@ function SeoSection() {
   );
 }
 
-function PacklinkSection() {
+function EasyPostSection() {
   const { settings, save } = useSettings();
   return (
     <>
       <div className="admin-card">
-        <h3>Packlink Pro</h3>
+        <h3>EasyPost</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          Grab your API key from <em>Packlink Pro → Settings → API key</em>
-          {' '}(<code>https://pro.packlink.it/private/settings/api-key</code>).
-          Then fill the ship-from address below — required for rate quotes.
+          Grab an API key from <em>EasyPost → API Keys</em>
+          {' '}(<code>https://www.easypost.com/account/api-keys</code>). Use a test
+          key while you're wiring things up — test labels are free and watermarked.
+          Fill the ship-from address below — required for rate quotes.
         </p>
-        <Field label="API key" type="password" placeholder="paste to update" value={settings['packlinkpro.apiKey']} onSave={(v) => save('packlinkpro.apiKey', v)} />
+        <Field label="API key" type="password" placeholder="paste to update" value={settings['easypost.apiKey']} onSave={(v) => save('easypost.apiKey', v)} />
         <Field
-          label="API base URL (override if Packlink gave you a different endpoint)"
-          value={settings['packlinkpro.baseUrl']}
-          onSave={(v) => save('packlinkpro.baseUrl', v)}
-          placeholder="https://api.packlink.com/v1"
+          label="API base URL (leave default unless EasyPost told you otherwise)"
+          value={settings['easypost.baseUrl']}
+          onSave={(v) => save('easypost.baseUrl', v)}
+          placeholder="https://api.easypost.com/v2"
         />
-        <Toggle label="Auto-push paid orders to Packlink Pro" value={settings['packlinkpro.autoPushOnPaid']} onSave={(v) => save('packlinkpro.autoPushOnPaid', v)} />
+        <Field label="Webhook signing secret" type="password" placeholder="paste to update" value={settings['easypost.webhookSecret']} onSave={(v) => save('easypost.webhookSecret', v)} />
+        <Toggle label="Auto-buy cheapest label on paid orders" value={settings['easypost.autoBuyOnPaid']} onSave={(v) => save('easypost.autoBuyOnPaid', v)} />
       </div>
 
       <div className="admin-card">
@@ -279,32 +281,33 @@ function PacklinkSection() {
           Used as the origin for rate quotes and on shipping labels.
         </p>
         <div className="grid-2">
-          <Field label="Sender name" value={settings['packlinkpro.fromName']} onSave={(v) => save('packlinkpro.fromName', v)} />
-          <Field label="Company" value={settings['packlinkpro.fromCompany']} onSave={(v) => save('packlinkpro.fromCompany', v)} />
+          <Field label="Sender name" value={settings['easypost.fromName']} onSave={(v) => save('easypost.fromName', v)} />
+          <Field label="Company" value={settings['easypost.fromCompany']} onSave={(v) => save('easypost.fromCompany', v)} />
         </div>
         <div className="grid-2">
-          <Field label="Sender email" value={settings['packlinkpro.fromEmail']} onSave={(v) => save('packlinkpro.fromEmail', v)} />
-          <Field label="Sender phone" value={settings['packlinkpro.fromPhone']} onSave={(v) => save('packlinkpro.fromPhone', v)} />
+          <Field label="Sender email" value={settings['easypost.fromEmail']} onSave={(v) => save('easypost.fromEmail', v)} />
+          <Field label="Sender phone" value={settings['easypost.fromPhone']} onSave={(v) => save('easypost.fromPhone', v)} />
         </div>
-        <Field label="Street address line 1" value={settings['packlinkpro.fromStreet1']} onSave={(v) => save('packlinkpro.fromStreet1', v)} />
-        <Field label="Street address line 2" value={settings['packlinkpro.fromStreet2']} onSave={(v) => save('packlinkpro.fromStreet2', v)} />
+        <Field label="Street address line 1" value={settings['easypost.fromStreet1']} onSave={(v) => save('easypost.fromStreet1', v)} />
+        <Field label="Street address line 2" value={settings['easypost.fromStreet2']} onSave={(v) => save('easypost.fromStreet2', v)} />
         <div className="grid-2">
-          <Field label="City" value={settings['packlinkpro.fromCity']} onSave={(v) => save('packlinkpro.fromCity', v)} />
-          <Field label="State / region" value={settings['packlinkpro.fromState']} onSave={(v) => save('packlinkpro.fromState', v)} />
+          <Field label="City" value={settings['easypost.fromCity']} onSave={(v) => save('easypost.fromCity', v)} />
+          <Field label="State / region" value={settings['easypost.fromState']} onSave={(v) => save('easypost.fromState', v)} />
         </div>
         <div className="grid-2">
-          <Field label="Postal code" value={settings['packlinkpro.fromPostalCode']} onSave={(v) => save('packlinkpro.fromPostalCode', v)} />
-          <Field label="Country (ISO)" value={settings['packlinkpro.fromCountry']} onSave={(v) => save('packlinkpro.fromCountry', v)} placeholder="US" />
+          <Field label="Postal code" value={settings['easypost.fromPostalCode']} onSave={(v) => save('easypost.fromPostalCode', v)} />
+          <Field label="Country (ISO)" value={settings['easypost.fromCountry']} onSave={(v) => save('easypost.fromCountry', v)} placeholder="US" />
         </div>
       </div>
 
       <div className="admin-card">
-        <h3>Sync schedule</h3>
+        <h3>Webhook</h3>
         <p className="muted" style={{ fontSize: '.85rem', margin: 0 }}>
-          Packlink Pro doesn't expose outbound webhooks, so the server polls every
-          10 minutes for shipment state changes on any order you've pushed.
-          Status, carrier, and tracking code auto-update on the order — the customer
-          gets a shipping notification email the first time an order transitions to SHIPPED.
+          In the EasyPost dashboard (<em>Account → Webhooks</em>), point a webhook at{' '}
+          <code>{(settings['store.publicUrl'] as string) || 'https://your.domain'}/api/webhooks/easypost</code>{' '}
+          and paste the signing secret above. Tracker events (in-transit, delivered)
+          will update orders automatically; the customer gets a shipping notification
+          email the first time an order transitions to SHIPPED.
         </p>
       </div>
     </>

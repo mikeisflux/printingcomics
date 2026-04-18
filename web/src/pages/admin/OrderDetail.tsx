@@ -136,36 +136,41 @@ export function AdminOrderDetail() {
                 const pkg = packages.items[pkgIdx];
                 if (!pkg) return;
 
-                const ratesResp = await api.post<{ services: { id: number; name: string; carrier_name: string; price: { total_price: number; currency: string }; transit_days: number | null }[] }>(
-                  '/admin/fulfillment/packlink/rates',
+                const ratesResp = await api.post<{
+                  shipmentId: string;
+                  rates: { id: string; carrier: string; service: string; rate: string; currency: string; delivery_days: number | null }[];
+                }>(
+                  '/admin/fulfillment/easypost/rates',
                   { orderId: order.id, packageId: pkg.id },
                 );
-                if (ratesResp.services.length === 0) {
-                  alert('Packlink returned no services for this route/package.');
+                if (ratesResp.rates.length === 0) {
+                  alert('EasyPost returned no rates for this route/package.');
                   return;
                 }
-                const svcChoice = prompt(
-                  'Pick a service:\n' + ratesResp.services.map((s, i) =>
-                    `${i + 1}. ${s.carrier_name} ${s.name} — ${s.price.total_price} ${s.price.currency}${s.transit_days ? ` (${s.transit_days}d)` : ''}`,
+                const sorted = [...ratesResp.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate));
+                const pick = prompt(
+                  'Pick a rate (cheapest first):\n' + sorted.map((r, i) =>
+                    `${i + 1}. ${r.carrier} ${r.service} — $${r.rate} ${r.currency}${r.delivery_days ? ` (${r.delivery_days}d)` : ''}`,
                   ).join('\n'),
                   '1',
                 );
-                const svcIdx = Number(svcChoice) - 1;
-                const svc = ratesResp.services[svcIdx];
-                if (!svc) return;
+                const rIdx = Number(pick) - 1;
+                const rate = sorted[rIdx];
+                if (!rate) return;
+                if (!confirm(`Buy label for ${rate.carrier} ${rate.service} at $${rate.rate}? This charges your EasyPost account.`)) return;
 
-                await api.post(`/admin/fulfillment/packlink/push/${order.id}`, {
-                  packageId: pkg.id,
-                  serviceId: svc.id,
+                await api.post(`/admin/fulfillment/easypost/buy/${order.id}`, {
+                  shipmentId: ratesResp.shipmentId,
+                  rateId: rate.id,
                 });
-                alert(`Shipment created with ${svc.carrier_name} ${svc.name}.`);
+                alert(`Label purchased: ${rate.carrier} ${rate.service}.`);
                 load();
               } catch (e: any) {
-                alert(e.message ?? 'Push failed');
+                alert(e.message ?? 'Purchase failed');
               }
             }}
           >
-            Push to Packlink Pro
+            Buy EasyPost label
           </button>
           {order.paymentStatus === 'CAPTURED' && (
             <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
