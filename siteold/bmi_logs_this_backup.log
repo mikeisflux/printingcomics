@@ -1,0 +1,336 @@
+[WARN] [2026-04-17 04:34:40] PHP CLI is disabled manually, plugin will omit all PHP CLI steps.
+[WARN] [2026-04-17 04:34:40] PHP CLI file cannot be executed due to unknown reason.
+[STEP] [2026-04-17 04:34:40] Initializing backup...
+[INFO] [2026-04-17 04:34:40] Backup & Migration version: 2.1.4
+[INFO] [2026-04-17 04:34:40] Site which will be backed up: https://printingcomics.com
+[INFO] [2026-04-17 04:34:40] PHP Version: 8.3.30
+[INFO] [2026-04-17 04:34:40] WP Version: 6.9.4
+[INFO] [2026-04-17 04:34:40] MySQL Version: 8.0.45
+[INFO] [2026-04-17 04:34:40] MySQL Max Length: 268435456
+[INFO] [2026-04-17 04:34:40] Web server: Apache
+[INFO] [2026-04-17 04:34:40] Max execution time (in seconds): 60
+[INFO] [2026-04-17 04:34:40] Memory limit (server): 512M
+[INFO] [2026-04-17 04:34:40] Memory limit (wp-config): 40M
+[INFO] [2026-04-17 04:34:40] Memory limit (wp-config admin): 512M
+[INFO] [2026-04-17 04:34:40] Max rows per query (this site): 2000
+[INFO] [2026-04-17 04:34:40] Checking if backup dir is writable...
+[INFO] [2026-04-17 04:34:40] Initializing custom error handler
+[SUCCESS] [2026-04-17 04:34:40] Yup it is writable...
+[STEP] [2026-04-17 04:34:40] Scanning files...
+[WARN] [2026-04-17 04:34:40] Removing file from backup (due to path rules): /home1/mhclxfte/public_html/website_b3635980/wp-content/backup-migration-config.php
+[INFO] [2026-04-17 04:34:40] Total size of excluded files: 153959 bytes
+[VERBOSE] [2026-04-17 04:34:40] Total size of excluded files (bytes): 153959
+[STEP] [2026-04-17 04:34:40] Checking free space, reserving...
+[INFO] [2026-04-17 04:34:40] Requires at least 147215087 bytes. [140.4 MB]
+[INFO] [2026-04-17 04:34:40] Disk free space function is disabled by hosting.
+[INFO] [2026-04-17 04:34:40] Using dummy file to check free space (it can take some time).
+[SUCCESS] [2026-04-17 04:34:40] Confirmed, there is more than enough space, checked: 147215087 bytes
+[INFO] [2026-04-17 04:34:40] Scanning done - found 2703 files...
+[SUCCESS] [2026-04-17 04:34:40] Backup initialized...
+[STEP] [2026-04-17 04:34:40] Initializing archiving system...
+[SUCCESS] [2026-04-17 04:34:40] Archive system initialized...
+[STEP] [2026-04-17 04:34:40] Preparing map of files...
+[SUCCESS] [2026-04-17 04:34:40] Files prepared.
+[INFO] [2026-04-17 04:34:40] Starting compression process...
+[STEP] [2026-04-17 04:34:40] Smart memory calculation...
+[INFO] [2026-04-17 04:34:40] There is 512 MBs of memory to use
+[INFO] [2026-04-17 04:34:40] WordPress memory limit: 512 MBs
+[SUCCESS] [2026-04-17 04:34:40] Setting the safe limit to 57 MB
+[INFO] [2026-04-17 04:34:40] ZipArchive is available this process should use ZipArchive
+[INFO] [2026-04-17 04:34:40] Legacy setting: Using default modules depending on user server
+[STEP] [2026-04-17 04:34:40] Making database backup (using v3 engine, requires at least v1.2.2 to restore)
+[INFO] [2026-04-17 04:34:40] Memory usage after initialization: 80.16 MB
+[INFO] [2026-04-17 04:34:40] Iterating database...
+[VERBOSE] [2026-04-17 04:34:40] Exporting database via zip.php
+[INFO] [2026-04-17 04:34:40] Scan found 130 tables (17469 rows), estimated total size: 18.6 MB.
+[INFO] [2026-04-17 04:34:40] Memory usage after getting table names: 80.24 MB 
+[INFO] [2026-04-17 04:34:40] Getting table recipes...
+[INFO] [2026-04-17 04:34:40] Table recipes have been exported.
+[INFO] [2026-04-17 04:34:40] Memory usage after loading recipes: 80.36 MB 
+[INFO] [2026-04-17 04:34:40] Saving recipes...
+[INFO] [2026-04-17 04:34:40] Recipes saved.
+[INFO] [2026-04-17 04:34:40] Memory usage after recipe off-load: 80.27 MB
+[INFO] [2026-04-17 04:34:40] Exporting table data...
+[STEP] [2026-04-17 04:34:40] Getting data of table: easywp_internal (1/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: easywp_internal finished (0.00034s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: iwp_db_sent (2/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table iwp_db_sent is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: iwp_files_sent (3/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table iwp_files_sent is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: iwp_options (4/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table iwp_options is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_actionscheduler_actions (5/130, 0.13 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_actionscheduler_actions is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_actionscheduler_claims (6/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_actionscheduler_claims is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_actionscheduler_groups (7/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_actionscheduler_groups is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_actionscheduler_logs (8/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_actionscheduler_logs is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_commentmeta (9/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_commentmeta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_comments (10/130, 0.09 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_comments finished (0.00022s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_links (11/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_links is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_nfd_data_event_queue (12/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_nfd_data_event_queue is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_options (13/130, 0.36 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_options finished (0.00430s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_postmeta (14/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_postmeta finished (0.00023s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_posts (15/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_posts finished (0.00056s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_term_relationships (16/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_term_relationships finished (0.00018s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_term_taxonomy (17/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_term_taxonomy finished (0.00020s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_termmeta (18/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_termmeta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_terms (19/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_terms finished (0.00018s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_usermeta (20/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_usermeta finished (0.00031s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_users (21/130, 0.06 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_users finished (0.00018s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_yoast_indexable (22/130, 0.11 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_yoast_indexable finished (0.00034s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_yoast_indexable_hierarchy (23/130, 0.06 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_yoast_indexable_hierarchy finished (0.00017s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_yoast_migrations (24/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: p3H_yoast_migrations finished (0.00023s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_yoast_primary_term (25/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_yoast_primary_term is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: p3H_yoast_seo_links (26/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table p3H_yoast_seo_links is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_actionscheduler_actions (27/130, 0.22 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_actionscheduler_actions finished (0.00243s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_actionscheduler_claims (28/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_actionscheduler_claims is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_actionscheduler_groups (29/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_actionscheduler_groups finished (0.00029s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_actionscheduler_logs (30/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_actionscheduler_logs finished (0.00193s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_ce4wp_abandoned_checkout (31/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_ce4wp_abandoned_checkout is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_ce4wp_contacts (32/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_ce4wp_contacts is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_commentmeta (33/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_commentmeta finished (0.00091s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_comments (34/130, 0.14 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_comments finished (0.00139s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_e_events (35/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_e_events finished (0.00019s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_gla_attribute_mapping_rules (36/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_gla_attribute_mapping_rules is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_gla_budget_recommendations (37/130, 0.33 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_gla_budget_recommendations finished (0.04647s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_gla_merchant_issues (38/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_gla_merchant_issues is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_gla_merchant_price_benchmarks (39/130, 0.06 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_gla_merchant_price_benchmarks is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_gla_shipping_rates (40/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_gla_shipping_rates is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_gla_shipping_times (41/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_gla_shipping_times is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_haru_termmeta (42/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_haru_termmeta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_jetpack_sync_queue (43/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_jetpack_sync_queue finished (0.00060s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_links (44/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_links is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_mailchimp_carts (45/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_mailchimp_carts is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_mailchimp_jobs (46/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_mailchimp_jobs is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_monsterinsights_cache (47/130, 0.06 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_monsterinsights_cache is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_nfd_data_event_queue (48/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_nfd_data_event_queue is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_options (49/130, 4.22 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_options finished (0.03578s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_pda_passwords (50/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_pda_passwords is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_postmeta (51/130, 3.86 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_postmeta finished (0.05081s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_posts (52/130, 2.64 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_posts finished (0.03979s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_pp_activity_logs (53/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_pp_activity_logs is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_sbi_feed_caches (54/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_sbi_feed_caches is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_sbi_feeds (55/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_sbi_feeds is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_sbi_instagram_feed_locator (56/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_sbi_instagram_feed_locator is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_sbi_instagram_feeds_posts (57/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_sbi_instagram_feeds_posts is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_sbi_instagram_posts (58/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_sbi_instagram_posts is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_sbi_sources (59/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_sbi_sources is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_shortpixel_aipostmeta (60/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_shortpixel_aipostmeta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_shortpixel_folders (61/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_shortpixel_folders is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_shortpixel_meta (62/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_shortpixel_meta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_shortpixel_postmeta (63/130, 0.16 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_shortpixel_postmeta finished (0.00597s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_shortpixel_queue (64/130, 0.39 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_shortpixel_queue finished (0.00949s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_term_relationships (65/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_term_relationships finished (0.00086s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_term_taxonomy (66/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_term_taxonomy finished (0.00126s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_termmeta (67/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_termmeta finished (0.00070s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_terms (68/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_terms finished (0.00120s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_usermeta (69/130, 0.31 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_usermeta finished (0.01215s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_users (70/130, 0.06 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_users finished (0.00128s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_admin_note_actions (71/130, 0.09 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_admin_note_actions finished (0.00511s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_admin_notes (72/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_admin_notes finished (0.00870s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_category_lookup (73/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_category_lookup finished (0.00037s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_customer_lookup (74/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_customer_lookup finished (0.00135s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_download_log (75/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_download_log is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_order_addresses (76/130, 0.08 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_order_addresses is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_order_coupon_lookup (77/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_order_coupon_lookup is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_order_operational_data (78/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_order_operational_data is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_order_product_lookup (79/130, 0.09 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_order_product_lookup finished (0.00044s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_order_stats (80/130, 0.06 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_order_stats finished (0.00037s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_order_tax_lookup (81/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_order_tax_lookup finished (0.00029s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_orders (82/130, 0.13 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_orders is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_orders_meta (83/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_orders_meta finished (0.00035s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_product_attributes_lookup (84/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_product_attributes_lookup is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_product_download_directories (85/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_product_download_directories finished (0.00028s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_product_meta_lookup (86/130, 0.16 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_product_meta_lookup finished (0.00603s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_rate_limits (87/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_rate_limits is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_reserved_stock (88/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_reserved_stock is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_tax_rate_classes (89/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wc_tax_rate_classes finished (0.00033s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wc_webhooks (90/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wc_webhooks is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wccs_cache (91/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wccs_cache is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wccs_condition_meta (92/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wccs_condition_meta finished (0.00157s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wccs_conditions (93/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wccs_conditions finished (0.00049s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wdr_order_discounts (94/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wdr_order_discounts is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wdr_order_item_discounts (95/130, 0.06 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wdr_order_item_discounts is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wdr_rules (96/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wdr_rules finished (0.00066s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wfpklist_template_data (97/130, 0.09 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wfpklist_template_data finished (0.00104s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_api_keys (98/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_api_keys finished (0.00032s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_attribute_taxonomies (99/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_attribute_taxonomies finished (0.00036s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_downloadable_product_permissions (100/130, 0.08 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_woocommerce_downloadable_product_permissions is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_log (101/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_woocommerce_log is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_order_itemmeta (102/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_order_itemmeta finished (0.00197s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_order_items (103/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_order_items finished (0.00045s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_payment_tokenmeta (104/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_woocommerce_payment_tokenmeta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_payment_tokens (105/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_woocommerce_payment_tokens is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_sessions (106/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_sessions finished (0.00062s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_shipping_table_rates (107/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_shipping_table_rates finished (0.00051s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_shipping_zone_locations (108/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_shipping_zone_locations finished (0.00035s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_shipping_zone_methods (109/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_shipping_zone_methods finished (0.00028s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_shipping_zones (110/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_shipping_zones finished (0.00026s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_tax_rate_locations (111/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_woocommerce_tax_rate_locations is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_woocommerce_tax_rates (112/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_woocommerce_tax_rates finished (0.00032s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_entries (113/130, 0.16 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wpforms_entries finished (0.01607s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_entry_fields (114/130, 0.13 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wpforms_entry_fields finished (0.01190s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_entry_meta (115/130, 0.08 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wpforms_entry_meta finished (0.02182s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_logs (116/130, 0.02 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wpforms_logs is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_payment_meta (117/130, 0.06 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wpforms_payment_meta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_payments (118/130, 0.16 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_wpforms_payments is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpforms_tasks_meta (119/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wpforms_tasks_meta finished (0.00038s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpmailsmtp_debug_events (120/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wpmailsmtp_debug_events finished (0.00514s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wpmailsmtp_tasks_meta (121/130, 0.02 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wpmailsmtp_tasks_meta finished (0.00025s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_wt_sc_coupon_lookup (122/130, 0.05 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_wt_sc_coupon_lookup finished (0.00024s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yith_wcwl (123/130, 0.03 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_yith_wcwl is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yith_wcwl_itemmeta (124/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_yith_wcwl_itemmeta is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yith_wcwl_lists (125/130, 0.06 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_yith_wcwl_lists is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yoast_indexable (126/130, 0.16 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_yoast_indexable finished (0.00439s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yoast_indexable_hierarchy (127/130, 0.06 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_yoast_indexable_hierarchy finished (0.00056s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yoast_migrations (128/130, 0.03 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_yoast_migrations finished (0.00026s)
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yoast_primary_term (129/130, 0.05 MB)
+[INFO] [2026-04-17 04:34:40] Table wp_yoast_primary_term is empty, saving only recipe.
+[STEP] [2026-04-17 04:34:40] Getting data of table: wp_yoast_seo_links (130/130, 0.09 MB)
+[SUCCESS] [2026-04-17 04:34:40] Table export for: wp_yoast_seo_links finished (0.00264s)
+[INFO] [2026-04-17 04:34:40] Table data exported.
+[INFO] [2026-04-17 04:34:40] Memory usage after data export: 80.38 MB
+[INFO] [2026-04-17 04:34:40] Entire process took: 0.5300 s
+[SUCCESS] [2026-04-17 04:34:40] Database backup finished
+[STEP] [2026-04-17 04:34:40] Making archive
+[INFO] [2026-04-17 04:34:40] Compressing...
+[WARN] [2026-04-17 04:34:40] Backup will run as single-request, may be unstable...
+[INFO] [2026-04-17 04:34:40] Using ZipArchive extension for this backup process.
+[STEP] [2026-04-17 04:34:40] Adding database SQL file(s) to the backup file.
+[VERBOSE] [2026-04-17 04:34:40] Database files in total found: 130
+[SUCCESS] [2026-04-17 04:34:41] Database added to the backup successfully.
+[STEP] [2026-04-17 04:34:41] Performing site files backup...
+[INFO] [2026-04-17 04:34:41] Chunks contain 250 files.
+[INFO] [2026-04-17 04:34:41] Milestone: 500/2703
+[INFO] [2026-04-17 04:34:42] Milestone: 1000/2703
+[INFO] [2026-04-17 04:34:43] Milestone: 1500/2703
+[INFO] [2026-04-17 04:34:45] Milestone: 2000/2703
+[INFO] [2026-04-17 04:34:46] Milestone: 2500/2703
+[INFO] [2026-04-17 04:34:46] Milestone: 2703/2703
+[SUCCESS] [2026-04-17 04:34:46] Compressed 2703 files
+[INFO] [2026-04-17 04:34:46] Archiving of 2703 files took: 6.72s
+[STEP] [2026-04-17 04:34:46] Finalizing backup
+[INFO] [2026-04-17 04:34:46] Generating manifest file and saving current live-log...

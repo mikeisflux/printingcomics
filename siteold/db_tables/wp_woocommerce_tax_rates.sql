@@ -1,0 +1,7 @@
+/* CUSTOM VARS START */
+/* REAL_TABLE_NAME: `wp_woocommerce_tax_rates`; */
+/* PRE_TABLE_NAME: `1776400480_wp_woocommerce_tax_rates`; */
+/* CUSTOM VARS END */
+
+CREATE TABLE IF NOT EXISTS `1776400480_wp_woocommerce_tax_rates` ( `tax_rate_id` bigint unsigned NOT NULL AUTO_INCREMENT, `tax_rate_country` varchar(2) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '', `tax_rate_state` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '', `tax_rate` varchar(8) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '', `tax_rate_name` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '', `tax_rate_priority` bigint unsigned NOT NULL, `tax_rate_compound` int NOT NULL DEFAULT '0', `tax_rate_shipping` int NOT NULL DEFAULT '1', `tax_rate_order` bigint unsigned NOT NULL, `tax_rate_class` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '', PRIMARY KEY (`tax_rate_id`), KEY `tax_rate_country` (`tax_rate_country`), KEY `tax_rate_state` (`tax_rate_state`(2)), KEY `tax_rate_class` (`tax_rate_class`(10)), KEY `tax_rate_priority` (`tax_rate_priority`)) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+INSERT INTO `1776400480_wp_woocommerce_tax_rates` (`tax_rate_id`, `tax_rate_country`, `tax_rate_state`, `tax_rate`, `tax_rate_name`, `tax_rate_priority`, `tax_rate_compound`, `tax_rate_shipping`, `tax_rate_order`, `tax_rate_class`) VALUES (1,'','',8,'Tax',1,0,1,0,'');

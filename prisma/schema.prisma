@@ -1,0 +1,710 @@
+// Printing Comics storefront schema.
+generator client {
+  provider             = "prisma-client"
+  output               = "../server/src/generated/prisma"
+  runtime              = "nodejs"
+  moduleFormat         = "esm"
+  importFileExtension  = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  IN_PRODUCTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  phone        String?
+  role         Role      @default(CUSTOMER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses      Address[]
+  orders         Order[]
+  carts          Cart[]
+  mediaUploads   MediaFile[]
+  passwordResets PasswordReset[]
+}
+
+// Single-use password reset tokens. tokenHash is sha256(rawToken) so
+// even DB access doesn't leak a working reset link.
+model PasswordReset {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  label      String?
+  firstName  String
+  lastName   String
+  company    String?
+  line1      String
+  line2      String?
+  city       String
+  region     String
+  postalCode String
+  country    String   @default("US")
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  description String?
+  heroImageUrl String?
+  iconUrl     String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  parentId    String?
+  children    Category[] @relation("CategoryTree")
+  sortOrder   Int        @default(0)
+  products    ProductCategory[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  shortDescription String?
+  description     String?
+  // Base price in cents (USD). Variants can override.
+  priceCents      Int      @default(0)
+  // If true, show variant price range instead of base price.
+  hasVariants     Boolean  @default(false)
+  sku             String?  @unique
+  stock           Int      @default(0)
+  // True for custom-print products where stock is not tracked.
+  madeToOrder     Boolean  @default(false)
+  active          Boolean  @default(true)
+  minQuantity     Int      @default(1)
+  weightGrams     Int      @default(0)
+  // Tier-based volume discounts: JSON array of { minQty, pricePerUnitCents }.
+  volumeTiers     Json?
+  // PDF print template the buyer downloads before uploading artwork.
+  templateUrl     String?
+  // Array of { q, a } rendered as an accordion on the product page.
+  faq             Json?
+  // Structured pricing rules the storefront + server both use to compute
+  // unit price from configurator selections. Shape: { baseCents,
+  // qtyTiers[], modifiers[], pages: { baseline, perFourPagesCents{} } }.
+  // See server/src/lib/pricing.ts.
+  pricingConfig   Json?
+  seoTitle        String?
+  seoDescription  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  categories      ProductCategory[]
+  images          ProductImage[]
+  variants        ProductVariant[]
+  options         ProductOption[]
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
+  seoAnalysis     SeoAnalysis?
+}
+
+model ProductCategory {
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+enum ProductOptionType {
+  TILES     // Image grid (cover paper, interior paper)
+  RADIO     // Inline buttons (Yes / No)
+  SELECT    // Dropdown (interior pages)
+  TOGGLE    // Boolean switch (is reorder)
+  TEXT      // Free text (title of comic)
+  NUMBER    // Numeric (page count)
+  UPLOAD    // File upload to media library
+  CONFIRM   // Required acknowledgement checkbox
+}
+
+// Configurable option on a product. Options are grouped into "sections"
+// (Your Cover, Your Pages, Finalize Setup) and can be made conditionally
+// visible by another option's selected value.
+model ProductOption {
+  id          String               @id @default(cuid())
+  product     Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId   String
+  name        String
+  // Stable key written into cart/order options JSON; defaults to a slugified
+  // version of `name` if blank.
+  internalKey String?
+  // Display grouping — free-text label shown as the section title.
+  section     String?
+  type        ProductOptionType    @default(SELECT)
+  required    Boolean              @default(false)
+  helpText    String?
+  // Description shown under the full prompt, e.g. the long "I confirm" body.
+  longDescription String?
+  sortOrder   Int                  @default(0)
+
+  // Conditional visibility: only show this option when the option with
+  // id = dependsOnOptionId has its selected value = dependsOnValue.
+  dependsOnOptionId String?
+  dependsOnOption   ProductOption?  @relation("OptionDep", fields: [dependsOnOptionId], references: [id])
+  dependents        ProductOption[] @relation("OptionDep")
+  dependsOnValue    String?
+
+  values      ProductOptionValue[]
+
+  @@index([productId])
+}
+
+model ProductOptionValue {
+  id            String        @id @default(cuid())
+  option        ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId      String
+  label         String
+  // Secondary small text shown under the label (e.g. "80lb Uncoated Cover").
+  subLabel      String?
+  // Thumbnail image for TILES-type options.
+  imageUrl      String?
+  priceModifierCents Int      @default(0)
+  sortOrder     Int           @default(0)
+
+  @@index([optionId])
+}
+
+// A specific variant SKU (e.g. page count 48, soft cover).
+model ProductVariant {
+  id         String   @id @default(cuid())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  String
+  sku        String?  @unique
+  // Human-readable label like "48pg / Soft Cover".
+  label      String
+  priceCents Int
+  stock      Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+model Cart {
+  id         String     @id @default(cuid())
+  // Null if guest cart; linked by sessionToken cookie.
+  user       User?      @relation(fields: [userId], references: [id])
+  userId     String?
+  sessionKey String?    @unique
+  items      CartItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+model CartItem {
+  id         String          @id @default(cuid())
+  cart       Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cartId     String
+  product    Product         @relation(fields: [productId], references: [id])
+  productId  String
+  variant    ProductVariant? @relation(fields: [variantId], references: [id])
+  variantId  String?
+  quantity   Int
+  // Snapshot selected options JSON, e.g. { "Page Count": "48", ... }.
+  options    Json?
+  // Unit price at add-to-cart time, after variant/option/volume adjustments.
+  unitPriceCents Int
+  createdAt  DateTime        @default(now())
+
+  @@index([cartId])
+  @@index([productId])
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  number          String        @unique
+  user            User?         @relation(fields: [userId], references: [id])
+  userId          String?
+  email           String
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+
+  subtotalCents   Int
+  shippingCents   Int           @default(0)
+  taxCents        Int           @default(0)
+  discountCents   Int           @default(0)
+  totalCents      Int
+
+  shippingAddress Json
+  billingAddress  Json
+  shippingMethod  String?
+  trackingNumber  String?
+  // Packlink Pro shipment reference once the order has been pushed. Used
+  // by the polling worker to sync status without needing a webhook.
+  plpReference    String?
+  notes           String?
+
+  items           OrderItem[]
+  payments        Payment[]
+  events          OrderStatusEvent[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// Append-only log of order status / payment / tracking changes. Lets the
+// admin and the customer both see when each transition happened and
+// optionally who made the change (null actor = automated).
+model OrderStatusEvent {
+  id         String   @id @default(cuid())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId    String
+  fromStatus String?
+  toStatus   String?
+  kind       String   // "status" | "payment" | "tracking" | "note" | "email" | "fulfillment"
+  message    String?
+  actorId    String?
+  actorName  String?
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+}
+
+// Available shipping containers the fulfillment team can use. Drives the
+// ShipStation rate-quote API (which needs dimensions + weight to price)
+// and the per-order packing slip.
+model Package {
+  id            String   @id @default(cuid())
+  name          String   // "Small mailer", "Comic flat", "Box 10×10×6", etc.
+  description   String?
+  // Inner dimensions in inches.
+  lengthIn      Float
+  widthIn       Float
+  heightIn      Float
+  // Empty package weight in ounces (added to product weight at quote time).
+  emptyWeightOz Float    @default(0)
+  // Optional max packed weight (ounces).
+  maxWeightOz   Float?
+  // Optional cost per package, for cost accounting.
+  costCents     Int      @default(0)
+  // True for the system default. Only one Package should have isDefault=true.
+  isDefault     Boolean  @default(false)
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model OrderItem {
+  id         String          @id @default(cuid())
+  order      Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId    String
+  product    Product         @relation(fields: [productId], references: [id])
+  productId  String
+  variant    ProductVariant? @relation(fields: [variantId], references: [id])
+  variantId  String?
+  name       String
+  options    Json?
+  quantity   Int
+  unitPriceCents Int
+  totalCents Int
+
+  @@index([orderId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId         String
+  provider        String        @default("paypal")
+  providerRef     String?
+  amountCents     Int
+  status          PaymentStatus @default(PENDING)
+  rawPayload      Json?
+  createdAt       DateTime      @default(now())
+
+  @@index([orderId])
+  @@index([providerRef])
+}
+
+model ShippingZone {
+  id        String         @id @default(cuid())
+  name      String
+  countries String[]
+  rates     ShippingRate[]
+  createdAt DateTime       @default(now())
+}
+
+model ShippingRate {
+  id               String       @id @default(cuid())
+  zone             ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  zoneId           String
+  name             String
+  // Flat rate in cents OR per-kg in cents (when perKg is true).
+  rateCents        Int
+  perKg            Boolean      @default(false)
+  minSubtotalCents Int          @default(0)
+  maxSubtotalCents Int?
+  estimatedDays    String?
+
+  @@index([zoneId])
+}
+
+model TaxRate {
+  id        String   @id @default(cuid())
+  name      String
+  region    String
+  country   String   @default("US")
+  rateBps   Int // basis points: 825 = 8.25%
+  createdAt DateTime @default(now())
+}
+
+model Coupon {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  description    String?
+  // Either percent off (bps) or fixed amount off (cents).
+  percentOffBps  Int?
+  amountOffCents Int?
+  minSubtotalCents Int    @default(0)
+  usageLimit     Int?
+  usageCount     Int      @default(0)
+  expiresAt      DateTime?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+model Setting {
+  key        String   @id
+  value      Json
+  // If true, `value` is AES-GCM encrypted ciphertext stored as hex "iv:ct:tag".
+  encrypted  Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+}
+
+// ============================================================
+// Media Library (ported patterns from indiecrowdfund_2.0 /admin/media)
+// ============================================================
+
+model MediaFile {
+  id           String   @id @default(cuid())
+  filename     String   @unique // storage key on disk (randomized)
+  originalName String
+  mimeType     String
+  size         Int
+  url          String   // public URL (starts with /uploads/)
+  thumbnailUrl String?
+  width        Int?
+  height       Int?
+  duration     Int?     // seconds, for video/audio
+  folder       String   @default("/") // flat virtual hierarchy — use "/subfolder" strings
+  tags         String[]
+  altText      String?
+  uploaderId   String?
+  uploader     User?    @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([folder])
+  @@index([mimeType])
+  @@index([createdAt])
+}
+
+// ============================================================
+// Bot blocker (ported from indiecrowdfund_2.0)
+// ============================================================
+
+model BlockedIP {
+  ipAddress      String   @id
+  reason         String
+  violationCount Int      @default(1)
+  blockedAt      DateTime @default(now())
+  expiresAt      DateTime
+  lastUserAgent  String?
+  lastPath       String?
+  lastActionId   String?
+
+  @@index([expiresAt])
+}
+
+model SuspiciousActivity {
+  id         String   @id @default(cuid())
+  ipAddress  String
+  reason     String
+  actionId   String?
+  path       String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([ipAddress, createdAt])
+  @@index([createdAt])
+}
+
+// ============================================================
+// SEO (Claude-powered)
+// ============================================================
+
+enum SeoStatus {
+  PENDING
+  COMPLETE
+  FAILED
+}
+
+model SeoAnalysis {
+  id              String    @id @default(cuid())
+  product         Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId       String?   @unique
+  // Page target (when not a product).
+  pageUrl         String?
+  status          SeoStatus @default(PENDING)
+  score           Int?
+  suggestedTitle  String?
+  suggestedDescription String?
+  headline        String?
+  summary         String?
+  issues          Json?     // [{ severity, message, field }]
+  rewrittenBody   String?
+  keywords        SeoKeyword[]
+  tokensUsed      Int       @default(0)
+  modelUsed       String?
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model SeoKeyword {
+  id           String      @id @default(cuid())
+  analysis     SeoAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId   String
+  keyword      String
+  intent       String?     // informational, commercial, transactional, navigational
+  difficulty   Int?        // 0-100 from Claude's estimate
+  relevance    Int?        // 0-100
+  createdAt    DateTime    @default(now())
+
+  @@index([analysisId])
+}
+
+// ============================================================
+// Email (SendGrid + CRUD)
+// ============================================================
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum EmailSendStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  FAILED
+  UNSUBSCRIBED
+}
+
+model EmailTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  subject      String
+  html         String
+  text         String?
+  // Free-form placeholder docs, e.g. {{first_name}}
+  variables    Json?
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaigns    EmailCampaign[]
+}
+
+model EmailSubscriber {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  firstName   String?
+  lastName    String?
+  optedIn     Boolean  @default(true)
+  unsubscribedAt DateTime?
+  tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lists       EmailListMember[]
+  sends       EmailSend[]
+}
+
+model EmailList {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members     EmailListMember[]
+  campaigns   EmailCampaign[]
+}
+
+model EmailListMember {
+  list         EmailList       @relation(fields: [listId], references: [id], onDelete: Cascade)
+  listId       String
+  subscriber   EmailSubscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscriberId String
+  addedAt      DateTime        @default(now())
+
+  @@id([listId, subscriberId])
+  @@index([subscriberId])
+}
+
+model EmailCampaign {
+  id              String          @id @default(cuid())
+  name            String
+  subject         String
+  fromName        String?
+  fromEmail       String?
+  replyTo         String?
+  html            String
+  text            String?
+  template        EmailTemplate?  @relation(fields: [templateId], references: [id])
+  templateId      String?
+  list            EmailList?      @relation(fields: [listId], references: [id])
+  listId          String?
+  // Optional: list of subscriber ids beyond the list (e.g. manual picks).
+  extraRecipients String[]
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  status          CampaignStatus  @default(DRAFT)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  attachments     EmailAttachment[]
+  sends           EmailSend[]
+}
+
+model EmailAttachment {
+  id          String        @id @default(cuid())
+  campaign    EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId  String
+  filename    String
+  contentType String
+  sizeBytes   Int
+  storageKey  String        // path relative to UPLOADS_DIR
+  createdAt   DateTime      @default(now())
+
+  @@index([campaignId])
+}
+
+model EmailSend {
+  id            String          @id @default(cuid())
+  campaign      EmailCampaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignId    String?
+  subscriber    EmailSubscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  subscriberId  String?
+  toEmail       String
+  subject       String
+  status        EmailSendStatus @default(QUEUED)
+  providerRef   String?         // SendGrid x-message-id
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  errorMessage  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([campaignId])
+  @@index([subscriberId])
+  @@index([status])
+  @@index([providerRef])
+}
+
+// Incoming email delivered by Mailgun Routes → /api/webhooks/mailgun/inbound.
+// Replies thread back to our outbound sends by matching inReplyTo against
+// EmailSend.providerRef (Mailgun's message-id we stored on send).
+model InboundEmail {
+  id             String   @id @default(cuid())
+  messageId      String?  @unique
+  inReplyTo      String?
+  fromEmail      String
+  fromName       String?
+  toEmail        String
+  subject        String
+  textBody       String?
+  strippedText   String?  // Mailgun's auto-stripped "just the new reply" text
+  htmlBody       String?
+  rawHeaders     Json?
+  attachments    Json?    // [{ filename, url, size, contentType }]
+  kind           String   @default("inbound")  // "inbound" | "bounce" | "complaint"
+  bounceType     String?  // "hard" | "soft" | null
+  linkedSendId   String?
+  handled        Boolean  @default(false)
+  receivedAt     DateTime @default(now())
+
+  @@index([receivedAt])
+  @@index([kind])
+  @@index([fromEmail])
+  @@index([inReplyTo])
+}

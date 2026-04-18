@@ -1,0 +1,6 @@
+/* CUSTOM VARS START */
+/* REAL_TABLE_NAME: `wp_wdr_order_item_discounts`; */
+/* PRE_TABLE_NAME: `1776400480_wp_wdr_order_item_discounts`; */
+/* CUSTOM VARS END */
+
+CREATE TABLE IF NOT EXISTS `1776400480_wp_wdr_order_item_discounts` ( `id` int NOT NULL AUTO_INCREMENT, `order_id` int DEFAULT NULL, `order_item_id` int DEFAULT NULL, `rule_id` int DEFAULT NULL, `item_id` int DEFAULT NULL, `item_price` float NOT NULL, `discounted_price` float NOT NULL, `discount` float NOT NULL, `quantity` int NOT NULL, `simple_discount` float NOT NULL, `bulk_discount` float NOT NULL, `set_discount` float NOT NULL, `cart_discount` float NOT NULL, `other_discount` float NOT NULL DEFAULT '0', `has_free_shipping` enum('yes','no') COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'no', `cart_discount_label` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL, `other_price` float NOT NULL DEFAULT '0', `created_at` datetime DEFAULT NULL, `updated_at` datetime DEFAULT NULL, `extra` longtext COLLATE utf8mb4_unicode_520_ci, PRIMARY KEY (`id`), KEY `index_rule_id` (`rule_id`), KEY `index_created_at` (`created_at`), KEY `index_rule_order_id` (`rule_id`,`order_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;

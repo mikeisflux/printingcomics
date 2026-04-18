@@ -1,0 +1,1070 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/theme.json",
+	"version": 3,
+	"customTemplates": [
+		{
+			"name": "sidebar-right",
+			"postTypes": [
+				"post",
+				"page"
+			],
+			"title": "Sidebar (right)"
+		},
+		{
+			"name": "sidebar-left",
+			"postTypes": [
+				"post",
+				"page"
+			],
+			"title": "Sidebar (left)"
+		},
+		{
+			"name": "no-title",
+			"postTypes": [
+				"post",
+				"page"
+			],
+			"title": "No title"
+		},
+		{
+			"name": "no-header-footer",
+			"postTypes": [
+				"post",
+				"page"
+			],
+			"title": "No Header/Footer"
+		}
+	],
+	"settings": {
+		"appearanceTools": true,
+		"color": {
+			"gradients": [
+				{
+					"gradient": "linear-gradient(to bottom, #00a79c 0%,#01af8d 100%)",
+					"name": "Vertical tertiary to primary",
+					"slug": "v-tertiary-primary"
+				}
+			],
+			"palette": [
+				{
+					"color": "#ffffff",
+					"name": "Base",
+					"slug": "base"
+				},
+				{
+					"color": "#404040",
+					"name": "Contrast",
+					"slug": "contrast"
+				},
+				{
+					"color": "#007565",
+					"name": "Primary",
+					"slug": "primary"
+				},
+				{
+					"color": "#08a889",
+					"name": "Secondary",
+					"slug": "secondary"
+				},
+				{
+					"color": "#00a79c",
+					"name": "Tertiary",
+					"slug": "tertiary"
+				},
+				{
+					"color": "#e8e8e8",
+					"name": "Header background",
+					"slug": "header-background"
+				},
+				{
+					"color": "#000000",
+					"name": "Header foreground",
+					"slug": "header-foreground"
+				},
+				{
+					"color": "#007565",
+					"name": "Header titles",
+					"slug": "header-titles"
+				},
+				{
+					"color": "#e8e8e8",
+					"name": "Secondary background",
+					"slug": "secondary-background"
+				},
+				{
+					"color": "#000000",
+					"name": "Secondary foreground",
+					"slug": "secondary-foreground"
+				}
+			]
+		},
+		"custom": {
+			"3-xs-spacing": "clamp(0.19rem, calc(0.14rem + 0.24vw), 0.31rem)",
+			"4-xl-spacing": "clamp(5.63rem, calc(4.41rem + 6.1vw), 8.75rem)",
+			"button-border-radius": "4px",
+			"button-padding": "0.5rem 1rem;",
+			"colum-negative-horizontal-margin": "-100px",
+			"input-border-color": "rgba(0, 0, 0, 0.2)",
+			"input-border-width": "2px",
+			"input-min-height": "2.5em",
+			"single-post-feature-image-orverlap-vertical-margin": "-250px",
+			"vertical-spacing": "1.25rem",
+			"xl-spacing": "clamp(2.5rem, calc(2.01rem + 2.44vw), 3.75rem)"
+		},
+		"layout": {
+			"contentSize": "1510px",
+			"wideSize": "1800px"
+		},
+		"spacing": {
+			"spacingScale": {
+				"steps": 0
+			},
+			"spacingSizes": [
+				{
+					"name": "2XS",
+					"size": "clamp(0.44rem, calc(0.36rem + 0.37vw), 0.63rem)",
+					"slug": "10"
+				},
+				{
+					"name": "XS",
+					"size": "clamp(0.75rem, calc(0.68rem + 0.37vw), 0.94rem)",
+					"slug": "20"
+				},
+				{
+					"name": "S",
+					"size": "clamp(1.25rem, calc(1.13rem + 0.61vw), 1.56rem)",
+					"slug": "30"
+				},
+				{
+					"name": "M",
+					"size": "clamp(1.88rem, calc(1.75rem + 0.61vw), 2.19rem)",
+					"slug": "40"
+				},
+				{
+					"name": "L",
+					"size": "clamp(2.19rem, calc(1.82rem + 1.83vw), 3.13rem)",
+					"slug": "50"
+				},
+				{
+					"name": "2XL",
+					"size": "clamp(3.75rem, calc(3.26rem + 2.44vw), 5rem)",
+					"slug": "70"
+				},
+				{
+					"name": "3XL",
+					"size": "clamp(4.38rem, calc(3.64rem + 3.66vw), 6.25rem)",
+					"slug": "80"
+				}
+			],
+			"units": [
+				"px",
+				"em",
+				"rem",
+				"vh",
+				"vw",
+				"%"
+			]
+		},
+		"typography": {
+			"fluid": true,
+			"defaultFontSizes": false,
+			"fontFamilies": [
+				{
+					"fontFamily": "-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Oxygen-Sans,Ubuntu,Cantarell,\"Helvetica Neue\",sans-serif",
+					"name": "System",
+					"slug": "system"
+				},
+				{
+					"fontFamily": "\"Times New Roman\",\"New York\",Times,\"Noto Serif\",serif",
+					"name": "Serif",
+					"slug": "serif"
+				},
+				{
+					"fontFamily": "Consolas,Menlo,Monaco,\"SF Mono\",\"DejaVu Sans Mono\",\"Roboto Mono\",\"Courier New\",Courier,monospace",
+					"name": "Monospace",
+					"slug": "monospace"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Mulish",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"fontWeight": "200 1000",
+							"src": [
+								"file:./assets/fonts/Mulish-VariableFont_wght.woff2"
+							]
+						},
+						{
+							"fontFamily": "Mulish",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"fontWeight": "200 1000",
+							"src": [
+								"file:./assets/fonts/Mulish-Italic-VariableFont_wght.woff2"
+							]
+						}
+					],
+					"fontFamily": "Mulish, Seravek, \"Gill Sans Nova\", Ubuntu, Calibri, \"DejaVu Sans\", source-sans-pro, sans-serif",
+					"name": "Mulish",
+					"slug": "mulish"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Raleway",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/Raleway-VariableFont_wght.woff2"
+							]
+						},
+						{
+							"fontFamily": "Raleway",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/Raleway-Italic-VariableFont_wght.woff2"
+							]
+						}
+					],
+					"fontFamily": "Raleway, Avenir, Montserrat, Corbel, \"URW Gothic\", source-sans-pro, sans-serif",
+					"name": "Raleway",
+					"slug": "raleway"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Roboto Slab",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/RobotoSlab-VariableFont_wght.woff2"
+							]
+						}
+					],
+					"fontFamily": "Roboto Slab, Rockwell, \"Rockwell Nova\", \"Roboto Slab\", \"DejaVu Serif\", \"Sitka Small\", serif",
+					"name": "Roboto Slab",
+					"slug": "roboto-slab"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Jost",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/Jost-VariableFont_wght.woff2"
+							]
+						},
+						{
+							"fontFamily": "Jost",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/Jost-Italic-VariableFont_wght.woff2"
+							]
+						}
+					],
+					"fontFamily": "Jost, Avenir, Montserrat, Corbel, \"URW Gothic\", source-sans-pro, sans-serif",
+					"name": "Jost",
+					"slug": "jost"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Montserrat",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/Montserrat-VariableFont_wght.woff2"
+							]
+						},
+						{
+							"fontFamily": "Montserrat",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"fontWeight": "100 900",
+							"src": [
+								"file:./assets/fonts/Montserrat-Italic-VariableFont_wght.woff2"
+							]
+						}
+					],
+					"fontFamily": "Montserrat, ui-rounded, \"Hiragino Maru Gothic ProN\", Quicksand, Comfortaa, Manjari, \"Arial Rounded MT\", \"Arial Rounded MT Bold\", Calibri, source-sans-pro, sans-serif",
+					"name": "Montserrat",
+					"slug": "montserrat"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Nunito",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"fontWeight": "200 900",
+							"src": [
+								"file:./assets/fonts/Nunito-VariableFont_wght.woff2"
+							]
+						},
+						{
+							"fontFamily": "Nunito",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"fontWeight": "200 900",
+							"src": [
+								"file:./assets/fonts/Nunito-Italic-VariableFont_wght.woff2"
+							]
+						}
+					],
+					"fontFamily": "Nunito, Avenir, Montserrat, Corbel, \"URW Gothic\", source-sans-pro, sans-serif",
+					"name": "Nunito",
+					"slug": "nunito"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Solway",
+							"fontStyle": "normal",
+							"fontWeight": "300",
+							"src": [
+								"file:./assets/fonts/solway-v15-latin-300.woff2"
+							]
+						},
+						{
+							"fontFamily": "Solway",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/solway-v15-latin-regular.woff2"
+							]
+						},
+						{
+							"fontFamily": "Solway",
+							"fontStyle": "normal",
+							"fontWeight": "500",
+							"src": [
+								"file:./assets/fonts/solway-v15-latin-500.woff2"
+							]
+						},
+						{
+							"fontFamily": "Solway",
+							"fontStyle": "normal",
+							"fontWeight": "700",
+							"src": [
+								"file:./assets/fonts/solway-v15-latin-700.woff2"
+							]
+						},
+						{
+							"fontFamily": "Solway",
+							"fontStyle": "normal",
+							"fontWeight": "800",
+							"src": [
+								"file:./assets/fonts/solway-v15-latin-800.woff2"
+							]
+						}
+					],
+					"fontFamily": "Solway, Rockwell, \"Rockwell Nova\", \"Roboto Slab\", \"DejaVu Serif\", \"Sitka Small\", serif",
+					"name": "Solway",
+					"slug": "solway"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Changa One",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/changa-one-v18-latin-regular.woff2"
+							]
+						},
+						{
+							"fontFamily": "Changa One",
+							"fontStyle": "italic",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/changa-one-v18-latin-italic.woff2"
+							]
+						}
+					],
+					"fontFamily": "Changa One",
+					"name": "Changa One, display",
+					"slug": "changa-one"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Source Sans Pro",
+							"fontWeight": "200 900",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"src": [ "file:./assets/fonts/source-sans-pro[wght].woff2" ]
+						},
+						{
+							"fontFamily": "Source Sans Pro",
+							"fontWeight": "200 900",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"src": [ "file:./assets/fonts/source-sans-pro-italic[wght].woff2" ]
+						}
+					],
+					"fontFamily": "Source Sans Pro, Bahnschrift, \"DIN Alternate\", \"Franklin Gothic Medium\", \"Nimbus Sans Narrow\", sans-serif-condensed, sans-serif",
+					"name": "Source Sans Pro",
+					"slug": "source-sans-pro"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "normal",
+							"fontWeight": "300",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-300.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "italic",
+							"fontWeight": "300",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-300italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-regular.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "italic",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "normal",
+							"fontWeight": "700",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-700.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "italic",
+							"fontWeight": "700",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-700italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "normal",
+							"fontWeight": "900",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-900.woff2"
+							]
+						},
+						{
+							"fontFamily": "Merriweather",
+							"fontStyle": "italic",
+							"fontWeight": "900",
+							"src": [
+								"file:./assets/fonts/merriweather-v30-latin-900italic.woff2"
+							]
+						}
+					],
+					"fontFamily": "Merriweather, Rockwell, \"Rockwell Nova\", \"Roboto Slab\", \"DejaVu Serif\", \"Sitka Small\", serif",
+					"name": "Merriweather",
+					"slug": "merriweather"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "100",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-100.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "100",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-100italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "200",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-200.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "200",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-200italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "300",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-300.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "300",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-300italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-regular.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "500",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-500.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "500",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-500italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "600",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-600.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "600",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-600italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "700",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-700.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "700",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-700italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "800",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-800.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "800",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-800italic.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "normal",
+							"fontWeight": "900",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-900.woff2"
+							]
+						},
+						{
+							"fontFamily": "Poppins",
+							"fontStyle": "italic",
+							"fontWeight": "900",
+							"src": [
+								"file:./assets/fonts/poppins-v20-latin-900italic.woff2"
+							]
+						}
+					],
+					"fontFamily": "Poppins, Inter, Roboto, \"Helvetica Neue\", \"Arial Nova\", \"Nimbus Sans\", Arial, sans-serif",
+					"name": "Poppins",
+					"slug": "poppins"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Satisfy",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/satisfy-v17-latin-regular.woff2"
+							]
+						}
+					],
+					"fontFamily": "Satisfy, \"Segoe Print\", \"Bradley Hand\", Chilanka, TSCu_Comic, casual, cursive",
+					"name": "Satisfy",
+					"slug": "satisfy"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Forum",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/forum-v16-latin-regular.woff2"
+							]
+						}
+					],
+					"fontFamily": "Forum, \"Iowan Old Style\", \"Palatino Linotype\", \"URW Palladio L\", P052, serif",
+					"name": "Forum",
+					"slug": "forum"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Oswald",
+							"fontStyle": "normal",
+							"fontWeight": "200",
+							"src": [
+								"file:./assets/fonts/oswald-v48-latin-200.woff2"
+							]
+						},
+						{
+							"fontFamily": "Oswald",
+							"fontStyle": "normal",
+							"fontWeight": "300",
+							"src": [
+								"file:./assets/fonts/oswald-v48-latin-300.woff2"
+							]
+						},
+						{
+							"fontFamily": "Oswald",
+							"fontStyle": "normal",
+							"fontWeight": "400",
+							"src": [
+								"file:./assets/fonts/oswald-v48-latin-regular.woff2"
+							]
+						},
+						{
+							"fontFamily": "Oswald",
+							"fontStyle": "normal",
+							"fontWeight": "500",
+							"src": [
+								"file:./assets/fonts/oswald-v48-latin-500.woff2"
+							]
+						},
+						{
+							"fontFamily": "Oswald",
+							"fontStyle": "normal",
+							"fontWeight": "600",
+							"src": [
+								"file:./assets/fonts/oswald-v48-latin-600.woff2"
+							]
+						}
+					],
+					"fontFamily": "Oswald, Bahnschrift, \"DIN Alternate\", \"Franklin Gothic Medium\", \"Nimbus Sans Narrow\", sans-serif-condensed, sans-serif",
+					"name": "Oswald",
+					"slug": "oswald"
+				},
+				{
+					"fontFace": [
+						{
+							"fontFamily": "Playfair Display",
+							"fontWeight": "400 900",
+							"fontStretch": "normal",
+							"fontStyle": "normal",
+							"src": [ "file:./assets/fonts/playfair-display-latin-wght-normal.woff2" ]
+						},
+						{
+							"fontFamily": "Playfair Display",
+							"fontWeight": "400 900",
+							"fontStretch": "normal",
+							"fontStyle": "italic",
+							"src": [ "file:./assets/fonts/playfair-display-latin-wght-italic.woff2" ]
+						}
+					],
+					"fontFamily": "Playfair Display, Charter, \"Bitstream Charter\", \"Sitka Text\", Cambria, serif",
+					"name": "Playfair Display",
+					"slug": "playfair"
+				}
+			],
+			"fontSizes": [
+				{
+					"fluid": {
+						"max": "0.875rem",
+						"min": "0.875rem"
+					},
+					"name": "Extra Small",
+					"size": "0.875rem",
+					"slug": "x-small"
+				},
+				{
+					"fluid": {
+						"max": "1.08rem",
+						"min": "1rem"
+					},
+					"name": "Small",
+					"size": "1rem",
+					"slug": "small"
+				},
+				{
+					"fluid": {
+						"max": "1.125rem",
+						"min": "1rem"
+					},
+					"name": "Normal",
+					"size": "1.125rem",
+					"slug": "normal"
+				},
+				{
+					"fluid": {
+						"max": "1.5rem",
+						"min": "1.3rem"
+					},
+					"name": "Medium",
+					"size": "1.5rem",
+					"slug": "medium"
+				},
+				{
+					"fluid": {
+						"max": "1.75rem",
+						"min": "1.3125rem"
+					},
+					"name": "Large",
+					"size": "1.75rem",
+					"slug": "large"
+				},
+				{
+					"fluid": {
+						"max": "2rem",
+						"min": "1.5rem"
+					},
+					"name": "Extra Large",
+					"size": "2rem",
+					"slug": "x-large"
+				},
+				{
+					"fluid": {
+						"max": "3rem",
+						"min": "2.1875rem"
+					},
+					"name": "Huge",
+					"size": "3rem",
+					"slug": "huge"
+				}
+			]
+		}
+	},
+	"styles": {
+		"blocks": {
+			"core/button": {
+				"border": {
+					"radius": "var(--wp--custom--button-border-radius)",
+					"style": "solid",
+					"width": "0"
+				},
+				"color": {
+					"background": "var(--wp--preset--color--primary)",
+					"text": "var(--wp--preset--color--base)"
+				},
+				"spacing": {
+					"padding": {
+						"bottom": "0.5rem",
+						"left": "1rem",
+						"right": "1rem",
+						"top": "0.5rem"
+					}
+				},
+				"typography": {
+					"fontSize": "var(--wp--preset--font-size--small)",
+					"fontWeight": "500"
+				}
+			},
+			"core/heading": {
+				"color": {
+					"text": "var(--wp--preset--color--primary)"
+				},
+				"elements": {
+					"link": {
+						"color": {
+							"text": "var(--wp--preset--color--primary)"
+						},
+						"typography": {
+							"textDecoration": "none"
+						}
+					}
+				},
+				"typography": {
+					"fontFamily": "var(--wp--preset--font-family--poppins)",
+					"textDecoration": "none"
+				}
+			},
+			"core/latest-posts": {
+				"elements": {
+					"link": {
+						"color": {
+							"text": "var(--wp--preset--color--tertiary)"
+						},
+						"typography": {
+							"textDecoration": "none"
+						}
+					}
+				}
+			},
+			"core/navigation": {
+				"elements": {
+					"link": {
+						":active": {
+							"typography": {
+								"textDecoration": "none"
+							}
+						},
+						":focus": {
+							"typography": {
+								"textDecoration": "underline dashed"
+							}
+						},
+						":hover": {
+							"color": {
+								"text": "var(--wp--preset--color--primary)"
+							},
+							"typography": {
+								"textDecoration": "none"
+							}
+						},
+						"typography": {
+							"textDecoration": "none"
+						}
+					}
+				},
+				"typography": {
+					"lineHeight": "1.75"
+				}
+			},
+			"core/site-tagline": {
+				"typography": {
+					"fontSize": "var(--wp--preset--font-size--x-small)"
+				}
+			},
+			"core/site-title": {
+				"color": {
+					"text": "var(--wp--preset--color--secondary-foreground)"
+				},
+				"elements": {
+					"link": {
+						"color": {
+							"text": "var(--wp--preset--color--secondary-foreground)"
+						},
+						"typography": {
+							"textDecoration": "none"
+						}
+					}
+				}
+			}
+		},
+		"color": {
+			"background": "var(--wp--preset--color--base)",
+			"text": "var(--wp--preset--color--contrast)"
+		},
+		"elements": {
+			"button": {
+				":active": {
+					"color": {
+						"background": "var(--wp--preset--color--primary)",
+						"text": "var(--wp--preset--color--base)"
+					}
+				},
+				":focus": {
+					"color": {
+						"background": "var(--wp--preset--color--primary)",
+						"text": "var(--wp--preset--color--base)"
+					}
+				},
+				":hover": {
+					"color": {
+						"background": "var(--wp--preset--color--primary)",
+						"text": "var(--wp--preset--color--base)"
+					}
+				},
+				":visited": {
+					"color": {
+						"text": "var(--wp--preset--color--base)"
+					}
+				},
+				"border": {
+					"radius": "var(--wp--custom--button-border-radius)",
+					"style": "solid",
+					"width": "0"
+				},
+				"color": {
+					"background": "var(--wp--preset--color--primary)",
+					"text": "var(--wp--preset--color--base)"
+				},
+				"spacing": {
+					"padding": {
+						"bottom": "0.5rem",
+						"left": "1rem",
+						"right": "1rem",
+						"top": "0.5rem"
+					}
+				},
+				"typography": {
+					"fontFamily": "inherit",
+					"fontSize": "var(--wp--preset--font-size--small)",
+					"fontWeight": "500",
+					"lineHeight": "inherit",
+					"textDecoration": "none"
+				}
+			},
+			"heading": {
+				"color": {
+					"text": "var(--wp--preset--color--primary)"
+				},
+				"typography": {
+					"fontFamily": "var(--wp--preset--font-family--poppins)",
+					"textDecoration": "none"
+				}
+			},
+			"link": {
+				":active": {
+					"typography": {
+						"textDecoration": "none"
+					}
+				},
+				":focus": {
+					"typography": {
+						"textDecoration": "underline dashed"
+					}
+				},
+				":hover": {
+					"color": {
+						"text": "var(--wp--preset--color--primary)"
+					},
+					"typography": {
+						"textDecoration": "underline"
+					}
+				},
+				"color": {
+					"text": "var(--wp--preset--color--primary)"
+				},
+				"typography": {
+					"textDecoration": "none"
+				}
+			}
+		},
+		"spacing": {
+			"blockGap": "var(--wp--custom--vertical-spacing)"
+		},
+		"typography": {
+			"fontFamily": "var(--wp--preset--font-family--mulish)",
+			"fontSize": "var(--wp--preset--font-size--normal)",
+			"lineHeight": "1.5"
+		}
+	},
+	"templateParts": [
+		{
+			"area": "header",
+			"name": "header",
+			"title": "Header default"
+		},
+		{
+			"area": "header",
+			"name": "header-left-logo-nav-below",
+			"title": "Header - Left Logo and navigation below"
+		},
+		{
+			"area": "header",
+			"name": "header-left-logo-nav-inline",
+			"title": "Header - Left Logo and navigation inline"
+		},
+		{
+			"area": "header",
+			"name": "header-centered",
+			"title": "Header - Centered layout"
+		},
+		{
+			"area": "header",
+			"name": "header-centered-logo-split-menu",
+			"title": "Header - Centered layout with splitted menu"
+		},
+		{
+			"area": "header",
+			"name": "header-transparent",
+			"title": "Header Transparent"
+		},
+		{
+			"area": "footer",
+			"name": "footer",
+			"title": "Footer"
+		},
+		{
+			"area": "footer",
+			"name": "footer-3-columns-centered",
+			"title": "Footer 3 columns centered"
+		},
+		{
+			"area": "footer",
+			"name": "footer-3-columns",
+			"title": "Footer 3 columns"
+		},
+		{
+			"area": "uncategorized",
+			"name": "vertical-sidebar",
+			"title": "Vertical Sidebar 1"
+		},
+		{
+			"area": "uncategorized",
+			"name": "vertical-sidebar-2",
+			"title": "Vertical Sidebar 2"
+		}
+	]
+}

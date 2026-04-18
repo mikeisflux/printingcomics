@@ -1,0 +1,83 @@
+/* 
+Theme Name:		 Printing Comics
+Theme URI:		 https://printingcomics.com/
+Description:	 Printing Comics is a child theme of Parent Theme, created by ChildTheme-Generator.com
+Author:			 Printing Comics
+Author URI:		 https://printingcomics.com/
+Template:		 pricom
+Version:		 1.4.1
+Text Domain:	 printingcomics
+*/
+
+.paddingtb{padding-top:50px;padding-bottom: 50px;}
+.paddingt{padding-top:50px;}
+.paddingb{padding-bottom: 50px;}
+.elementor-widget-haru-text-animation .haru-text-animation--style-1 h2.haru-text-animation__heading {font-size: 50px;}
+.wapf-product-totals {display: none !important;}
+/* 
+.products span.price{display: none !important;} */
+.haru-page-title.has-heading {margin-bottom: 0;}
+.fullfill-link {
+    display: inline-block;
+    margin-left: 30px;
+    margin-top: 2px;
+}
+.fullfill-link a {
+    display: block;
+    padding-top: 20px;
+	text-decoration: underline;
+	color: #C61A22;
+}
+.wpforms-submit-container {margin-top: 20px;}
+form.wpforms-form .wpforms-field {
+    margin-top: 20px;
+	margin-bottom: 20px;
+}
+div.wpforms-hidden {display: none;}
+footer#haru-footer {background-color: #C61A220D;}
+.single-product-top form.cart .single_add_to_cart_button {width: 300px;}
+.single-product-top .product-button--wishlist {clear: both;}
+.qtytitle {
+    display: inline;
+    float: left;
+    margin-top: 10px;
+    margin-right: 5px;
+	font-weight: bold;
+    color: #000;
+}
+span.label-price {
+    display: none;
+}
+div#SpineWidthCal {
+    padding-bottom: 20px;
+	color: #000;
+}
+div#SpineWidthCal label {
+	font-weight: bold;
+	text-transform: capitalize;
+}
+.discountnotice {
+    padding: 20px;
+    background-color: #dd1d263d;
+    color: #000;
+    font-weight: bold;
+    display: block;
+    clear: both;
+    text-align: center;
+}
+.discountnotice p {margin-bottom:0;}
+.wpcpo-total ul li:first-child {display: none;}
+dl.variation span.woocommerce-Price-amount.amount, .wpcpo-total {display: none !important;}
+
+
+@media only screen and (min-width: 767px){
+/* 	.wapf-field-container {
+		width: 50% !important;
+	} */
+	.single-product-top .single-product-image-wrap {
+		width: 35%;
+	}
+	.single-product-top .single-product-summary {
+		width: 65%;
+	}
+}

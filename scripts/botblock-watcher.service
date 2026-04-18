@@ -1,0 +1,17 @@
+[Unit]
+Description=BotBlock Watcher - Instant firewall blocking for detected bots
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /opt/printingcomics/scripts/botblock-watcher.sh
+EnvironmentFile=-/etc/default/botblock-watcher
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+StandardOutput=append:/var/log/botblock-watcher.log
+StandardError=append:/var/log/botblock-watcher.log
+
+[Install]
+WantedBy=multi-user.target

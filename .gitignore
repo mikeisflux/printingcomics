@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vite/
+coverage/
+prisma/migrations/dev.db*
+siteold/db_tables/wp_options.sql
+
+# Generated Prisma client (recreated on every install via postinstall)
+server/src/generated/

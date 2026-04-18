@@ -1,0 +1,4 @@
+[04-Dec-2025 14:04:26 America/Chicago] PHP Fatal error:  Uncaught Error: Call to undefined function add_action() in /home1/mhclxfte/public_html/website_b3635980/wp-content/themes/twentytwentyfour/functions.php:147
+Stack trace:
+#0 {main}
+  thrown in /home1/mhclxfte/public_html/website_b3635980/wp-content/themes/twentytwentyfour/functions.php on line 147

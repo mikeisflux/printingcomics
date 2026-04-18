@@ -1,0 +1,4 @@
+2026-04-17T04:32:08+00:00 INFO Automatic database update triggered.
+2026-04-17T04:32:08+00:00 INFO Scheduling database updates (from 10.6.1)...
+2026-04-17T04:32:08+00:00 INFO   [10.7.0] Scheduled 'wc_update_1070_disable_hpos_sync_on_read'.
+2026-04-17T04:32:08+00:00 INFO Database updates scheduled.
