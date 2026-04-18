@@ -11,10 +11,45 @@ router.get('/', requireAuth, async (req, res) => {
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, number: true, status: true, paymentStatus: true,
-      totalCents: true, createdAt: true,
+      totalCents: true, subtotalCents: true, shippingCents: true, taxCents: true,
+      trackingNumber: true, shippingMethod: true,
+      createdAt: true, updatedAt: true,
+      items: {
+        select: {
+          id: true, name: true, quantity: true,
+          product: { select: { slug: true, images: { take: 1, orderBy: { sortOrder: 'asc' } } } },
+        },
+      },
     },
   });
   res.json({ orders });
+});
+
+// Account dashboard summary: totals + recent orders.
+router.get('/summary', requireAuth, async (req, res) => {
+  const [count, spentAgg, recent, addresses] = await Promise.all([
+    prisma.order.count({ where: { userId: req.session!.sub, paymentStatus: 'CAPTURED' } }),
+    prisma.order.aggregate({
+      where: { userId: req.session!.sub, paymentStatus: 'CAPTURED' },
+      _sum: { totalCents: true },
+    }),
+    prisma.order.findMany({
+      where: { userId: req.session!.sub },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: {
+        id: true, number: true, status: true, paymentStatus: true,
+        totalCents: true, createdAt: true,
+      },
+    }),
+    prisma.address.count({ where: { userId: req.session!.sub } }),
+  ]);
+  res.json({
+    orderCount: count,
+    totalSpentCents: spentAgg._sum.totalCents ?? 0,
+    addressCount: addresses,
+    recentOrders: recent,
+  });
 });
 
 router.get('/:number', requireAuth, async (req, res) => {
@@ -29,11 +64,18 @@ router.get('/:number', requireAuth, async (req, res) => {
               slug: true,
               name: true,
               options: { include: { values: true } },
+              images: { take: 1, orderBy: { sortOrder: 'asc' } },
             },
           },
         },
       },
-      payments: true,
+      payments: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true, provider: true, providerRef: true,
+          amountCents: true, status: true, createdAt: true,
+        },
+      },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');

@@ -10,7 +10,7 @@ import { PaypalCheckout } from './pages/PaypalCheckout';
 import { OrderConfirmation } from './pages/OrderConfirmation';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { Account } from './pages/Account';
+import { AccountLayout, AccountDashboard, AccountProfile, AccountPassword, AccountAddresses } from './pages/Account';
 import { OrdersPage } from './pages/OrdersPage';
 import { PaypalReturn } from './pages/PaypalReturn';
 import {
@@ -58,8 +58,17 @@ export const router = createBrowserRouter([
       { path: 'order/:number', element: <OrderConfirmation /> },
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
-      { path: 'account', element: <Account /> },
-      { path: 'account/orders', element: <OrdersPage /> },
+      {
+        path: 'account',
+        element: <AccountLayout />,
+        children: [
+          { index: true, element: <AccountDashboard /> },
+          { path: 'orders', element: <OrdersPage /> },
+          { path: 'profile', element: <AccountProfile /> },
+          { path: 'addresses', element: <AccountAddresses /> },
+          { path: 'password', element: <AccountPassword /> },
+        ],
+      },
       { path: 'crowdfunding', element: <Crowdfunding /> },
       { path: 'about', element: <About /> },
       { path: 'terms', element: <Terms /> },

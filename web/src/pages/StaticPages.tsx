@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 function Page({ title, intro, children }: { title: string; intro?: string; children?: ReactNode }) {
@@ -87,15 +87,84 @@ export function Terms() {
 }
 
 export function Contact() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [website, setWebsite] = useState(''); // honeypot
+  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus('sending');
+    setErrorMsg(null);
+    try {
+      const r = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, email, subject: subject || undefined, message, website }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Failed' }))).error);
+      setStatus('ok');
+      setName(''); setEmail(''); setSubject(''); setMessage('');
+    } catch (err: any) {
+      setStatus('error');
+      setErrorMsg(err.message ?? 'Send failed');
+    }
+  }
+
   return (
     <Page
       title="Contact us"
       intro="We usually respond within one business day."
     >
-      <p>
-        Email: <a href="mailto:hello@printingcomics.com">hello@printingcomics.com</a>
-      </p>
-      <p>
+      {status === 'ok' ? (
+        <div className="admin-card" style={{ background: '#d4f5dc', border: '1px solid #166534' }}>
+          <h3 style={{ marginTop: 0 }}>Thanks — we got it.</h3>
+          <p style={{ margin: 0 }}>We'll be in touch shortly at the email you provided.</p>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="admin-card">
+          <div className="grid-2">
+            <div>
+              <label>Your name</label>
+              <input required value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <label>Email</label>
+              <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+          </div>
+          <label>Subject</label>
+          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Optional" />
+          <label>Message</label>
+          <textarea rows={6} required value={message} onChange={(e) => setMessage(e.target.value)} />
+
+          {/* Honeypot — hidden from real users, tempting to bots */}
+          <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
+            <label>Website (leave blank)</label>
+            <input
+              tabIndex={-1}
+              autoComplete="off"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </div>
+
+          {errorMsg && <div className="error">{errorMsg}</div>}
+          <div className="row" style={{ marginTop: '1rem', alignItems: 'center' }}>
+            <button className="btn" disabled={status === 'sending'}>
+              {status === 'sending' ? 'Sending…' : 'Send message'}
+            </button>
+            <span className="muted" style={{ fontSize: '.85rem' }}>
+              Or email <a href="mailto:hello@printingcomics.com">hello@printingcomics.com</a>
+            </span>
+          </div>
+        </form>
+      )}
+      <p style={{ marginTop: '1.5rem' }}>
         For live status on an existing order, log in and visit
         {' '}<Link to="/account/orders">your orders</Link>.
       </p>
