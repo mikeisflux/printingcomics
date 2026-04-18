@@ -41,7 +41,7 @@ export function Home() {
       <section className="container" style={{ padding: '3rem 0 1rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <h2>What we print</h2>
-          <p className="muted">Four core services &mdash; every one custom-quoted per run.</p>
+          <p className="muted">Three core services &mdash; every one custom-quoted per run.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
           {[
