@@ -65,11 +65,47 @@ router.get('/:slug', async (req, res) => {
   res.json({ product });
 });
 
+/** Products that share at least one category with the given product. */
+router.get('/:slug/related', async (req, res) => {
+  const product = await prisma.product.findUnique({
+    where: { slug: req.params.slug },
+    include: { categories: true },
+  });
+  if (!product) throw new HttpError(404, 'Product not found');
+  const categoryIds = product.categories.map((pc) => pc.categoryId);
+  const related = await prisma.product.findMany({
+    where: {
+      active: true,
+      id: { not: product.id },
+      categories: { some: { categoryId: { in: categoryIds } } },
+    },
+    include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 } },
+    take: 6,
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json({
+    related: related.map((p) => ({
+      id: p.id, slug: p.slug, name: p.name,
+      priceCents: p.priceCents, hasVariants: p.hasVariants,
+      image: p.images[0]?.url ?? null,
+    })),
+  });
+});
+
 router.get('/_meta/categories', async (_req, res) => {
   const categories = await prisma.category.findMany({
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
   });
   res.json({ categories });
+});
+
+router.get('/_meta/categories/:slug', async (req, res) => {
+  const category = await prisma.category.findUnique({
+    where: { slug: req.params.slug },
+    include: { _count: { select: { products: true } } },
+  });
+  if (!category) throw new HttpError(404, 'Category not found');
+  res.json({ category });
 });
 
 export default router;

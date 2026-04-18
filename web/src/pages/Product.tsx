@@ -21,6 +21,12 @@ interface ProductDetail {
   options: Option[];
 }
 
+interface RelatedProduct {
+  id: string; slug: string; name: string;
+  priceCents: number; hasVariants: boolean;
+  image: string | null;
+}
+
 function priceForQuantity(base: number, qty: number, tiers?: ProductDetail['volumeTiers']): number {
   if (!tiers || tiers.length === 0) return base;
   const sorted = [...tiers].sort((a, b) => a.minQty - b.minQty);
@@ -35,6 +41,7 @@ export function Product() {
   const { add } = useCart();
 
   const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [related, setRelated] = useState<RelatedProduct[]>([]);
   const [variantId, setVariantId] = useState<string | undefined>();
   const [qty, setQty] = useState(1);
   const [options, setOptions] = useState<Record<string, string>>({});
@@ -44,12 +51,17 @@ export function Product() {
 
   useEffect(() => {
     if (!slug) return;
+    setRelated([]);
     void api.get<{ product: ProductDetail }>(`/products/${slug}`).then((r) => {
       setProduct(r.product);
       setQty(r.product.minQuantity);
       setGalleryIdx(0);
       if (r.product.variants.length > 0) setVariantId(r.product.variants[0].id);
     });
+    void api
+      .get<{ related: RelatedProduct[] }>(`/products/${slug}/related`)
+      .then((r) => setRelated(r.related))
+      .catch(() => setRelated([]));
   }, [slug]);
 
   const variant = useMemo(() => product?.variants.find((v) => v.id === variantId), [product, variantId]);
@@ -213,6 +225,26 @@ export function Product() {
           <div style={{ marginTop: '2rem', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{product.description}</div>
         )}
       </div>
+
+      {related.length > 0 && (
+        <div style={{ gridColumn: '1 / -1', marginTop: '3rem' }}>
+          <h2>You might also like</h2>
+          <div className="product-grid" style={{ paddingTop: '.5rem' }}>
+            {related.map((p) => (
+              <Link key={p.id} to={`/product/${p.slug}`} className="product-card">
+                <div
+                  className="image"
+                  style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}
+                />
+                <div className="body">
+                  <h3>{p.name}</h3>
+                  <div className="price">{p.hasVariants ? 'From ' : ''}{formatMoney(p.priceCents)}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
