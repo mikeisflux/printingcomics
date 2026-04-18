@@ -100,7 +100,7 @@ router.post('/upload', upload.array('files', 50), async (req, res) => {
   if (files.length === 0) throw new HttpError(400, 'No files received');
 
   const folder = (req.body?.folder as string | undefined) ?? '/';
-  const created = [];
+  const created: any[] = [];
   for (const f of files) {
     const media = await prisma.mediaFile.create({
       data: {

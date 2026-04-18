@@ -54,7 +54,7 @@ router.get('/summary', requireAuth, async (req, res) => {
 
 router.get('/:number', requireAuth, async (req, res) => {
   const order = await prisma.order.findFirst({
-    where: { number: req.params.number, userId: req.session!.sub },
+    where: { number: String(req.params.number), userId: req.session!.sub },
     include: {
       items: {
         include: {
@@ -96,7 +96,7 @@ router.get('/:number', requireAuth, async (req, res) => {
 // client can redirect to /cart.
 router.post('/:number/reorder', requireAuth, async (req, res) => {
   const order = await prisma.order.findFirst({
-    where: { number: req.params.number, userId: req.session!.sub },
+    where: { number: String(req.params.number), userId: req.session!.sub },
     include: { items: true },
   });
   if (!order) throw new HttpError(404, 'Order not found');

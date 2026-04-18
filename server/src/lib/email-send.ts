@@ -47,7 +47,7 @@ export async function runCampaignSend(campaignId: string): Promise<CampaignSendR
     if (/.+@.+/.test(extra)) recipients.set(extra, { email: extra });
   }
 
-  const encodedAttachments = [];
+  const encodedAttachments: { filename: string; contentType: string; contentBase64: string }[] = [];
   for (const a of campaign.attachments) {
     try {
       const buffer = await fs.readFile(path.join(UPLOADS_DIR, a.storageKey));

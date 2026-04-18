@@ -236,11 +236,11 @@ router.delete('/campaigns/:id', async (req, res) => {
 
 router.post('/campaigns/:id/attachments', upload.array('files', 10), async (req, res) => {
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
-  const created = [];
+  const created: any[] = [];
   for (const f of files) {
     const att = await prisma.emailAttachment.create({
       data: {
-        campaignId: req.params.id,
+        campaignId: String(req.params.id),
         filename: f.originalname,
         contentType: f.mimetype,
         sizeBytes: f.size,

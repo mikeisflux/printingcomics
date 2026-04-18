@@ -100,7 +100,7 @@ router.post('/addresses', requireAuth, async (req, res) => {
 router.put('/addresses/:id', requireAuth, async (req, res) => {
   const data = addressSchema.parse(req.body);
   const existing = await prisma.address.findFirst({
-    where: { id: req.params.id, userId: req.session!.sub },
+    where: { id: String(req.params.id), userId: req.session!.sub },
   });
   if (!existing) throw new HttpError(404, 'Address not found');
   if (data.isDefault) {
@@ -126,7 +126,7 @@ router.put('/addresses/:id', requireAuth, async (req, res) => {
 
 router.delete('/addresses/:id', requireAuth, async (req, res) => {
   const existing = await prisma.address.findFirst({
-    where: { id: req.params.id, userId: req.session!.sub },
+    where: { id: String(req.params.id), userId: req.session!.sub },
   });
   if (!existing) throw new HttpError(404, 'Address not found');
   await prisma.address.delete({ where: { id: existing.id } });
