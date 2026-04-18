@@ -85,30 +85,39 @@ function buildCoverCanvas(spec: BookSpec): HTMLCanvasElement {
 
   const isLight = isLightColor(spec.coverColor) || spec.hasFoil || spec.paperStyle === 'foil';
 
-  // ---- Comic title — painted at the TOP of the cover in thick white Comic Sans
-  // with a heavy black stroke so it pops against any cover color.
+  // ---- Comic title — painted in the upper hero region of the cover (where
+  // a real comic puts its logo) in thick white Comic Sans with a heavy black
+  // stroke so it pops against any cover color.
   const userTitle = spec.title?.trim();
   if (userTitle) {
     ctx.save();
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.miterLimit = 2;
     const t = userTitle.toUpperCase();
-    const fontSize = t.length > 18 ? 56 : t.length > 12 ? 72 : 92;
+    const fontSize = t.length > 18 ? 64 : t.length > 12 ? 84 : 108;
     ctx.font = `900 ${fontSize}px "Comic Sans MS", "Chalkboard SE", "Comic Sans", system-ui, sans-serif`;
-    // Outline first
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = Math.max(8, fontSize * 0.12);
-    wrapTextStroked(ctx, t, canvas.width / 2, 180, canvas.width - 60, fontSize + 10, '#ffffff');
+    ctx.lineWidth = Math.max(10, fontSize * 0.14);
+    // Center the title block on y ≈ 230 — the upper-third hero strip of the
+    // 768-tall cover (matches where the user marked the yellow box).
+    wrapTextStroked(ctx, t, canvas.width / 2, 230, canvas.width - 50, fontSize + 14, '#ffffff');
     ctx.restore();
   }
 
-  // Size label (smaller, just under the title area)
+  // Size name — big bold display label sits in the middle of the cover
+  // (where it always was). Only the typed comic title moves to the top.
   if (spec.subtitle) {
-    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
-    ctx.font = '600 28px system-ui, sans-serif';
+    ctx.fillStyle = isLight ? '#1a1a1a' : '#fff';
+    ctx.font = '900 76px "Bebas Neue", "Arial Black", system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(spec.subtitle, canvas.width / 2, canvas.height * 0.6);
+    ctx.fillText(spec.subtitle.toUpperCase(), canvas.width / 2, canvas.height * 0.5);
+
+    // Small "Comic Book" tag underneath
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
+    ctx.font = '500 26px system-ui, sans-serif';
+    ctx.fillText('Comic Book', canvas.width / 2, canvas.height * 0.6);
   }
 
   // Decorative bottom bar + brand tag
