@@ -109,4 +109,35 @@ router.get('/_meta/categories/:slug', async (req, res) => {
   res.json({ category });
 });
 
+/**
+ * Returns every active product in a category with the FULL configurator
+ * payload (options + values + pricingConfig + images). Used by the
+ * /shop/:category page to render the unified configurator where the
+ * different products are presented as a single "Choose your size" tile.
+ */
+router.get('/_meta/categories/:slug/configure', async (req, res) => {
+  const category = await prisma.category.findUnique({
+    where: { slug: req.params.slug },
+    include: { _count: { select: { products: true } } },
+  });
+  if (!category) throw new HttpError(404, 'Category not found');
+
+  const products = await prisma.product.findMany({
+    where: {
+      active: true,
+      categories: { some: { categoryId: category.id } },
+    },
+    orderBy: [{ sortOrder: 'asc' }, { priceCents: 'asc' }],
+    include: {
+      images: { orderBy: { sortOrder: 'asc' } },
+      options: {
+        orderBy: { sortOrder: 'asc' },
+        include: { values: { orderBy: { sortOrder: 'asc' } } },
+      },
+    },
+  });
+
+  res.json({ category, products });
+});
+
 export default router;

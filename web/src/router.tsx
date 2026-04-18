@@ -4,6 +4,7 @@ import { AdminLayout } from './components/AdminLayout';
 
 import { Home } from './pages/Home';
 import { Shop } from './pages/Shop';
+import { CategoryConfigure } from './pages/CategoryConfigure';
 import { Product } from './pages/Product';
 import { CartPage } from './pages/CartPage';
 import { PaypalCheckout } from './pages/PaypalCheckout';
@@ -52,7 +53,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Home /> },
       { path: 'shop', element: <Shop /> },
-      { path: 'shop/:category', element: <Shop /> },
+      { path: 'shop/:category', element: <CategoryConfigure /> },
       { path: 'product/:slug', element: <Product /> },
       { path: 'cart', element: <CartPage /> },
       { path: 'checkout', element: <PaypalCheckout /> },
