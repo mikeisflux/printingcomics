@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@paypal/react-paypal-js": "^8.8.1",
-    "@react-three/drei": "^9.117.0",
-    "@react-three/fiber": "^8.17.10",
+    "@react-three/drei": "^10.0.0",
+    "@react-three/fiber": "^9.0.0",
     "@tiptap/extension-image": "^2.10.0",
     "@tiptap/extension-link": "^2.10.0",
     "@tiptap/pm": "^2.10.0",
