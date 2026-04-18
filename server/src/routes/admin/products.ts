@@ -137,4 +137,111 @@ router.delete('/:id/variants/:variantId', async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Configurator options ---
+const OPTION_TYPES = ['TILES', 'RADIO', 'SELECT', 'TOGGLE', 'TEXT', 'NUMBER', 'UPLOAD', 'CONFIRM'] as const;
+
+const optionValueWriteSchema = z.object({
+  label: z.string().min(1),
+  subLabel: z.string().optional().nullable(),
+  imageUrl: z.string().optional().nullable(),
+  priceModifierCents: z.number().int().optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+const optionWriteSchema = z.object({
+  name: z.string().min(1),
+  internalKey: z.string().optional().nullable(),
+  section: z.string().optional().nullable(),
+  type: z.enum(OPTION_TYPES).optional(),
+  required: z.boolean().optional(),
+  helpText: z.string().optional().nullable(),
+  longDescription: z.string().optional().nullable(),
+  sortOrder: z.number().int().optional(),
+  dependsOnOptionId: z.string().optional().nullable(),
+  dependsOnValue: z.string().optional().nullable(),
+  values: z.array(optionValueWriteSchema).optional(),
+});
+
+router.post('/:id/options', async (req, res) => {
+  const data = optionWriteSchema.parse(req.body);
+  const { values, ...rest } = data;
+  const option = await prisma.productOption.create({
+    data: {
+      ...rest,
+      productId: req.params.id,
+      values: values ? { create: values.map((v, i) => ({ ...v, sortOrder: v.sortOrder ?? i })) } : undefined,
+    },
+    include: { values: true },
+  });
+  res.json({ option });
+});
+
+router.put('/:id/options/:optionId', async (req, res) => {
+  const data = optionWriteSchema.partial().parse(req.body);
+  const { values, ...rest } = data;
+  const option = await prisma.productOption.update({
+    where: { id: req.params.optionId },
+    data: rest,
+    include: { values: true },
+  });
+  res.json({ option });
+});
+
+router.delete('/:id/options/:optionId', async (req, res) => {
+  await prisma.productOption.delete({ where: { id: req.params.optionId } });
+  res.json({ ok: true });
+});
+
+router.post('/:id/options/:optionId/values', async (req, res) => {
+  const data = optionValueWriteSchema.parse(req.body);
+  const value = await prisma.productOptionValue.create({
+    data: { ...data, optionId: req.params.optionId },
+  });
+  res.json({ value });
+});
+
+router.put('/:id/options/:optionId/values/:valueId', async (req, res) => {
+  const data = optionValueWriteSchema.partial().parse(req.body);
+  const value = await prisma.productOptionValue.update({
+    where: { id: req.params.valueId },
+    data,
+  });
+  res.json({ value });
+});
+
+router.delete('/:id/options/:optionId/values/:valueId', async (req, res) => {
+  await prisma.productOptionValue.delete({ where: { id: req.params.valueId } });
+  res.json({ ok: true });
+});
+
+// --- Pricing config JSON blob ---
+router.put('/:id/pricing-config', async (req, res) => {
+  const cfg = req.body?.pricingConfig ?? null;
+  await prisma.product.update({
+    where: { id: req.params.id },
+    data: { pricingConfig: cfg },
+  });
+  res.json({ ok: true });
+});
+
+// --- FAQ JSON (array of {q, a}) ---
+router.put('/:id/faq', async (req, res) => {
+  const faq = req.body?.faq ?? null;
+  await prisma.product.update({
+    where: { id: req.params.id },
+    data: { faq },
+  });
+  res.json({ ok: true });
+});
+
+// --- Template URL (PDF download link on product page) ---
+router.put('/:id/template', async (req, res) => {
+  const templateUrl = typeof req.body?.templateUrl === 'string' ? req.body.templateUrl : null;
+  await prisma.product.update({
+    where: { id: req.params.id },
+    data: { templateUrl },
+  });
+  res.json({ ok: true });
+});
+
 export default router;

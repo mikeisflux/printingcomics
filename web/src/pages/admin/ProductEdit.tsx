@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { MediaPicker } from '../../components/MediaPicker';
+import { ConfiguratorEditor, type Option } from '../../components/ConfiguratorEditor';
 
 interface VolumeTier { minQty: number; pricePerUnitCents: number; }
 interface Image { url: string; alt?: string; }
 interface Category { id: string; slug: string; name: string; }
 interface Variant { id: string; sku?: string | null; label: string; priceCents: number; stock: number; active: boolean; }
-interface OptionValue { id: string; label: string; priceModifierCents: number; sortOrder: number; }
-interface Option { id: string; name: string; sortOrder: number; values: OptionValue[]; }
+interface FaqItem { q: string; a: string; }
 
 interface ProductDraft {
   slug: string;
@@ -50,6 +50,10 @@ export function AdminProductEdit() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [templateUrl, setTemplateUrl] = useState<string>('');
+  const [faq, setFaq] = useState<FaqItem[]>([]);
+  const [pricingConfigJson, setPricingConfigJson] = useState<string>('');
+  const [pricingError, setPricingError] = useState<string | null>(null);
 
   const load = async () => {
     const catsRes = await api.get<{ categories: Category[] }>('/admin/categories');
@@ -77,6 +81,9 @@ export function AdminProductEdit() {
       });
       setVariants(p.variants);
       setOptions(p.options ?? []);
+      setTemplateUrl(p.templateUrl ?? '');
+      setFaq(Array.isArray(p.faq) ? p.faq : []);
+      setPricingConfigJson(p.pricingConfig ? JSON.stringify(p.pricingConfig, null, 2) : '');
     }
   };
 
@@ -318,6 +325,114 @@ export function AdminProductEdit() {
               <button className="btn" onClick={addVariant}>Add</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {!isNew && id && (
+        <div className="admin-card">
+          <h3>Configurator options</h3>
+          <ConfiguratorEditor productId={id} options={options} onChange={setOptions} />
+        </div>
+      )}
+
+      {!isNew && id && (
+        <div className="admin-card">
+          <div className="spread" style={{ marginBottom: '.75rem' }}>
+            <h3 style={{ margin: 0 }}>FAQ (shown in sidebar)</h3>
+            <div className="row">
+              <button
+                className="btn secondary"
+                onClick={() => setFaq([...faq, { q: '', a: '' }])}
+              >
+                Add FAQ
+              </button>
+              <button
+                className="btn"
+                onClick={async () => {
+                  await api.put(`/admin/products/${id}/faq`, { faq });
+                }}
+              >
+                Save FAQ
+              </button>
+            </div>
+          </div>
+          {faq.length === 0 && <p className="muted">No FAQ entries yet.</p>}
+          {faq.map((f, i) => (
+            <div key={i} style={{ marginBottom: '.75rem', paddingBottom: '.75rem', borderBottom: '1px solid var(--border)' }}>
+              <input
+                placeholder="Question"
+                value={f.q}
+                onChange={(e) => {
+                  const next = [...faq];
+                  next[i] = { ...f, q: e.target.value };
+                  setFaq(next);
+                }}
+              />
+              <textarea
+                rows={2}
+                placeholder="Answer"
+                value={f.a}
+                onChange={(e) => {
+                  const next = [...faq];
+                  next[i] = { ...f, a: e.target.value };
+                  setFaq(next);
+                }}
+              />
+              <button
+                className="btn secondary"
+                style={{ color: '#b91c1c', marginTop: '.25rem' }}
+                onClick={() => setFaq(faq.filter((_, j) => j !== i))}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isNew && id && (
+        <div className="admin-card">
+          <h3>Downloads &amp; pricing config</h3>
+          <label>Template (PDF) URL</label>
+          <div className="row">
+            <input value={templateUrl} onChange={(e) => setTemplateUrl(e.target.value)} style={{ flex: 1 }} />
+            <button
+              className="btn"
+              onClick={async () => {
+                await api.put(`/admin/products/${id}/template`, { templateUrl: templateUrl || null });
+              }}
+            >
+              Save
+            </button>
+          </div>
+
+          <label style={{ marginTop: '1rem' }}>Pricing config (JSON)</label>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Advanced. Drives the configurator's unit price calculation
+            (baseCents, qtyTiers, modifiers, pages).
+            Leave empty to fall back to base price + volume tiers.
+          </p>
+          <textarea
+            rows={14}
+            value={pricingConfigJson}
+            onChange={(e) => setPricingConfigJson(e.target.value)}
+            style={{ fontFamily: 'monospace', fontSize: '.85rem' }}
+          />
+          {pricingError && <div className="error">{pricingError}</div>}
+          <button
+            className="btn"
+            onClick={async () => {
+              setPricingError(null);
+              try {
+                const parsed = pricingConfigJson.trim() ? JSON.parse(pricingConfigJson) : null;
+                await api.put(`/admin/products/${id}/pricing-config`, { pricingConfig: parsed });
+              } catch (e: any) {
+                setPricingError(e.message ?? 'Invalid JSON');
+              }
+            }}
+          >
+            Save pricing config
+          </button>
         </div>
       )}
 

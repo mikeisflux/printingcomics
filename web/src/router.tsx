@@ -13,6 +13,18 @@ import { Register } from './pages/Register';
 import { Account } from './pages/Account';
 import { OrdersPage } from './pages/OrdersPage';
 import { PaypalReturn } from './pages/PaypalReturn';
+import {
+  About,
+  Contact,
+  Crowdfunding,
+  Faq,
+  FilePrep,
+  MakeAComic,
+  Media,
+  SamplePack,
+  Templates,
+  Terms,
+} from './pages/StaticPages';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminProducts } from './pages/admin/Products';
@@ -48,6 +60,16 @@ export const router = createBrowserRouter([
       { path: 'register', element: <Register /> },
       { path: 'account', element: <Account /> },
       { path: 'account/orders', element: <OrdersPage /> },
+      { path: 'crowdfunding', element: <Crowdfunding /> },
+      { path: 'about', element: <About /> },
+      { path: 'terms', element: <Terms /> },
+      { path: 'contact', element: <Contact /> },
+      { path: 'media', element: <Media /> },
+      { path: 'sample-pack', element: <SamplePack /> },
+      { path: 'resources/make-a-comic', element: <MakeAComic /> },
+      { path: 'resources/file-prep', element: <FilePrep /> },
+      { path: 'resources/templates', element: <Templates /> },
+      { path: 'resources/faq', element: <Faq /> },
     ],
   },
   {

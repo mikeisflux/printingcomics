@@ -158,10 +158,53 @@ export function StoreLayout() {
               </ul>
             </div>
           </div>
+          <SocialRow />
           <div className="copyright">© {new Date().getFullYear()} Printing Comics. All rights reserved.</div>
         </div>
       </footer>
     </>
+  );
+}
+
+function SocialRow() {
+  const socials: { href: string; label: string; icon: string }[] = [
+    { href: 'https://www.facebook.com/printingcomics', label: 'Facebook', icon: 'f' },
+    { href: 'https://www.instagram.com/printingcomics', label: 'Instagram', icon: 'ig' },
+    { href: 'https://www.youtube.com/@printingcomics', label: 'YouTube', icon: '▶' },
+    { href: 'https://www.tiktok.com/@printingcomics', label: 'TikTok', icon: 'tk' },
+    { href: 'https://x.com/printingcomics', label: 'X', icon: '𝕏' },
+    { href: 'https://www.threads.net/@printingcomics', label: 'Threads', icon: '@' },
+    { href: 'https://www.linkedin.com/company/printingcomics', label: 'LinkedIn', icon: 'in' },
+    { href: 'https://bsky.app/profile/printingcomics.bsky.social', label: 'Bluesky', icon: '☁' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: '.75rem', justifyContent: 'center', margin: '1.5rem 0 1rem', flexWrap: 'wrap' }}>
+      {socials.map((s) => (
+        <a
+          key={s.label}
+          href={s.href}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={s.label}
+          title={s.label}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.08)',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textDecoration: 'none',
+            fontSize: '.9rem',
+            fontWeight: 700,
+          }}
+        >
+          {s.icon}
+        </a>
+      ))}
+    </div>
   );
 }
 
