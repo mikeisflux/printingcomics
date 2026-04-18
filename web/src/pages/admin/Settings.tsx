@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
-type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'shipstation' | 'taxes' | 'coupons' | 'backup';
+type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'packlinkpro' | 'taxes' | 'coupons' | 'backup';
 
 interface SettingsMap {
   [key: string]: unknown;
@@ -15,7 +15,7 @@ export function AdminSettings() {
       <h1>Settings</h1>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'shipstation', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
+          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'packlinkpro', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
             <button
               key={s}
               onClick={() => setSection(s)}
@@ -41,7 +41,7 @@ export function AdminSettings() {
       {section === 'ai' && <AiSection />}
       {section === 'seo' && <SeoSection />}
       {section === 'shipping' && <ShippingSection />}
-      {section === 'shipstation' && <ShipStationSection />}
+      {section === 'packlinkpro' && <PacklinkSection />}
       {section === 'taxes' && <TaxesSection />}
       {section === 'coupons' && <CouponsSection />}
       {section === 'backup' && <BackupSection />}
@@ -252,55 +252,58 @@ function SeoSection() {
   );
 }
 
-function ShipStationSection() {
+function PacklinkSection() {
   const { settings, save } = useSettings();
+  const webhookUrl = settings['packlinkpro.webhookSecret']
+    ? `https://printingcomics.com/api/webhooks/packlinkpro?token=${encodeURIComponent(String(settings['packlinkpro.webhookSecret']))}`
+    : 'https://printingcomics.com/api/webhooks/packlinkpro';
   return (
     <>
       <div className="admin-card">
-        <h3>ShipStation</h3>
+        <h3>Packlink Pro</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          Get API credentials from <em>ShipStation → Account → Account Settings → API Settings</em>.
-          Then set up your sender (ship-from) address below — required for rate quotes.
+          Grab your API key from <em>Packlink Pro → Settings → API key</em>
+          {' '}(<code>https://pro.packlink.it/private/settings/api-key</code>).
+          Then fill the ship-from address below — required for rate quotes.
         </p>
-        <div className="grid-2">
-          <Field label="API key" value={settings['shipstation.apiKey']} onSave={(v) => save('shipstation.apiKey', v)} />
-          <Field label="API secret" type="password" placeholder="paste to update" value={settings['shipstation.apiSecret']} onSave={(v) => save('shipstation.apiSecret', v)} />
-        </div>
-        <Field label="Store ID (optional, multi-store accounts)" value={settings['shipstation.storeId']} onSave={(v) => save('shipstation.storeId', v)} />
-        <Toggle label="Auto-push paid orders to ShipStation" value={settings['shipstation.autoPushOnPaid']} onSave={(v) => save('shipstation.autoPushOnPaid', v)} />
+        <Field label="API key" type="password" placeholder="paste to update" value={settings['packlinkpro.apiKey']} onSave={(v) => save('packlinkpro.apiKey', v)} />
+        <Toggle label="Auto-push paid orders to Packlink Pro" value={settings['packlinkpro.autoPushOnPaid']} onSave={(v) => save('packlinkpro.autoPushOnPaid', v)} />
       </div>
 
       <div className="admin-card">
         <h3>Ship-from address</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          Used as the origin for rate quotes and printed on shipping labels.
+          Used as the origin for rate quotes and on shipping labels.
         </p>
         <div className="grid-2">
-          <Field label="Sender name" value={settings['shipstation.fromName']} onSave={(v) => save('shipstation.fromName', v)} />
-          <Field label="Company" value={settings['shipstation.fromCompany']} onSave={(v) => save('shipstation.fromCompany', v)} />
-        </div>
-        <Field label="Street address line 1" value={settings['shipstation.fromStreet1']} onSave={(v) => save('shipstation.fromStreet1', v)} />
-        <Field label="Street address line 2" value={settings['shipstation.fromStreet2']} onSave={(v) => save('shipstation.fromStreet2', v)} />
-        <div className="grid-2">
-          <Field label="City" value={settings['shipstation.fromCity']} onSave={(v) => save('shipstation.fromCity', v)} />
-          <Field label="State / region" value={settings['shipstation.fromState']} onSave={(v) => save('shipstation.fromState', v)} />
+          <Field label="Sender name" value={settings['packlinkpro.fromName']} onSave={(v) => save('packlinkpro.fromName', v)} />
+          <Field label="Company" value={settings['packlinkpro.fromCompany']} onSave={(v) => save('packlinkpro.fromCompany', v)} />
         </div>
         <div className="grid-2">
-          <Field label="Postal code" value={settings['shipstation.fromPostalCode']} onSave={(v) => save('shipstation.fromPostalCode', v)} />
-          <Field label="Country (ISO)" value={settings['shipstation.fromCountry']} onSave={(v) => save('shipstation.fromCountry', v)} placeholder="US" />
+          <Field label="Sender email" value={settings['packlinkpro.fromEmail']} onSave={(v) => save('packlinkpro.fromEmail', v)} />
+          <Field label="Sender phone" value={settings['packlinkpro.fromPhone']} onSave={(v) => save('packlinkpro.fromPhone', v)} />
         </div>
-        <Field label="Phone" value={settings['shipstation.fromPhone']} onSave={(v) => save('shipstation.fromPhone', v)} />
+        <Field label="Street address line 1" value={settings['packlinkpro.fromStreet1']} onSave={(v) => save('packlinkpro.fromStreet1', v)} />
+        <Field label="Street address line 2" value={settings['packlinkpro.fromStreet2']} onSave={(v) => save('packlinkpro.fromStreet2', v)} />
+        <div className="grid-2">
+          <Field label="City" value={settings['packlinkpro.fromCity']} onSave={(v) => save('packlinkpro.fromCity', v)} />
+          <Field label="State / region" value={settings['packlinkpro.fromState']} onSave={(v) => save('packlinkpro.fromState', v)} />
+        </div>
+        <div className="grid-2">
+          <Field label="Postal code" value={settings['packlinkpro.fromPostalCode']} onSave={(v) => save('packlinkpro.fromPostalCode', v)} />
+          <Field label="Country (ISO)" value={settings['packlinkpro.fromCountry']} onSave={(v) => save('packlinkpro.fromCountry', v)} placeholder="US" />
+        </div>
       </div>
 
       <div className="admin-card">
         <h3>Webhook</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '.5rem' }}>
-          Add this URL to <em>ShipStation → Account → Account Settings → Selling Channels → Webhooks</em>{' '}
-          for the <strong>SHIP_NOTIFY</strong> event. The app auto-updates orders + emails the customer
-          when ShipStation marks a shipment shipped.
+          Paste this URL into <em>Packlink Pro → Settings → Webhooks</em>. Set the shared token below
+          — the app rejects any webhook call that doesn't carry the same token in the query string.
         </p>
-        <code style={{ display: 'block', padding: '.5rem', background: 'var(--bg-alt)', borderRadius: 4 }}>
-          https://printingcomics.com/api/webhooks/shipstation
+        <Field label="Webhook shared secret (random string)" type="password" placeholder="paste to update" value={settings['packlinkpro.webhookSecret']} onSave={(v) => save('packlinkpro.webhookSecret', v)} />
+        <code style={{ display: 'block', padding: '.5rem', background: 'var(--bg-alt)', borderRadius: 4, wordBreak: 'break-all' }}>
+          {webhookUrl}
         </code>
       </div>
     </>

@@ -123,15 +123,49 @@ export function AdminOrderDetail() {
             className="btn secondary"
             onClick={async () => {
               try {
-                await api.post(`/admin/fulfillment/shipstation/push/${order.id}`);
-                alert('Pushed to ShipStation.');
+                const packages = await api.get<{ items: { id: string; name: string }[] }>('/admin/fulfillment/packages');
+                if (packages.items.length === 0) {
+                  alert('Add at least one package in /admin/fulfillment → Packages first.');
+                  return;
+                }
+                const pkgChoice = prompt(
+                  'Which package?\n' + packages.items.map((p, i) => `${i + 1}. ${p.name}`).join('\n'),
+                  '1',
+                );
+                const pkgIdx = Number(pkgChoice) - 1;
+                const pkg = packages.items[pkgIdx];
+                if (!pkg) return;
+
+                const ratesResp = await api.post<{ services: { id: number; name: string; carrier_name: string; price: { total_price: number; currency: string }; transit_days: number | null }[] }>(
+                  '/admin/fulfillment/packlink/rates',
+                  { orderId: order.id, packageId: pkg.id },
+                );
+                if (ratesResp.services.length === 0) {
+                  alert('Packlink returned no services for this route/package.');
+                  return;
+                }
+                const svcChoice = prompt(
+                  'Pick a service:\n' + ratesResp.services.map((s, i) =>
+                    `${i + 1}. ${s.carrier_name} ${s.name} — ${s.price.total_price} ${s.price.currency}${s.transit_days ? ` (${s.transit_days}d)` : ''}`,
+                  ).join('\n'),
+                  '1',
+                );
+                const svcIdx = Number(svcChoice) - 1;
+                const svc = ratesResp.services[svcIdx];
+                if (!svc) return;
+
+                await api.post(`/admin/fulfillment/packlink/push/${order.id}`, {
+                  packageId: pkg.id,
+                  serviceId: svc.id,
+                });
+                alert(`Shipment created with ${svc.carrier_name} ${svc.name}.`);
                 load();
               } catch (e: any) {
                 alert(e.message ?? 'Push failed');
               }
             }}
           >
-            Push to ShipStation
+            Push to Packlink Pro
           </button>
           {order.paymentStatus === 'CAPTURED' && (
             <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>

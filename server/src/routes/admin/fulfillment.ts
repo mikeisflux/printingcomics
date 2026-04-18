@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import {
-  ssCreateOrder, ssGetRates, ssListCarriers, ssTestConnection, type SsCreateOrderInput,
-} from '../../lib/shipstation.js';
-import { getShipstationConfig } from '../../lib/settings.js';
+  plpCreateShipment, plpGetRates, plpTestConnection, plpFetchShipment, plpGetLabels,
+  type PlpCreateShipmentInput,
+} from '../../lib/packlinkpro.js';
+import { getPacklinkConfig } from '../../lib/settings.js';
 
 const router = Router();
 
@@ -61,30 +62,92 @@ router.delete('/packages/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ============ ShipStation operations ============
+// ============ Packlink Pro operations ============
 
-router.get('/shipstation/test', async (_req, res) => {
+function inToCm(inches: number): number { return Math.max(1, Math.round(inches * 2.54)); }
+function ozToKg(oz: number): number { return Math.max(0.01, +(oz * 0.0283495).toFixed(2)); }
+
+async function buildShipmentInput(orderId: string, packageId: string, serviceId?: number): Promise<PlpCreateShipmentInput> {
+  const cfg = await getPacklinkConfig();
+  if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code in admin settings first');
+  if (!cfg.fromName) throw new HttpError(400, 'Set your sender name in admin settings first');
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: { include: { product: true } } },
+  });
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  const pkg = await prisma.package.findUnique({ where: { id: packageId } });
+  if (!pkg) throw new HttpError(404, 'Package not found');
+
+  const productWeightOz = order.items.reduce((sum, i) => {
+    const grams = i.product.weightGrams ?? 0;
+    const oz = (grams * i.quantity) / 28.3495;
+    return sum + oz;
+  }, 0);
+  const totalWeightOz = Math.max(0.5, productWeightOz + pkg.emptyWeightOz);
+
+  const ship: any = order.shippingAddress;
+  const summary = order.items.slice(0, 3).map((i) => `${i.quantity}× ${i.name}`).join('; ');
+
+  return {
+    service_id: serviceId ?? 0,
+    content: summary || `Order ${order.number}`,
+    content_value: Math.max(1, Math.round(order.subtotalCents / 100)),
+    currency: 'USD',
+    from: {
+      name: cfg.fromName,
+      company: cfg.fromCompany || undefined,
+      email: cfg.fromEmail || undefined,
+      phone: cfg.fromPhone || undefined,
+      street1: cfg.fromStreet1,
+      street2: cfg.fromStreet2 || undefined,
+      city: cfg.fromCity,
+      state: cfg.fromState || undefined,
+      zip_code: cfg.fromPostalCode,
+      country: cfg.fromCountry,
+    },
+    to: {
+      name: `${ship.firstName ?? ''} ${ship.lastName ?? ''}`.trim() || order.email,
+      company: ship.company ?? undefined,
+      email: order.email,
+      phone: ship.phone ?? undefined,
+      street1: ship.line1,
+      street2: ship.line2 ?? undefined,
+      city: ship.city,
+      state: ship.region ?? undefined,
+      zip_code: ship.postalCode,
+      country: ship.country ?? 'US',
+    },
+    packages: [{
+      length: inToCm(pkg.lengthIn),
+      width: inToCm(pkg.widthIn),
+      height: inToCm(pkg.heightIn),
+      weight: ozToKg(totalWeightOz),
+    }],
+    additional_data: { order_number: order.number },
+  };
+}
+
+router.get('/packlink/test', async (_req, res) => {
+  const cfg = await getPacklinkConfig();
+  if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code before testing');
   try {
-    const result = await ssTestConnection();
+    const result = await plpTestConnection(cfg.fromCountry, cfg.fromPostalCode);
     res.json(result);
   } catch (e: any) {
-    throw new HttpError(502, e.message ?? 'ShipStation test failed');
+    throw new HttpError(502, e.message ?? 'Packlink test failed');
   }
-});
-
-router.get('/shipstation/carriers', async (_req, res) => {
-  const carriers = await ssListCarriers();
-  res.json({ carriers });
 });
 
 const ratesSchema = z.object({
   orderId: z.string(),
   packageId: z.string(),
-  carrierCode: z.string(),
 });
-router.post('/shipstation/rates', async (req, res) => {
-  const { orderId, packageId, carrierCode } = ratesSchema.parse(req.body);
-  const cfg = await getShipstationConfig();
+router.post('/packlink/rates', async (req, res) => {
+  const { orderId, packageId } = ratesSchema.parse(req.body);
+  const cfg = await getPacklinkConfig();
   if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code in admin settings first');
 
   const order = await prisma.order.findUnique({
@@ -96,86 +159,49 @@ router.post('/shipstation/rates', async (req, res) => {
   const pkg = await prisma.package.findUnique({ where: { id: packageId } });
   if (!pkg) throw new HttpError(404, 'Package not found');
 
-  // Sum product weights
   const productWeightOz = order.items.reduce((sum, i) => {
     const grams = i.product.weightGrams ?? 0;
     const oz = (grams * i.quantity) / 28.3495;
     return sum + oz;
   }, 0);
-  const totalWeightOz = Math.max(1, productWeightOz + pkg.emptyWeightOz);
-
+  const totalWeightOz = Math.max(0.5, productWeightOz + pkg.emptyWeightOz);
   const ship: any = order.shippingAddress;
-  const rates = await ssGetRates({
-    carrierCode,
+
+  const services = await plpGetRates({
+    fromCountry: cfg.fromCountry,
     fromPostalCode: cfg.fromPostalCode,
     toCountry: ship.country ?? 'US',
     toPostalCode: ship.postalCode,
-    toState: ship.region,
-    weight: { value: totalWeightOz, units: 'ounces' },
-    dimensions: {
-      length: pkg.lengthIn, width: pkg.widthIn, height: pkg.heightIn, units: 'inches',
-    },
-    residential: true,
+    priceCents: order.subtotalCents,
+    weightKg: ozToKg(totalWeightOz),
   });
-  res.json({ rates, weightOz: totalWeightOz });
+  res.json({ services, weightKg: ozToKg(totalWeightOz) });
 });
 
-router.post('/shipstation/push/:orderId', async (req, res) => {
-  const order = await prisma.order.findUnique({
-    where: { id: req.params.orderId },
-    include: { items: true },
-  });
-  if (!order) throw new HttpError(404, 'Order not found');
-  const cfg = await getShipstationConfig();
-
-  const ship: any = order.shippingAddress;
-  const bill: any = order.billingAddress ?? order.shippingAddress;
-
-  const input: SsCreateOrderInput = {
-    orderNumber: order.number,
-    orderDate: order.createdAt.toISOString(),
-    orderStatus: order.paymentStatus === 'CAPTURED' ? 'awaiting_shipment' : 'awaiting_payment',
-    customerEmail: order.email,
-    customerUsername: order.email,
-    billTo: {
-      name: `${bill.firstName ?? ''} ${bill.lastName ?? ''}`.trim() || order.email,
-      company: bill.company ?? undefined,
-      street1: bill.line1, street2: bill.line2 ?? undefined,
-      city: bill.city, state: bill.region,
-      postalCode: bill.postalCode, country: bill.country ?? 'US',
-      phone: bill.phone ?? undefined,
-    },
-    shipTo: {
-      name: `${ship.firstName ?? ''} ${ship.lastName ?? ''}`.trim() || order.email,
-      company: ship.company ?? undefined,
-      street1: ship.line1, street2: ship.line2 ?? undefined,
-      city: ship.city, state: ship.region,
-      postalCode: ship.postalCode, country: ship.country ?? 'US',
-      phone: ship.phone ?? undefined,
-      residential: true,
-    },
-    items: order.items.map((i) => ({
-      sku: undefined,
-      name: i.name,
-      quantity: i.quantity,
-      unitPrice: i.unitPriceCents / 100,
-    })),
-    amountPaid: order.totalCents / 100,
-    taxAmount: order.taxCents / 100,
-    shippingAmount: order.shippingCents / 100,
-    internalNotes: order.notes ?? undefined,
-  };
-
-  const result = await ssCreateOrder(input);
+const pushSchema = z.object({ packageId: z.string(), serviceId: z.number() });
+router.post('/packlink/push/:orderId', async (req, res) => {
+  const { packageId, serviceId } = pushSchema.parse(req.body);
+  const input = await buildShipmentInput(req.params.orderId, packageId, serviceId);
+  const shipment = await plpCreateShipment(input);
 
   await prisma.orderStatusEvent.create({
     data: {
-      orderId: order.id,
+      orderId: req.params.orderId,
       kind: 'fulfillment',
-      message: `Pushed to ShipStation (orderId=${result.orderId}, key=${result.orderKey})`,
+      message: `Pushed to Packlink Pro (ref=${shipment.reference}, ${shipment.carrier_name} ${shipment.service_name})`,
     },
   });
-  res.json({ ok: true, shipstation: result });
+  res.json({ ok: true, shipment });
+});
+
+router.get('/packlink/shipments/:reference', async (req, res) => {
+  const shipment = await plpFetchShipment(req.params.reference);
+  res.json({ shipment });
+});
+
+router.get('/packlink/shipments/:reference/labels', async (req, res) => {
+  const labels = await plpGetLabels(req.params.reference);
+  res.json({ labels });
 });
 
 export default router;

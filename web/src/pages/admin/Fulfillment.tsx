@@ -16,12 +16,6 @@ interface Package {
   sortOrder: number;
 }
 
-interface Carrier {
-  name: string;
-  code: string;
-  primary: boolean;
-}
-
 type Tab = 'packages' | 'carriers' | 'tools';
 
 export function AdminFulfillment() {
@@ -205,37 +199,17 @@ function PackagesTab() {
 }
 
 function CarriersTab() {
-  const [carriers, setCarriers] = useState<Carrier[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.get<{ carriers: Carrier[] }>('/admin/fulfillment/shipstation/carriers')
-      .then((r) => setCarriers(r.carriers))
-      .catch((e) => setError(e.message ?? 'Failed to load carriers'));
-  }, []);
-
   return (
     <div className="admin-card">
-      <h3 style={{ marginTop: 0 }}>Active carriers in ShipStation</h3>
-      {error && <div className="error">{error}</div>}
-      {!carriers && !error && <p className="muted">Loading…</p>}
-      {carriers && carriers.length === 0 && (
-        <p className="muted">No carriers connected in ShipStation. Add them in your ShipStation account → Account Settings → Selling Channels → Carriers.</p>
-      )}
-      {carriers && carriers.length > 0 && (
-        <table className="admin-table">
-          <thead><tr><th>Name</th><th>Code</th><th>Primary</th></tr></thead>
-          <tbody>
-            {carriers.map((c) => (
-              <tr key={c.code}>
-                <td>{c.name}</td>
-                <td><code>{c.code}</code></td>
-                <td>{c.primary ? '✓' : ''}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <h3 style={{ marginTop: 0 }}>Carriers</h3>
+      <p className="muted">
+        Packlink Pro aggregates its own carriers — UPS, DHL, USPS, etc. — and surfaces them as
+        services when you request a rate quote for a specific origin / destination / package.
+      </p>
+      <p className="muted">
+        To see which carriers you have access to, open an order in Orders and click
+        <strong> Get rates</strong> (coming soon on the order detail page).
+      </p>
     </div>
   );
 }
@@ -248,8 +222,8 @@ function ToolsTab() {
     setBusy(true);
     setTestResult(null);
     try {
-      const r = await api.get<{ ok: boolean; carriers: number }>('/admin/fulfillment/shipstation/test');
-      setTestResult(`✅ Connected. ${r.carriers} carriers active.`);
+      const r = await api.get<{ ok: boolean; sampleServices: number }>('/admin/fulfillment/packlink/test');
+      setTestResult(`✅ Connected. ${r.sampleServices} services returned for the sample quote.`);
     } catch (e: any) {
       setTestResult(`❌ ${e.message ?? 'Connection failed'}`);
     } finally { setBusy(false); }
@@ -258,8 +232,11 @@ function ToolsTab() {
   return (
     <div>
       <div className="admin-card">
-        <h3 style={{ marginTop: 0 }}>Test ShipStation connection</h3>
-        <p className="muted" style={{ fontSize: '.9rem' }}>Pings the ShipStation API with the credentials in <a href="/admin/settings">Admin → Settings → Shipping</a>.</p>
+        <h3 style={{ marginTop: 0 }}>Test Packlink Pro connection</h3>
+        <p className="muted" style={{ fontSize: '.9rem' }}>
+          Runs a sample rate quote using your API key + ship-from postal code configured in{' '}
+          <a href="/admin/settings">Admin → Settings → Packlink Pro</a>.
+        </p>
         <button className="btn" disabled={busy} onClick={() => void test()}>
           {busy ? 'Testing…' : 'Run test'}
         </button>
@@ -271,14 +248,15 @@ function ToolsTab() {
       <div className="admin-card">
         <h3 style={{ marginTop: 0 }}>Webhook URL</h3>
         <p className="muted" style={{ fontSize: '.9rem', marginBottom: '.5rem' }}>
-          Paste this into ShipStation → Account Settings → Selling Channels → Webhooks → SHIP_NOTIFY:
+          Paste this into <em>Packlink Pro → Settings → Webhooks</em>. Set a shared secret in admin
+          settings — the app rejects any webhook without the matching token.
         </p>
         <code style={{ display: 'block', padding: '.6rem', background: 'var(--bg-alt)', borderRadius: 4, wordBreak: 'break-all' }}>
-          https://printingcomics.com/api/webhooks/shipstation
+          https://printingcomics.com/api/webhooks/packlinkpro?token=&lt;your-secret&gt;
         </code>
         <p className="muted" style={{ fontSize: '.85rem', marginTop: '.5rem' }}>
-          When a shipment is marked shipped in ShipStation, the order in this app auto-updates with the
-          tracking number + carrier and the customer gets a shipping notification email.
+          When Packlink updates a shipment, the order in this app auto-captures the tracking code +
+          carrier and emails the customer on SHIPPED.
         </p>
       </div>
     </div>

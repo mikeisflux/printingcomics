@@ -11,7 +11,7 @@ export const SECRET_KEYS = new Set<string>([
   'mailgun.apiKey',
   'mailgun.webhookSigningKey',
   'anthropic.apiKey',
-  'shipstation.apiSecret',
+  'packlinkpro.apiKey',
 ]);
 
 /**
@@ -41,20 +41,20 @@ export const SETTING_KEYS = {
     enableCard: 'paypal.enableCard',
     enablePaypalButton: 'paypal.enablePaypalButton',
   },
-  shipstation: {
-    apiKey: 'shipstation.apiKey',
-    apiSecret: 'shipstation.apiSecret',
-    storeId: 'shipstation.storeId',           // optional ShipStation store id
-    autoPushOnPaid: 'shipstation.autoPushOnPaid',
-    fromName: 'shipstation.fromName',         // your business / sender name
-    fromCompany: 'shipstation.fromCompany',
-    fromStreet1: 'shipstation.fromStreet1',
-    fromStreet2: 'shipstation.fromStreet2',
-    fromCity: 'shipstation.fromCity',
-    fromState: 'shipstation.fromState',
-    fromPostalCode: 'shipstation.fromPostalCode',
-    fromCountry: 'shipstation.fromCountry',
-    fromPhone: 'shipstation.fromPhone',
+  packlinkpro: {
+    apiKey: 'packlinkpro.apiKey',
+    autoPushOnPaid: 'packlinkpro.autoPushOnPaid',
+    webhookSecret: 'packlinkpro.webhookSecret',
+    fromName: 'packlinkpro.fromName',
+    fromCompany: 'packlinkpro.fromCompany',
+    fromEmail: 'packlinkpro.fromEmail',
+    fromPhone: 'packlinkpro.fromPhone',
+    fromStreet1: 'packlinkpro.fromStreet1',
+    fromStreet2: 'packlinkpro.fromStreet2',
+    fromCity: 'packlinkpro.fromCity',
+    fromState: 'packlinkpro.fromState',
+    fromPostalCode: 'packlinkpro.fromPostalCode',
+    fromCountry: 'packlinkpro.fromCountry',
   },
   mailgun: {
     apiKey: 'mailgun.apiKey',
@@ -83,11 +83,10 @@ function envFallback(key: string): unknown {
     case 'paypal.clientId':     return process.env.PAYPAL_CLIENT_ID ?? '';
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
     case 'paypal.webhookId':    return process.env.PAYPAL_WEBHOOK_ID ?? '';
-    case 'shipstation.apiKey':        return process.env.SHIPSTATION_API_KEY ?? '';
-    case 'shipstation.apiSecret':     return process.env.SHIPSTATION_API_SECRET ?? '';
-    case 'shipstation.storeId':       return process.env.SHIPSTATION_STORE_ID ?? '';
-    case 'shipstation.autoPushOnPaid': return process.env.SHIPSTATION_AUTO_PUSH === 'true';
-    case 'shipstation.fromCountry':   return 'US';
+    case 'packlinkpro.apiKey':          return process.env.PACKLINK_API_KEY ?? '';
+    case 'packlinkpro.autoPushOnPaid':  return process.env.PACKLINK_AUTO_PUSH === 'true';
+    case 'packlinkpro.webhookSecret':   return process.env.PACKLINK_WEBHOOK_SECRET ?? '';
+    case 'packlinkpro.fromCountry':     return 'US';
     case 'mailgun.apiKey':            return process.env.MAILGUN_API_KEY ?? '';
     case 'mailgun.domain':            return process.env.MAILGUN_DOMAIN ?? '';
     case 'mailgun.region':            return process.env.MAILGUN_REGION ?? 'us';
@@ -205,32 +204,31 @@ export async function getPaypalConfig() {
   };
 }
 
-export async function getShipstationConfig() {
+export async function getPacklinkConfig() {
   const keys = [
-    'shipstation.apiKey', 'shipstation.apiSecret', 'shipstation.storeId',
-    'shipstation.autoPushOnPaid',
-    'shipstation.fromName', 'shipstation.fromCompany',
-    'shipstation.fromStreet1', 'shipstation.fromStreet2',
-    'shipstation.fromCity', 'shipstation.fromState',
-    'shipstation.fromPostalCode', 'shipstation.fromCountry',
-    'shipstation.fromPhone',
+    'packlinkpro.apiKey', 'packlinkpro.autoPushOnPaid', 'packlinkpro.webhookSecret',
+    'packlinkpro.fromName', 'packlinkpro.fromCompany', 'packlinkpro.fromEmail',
+    'packlinkpro.fromPhone',
+    'packlinkpro.fromStreet1', 'packlinkpro.fromStreet2',
+    'packlinkpro.fromCity', 'packlinkpro.fromState',
+    'packlinkpro.fromPostalCode', 'packlinkpro.fromCountry',
   ] as const;
   const values = await Promise.all(keys.map((k) => getSetting<string | boolean>(k)));
   const v = (i: number) => (values[i] as string | undefined) ?? '';
   return {
     apiKey: v(0),
-    apiSecret: v(1),
-    storeId: v(2),
-    autoPushOnPaid: Boolean(values[3]),
-    fromName: v(4),
-    fromCompany: v(5),
-    fromStreet1: v(6),
-    fromStreet2: v(7),
-    fromCity: v(8),
-    fromState: v(9),
-    fromPostalCode: v(10),
-    fromCountry: v(11) || 'US',
-    fromPhone: v(12),
+    autoPushOnPaid: Boolean(values[1]),
+    webhookSecret: v(2),
+    fromName: v(3),
+    fromCompany: v(4),
+    fromEmail: v(5),
+    fromPhone: v(6),
+    fromStreet1: v(7),
+    fromStreet2: v(8),
+    fromCity: v(9),
+    fromState: v(10),
+    fromPostalCode: v(11),
+    fromCountry: v(12) || 'US',
   };
 }
 
