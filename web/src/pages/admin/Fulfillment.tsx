@@ -246,17 +246,11 @@ function ToolsTab() {
       </div>
 
       <div className="admin-card">
-        <h3 style={{ marginTop: 0 }}>Webhook URL</h3>
-        <p className="muted" style={{ fontSize: '.9rem', marginBottom: '.5rem' }}>
-          Paste this into <em>Packlink Pro → Settings → Webhooks</em>. Set a shared secret in admin
-          settings — the app rejects any webhook without the matching token.
-        </p>
-        <code style={{ display: 'block', padding: '.6rem', background: 'var(--bg-alt)', borderRadius: 4, wordBreak: 'break-all' }}>
-          https://printingcomics.com/api/webhooks/packlinkpro?token=&lt;your-secret&gt;
-        </code>
-        <p className="muted" style={{ fontSize: '.85rem', marginTop: '.5rem' }}>
-          When Packlink updates a shipment, the order in this app auto-captures the tracking code +
-          carrier and emails the customer on SHIPPED.
+        <h3 style={{ marginTop: 0 }}>Shipment sync</h3>
+        <p className="muted" style={{ fontSize: '.9rem', margin: 0 }}>
+          Packlink Pro doesn't offer outbound webhooks, so the server polls their API every
+          10 minutes for every order that's been pushed. Status changes, tracking codes, and
+          carrier names auto-sync to the order — no manual refresh needed.
         </p>
       </div>
     </div>

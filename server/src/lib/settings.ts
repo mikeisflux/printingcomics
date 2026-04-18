@@ -43,6 +43,7 @@ export const SETTING_KEYS = {
   },
   packlinkpro: {
     apiKey: 'packlinkpro.apiKey',
+    baseUrl: 'packlinkpro.baseUrl',
     autoPushOnPaid: 'packlinkpro.autoPushOnPaid',
     webhookSecret: 'packlinkpro.webhookSecret',
     fromName: 'packlinkpro.fromName',
@@ -84,6 +85,7 @@ function envFallback(key: string): unknown {
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
     case 'paypal.webhookId':    return process.env.PAYPAL_WEBHOOK_ID ?? '';
     case 'packlinkpro.apiKey':          return process.env.PACKLINK_API_KEY ?? '';
+    case 'packlinkpro.baseUrl':         return process.env.PACKLINK_BASE_URL ?? 'https://api.packlink.com/v1';
     case 'packlinkpro.autoPushOnPaid':  return process.env.PACKLINK_AUTO_PUSH === 'true';
     case 'packlinkpro.webhookSecret':   return process.env.PACKLINK_WEBHOOK_SECRET ?? '';
     case 'packlinkpro.fromCountry':     return 'US';
@@ -206,7 +208,8 @@ export async function getPaypalConfig() {
 
 export async function getPacklinkConfig() {
   const keys = [
-    'packlinkpro.apiKey', 'packlinkpro.autoPushOnPaid', 'packlinkpro.webhookSecret',
+    'packlinkpro.apiKey', 'packlinkpro.baseUrl',
+    'packlinkpro.autoPushOnPaid', 'packlinkpro.webhookSecret',
     'packlinkpro.fromName', 'packlinkpro.fromCompany', 'packlinkpro.fromEmail',
     'packlinkpro.fromPhone',
     'packlinkpro.fromStreet1', 'packlinkpro.fromStreet2',
@@ -217,18 +220,19 @@ export async function getPacklinkConfig() {
   const v = (i: number) => (values[i] as string | undefined) ?? '';
   return {
     apiKey: v(0),
-    autoPushOnPaid: Boolean(values[1]),
-    webhookSecret: v(2),
-    fromName: v(3),
-    fromCompany: v(4),
-    fromEmail: v(5),
-    fromPhone: v(6),
-    fromStreet1: v(7),
-    fromStreet2: v(8),
-    fromCity: v(9),
-    fromState: v(10),
-    fromPostalCode: v(11),
-    fromCountry: v(12) || 'US',
+    baseUrl: (v(1) || 'https://api.packlink.com/v1').replace(/\/$/, ''),
+    autoPushOnPaid: Boolean(values[2]),
+    webhookSecret: v(3),
+    fromName: v(4),
+    fromCompany: v(5),
+    fromEmail: v(6),
+    fromPhone: v(7),
+    fromStreet1: v(8),
+    fromStreet2: v(9),
+    fromCity: v(10),
+    fromState: v(11),
+    fromPostalCode: v(12),
+    fromCountry: v(13) || 'US',
   };
 }
 

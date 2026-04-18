@@ -254,9 +254,6 @@ function SeoSection() {
 
 function PacklinkSection() {
   const { settings, save } = useSettings();
-  const webhookUrl = settings['packlinkpro.webhookSecret']
-    ? `https://printingcomics.com/api/webhooks/packlinkpro?token=${encodeURIComponent(String(settings['packlinkpro.webhookSecret']))}`
-    : 'https://printingcomics.com/api/webhooks/packlinkpro';
   return (
     <>
       <div className="admin-card">
@@ -267,6 +264,12 @@ function PacklinkSection() {
           Then fill the ship-from address below — required for rate quotes.
         </p>
         <Field label="API key" type="password" placeholder="paste to update" value={settings['packlinkpro.apiKey']} onSave={(v) => save('packlinkpro.apiKey', v)} />
+        <Field
+          label="API base URL (override if Packlink gave you a different endpoint)"
+          value={settings['packlinkpro.baseUrl']}
+          onSave={(v) => save('packlinkpro.baseUrl', v)}
+          placeholder="https://api.packlink.com/v1"
+        />
         <Toggle label="Auto-push paid orders to Packlink Pro" value={settings['packlinkpro.autoPushOnPaid']} onSave={(v) => save('packlinkpro.autoPushOnPaid', v)} />
       </div>
 
@@ -296,15 +299,13 @@ function PacklinkSection() {
       </div>
 
       <div className="admin-card">
-        <h3>Webhook</h3>
-        <p className="muted" style={{ fontSize: '.85rem', marginBottom: '.5rem' }}>
-          Paste this URL into <em>Packlink Pro → Settings → Webhooks</em>. Set the shared token below
-          — the app rejects any webhook call that doesn't carry the same token in the query string.
+        <h3>Sync schedule</h3>
+        <p className="muted" style={{ fontSize: '.85rem', margin: 0 }}>
+          Packlink Pro doesn't expose outbound webhooks, so the server polls every
+          10 minutes for shipment state changes on any order you've pushed.
+          Status, carrier, and tracking code auto-update on the order — the customer
+          gets a shipping notification email the first time an order transitions to SHIPPED.
         </p>
-        <Field label="Webhook shared secret (random string)" type="password" placeholder="paste to update" value={settings['packlinkpro.webhookSecret']} onSave={(v) => save('packlinkpro.webhookSecret', v)} />
-        <code style={{ display: 'block', padding: '.5rem', background: 'var(--bg-alt)', borderRadius: 4, wordBreak: 'break-all' }}>
-          {webhookUrl}
-        </code>
       </div>
     </>
   );

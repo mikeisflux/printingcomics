@@ -184,6 +184,12 @@ router.post('/packlink/push/:orderId', async (req, res) => {
   const input = await buildShipmentInput(req.params.orderId, packageId, serviceId);
   const shipment = await plpCreateShipment(input);
 
+  // Persist the Packlink reference on the order so the poller can track it.
+  await prisma.order.update({
+    where: { id: req.params.orderId },
+    data: { plpReference: shipment.reference },
+  });
+
   await prisma.orderStatusEvent.create({
     data: {
       orderId: req.params.orderId,

@@ -295,6 +295,9 @@ model Order {
   billingAddress  Json
   shippingMethod  String?
   trackingNumber  String?
+  // Packlink Pro shipment reference once the order has been pushed. Used
+  // by the polling worker to sync status without needing a webhook.
+  plpReference    String?
   notes           String?
 
   items           OrderItem[]

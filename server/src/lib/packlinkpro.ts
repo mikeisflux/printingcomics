@@ -15,8 +15,6 @@ import { HttpError } from '../middleware/error.js';
  *   - download label: GET /shipments/{reference}/labels
  */
 
-const BASE_URL = 'https://api.packlink.com/v1';
-
 function headers(apiKey: string): Record<string, string> {
   return {
     Authorization: apiKey,
@@ -28,13 +26,18 @@ function headers(apiKey: string): Record<string, string> {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const cfg = await getPacklinkConfig();
   if (!cfg.apiKey) throw new HttpError(503, 'Packlink Pro not configured (missing API key in admin settings)');
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const url = `${cfg.baseUrl}${path}`;
+  const res = await fetch(url, {
     ...init,
     headers: { ...headers(cfg.apiKey), ...(init.headers ?? {}) },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new HttpError(502, `Packlink ${res.status}: ${body}`);
+    // Expose the actual Packlink response body to the admin so we can see
+    // what Packlink is complaining about (wrong endpoint? wrong auth?
+    // missing field? country not supported?).
+    const truncated = body.length > 600 ? body.slice(0, 600) + '…' : body;
+    throw new HttpError(502, `Packlink ${res.status} at ${path}: ${truncated || '(empty body)'}`);
   }
   return res.json() as Promise<T>;
 }
