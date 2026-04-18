@@ -26,6 +26,7 @@ import contactRoutes from './routes/contact.js';
 import aiRoutes from './routes/ai.js';
 import mailgunWebhookRoutes from './routes/webhooks/mailgun.js';
 import paypalWebhookRoutes from './routes/webhooks/paypal.js';
+import shipstationWebhookRoutes from './routes/webhooks/shipstation.js';
 
 const app = express();
 
@@ -66,6 +67,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);
 app.use('/api/webhooks/paypal', paypalWebhookRoutes);
+app.use('/api/webhooks/shipstation', shipstationWebhookRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Public: serve uploaded email attachments (behind auth check in routes)

@@ -119,6 +119,20 @@ export function AdminOrderDetail() {
         <div className="row" style={{ gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
+          <button
+            className="btn secondary"
+            onClick={async () => {
+              try {
+                await api.post(`/admin/fulfillment/shipstation/push/${order.id}`);
+                alert('Pushed to ShipStation.');
+                load();
+              } catch (e: any) {
+                alert(e.message ?? 'Push failed');
+              }
+            }}
+          >
+            Push to ShipStation
+          </button>
           {order.paymentStatus === 'CAPTURED' && (
             <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
               Refund via PayPal

@@ -317,13 +317,38 @@ model OrderStatusEvent {
   orderId    String
   fromStatus String?
   toStatus   String?
-  kind       String   // "status" | "payment" | "tracking" | "note" | "email"
+  kind       String   // "status" | "payment" | "tracking" | "note" | "email" | "fulfillment"
   message    String?
   actorId    String?
   actorName  String?
   createdAt  DateTime @default(now())
 
   @@index([orderId])
+}
+
+// Available shipping containers the fulfillment team can use. Drives the
+// ShipStation rate-quote API (which needs dimensions + weight to price)
+// and the per-order packing slip.
+model Package {
+  id            String   @id @default(cuid())
+  name          String   // "Small mailer", "Comic flat", "Box 10×10×6", etc.
+  description   String?
+  // Inner dimensions in inches.
+  lengthIn      Float
+  widthIn       Float
+  heightIn      Float
+  // Empty package weight in ounces (added to product weight at quote time).
+  emptyWeightOz Float    @default(0)
+  // Optional max packed weight (ounces).
+  maxWeightOz   Float?
+  // Optional cost per package, for cost accounting.
+  costCents     Int      @default(0)
+  // True for the system default. Only one Package should have isDefault=true.
+  isDefault     Boolean  @default(false)
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model OrderItem {

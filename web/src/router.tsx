@@ -45,6 +45,7 @@ import { AdminEmailTemplateEdit } from './pages/admin/EmailTemplateEdit';
 import { AdminEmailCampaignEdit } from './pages/admin/EmailCampaignEdit';
 import { AdminSecurity } from './pages/admin/Security';
 import { AdminMedia } from './pages/admin/Media';
+import { AdminFulfillment } from './pages/admin/Fulfillment';
 
 export const router = createBrowserRouter([
   {
@@ -105,6 +106,7 @@ export const router = createBrowserRouter([
       { path: 'email/templates/:id', element: <AdminEmailTemplateEdit /> },
       { path: 'email/campaigns/:id', element: <AdminEmailCampaignEdit /> },
       { path: 'media', element: <AdminMedia /> },
+      { path: 'fulfillment', element: <AdminFulfillment /> },
       { path: 'security', element: <AdminSecurity /> },
       { path: 'settings', element: <AdminSettings /> },
     ],
