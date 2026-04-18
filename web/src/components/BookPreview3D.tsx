@@ -364,9 +364,17 @@ function Book({ spec }: { spec: BookSpec }) {
             </mesh>
           </group>
 
-          {/* Back cover — mirrored tilt so the right edge is at -t/2. */}
+          {/* Back cover — mirrored tilt so the right edge is at -t/2.
+              The mesh itself is rotated 180° around Y so its local +Z face
+              (which carries the unmirrored texture UVs) points outward;
+              without this the uploaded back-cover image would either appear
+              mirrored or read black from the camera's back-of-book angle. */}
           <group position={[-w / 2, 0, 0]} rotation={[0, saddleTilt, 0]}>
-            <mesh position={[w / 2, 0, -coverT / 2]} castShadow receiveShadow>
+            <mesh
+              position={[w / 2, 0, -coverT / 2]}
+              rotation={[0, Math.PI, 0]}
+              castShadow receiveShadow
+            >
               <boxGeometry args={[w, h, coverT]} />
               <meshStandardMaterial
                 {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
@@ -392,8 +400,12 @@ function Book({ spec }: { spec: BookSpec }) {
             />
           </mesh>
 
+          {/* Back cover — rotated 180° around Y so the mesh's local +Z face
+              (unmirrored UVs) points outward toward the camera when it
+              orbits behind the book. Same fix as saddle-stitch. */}
           <mesh
             position={[0, 0, -t / 2 - coverOffset]}
+            rotation={[0, Math.PI, 0]}
             castShadow receiveShadow
           >
             <boxGeometry args={[w, h, coverT]} />
