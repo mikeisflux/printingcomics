@@ -314,11 +314,17 @@ function ShippingSection() {
   const [zones, setZones] = useState<any[]>([]);
   const load = () => api.get<{ zones: any[] }>('/admin/settings/shipping').then((r) => setZones(r.zones));
   useEffect(() => { void load(); }, []);
+
   const addZone = async () => {
     const name = prompt('Zone name');
     if (!name) return;
     const countries = (prompt('Countries (comma-separated ISO codes)', 'US') ?? 'US').split(',').map((s) => s.trim().toUpperCase());
     await api.post('/admin/settings/shipping/zones', { name, countries });
+    load();
+  };
+  const deleteZone = async (z: any) => {
+    if (!confirm(`Delete zone "${z.name}" and all its rates?`)) return;
+    await api.del(`/admin/settings/shipping/zones/${z.id}`);
     load();
   };
   const addRate = async (zoneId: string) => {
@@ -329,18 +335,60 @@ function ShippingSection() {
     await api.post('/admin/settings/shipping/rates', { zoneId, name, rateCents, estimatedDays });
     load();
   };
+  const deleteRate = async (r: any) => {
+    if (!confirm(`Delete rate "${r.name}"?`)) return;
+    await api.del(`/admin/settings/shipping/rates/${r.id}`);
+    load();
+  };
+
   return (
     <div className="admin-card">
-      <div className="spread"><h3 style={{ margin: 0 }}>Shipping zones</h3><button className="btn" onClick={addZone}>Add zone</button></div>
+      <div className="spread">
+        <h3 style={{ margin: 0 }}>Shipping zones</h3>
+        <button className="btn" onClick={addZone}>Add zone</button>
+      </div>
+      {zones.length === 0 && <p className="muted" style={{ marginTop: '1rem' }}>No zones yet.</p>}
       {zones.map((z) => (
         <div key={z.id} style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '1rem' }}>
-          <div className="spread">
-            <strong>{z.name}</strong> <span className="muted">({z.countries.join(', ')})</span>
-            <button className="btn secondary" onClick={() => addRate(z.id)}>Add rate</button>
+          <div className="spread" style={{ alignItems: 'center', gap: '.75rem', flexWrap: 'wrap' }}>
+            <div>
+              <strong>{z.name}</strong>{' '}
+              <span className="muted">({z.countries.join(', ')})</span>
+            </div>
+            <div className="row" style={{ gap: '.5rem' }}>
+              <button className="btn secondary" onClick={() => addRate(z.id)}>Add rate</button>
+              <button
+                className="btn secondary"
+                style={{ color: '#b91c1c', borderColor: '#b91c1c' }}
+                onClick={() => deleteZone(z)}
+              >
+                Delete zone
+              </button>
+            </div>
           </div>
-          <ul>
-            {z.rates.map((r: any) => <li key={r.id}>{r.name} — ${(r.rateCents / 100).toFixed(2)} ({r.estimatedDays ?? '—'})</li>)}
-          </ul>
+          {z.rates.length === 0 ? (
+            <p className="muted" style={{ fontSize: '.85rem', margin: '.5rem 0 0' }}>No rates in this zone.</p>
+          ) : (
+            <ul style={{ margin: '.5rem 0 0', paddingLeft: '1.25rem' }}>
+              {z.rates.map((r: any) => (
+                <li key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.25rem' }}>
+                  <span style={{ flex: 1 }}>
+                    {r.name} — ${(r.rateCents / 100).toFixed(2)} ({r.estimatedDays ?? '—'})
+                  </span>
+                  <button
+                    onClick={() => deleteRate(r)}
+                    style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: '#b91c1c', fontSize: '.85rem',
+                    }}
+                    title="Delete rate"
+                  >
+                    × Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ))}
     </div>
