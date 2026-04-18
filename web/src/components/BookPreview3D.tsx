@@ -140,9 +140,14 @@ function buildSpineCanvas(spec: BookSpec, thickness: number): HTMLCanvasElement 
 
 function Book({ spec }: { spec: BookSpec }) {
   const ref = useRef<THREE.Group>(null);
-  const w = spec.widthIn * SCALE;
-  const h = spec.heightIn * SCALE;
-  const t = Math.max(0.06, Math.min(1.2, spec.pageCount * 0.0035 * SCALE * 6));
+  // Normalize the book so its largest dimension is always ~3.2 scene units.
+  // Different trim sizes still differ in aspect ratio, but they all frame
+  // the same way against the static camera.
+  const TARGET_MAX = 3.2;
+  const k = TARGET_MAX / Math.max(spec.widthIn, spec.heightIn);
+  const w = spec.widthIn * k;
+  const h = spec.heightIn * k;
+  const t = Math.max(0.06, Math.min(1.4, spec.pageCount * 0.0035 * k * 6));
 
   const coverTexture = useMemo(() => {
     const tex = new THREE.CanvasTexture(buildCoverCanvas(spec));
