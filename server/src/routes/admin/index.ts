@@ -9,6 +9,7 @@ import seo from './seo.js';
 import email from './email.js';
 import security from './security.js';
 import backup from './backup.js';
+import media from './media.js';
 import { requireAdmin } from '../../middleware/auth.js';
 
 const router = Router();
@@ -24,5 +25,6 @@ router.use('/seo', seo);
 router.use('/email', email);
 router.use('/security', security);
 router.use('/backup', backup);
+router.use('/media', media);
 
 export default router;

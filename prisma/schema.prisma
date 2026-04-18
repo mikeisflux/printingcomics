@@ -46,6 +46,7 @@ model User {
   addresses    Address[]
   orders       Order[]
   carts        Cart[]
+  mediaUploads MediaFile[]
 }
 
 model Address {
@@ -326,6 +327,34 @@ model Setting {
   // If true, `value` is AES-GCM encrypted ciphertext stored as hex "iv:ct:tag".
   encrypted  Boolean  @default(false)
   updatedAt  DateTime @updatedAt
+}
+
+// ============================================================
+// Media Library (ported patterns from indiecrowdfund_2.0 /admin/media)
+// ============================================================
+
+model MediaFile {
+  id           String   @id @default(cuid())
+  filename     String   @unique // storage key on disk (randomized)
+  originalName String
+  mimeType     String
+  size         Int
+  url          String   // public URL (starts with /uploads/)
+  thumbnailUrl String?
+  width        Int?
+  height       Int?
+  duration     Int?     // seconds, for video/audio
+  folder       String   @default("/") // flat virtual hierarchy — use "/subfolder" strings
+  tags         String[]
+  altText      String?
+  uploaderId   String?
+  uploader     User?    @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([folder])
+  @@index([mimeType])
+  @@index([createdAt])
 }
 
 // ============================================================

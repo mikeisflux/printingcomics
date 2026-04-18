@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
+import { MediaPicker } from '../../components/MediaPicker';
 
 interface VolumeTier { minQty: number; pricePerUnitCents: number; }
 interface Image { url: string; alt?: string; }
 interface Category { id: string; slug: string; name: string; }
 interface Variant { id: string; sku?: string | null; label: string; priceCents: number; stock: number; active: boolean; }
+interface OptionValue { id: string; label: string; priceModifierCents: number; sortOrder: number; }
+interface Option { id: string; name: string; sortOrder: number; values: OptionValue[]; }
 
 interface ProductDraft {
   slug: string;
@@ -43,42 +46,47 @@ export function AdminProductEdit() {
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft);
   const [categories, setCategories] = useState<Category[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [options, setOptions] = useState<Option[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  useEffect(() => {
-    void api.get<{ categories: Category[] }>('/admin/categories').then((r) => setCategories(r.categories));
+  const load = async () => {
+    const catsRes = await api.get<{ categories: Category[] }>('/admin/categories');
+    setCategories(catsRes.categories);
     if (!isNew && id) {
-      void api.get<{ product: any }>(`/admin/products/${id}`).then((r) => {
-        const p = r.product;
-        setDraft({
-          slug: p.slug, name: p.name,
-          shortDescription: p.shortDescription ?? '',
-          description: p.description ?? '',
-          priceCents: p.priceCents,
-          hasVariants: p.hasVariants,
-          sku: p.sku ?? '',
-          stock: p.stock,
-          madeToOrder: p.madeToOrder,
-          active: p.active,
-          minQuantity: p.minQuantity,
-          weightGrams: p.weightGrams,
-          volumeTiers: p.volumeTiers ?? [],
-          seoTitle: p.seoTitle ?? '',
-          seoDescription: p.seoDescription ?? '',
-          categoryIds: p.categories.map((c: any) => c.category.id),
-          images: p.images.map((i: any) => ({ url: i.url, alt: i.alt ?? undefined })),
-        });
-        setVariants(p.variants);
+      const r = await api.get<{ product: any }>(`/admin/products/${id}`);
+      const p = r.product;
+      setDraft({
+        slug: p.slug, name: p.name,
+        shortDescription: p.shortDescription ?? '',
+        description: p.description ?? '',
+        priceCents: p.priceCents,
+        hasVariants: p.hasVariants,
+        sku: p.sku ?? '',
+        stock: p.stock,
+        madeToOrder: p.madeToOrder,
+        active: p.active,
+        minQuantity: p.minQuantity,
+        weightGrams: p.weightGrams,
+        volumeTiers: p.volumeTiers ?? [],
+        seoTitle: p.seoTitle ?? '',
+        seoDescription: p.seoDescription ?? '',
+        categoryIds: p.categories.map((c: any) => c.category.id),
+        images: p.images.map((i: any) => ({ url: i.url, alt: i.alt ?? undefined })),
       });
+      setVariants(p.variants);
+      setOptions(p.options ?? []);
     }
-  }, [id, isNew]);
+  };
+
+  useEffect(() => { void load(); }, [id]);
 
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
-      const payload = {
+      const payload: any = {
         ...draft,
         sku: draft.sku || undefined,
         shortDescription: draft.shortDescription || undefined,
@@ -100,23 +108,52 @@ export function AdminProductEdit() {
     }
   };
 
+  const duplicate = async () => {
+    if (!id) return;
+    const payload: any = {
+      ...draft,
+      slug: `${draft.slug}-copy`,
+      name: `${draft.name} (copy)`,
+      sku: draft.sku ? `${draft.sku}-copy` : undefined,
+      shortDescription: draft.shortDescription || undefined,
+      description: draft.description || undefined,
+      seoTitle: draft.seoTitle || undefined,
+      seoDescription: draft.seoDescription || undefined,
+      volumeTiers: draft.volumeTiers.length > 0 ? draft.volumeTiers : undefined,
+    };
+    const r = await api.post<{ product: { id: string } }>('/admin/products', payload);
+    navigate(`/admin/products/${r.product.id}`);
+  };
+
   const remove = async () => {
     if (!id || !confirm('Delete this product?')) return;
     await api.del(`/admin/products/${id}`);
     navigate('/admin/products');
   };
 
-  const addVariant = async () => {
-    if (!id) return;
-    const label = prompt('Variant label (e.g. "48pg / Soft Cover")');
-    if (!label) return;
-    const price = Number(prompt('Price (cents)') ?? '0');
-    const r = await api.post<{ variant: Variant }>(`/admin/products/${id}/variants`, {
-      label, priceCents: price, stock: 0, active: true,
-    });
-    setVariants([...variants, r.variant]);
+  const moveImage = (from: number, to: number) => {
+    if (to < 0 || to >= draft.images.length) return;
+    const next = [...draft.images];
+    const [x] = next.splice(from, 1);
+    next.splice(to, 0, x!);
+    setDraft({ ...draft, images: next });
   };
 
+  // --- Variant handlers ---
+  const [newVariant, setNewVariant] = useState<Omit<Variant, 'id'>>({ label: '', priceCents: 0, stock: 0, active: true });
+  const addVariant = async () => {
+    if (!id || !newVariant.label) return;
+    const r = await api.post<{ variant: Variant }>(`/admin/products/${id}/variants`, newVariant);
+    setVariants([...variants, r.variant]);
+    setNewVariant({ label: '', priceCents: 0, stock: 0, active: true });
+  };
+  const updateVariant = async (v: Variant, patch: Partial<Variant>) => {
+    const merged = { ...v, ...patch };
+    await api.put(`/admin/products/${id}/variants/${v.id}`, {
+      label: merged.label, priceCents: merged.priceCents, stock: merged.stock, active: merged.active, sku: merged.sku ?? undefined,
+    });
+    setVariants(variants.map((x) => (x.id === v.id ? merged : x)));
+  };
   const deleteVariant = async (variantId: string) => {
     if (!id || !confirm('Delete variant?')) return;
     await api.del(`/admin/products/${id}/variants/${variantId}`);
@@ -128,7 +165,8 @@ export function AdminProductEdit() {
       <div className="spread" style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0 }}>{isNew ? 'New product' : 'Edit product'}</h1>
         <div className="row">
-          {!isNew && <button className="btn secondary" onClick={remove}>Delete</button>}
+          {!isNew && <button className="btn secondary" onClick={duplicate}>Duplicate</button>}
+          {!isNew && <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={remove}>Delete</button>}
           <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
@@ -144,7 +182,7 @@ export function AdminProductEdit() {
         <label>Short description</label>
         <input value={draft.shortDescription} onChange={(e) => setDraft({ ...draft, shortDescription: e.target.value })} />
         <label>Full description</label>
-        <textarea rows={5} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+        <textarea rows={6} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
       </div>
 
       <div className="admin-card">
@@ -172,6 +210,7 @@ export function AdminProductEdit() {
         <div className="row">
           <label><input type="checkbox" checked={draft.madeToOrder} onChange={(e) => setDraft({ ...draft, madeToOrder: e.target.checked })} style={{ width: 'auto' }} /> Made to order (no stock tracking)</label>
           <label><input type="checkbox" checked={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} style={{ width: 'auto' }} /> Active</label>
+          <label><input type="checkbox" checked={draft.hasVariants} onChange={(e) => setDraft({ ...draft, hasVariants: e.target.checked })} style={{ width: 'auto' }} /> Has variants (show "from" price)</label>
         </div>
       </div>
 
@@ -180,11 +219,13 @@ export function AdminProductEdit() {
         <p className="muted">Each tier sets the per-unit price when quantity ≥ minQty.</p>
         {draft.volumeTiers.map((t, i) => (
           <div key={i} className="row" style={{ marginBottom: '.5rem' }}>
+            <label style={{ margin: 0 }}>Min qty</label>
             <input type="number" value={t.minQty} onChange={(e) => {
               const tiers = [...draft.volumeTiers];
               tiers[i] = { ...t, minQty: Number(e.target.value) };
               setDraft({ ...draft, volumeTiers: tiers });
             }} />
+            <label style={{ margin: 0 }}>Price (cents)</label>
             <input type="number" value={t.pricePerUnitCents} onChange={(e) => {
               const tiers = [...draft.volumeTiers];
               tiers[i] = { ...t, pricePerUnitCents: Number(e.target.value) };
@@ -221,46 +262,62 @@ export function AdminProductEdit() {
       </div>
 
       <div className="admin-card">
-        <h3>Images</h3>
-        <p className="muted">Paste image URLs; file upload comes later.</p>
-        {draft.images.map((img, i) => (
-          <div key={i} className="row" style={{ marginBottom: '.5rem' }}>
-            <input placeholder="https://…" value={img.url} onChange={(e) => {
-              const imgs = [...draft.images];
-              imgs[i] = { ...img, url: e.target.value };
-              setDraft({ ...draft, images: imgs });
-            }} />
-            <input placeholder="Alt text" value={img.alt ?? ''} onChange={(e) => {
-              const imgs = [...draft.images];
-              imgs[i] = { ...img, alt: e.target.value };
-              setDraft({ ...draft, images: imgs });
-            }} />
-            <button className="btn secondary" onClick={() => setDraft({ ...draft, images: draft.images.filter((_, j) => j !== i) })}>
-              Remove
-            </button>
-          </div>
-        ))}
-        <button className="btn secondary" onClick={() => setDraft({ ...draft, images: [...draft.images, { url: '' }] })}>
-          Add image
-        </button>
+        <div className="spread" style={{ marginBottom: '.75rem' }}>
+          <h3 style={{ margin: 0 }}>Images</h3>
+          <button className="btn" onClick={() => setPickerOpen(true)}>Add from library</button>
+        </div>
+        {draft.images.length === 0 && <p className="muted">No images yet.</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '.75rem' }}>
+          {draft.images.map((img, i) => (
+            <div key={i} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+              <div style={{ aspectRatio: '1', background: 'var(--bg-alt) center/cover no-repeat' }}>
+                {img.url && <img src={img.url} alt={img.alt ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+              </div>
+              <div style={{ padding: '.4rem' }}>
+                <input placeholder="Alt" value={img.alt ?? ''} onChange={(e) => {
+                  const imgs = [...draft.images];
+                  imgs[i] = { ...img, alt: e.target.value };
+                  setDraft({ ...draft, images: imgs });
+                }} style={{ fontSize: '.8rem', padding: '.3rem' }} />
+                <div style={{ display: 'flex', gap: '.25rem', marginTop: '.25rem' }}>
+                  <button className="btn secondary" style={{ padding: '.2rem .4rem', fontSize: '.75rem' }} onClick={() => moveImage(i, i - 1)}>↑</button>
+                  <button className="btn secondary" style={{ padding: '.2rem .4rem', fontSize: '.75rem' }} onClick={() => moveImage(i, i + 1)}>↓</button>
+                  <button className="btn secondary" style={{ padding: '.2rem .4rem', fontSize: '.75rem', color: '#b91c1c' }} onClick={() => setDraft({ ...draft, images: draft.images.filter((_, j) => j !== i) })}>×</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {!isNew && (
         <div className="admin-card">
-          <div className="spread"><h3 style={{ margin: 0 }}>Variants</h3><button className="btn secondary" onClick={addVariant}>Add variant</button></div>
+          <h3>Variants</h3>
+          {variants.length === 0 && <p className="muted">No variants yet. Enable "Has variants" above and add some below.</p>}
           <table className="admin-table">
-            <thead><tr><th>Label</th><th>Price</th><th>Stock</th><th /></tr></thead>
+            <thead><tr><th>Label</th><th>SKU</th><th>Price ($)</th><th>Stock</th><th>Active</th><th /></tr></thead>
             <tbody>
               {variants.map((v) => (
                 <tr key={v.id}>
-                  <td>{v.label}</td>
-                  <td>${(v.priceCents / 100).toFixed(2)}</td>
-                  <td>{v.stock}</td>
+                  <td><input value={v.label} onChange={(e) => updateVariant(v, { label: e.target.value })} /></td>
+                  <td><input value={v.sku ?? ''} onChange={(e) => updateVariant(v, { sku: e.target.value })} /></td>
+                  <td><input type="number" step="0.01" value={(v.priceCents / 100).toFixed(2)} onChange={(e) => updateVariant(v, { priceCents: Math.round(Number(e.target.value) * 100) })} /></td>
+                  <td><input type="number" value={v.stock} onChange={(e) => updateVariant(v, { stock: Number(e.target.value) })} /></td>
+                  <td><input type="checkbox" checked={v.active} onChange={(e) => updateVariant(v, { active: e.target.checked })} style={{ width: 'auto' }} /></td>
                   <td><button className="btn secondary" onClick={() => deleteVariant(v.id)}>Delete</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+            <h4>Add variant</h4>
+            <div className="row">
+              <input placeholder='Label (e.g. "48pg / Soft Cover")' value={newVariant.label} onChange={(e) => setNewVariant({ ...newVariant, label: e.target.value })} />
+              <input type="number" placeholder="Price (cents)" value={newVariant.priceCents} onChange={(e) => setNewVariant({ ...newVariant, priceCents: Number(e.target.value) })} style={{ width: 140 }} />
+              <input type="number" placeholder="Stock" value={newVariant.stock} onChange={(e) => setNewVariant({ ...newVariant, stock: Number(e.target.value) })} style={{ width: 100 }} />
+              <button className="btn" onClick={addVariant}>Add</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -271,6 +328,19 @@ export function AdminProductEdit() {
         <label>Meta description</label>
         <textarea rows={2} value={draft.seoDescription} onChange={(e) => setDraft({ ...draft, seoDescription: e.target.value })} />
       </div>
+
+      <MediaPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={(picked) => {
+          setDraft({
+            ...draft,
+            images: [...draft.images, ...picked.map((p) => ({ url: p.url, alt: p.altText ?? undefined }))],
+          });
+        }}
+        multiple
+        kind="image"
+      />
     </div>
   );
 }

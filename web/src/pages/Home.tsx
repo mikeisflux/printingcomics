@@ -22,50 +22,136 @@ export function Home() {
 
   return (
     <>
+      {/* Hero */}
       <section className="hero">
         <div className="container">
           <h1>Custom Comic &amp; Graphic Novel Printing</h1>
           <p>
             Professional short-run and bulk printing for independent creators, publishers, and studios.
-            Soft-cover, hard-cover, trade paperbacks — printed and shipped from the US.
+            Soft-cover, hard-cover, trade paperbacks &mdash; printed and shipped from the US.
           </p>
-          <Link to="/shop" className="btn">Shop printing services</Link>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link to="/shop" className="btn">Shop printing services</Link>
+            <Link to="/shop/graphic-novels" className="btn secondary">Graphic novels</Link>
+          </div>
         </div>
       </section>
 
-      <section className="container">
-        <h2 style={{ marginTop: '3rem' }}>Featured products</h2>
-        <div className="product-grid">
-          {products.map((p) => (
-            <Link key={p.id} to={`/product/${p.slug}`} className="product-card">
-              <div
-                className="image"
-                style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}
-              />
-              <div className="body">
-                <h3>{p.name}</h3>
-                <div className="price">
-                  {p.hasVariants ? 'From ' : ''}{formatMoney(p.priceCents)}
-                </div>
-              </div>
+      {/* Service categories */}
+      <section className="container" style={{ padding: '3rem 0 1rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <h2>What we print</h2>
+          <p className="muted">Four core services &mdash; every one custom-quoted per run.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+          {[
+            { slug: 'comic-books', name: 'Comic Books', blurb: 'Saddle-stitched, soft-cover, 24-32 pages.' },
+            { slug: 'graphic-novels', name: 'Graphic Novels', blurb: 'Perfect-bound, soft or hard cover.' },
+            { slug: 'trade-paperbacks', name: 'Trade Paperbacks', blurb: 'Collected editions, premium stock.' },
+            { slug: 'hard-cover', name: 'Hardcover Books', blurb: 'Smyth-sewn with dust jacket option.' },
+          ].map((c) => (
+            <Link
+              key={c.slug}
+              to={`/shop/${c.slug}`}
+              className="product-card"
+              style={{ textAlign: 'center', padding: '2rem 1rem' }}
+            >
+              <h3 style={{ color: 'var(--brand)' }}>{c.name}</h3>
+              <p className="muted" style={{ margin: 0 }}>{c.blurb}</p>
             </Link>
           ))}
         </div>
       </section>
 
+      {/* Featured products */}
+      {products.length > 0 && (
+        <section className="container" style={{ padding: '3rem 0' }}>
+          <div className="spread" style={{ marginBottom: '1rem' }}>
+            <h2 style={{ margin: 0 }}>Popular services</h2>
+            <Link to="/shop">View all &rarr;</Link>
+          </div>
+          <div className="product-grid" style={{ paddingTop: 0 }}>
+            {products.map((p) => (
+              <Link key={p.id} to={`/product/${p.slug}`} className="product-card">
+                <div
+                  className="image"
+                  style={p.image ? { backgroundImage: `url(${p.image})` } : undefined}
+                />
+                <div className="body">
+                  <h3>{p.name}</h3>
+                  <div className="price">
+                    {p.hasVariants ? 'From ' : ''}{formatMoney(p.priceCents)}
+                  </div>
+                  {p.shortDescription && <p className="muted" style={{ fontSize: '.85rem', marginTop: '.5rem' }}>{p.shortDescription}</p>}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Why us */}
+      <section style={{ background: 'var(--bg-alt)', padding: '3rem 0' }}>
+        <div className="container">
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <h2>Why creators choose us</h2>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '2rem' }}>
+            {[
+              { title: 'Quality printing', body: 'Full-color interiors, premium papers, and pro binding on every run. Real print-shop gear, not POD.' },
+              { title: 'Volume discounts', body: 'Pricing tiers kick in automatically at 50+, 100+, and 500+ units. No hidden fees.' },
+              { title: 'Fulfilment', body: 'Let us store and ship your print run direct to backers, fans, and stores.' },
+              { title: 'US-based', body: 'Printed and shipped from the United States. Real people on the phone and email.' },
+            ].map((f) => (
+              <div key={f.title}>
+                <h3 style={{ color: 'var(--brand)' }}>{f.title}</h3>
+                <p className="muted">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Process */}
       <section className="container" style={{ padding: '3rem 0' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '2rem' }}>
-          <div>
-            <h3>Quality printing</h3>
-            <p className="muted">Full-color interiors, premium papers, and pro binding on every run.</p>
-          </div>
-          <div>
-            <h3>Volume discounts</h3>
-            <p className="muted">Pricing tiers automatically applied for orders over 50 units.</p>
-          </div>
-          <div>
-            <h3>Fulfilment services</h3>
-            <p className="muted">Let us store and ship your print run direct to backers and fans.</p>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <h2>How it works</h2>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+          {[
+            { n: '1', title: 'Pick your product', body: 'Comic book, graphic novel, TPB, or hardcover.' },
+            { n: '2', title: 'Set your specs', body: 'Page count, cover type, interior color, quantity.' },
+            { n: '3', title: 'Upload your files', body: 'Send us print-ready PDFs. We review before printing.' },
+            { n: '4', title: 'We print + ship', body: 'Direct to you, or fulfil direct to your backers.' },
+          ].map((step) => (
+            <div key={step.n} style={{ textAlign: 'center' }}>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 56, height: 56,
+                borderRadius: '50%',
+                background: 'var(--brand)',
+                color: '#fff',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                marginBottom: '1rem',
+              }}>{step.n}</div>
+              <h3>{step.title}</h3>
+              <p className="muted">{step.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA strip */}
+      <section style={{ background: 'var(--brand)', padding: '3rem 0', color: '#fff', textAlign: 'center' }}>
+        <div className="container">
+          <h2 style={{ color: '#fff', marginBottom: '.5rem' }}>Ready to print?</h2>
+          <p style={{ opacity: 0.9, marginBottom: '1.5rem' }}>Browse our services or get in touch for a custom quote.</p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link to="/shop" className="btn" style={{ background: '#fff', color: 'var(--brand)' }}>Browse services</Link>
+            <a href="mailto:hello@printingcomics.com" className="btn secondary" style={{ borderColor: '#fff', color: '#fff' }}>Contact us</a>
           </div>
         </div>
       </section>
