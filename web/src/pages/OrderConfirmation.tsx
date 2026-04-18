@@ -26,6 +26,15 @@ interface Payment {
   createdAt: string;
 }
 
+interface OrderEvent {
+  id: string;
+  kind: string;
+  message?: string | null;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  createdAt: string;
+}
+
 interface Order {
   number: string;
   email: string;
@@ -42,6 +51,7 @@ interface Order {
   billingAddress?: ShippingAddress;
   notes?: string | null;
   payments: Payment[];
+  events?: OrderEvent[];
   items: {
     id: string;
     name: string;
@@ -248,6 +258,25 @@ export function OrderConfirmation() {
           <span>Total</span><span>{formatMoney(order.totalCents)}</span>
         </div>
       </div>
+
+      {order.events && order.events.length > 0 && (
+        <div className="admin-card">
+          <h4 style={{ marginTop: 0 }}>Activity</h4>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {order.events
+              .filter((e) => e.kind !== 'note' && e.kind !== 'email')
+              .slice(0, 15)
+              .map((e) => (
+                <li key={e.id} style={{ display: 'flex', gap: '.75rem', padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--muted)', fontSize: '.85rem', minWidth: 150 }}>
+                    {new Date(e.createdAt).toLocaleString()}
+                  </span>
+                  <span style={{ fontSize: '.9rem' }}>{e.message}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {order.notes && (
         <div className="admin-card">

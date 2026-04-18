@@ -1,5 +1,6 @@
 import { prisma } from '../../../db.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
+import { sendOrderConfirmationEmail } from '../../order-emails.js';
 
 export interface CaptureResult {
   orderId: string;
@@ -59,6 +60,26 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
           rawPayload: data,
         },
       });
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId: payment.orderId,
+          kind: 'payment',
+          fromStatus: 'PENDING',
+          toStatus: 'CAPTURED',
+          message: `PayPal capture ${captureId} completed`,
+        },
+      });
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId: payment.orderId,
+          kind: 'status',
+          fromStatus: 'PENDING',
+          toStatus: 'PAID',
+          message: 'Order marked PAID after successful capture',
+        },
+      });
+      // Fire confirmation email. Failures are logged as events by the lib.
+      void sendOrderConfirmationEmail(payment.orderId);
     }
   } else {
     await prisma.payment.update({

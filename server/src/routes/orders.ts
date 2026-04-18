@@ -76,6 +76,15 @@ router.get('/:number', requireAuth, async (req, res) => {
           amountCents: true, status: true, createdAt: true,
         },
       },
+      events: {
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          id: true, kind: true, message: true,
+          fromStatus: true, toStatus: true,
+          createdAt: true,
+        },
+      },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');

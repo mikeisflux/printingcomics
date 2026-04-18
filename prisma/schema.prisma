@@ -280,12 +280,31 @@ model Order {
 
   items           OrderItem[]
   payments        Payment[]
+  events          OrderStatusEvent[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   @@index([userId])
   @@index([status])
+}
+
+// Append-only log of order status / payment / tracking changes. Lets the
+// admin and the customer both see when each transition happened and
+// optionally who made the change (null actor = automated).
+model OrderStatusEvent {
+  id         String   @id @default(cuid())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId    String
+  fromStatus String?
+  toStatus   String?
+  kind       String   // "status" | "payment" | "tracking" | "note" | "email"
+  message    String?
+  actorId    String?
+  actorName  String?
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
 }
 
 model OrderItem {

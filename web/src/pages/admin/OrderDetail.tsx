@@ -1,19 +1,47 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
+import { formatCartItemOptions } from '../../lib/cart-options';
+import { StatusBadge } from '../Account';
+
+interface OrderEvent {
+  id: string;
+  kind: string;
+  message?: string | null;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  actorName?: string | null;
+  createdAt: string;
+}
 
 interface OrderFull {
   id: string; number: string; email: string;
   status: string; paymentStatus: string;
-  subtotalCents: number; shippingCents: number; taxCents: number; totalCents: number;
+  subtotalCents: number; shippingCents: number; taxCents: number;
+  discountCents: number; totalCents: number;
   trackingNumber?: string | null;
+  shippingMethod?: string | null;
   notes?: string | null;
   shippingAddress: any;
   billingAddress: any;
-  items: { id: string; name: string; quantity: number; unitPriceCents: number; totalCents: number; options?: any }[];
+  items: {
+    id: string;
+    name: string;
+    quantity: number;
+    unitPriceCents: number;
+    totalCents: number;
+    options?: any;
+    product: {
+      slug: string;
+      images: { url: string }[];
+      options: { id: string; name: string; internalKey?: string | null; type: string; values: { label: string; subLabel?: string | null }[] }[];
+    };
+  }[];
   payments: { id: string; provider: string; providerRef?: string | null; amountCents: number; status: string; createdAt: string }[];
+  events: OrderEvent[];
   user?: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 const STATUSES = ['PENDING', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
@@ -23,7 +51,9 @@ export function AdminOrderDetail() {
   const { id } = useParams();
   const [order, setOrder] = useState<OrderFull | null>(null);
   const [tracking, setTracking] = useState('');
+  const [shippingMethod, setShippingMethod] = useState('');
   const [notes, setNotes] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = () => {
@@ -31,6 +61,7 @@ export function AdminOrderDetail() {
     void api.get<{ order: OrderFull }>(`/admin/orders/${id}`).then((r) => {
       setOrder(r.order);
       setTracking(r.order.trackingNumber ?? '');
+      setShippingMethod(r.order.shippingMethod ?? '');
       setNotes(r.order.notes ?? '');
     });
   };
@@ -47,6 +78,13 @@ export function AdminOrderDetail() {
     }
   };
 
+  const addNote = async () => {
+    if (!noteDraft.trim() || !id) return;
+    await api.post(`/admin/orders/${id}/events`, { message: noteDraft.trim(), kind: 'note' });
+    setNoteDraft('');
+    load();
+  };
+
   const refund = async () => {
     if (!order) return;
     const fullAmount = order.totalCents;
@@ -54,6 +92,7 @@ export function AdminOrderDetail() {
       `Refund amount (in dollars). Leave blank for full refund of ${formatMoney(fullAmount)}.`,
       '',
     );
+    if (input === null) return;
     const note = prompt('Note to customer (optional)') ?? undefined;
     const amountCents = input ? Math.round(Number(input) * 100) : undefined;
     if (!confirm(amountCents ? `Refund ${formatMoney(amountCents)}?` : `Refund full amount ${formatMoney(fullAmount)}?`)) return;
@@ -70,13 +109,22 @@ export function AdminOrderDetail() {
 
   return (
     <div>
-      <div className="spread" style={{ marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>Order {order.number}</h1>
-        {order.paymentStatus === 'CAPTURED' && (
-          <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
-            Refund via PayPal
-          </button>
-        )}
+      <div className="spread" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '.5rem' }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Order {order.number}</h1>
+          <div className="muted" style={{ fontSize: '.85rem' }}>
+            Placed {new Date(order.createdAt).toLocaleString()}
+          </div>
+        </div>
+        <div className="row" style={{ gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <StatusBadge status={order.status} />
+          <StatusBadge status={order.paymentStatus} />
+          {order.paymentStatus === 'CAPTURED' && (
+            <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
+              Refund via PayPal
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="admin-card">
@@ -87,6 +135,9 @@ export function AdminOrderDetail() {
             <select value={order.status} onChange={(e) => update({ status: e.target.value })}>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+            <p className="muted" style={{ fontSize: '.75rem' }}>
+              Marking SHIPPED will email the customer their tracking number.
+            </p>
           </div>
           <div>
             <label>Payment status</label>
@@ -95,65 +146,103 @@ export function AdminOrderDetail() {
             </select>
           </div>
         </div>
-        <label>Tracking number</label>
-        <input
-          value={tracking}
-          onChange={(e) => setTracking(e.target.value)}
-          onBlur={() => update({ trackingNumber: tracking })}
-          placeholder="USPS / UPS / FedEx tracking"
-        />
-        <label>Internal notes</label>
+        <div className="grid-2">
+          <div>
+            <label>Tracking number</label>
+            <input
+              value={tracking}
+              onChange={(e) => setTracking(e.target.value)}
+              onBlur={() => {
+                if (tracking !== (order.trackingNumber ?? '')) update({ trackingNumber: tracking });
+              }}
+              placeholder="USPS / UPS / FedEx tracking"
+            />
+          </div>
+          <div>
+            <label>Shipping method</label>
+            <input
+              value={shippingMethod}
+              onChange={(e) => setShippingMethod(e.target.value)}
+              onBlur={() => {
+                if (shippingMethod !== (order.shippingMethod ?? '')) update({ shippingMethod });
+              }}
+              placeholder='e.g. "UPS Ground"'
+            />
+          </div>
+        </div>
+        <label>Internal notes (not emailed)</label>
         <textarea
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => update({ notes })}
-          placeholder="Not visible to customer."
+          onBlur={() => {
+            if (notes !== (order.notes ?? '')) update({ notes });
+          }}
         />
       </div>
 
       <div className="admin-card">
         <h3>Items</h3>
         <table className="admin-table">
-          <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+          <thead><tr><th /><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
           <tbody>
-            {order.items.map((i) => (
-              <tr key={i.id}>
-                <td>
-                  {i.name}
-                  {i.options && Object.keys(i.options).length > 0 && (
-                    <div className="muted" style={{ fontSize: '.85rem' }}>
-                      {Object.entries(i.options).map(([k, v]) => `${k}: ${v}`).join(' · ')}
-                    </div>
-                  )}
-                </td>
-                <td>{i.quantity}</td>
-                <td>{formatMoney(i.unitPriceCents)}</td>
-                <td>{formatMoney(i.totalCents)}</td>
-              </tr>
-            ))}
+            {order.items.map((i) => {
+              const img = i.product?.images?.[0]?.url;
+              const pairs = formatCartItemOptions(i);
+              return (
+                <tr key={i.id}>
+                  <td style={{ width: 60 }}>
+                    {img ? (
+                      <img src={img} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }} />
+                    ) : (
+                      <div style={{ width: 48, height: 48, background: 'var(--bg-alt)', borderRadius: 4 }} />
+                    )}
+                  </td>
+                  <td>
+                    <Link to={`/product/${i.product.slug}`}>{i.name}</Link>
+                    {pairs.length > 0 && (
+                      <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
+                        {pairs.map((p, j) => <li key={j}>{p.label}: {p.value}</li>)}
+                      </ul>
+                    )}
+                  </td>
+                  <td>{i.quantity}</td>
+                  <td>{formatMoney(i.unitPriceCents)}</td>
+                  <td>{formatMoney(i.totalCents)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <div className="spread"><span>Subtotal</span><span>{formatMoney(order.subtotalCents)}</span></div>
+        {order.discountCents > 0 && <div className="spread"><span>Discount</span><span>−{formatMoney(order.discountCents)}</span></div>}
         <div className="spread"><span>Shipping</span><span>{formatMoney(order.shippingCents)}</span></div>
         <div className="spread"><span>Tax</span><span>{formatMoney(order.taxCents)}</span></div>
         <div className="spread" style={{ fontWeight: 700 }}><span>Total</span><span>{formatMoney(order.totalCents)}</span></div>
       </div>
 
-      <div className="admin-card">
-        <h3>Customer</h3>
-        <div>{order.email}</div>
-        {order.user && <div className="muted">User: {order.user.firstName} {order.user.lastName}</div>}
-      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+        <div className="admin-card" style={{ margin: 0 }}>
+          <h3 style={{ marginTop: 0 }}>Customer</h3>
+          <div>{order.email}</div>
+          {order.user && (
+            <div className="muted">
+              <Link to={`/admin/customers/${order.user.id}`}>
+                {order.user.firstName} {order.user.lastName}
+              </Link>
+            </div>
+          )}
+        </div>
 
-      <div className="admin-card">
-        <h3>Shipping address</h3>
-        <AddressDisplay a={order.shippingAddress} />
-      </div>
+        <div className="admin-card" style={{ margin: 0 }}>
+          <h3 style={{ marginTop: 0 }}>Shipping address</h3>
+          <AddressDisplay a={order.shippingAddress} />
+        </div>
 
-      <div className="admin-card">
-        <h3>Billing address</h3>
-        <AddressDisplay a={order.billingAddress} />
+        <div className="admin-card" style={{ margin: 0 }}>
+          <h3 style={{ marginTop: 0 }}>Billing address</h3>
+          <AddressDisplay a={order.billingAddress} />
+        </div>
       </div>
 
       {order.payments.length > 0 && (
@@ -167,7 +256,7 @@ export function AdminOrderDetail() {
                   <td>{p.provider}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: '.8rem' }}>{p.providerRef ?? '—'}</td>
                   <td>{formatMoney(p.amountCents)}</td>
-                  <td><span className="badge">{p.status}</span></td>
+                  <td><StatusBadge status={p.status} /></td>
                   <td>{new Date(p.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
@@ -175,6 +264,39 @@ export function AdminOrderDetail() {
           </table>
         </div>
       )}
+
+      <div className="admin-card">
+        <h3>Activity timeline</h3>
+        <div className="row" style={{ marginBottom: '.75rem' }}>
+          <input
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="Add a timeline note (visible on the customer order page)"
+            onKeyDown={(e) => { if (e.key === 'Enter') void addNote(); }}
+          />
+          <button className="btn" onClick={() => void addNote()} disabled={!noteDraft.trim()}>Add</button>
+        </div>
+        {order.events.length === 0 ? (
+          <p className="muted">No activity yet.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {order.events.map((e) => (
+              <li key={e.id} style={{ display: 'flex', gap: '.75rem', padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ color: 'var(--muted)', fontSize: '.85rem', minWidth: 160 }}>
+                  {new Date(e.createdAt).toLocaleString()}
+                </span>
+                <span style={{ minWidth: 80, textTransform: 'uppercase', fontSize: '.7rem', fontWeight: 700, color: 'var(--muted)' }}>
+                  {e.kind}
+                </span>
+                <span style={{ flex: 1, fontSize: '.9rem' }}>
+                  {e.message}
+                  {e.actorName && <span className="muted" style={{ fontSize: '.8rem' }}> — {e.actorName}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {saving && <p className="muted">Saving…</p>}
     </div>
@@ -184,12 +306,13 @@ export function AdminOrderDetail() {
 function AddressDisplay({ a }: { a: any }) {
   if (!a) return <p className="muted">None</p>;
   return (
-    <div style={{ whiteSpace: 'pre-line' }}>
-      {a.firstName} {a.lastName}{'\n'}
-      {a.line1}{a.line2 ? `, ${a.line2}` : ''}{'\n'}
-      {a.city}, {a.region} {a.postalCode}{'\n'}
-      {a.country}
-      {a.phone && <>{'\n'}{a.phone}</>}
+    <div style={{ lineHeight: 1.5 }}>
+      <div>{a.firstName} {a.lastName}</div>
+      {a.company && <div>{a.company}</div>}
+      <div>{a.line1}{a.line2 ? `, ${a.line2}` : ''}</div>
+      <div>{a.city}, {a.region} {a.postalCode}</div>
+      <div>{a.country}</div>
+      {a.phone && <div className="muted">{a.phone}</div>}
     </div>
   );
 }
