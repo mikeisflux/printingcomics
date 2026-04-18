@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 import { useCart } from '../store/cart';
 
@@ -40,21 +40,23 @@ export function Product() {
   const [options, setOptions] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [galleryIdx, setGalleryIdx] = useState(0);
 
   useEffect(() => {
     if (!slug) return;
     void api.get<{ product: ProductDetail }>(`/products/${slug}`).then((r) => {
       setProduct(r.product);
       setQty(r.product.minQuantity);
+      setGalleryIdx(0);
       if (r.product.variants.length > 0) setVariantId(r.product.variants[0].id);
     });
   }, [slug]);
 
-  if (!product) return <div className="container" style={{ padding: '2rem 0' }}>Loading…</div>;
+  const variant = useMemo(() => product?.variants.find((v) => v.id === variantId), [product, variantId]);
+  const basePrice = variant?.priceCents ?? product?.priceCents ?? 0;
+  const unitPrice = product ? priceForQuantity(basePrice, qty, product.volumeTiers) : 0;
 
-  const variant = product.variants.find((v) => v.id === variantId);
-  const basePrice = variant?.priceCents ?? product.priceCents;
-  const unitPrice = priceForQuantity(basePrice, qty, product.volumeTiers);
+  if (!product) return <div className="container" style={{ padding: '2rem 0' }}>Loading…</div>;
 
   const addToCart = async () => {
     setError(null);
@@ -69,20 +71,59 @@ export function Product() {
     }
   };
 
+  const requiredOptionsMet =
+    product.options.every((o) => !!options[o.name]) || product.options.length === 0;
+
   return (
     <div className="container product-detail">
       <div className="gallery">
-        {product.images[0] ? (
-          <img src={product.images[0].url} alt={product.images[0].alt ?? product.name} />
+        {product.images.length === 0 ? (
+          <div style={{ aspectRatio: '1', background: 'var(--bg-alt)', borderRadius: 'var(--radius)' }} />
         ) : (
-          <div style={{ aspectRatio: '1', background: 'var(--bg-alt)' }} />
+          <>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '.75rem' }}>
+              <img
+                src={product.images[galleryIdx]?.url ?? product.images[0]!.url}
+                alt={product.images[galleryIdx]?.alt ?? product.name}
+                style={{ width: '100%', display: 'block' }}
+              />
+            </div>
+            {product.images.length > 1 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: '.5rem' }}>
+                {product.images.map((img, i) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setGalleryIdx(i)}
+                    aria-label={`Show image ${i + 1}`}
+                    style={{
+                      padding: 0,
+                      background: '#fff',
+                      border: i === galleryIdx ? '2px solid var(--brand)' : '1px solid var(--border)',
+                      borderRadius: 'var(--radius)',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      aspectRatio: '1',
+                    }}
+                  >
+                    <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
+
       <div>
         <h1>{product.name}</h1>
         {product.shortDescription && <p className="muted">{product.shortDescription}</p>}
         <div style={{ fontSize: '1.75rem', color: 'var(--brand)', fontWeight: 700, margin: '1rem 0' }}>
           {formatMoney(unitPrice)} <span style={{ fontSize: '1rem', color: 'var(--ink-muted)' }}>each</span>
+          {unitPrice < basePrice && (
+            <span style={{ fontSize: '.9rem', marginLeft: '.75rem', color: '#1e6b32' }}>
+              Volume discount applied
+            </span>
+          )}
         </div>
 
         {product.variants.length > 0 && (
@@ -100,7 +141,7 @@ export function Product() {
 
         {product.options.map((opt) => (
           <div key={opt.id}>
-            <label>{opt.name}</label>
+            <label>{opt.name} <span style={{ color: '#b91c1c' }}>*</span></label>
             <select
               value={options[opt.name] ?? ''}
               onChange={(e) => setOptions({ ...options, [opt.name]: e.target.value })}
@@ -114,20 +155,36 @@ export function Product() {
         ))}
 
         <label>Quantity (min {product.minQuantity})</label>
-        <input
-          type="number"
-          min={product.minQuantity}
-          value={qty}
-          onChange={(e) => setQty(Math.max(product.minQuantity, Number(e.target.value)))}
-        />
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'stretch' }}>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => setQty(Math.max(product.minQuantity, qty - 1))}
+            aria-label="Decrease quantity"
+          >−</button>
+          <input
+            type="number"
+            min={product.minQuantity}
+            value={qty}
+            onChange={(e) => setQty(Math.max(product.minQuantity, Number(e.target.value)))}
+            style={{ textAlign: 'center' }}
+          />
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => setQty(qty + 1)}
+            aria-label="Increase quantity"
+          >+</button>
+        </div>
 
         {product.volumeTiers && product.volumeTiers.length > 0 && (
           <div style={{ background: 'var(--bg-alt)', padding: '.75rem', borderRadius: 'var(--radius)', margin: '.75rem 0', fontSize: '.9rem' }}>
             <strong>Volume pricing:</strong>
             <ul style={{ margin: '.5rem 0 0', paddingLeft: '1.25rem' }}>
               {product.volumeTiers.map((t) => (
-                <li key={t.minQty}>
+                <li key={t.minQty} style={{ fontWeight: qty >= t.minQty ? 700 : 400 }}>
                   {t.minQty}+ units → {formatMoney(t.pricePerUnitCents)} each
+                  {qty >= t.minQty && <span style={{ color: '#1e6b32', marginLeft: '.5rem' }}>✓</span>}
                 </li>
               ))}
             </ul>
@@ -139,12 +196,21 @@ export function Product() {
         </div>
 
         {error && <div className="error">{error}</div>}
-        <button className="btn" onClick={addToCart} disabled={adding}>
-          {adding ? 'Adding…' : 'Add to cart'}
+        <button
+          className="btn"
+          onClick={addToCart}
+          disabled={adding || !requiredOptionsMet}
+          style={{ width: '100%', padding: '1rem' }}
+        >
+          {adding ? 'Adding…' : !requiredOptionsMet ? 'Select options to continue' : 'Add to cart'}
         </button>
 
+        <p className="muted" style={{ fontSize: '.85rem', marginTop: '.75rem' }}>
+          Custom print run · US-based · <Link to="/">See pricing tiers</Link>
+        </p>
+
         {product.description && (
-          <div style={{ marginTop: '2rem', whiteSpace: 'pre-wrap' }}>{product.description}</div>
+          <div style={{ marginTop: '2rem', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{product.description}</div>
         )}
       </div>
     </div>

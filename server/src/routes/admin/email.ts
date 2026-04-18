@@ -6,7 +6,7 @@ import multer from 'multer';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
-import { sendEmail } from '../../lib/sendgrid.js';
+import { sendEmail } from '../../lib/brevo.js';
 
 const router = Router();
 
@@ -288,7 +288,7 @@ router.post('/campaigns/:id/send', async (req, res) => {
     if (/.+@.+/.test(extra)) recipients.set(extra, { email: extra });
   }
 
-  // Load attachments into memory (base64) for SendGrid
+  // Load attachments into memory (base64) for Brevo
   const encodedAttachments = [];
   for (const a of campaign.attachments) {
     try {
@@ -313,7 +313,8 @@ router.post('/campaigns/:id/send', async (req, res) => {
         html: campaign.html,
         text: campaign.text ?? undefined,
         attachments: encodedAttachments,
-        customArgs: { campaignId: campaign.id, ...(r.subscriberId ? { subscriberId: r.subscriberId } : {}) },
+        params: { campaignId: campaign.id, ...(r.subscriberId ? { subscriberId: r.subscriberId } : {}) },
+        tags: [`campaign:${campaign.id}`],
       });
       await prisma.emailSend.create({
         data: {
@@ -393,35 +394,49 @@ router.get('/sends', async (req, res) => {
   res.json({ sends });
 });
 
-// SendGrid Event Webhook receiver (opens, clicks, bounces, etc.)
-router.post('/webhooks/sendgrid', async (req, res) => {
-  const events = Array.isArray(req.body) ? req.body : [];
+/**
+ * Brevo Event Webhook receiver.
+ *
+ * Brevo POSTs JSON per event with shape:
+ *   { event: "delivered" | "opened" | "click" | "hard_bounce" | ...,
+ *     email, "message-id", date, reason, ... }
+ *
+ * Configure Brevo → Transactional → Settings → Webhook to point at
+ *   https://<your-domain>/api/admin/email/webhooks/brevo
+ */
+router.post('/webhooks/brevo', async (req, res) => {
+  // Brevo sends one event per request (not a batch) but we defensively
+  // handle both shapes.
+  const events = Array.isArray(req.body) ? req.body : [req.body];
+  const mapStatus: Record<string, any> = {
+    delivered: 'DELIVERED',
+    opened: 'OPENED',
+    proxy_open: 'OPENED',
+    unique_opened: 'OPENED',
+    click: 'CLICKED',
+    soft_bounce: 'BOUNCED',
+    hard_bounce: 'BOUNCED',
+    blocked: 'BOUNCED',
+    invalid_email: 'FAILED',
+    spam: 'BOUNCED',
+    deferred: 'QUEUED',
+    request: 'SENT',
+    unsubscribed: 'UNSUBSCRIBED',
+    list_addition: 'QUEUED',
+  };
   for (const evt of events) {
-    const providerRef = evt['sg_message_id'] as string | undefined;
+    if (!evt || typeof evt !== 'object') continue;
+    const providerRef = (evt['message-id'] ?? evt.messageId) as string | undefined;
     if (!providerRef) continue;
-    // SendGrid sg_message_id has suffix like "filter.domain" — strip it to match header id
-    const baseRef = providerRef.split('.')[0];
-    const mapStatus: Record<string, any> = {
-      delivered: 'DELIVERED',
-      open: 'OPENED',
-      click: 'CLICKED',
-      bounce: 'BOUNCED',
-      dropped: 'FAILED',
-      deferred: 'QUEUED',
-      processed: 'SENT',
-      unsubscribe: 'UNSUBSCRIBED',
-      group_unsubscribe: 'UNSUBSCRIBED',
-      spamreport: 'BOUNCED',
-    };
     const status = mapStatus[evt.event as string];
     if (!status) continue;
     await prisma.emailSend.updateMany({
-      where: { providerRef: { startsWith: baseRef } },
+      where: { providerRef },
       data: {
         status,
-        ...(evt.event === 'open' ? { openedAt: new Date() } : {}),
+        ...(status === 'OPENED' ? { openedAt: new Date() } : {}),
         ...(evt.event === 'click' ? { clickedAt: new Date() } : {}),
-        ...(evt.reason ? { errorMessage: evt.reason } : {}),
+        ...(evt.reason ? { errorMessage: String(evt.reason) } : {}),
       },
     });
   }

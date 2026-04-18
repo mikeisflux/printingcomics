@@ -12,6 +12,7 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Account } from './pages/Account';
 import { OrdersPage } from './pages/OrdersPage';
+import { PaypalReturn } from './pages/PaypalReturn';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminProducts } from './pages/admin/Products';
@@ -19,6 +20,7 @@ import { AdminProductEdit } from './pages/admin/ProductEdit';
 import { AdminOrders } from './pages/admin/Orders';
 import { AdminOrderDetail } from './pages/admin/OrderDetail';
 import { AdminCustomers } from './pages/admin/Customers';
+import { AdminUserDetail } from './pages/admin/UserDetail';
 import { AdminCategories } from './pages/admin/Categories';
 import { AdminSettings } from './pages/admin/Settings';
 import { AdminSeo } from './pages/admin/Seo';
@@ -40,6 +42,7 @@ export const router = createBrowserRouter([
       { path: 'product/:slug', element: <Product /> },
       { path: 'cart', element: <CartPage /> },
       { path: 'checkout', element: <PaypalCheckout /> },
+      { path: 'checkout/paypal/return', element: <PaypalReturn /> },
       { path: 'order/:number', element: <OrderConfirmation /> },
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
@@ -58,6 +61,7 @@ export const router = createBrowserRouter([
       { path: 'orders', element: <AdminOrders /> },
       { path: 'orders/:id', element: <AdminOrderDetail /> },
       { path: 'customers', element: <AdminCustomers /> },
+      { path: 'customers/:id', element: <AdminUserDetail /> },
       { path: 'categories', element: <AdminCategories /> },
       { path: 'seo', element: <AdminSeo /> },
       { path: 'seo/:productId', element: <AdminSeoDetail /> },

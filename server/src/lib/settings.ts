@@ -8,7 +8,7 @@ import { decryptSecret, encryptSecret, maskSecret } from './crypto.js';
 export const SECRET_KEYS = new Set<string>([
   'paypal.clientSecret',
   'paypal.webhookId',
-  'sendgrid.apiKey',
+  'brevo.apiKey',
   'anthropic.apiKey',
 ]);
 
@@ -38,12 +38,12 @@ export const SETTING_KEYS = {
     enableCard: 'paypal.enableCard',
     enablePaypalButton: 'paypal.enablePaypalButton',
   },
-  sendgrid: {
-    apiKey: 'sendgrid.apiKey',
-    fromEmail: 'sendgrid.fromEmail',
-    fromName: 'sendgrid.fromName',
-    replyTo: 'sendgrid.replyTo',
-    sandboxMode: 'sendgrid.sandboxMode',
+  brevo: {
+    apiKey: 'brevo.apiKey',
+    fromEmail: 'brevo.fromEmail',
+    fromName: 'brevo.fromName',
+    replyTo: 'brevo.replyTo',
+    testMode: 'brevo.testMode',
   },
   anthropic: {
     apiKey: 'anthropic.apiKey',
@@ -62,9 +62,9 @@ function envFallback(key: string): unknown {
     case 'paypal.clientId':     return process.env.PAYPAL_CLIENT_ID ?? '';
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
     case 'paypal.webhookId':    return process.env.PAYPAL_WEBHOOK_ID ?? '';
-    case 'sendgrid.apiKey':     return process.env.SENDGRID_API_KEY ?? '';
-    case 'sendgrid.fromEmail':  return process.env.SENDGRID_FROM_EMAIL ?? '';
-    case 'sendgrid.fromName':   return process.env.SENDGRID_FROM_NAME ?? 'Printing Comics';
+    case 'brevo.apiKey':        return process.env.BREVO_API_KEY ?? '';
+    case 'brevo.fromEmail':     return process.env.BREVO_FROM_EMAIL ?? '';
+    case 'brevo.fromName':      return process.env.BREVO_FROM_NAME ?? 'Printing Comics';
     case 'anthropic.apiKey':    return process.env.ANTHROPIC_API_KEY ?? '';
     case 'anthropic.model':     return process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-7';
     case 'store.currency':      return 'USD';
@@ -172,20 +172,20 @@ export async function getPaypalConfig() {
   };
 }
 
-export async function getSendGridConfig() {
-  const [apiKey, fromEmail, fromName, replyTo, sandboxMode] = await Promise.all([
-    getSetting<string>('sendgrid.apiKey'),
-    getSetting<string>('sendgrid.fromEmail'),
-    getSetting<string>('sendgrid.fromName'),
-    getSetting<string>('sendgrid.replyTo'),
-    getSetting<boolean>('sendgrid.sandboxMode'),
+export async function getBrevoConfig() {
+  const [apiKey, fromEmail, fromName, replyTo, testMode] = await Promise.all([
+    getSetting<string>('brevo.apiKey'),
+    getSetting<string>('brevo.fromEmail'),
+    getSetting<string>('brevo.fromName'),
+    getSetting<string>('brevo.replyTo'),
+    getSetting<boolean>('brevo.testMode'),
   ]);
   return {
     apiKey: apiKey ?? '',
     fromEmail: fromEmail ?? '',
     fromName: fromName ?? 'Printing Comics',
     replyTo: replyTo ?? null,
-    sandboxMode: sandboxMode ?? false,
+    testMode: testMode ?? false,
   };
 }
 

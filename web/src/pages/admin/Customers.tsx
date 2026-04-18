@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 
 interface User {
@@ -9,7 +10,6 @@ interface User {
 export function AdminCustomers() {
   const [users, setUsers] = useState<User[]>([]);
   const [q, setQ] = useState('');
-  const [editing, setEditing] = useState<User | null>(null);
 
   const load = () => {
     const qs = q ? `?q=${encodeURIComponent(q)}` : '';
@@ -38,7 +38,7 @@ export function AdminCustomers() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
-                <td>{u.email}</td>
+                <td><Link to={`/admin/customers/${u.id}`}>{u.email}</Link></td>
                 <td>{u.firstName} {u.lastName}</td>
                 <td>
                   <select value={u.role} onChange={(e) => updateRole(u.id, e.target.value)}>
@@ -49,42 +49,11 @@ export function AdminCustomers() {
                 </td>
                 <td>{u._count.orders}</td>
                 <td>{new Date(u.createdAt).toLocaleDateString()}</td>
-                <td><button className="btn secondary" onClick={() => setEditing(u)}>View</button></td>
+                <td><Link to={`/admin/customers/${u.id}`} className="btn secondary" style={{ padding: '.3rem .6rem' }}>View</Link></td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-      {editing && <CustomerDrawer user={editing} onClose={() => setEditing(null)} />}
-    </div>
-  );
-}
-
-function CustomerDrawer({ user, onClose }: { user: User; onClose: () => void }) {
-  const [detail, setDetail] = useState<any>(null);
-  useEffect(() => {
-    void api.get<{ user: any }>(`/admin/users/${user.id}`).then((r) => setDetail(r.user));
-  }, [user.id]);
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div style={{ width: 500, background: '#fff', padding: '2rem', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <h2>{user.email}</h2>
-        {!detail ? (
-          <p>Loading…</p>
-        ) : (
-          <>
-            <h3>Orders ({detail.orders.length})</h3>
-            <ul>{detail.orders.map((o: any) => (
-              <li key={o.id}>{o.number} — {o.status} — ${(o.totalCents / 100).toFixed(2)}</li>
-            ))}</ul>
-            <h3>Addresses ({detail.addresses.length})</h3>
-            <ul>{detail.addresses.map((a: any) => (
-              <li key={a.id}>{a.line1}, {a.city} {a.region} {a.postalCode}</li>
-            ))}</ul>
-          </>
-        )}
-        <button className="btn secondary" onClick={onClose}>Close</button>
       </div>
     </div>
   );

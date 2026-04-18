@@ -8,6 +8,8 @@ const schema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1),
   description: z.string().optional(),
+  heroImageUrl: z.string().optional(),
+  iconUrl: z.string().optional(),
   parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });

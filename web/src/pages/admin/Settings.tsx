@@ -158,14 +158,18 @@ function EmailSection() {
   const { settings, save } = useSettings();
   return (
     <div className="admin-card">
-      <h3>SendGrid</h3>
-      <Field label="API key" type="password" placeholder="paste to update" value={settings['sendgrid.apiKey']} onSave={(v) => save('sendgrid.apiKey', v)} />
-      <Field label="From email" value={settings['sendgrid.fromEmail']} onSave={(v) => save('sendgrid.fromEmail', v)} />
-      <Field label="From name" value={settings['sendgrid.fromName']} onSave={(v) => save('sendgrid.fromName', v)} />
-      <Field label="Reply-to" value={settings['sendgrid.replyTo']} onSave={(v) => save('sendgrid.replyTo', v)} />
-      <Toggle label="Sandbox mode (no real sends — for testing)" value={settings['sendgrid.sandboxMode']} onSave={(v) => save('sendgrid.sandboxMode', v)} />
-      <p className="muted" style={{ fontSize: '.85rem' }}>
-        Webhook receiver URL for SendGrid Event Webhook: <code>/api/admin/email/webhooks/sendgrid</code>
+      <h3>Brevo</h3>
+      <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
+        Get your API key from Brevo → <em>Your profile → SMTP &amp; API → API Keys</em>.
+      </p>
+      <Field label="API key" type="password" placeholder="paste to update" value={settings['brevo.apiKey']} onSave={(v) => save('brevo.apiKey', v)} />
+      <Field label="From email" value={settings['brevo.fromEmail']} onSave={(v) => save('brevo.fromEmail', v)} />
+      <Field label="From name" value={settings['brevo.fromName']} onSave={(v) => save('brevo.fromName', v)} />
+      <Field label="Reply-to" value={settings['brevo.replyTo']} onSave={(v) => save('brevo.replyTo', v)} />
+      <Toggle label="Test mode (log only, don't actually send)" value={settings['brevo.testMode']} onSave={(v) => save('brevo.testMode', v)} />
+      <p className="muted" style={{ fontSize: '.85rem', marginTop: '.75rem' }}>
+        Event webhook URL for delivery/open/click/bounce tracking: <code>/api/admin/email/webhooks/brevo</code>.
+        Configure in Brevo → Transactional → Settings → Webhook.
       </p>
     </div>
   );
