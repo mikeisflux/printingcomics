@@ -85,9 +85,10 @@ function buildCoverCanvas(spec: BookSpec): HTMLCanvasElement {
 
   const isLight = isLightColor(spec.coverColor) || spec.hasFoil || spec.paperStyle === 'foil';
 
-  // ---- Comic title — painted in the upper hero region of the cover (where
-  // a real comic puts its logo) in thick white Comic Sans with a heavy black
-  // stroke so it pops against any cover color.
+  // ---- Comic title — fits inside a fixed bounding box at the top of the
+  // cover (the "logo strip" region) in thick white Comic Sans with a heavy
+  // black stroke. The font size auto-shrinks so any length of title fits
+  // without overflowing the box.
   const userTitle = spec.title?.trim();
   if (userTitle) {
     ctx.save();
@@ -95,14 +96,14 @@ function buildCoverCanvas(spec: BookSpec): HTMLCanvasElement {
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.miterLimit = 2;
-    const t = userTitle.toUpperCase();
-    const fontSize = t.length > 18 ? 64 : t.length > 12 ? 84 : 108;
-    ctx.font = `900 ${fontSize}px "Comic Sans MS", "Chalkboard SE", "Comic Sans", system-ui, sans-serif`;
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = Math.max(10, fontSize * 0.14);
-    // Center the title block on y ≈ 230 — the upper-third hero strip of the
-    // 768-tall cover (matches where the user marked the yellow box).
-    wrapTextStroked(ctx, t, canvas.width / 2, 230, canvas.width - 50, fontSize + 14, '#ffffff');
+    const FONT_FAMILY = '"Comic Sans MS", "Chalkboard SE", "Comic Sans", system-ui, sans-serif';
+    const TITLE_BOX = {
+      cx: canvas.width / 2,
+      cy: 200,             // vertical center of the box
+      width: canvas.width - 60,
+      height: 220,
+    };
+    drawAutoFitTitle(ctx, userTitle.toUpperCase(), TITLE_BOX, FONT_FAMILY);
     ctx.restore();
   }
 
@@ -375,4 +376,77 @@ function wrapTextStroked(ctx: CanvasRenderingContext2D, text: string, x: number,
     ctx.fillText(l, x, lineY);
     lineY += lineHeight;
   }
+}
+
+/**
+ * Renders text inside a fixed-size box, auto-sizing the font down until the
+ * wrapped lines fit both width and height. Heavy black stroke + white fill,
+ * Comic Sans family.
+ */
+function drawAutoFitTitle(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  box: { cx: number; cy: number; width: number; height: number },
+  fontFamily: string,
+) {
+  const MAX_FONT = 130;
+  const MIN_FONT = 18;
+  const LINE_GAP = 1.05;
+
+  // Find the largest font size that fits both axes. Try wrapping at each size.
+  let chosenFont = MIN_FONT;
+  let chosenLines: string[] = [text];
+  for (let size = MAX_FONT; size >= MIN_FONT; size -= 2) {
+    ctx.font = `900 ${size}px ${fontFamily}`;
+    const lines = wrapToWidth(ctx, text, box.width);
+    const totalH = lines.length * size * LINE_GAP;
+    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    if (totalH <= box.height && widest <= box.width) {
+      chosenFont = size;
+      chosenLines = lines;
+      break;
+    }
+  }
+
+  // If even the smallest font + greedy wrap can't fit a single word, force-fit
+  // by truncating with an ellipsis at the chosen min font size.
+  if (chosenFont === MIN_FONT) {
+    ctx.font = `900 ${MIN_FONT}px ${fontFamily}`;
+    chosenLines = wrapToWidth(ctx, text, box.width);
+    const maxLines = Math.max(1, Math.floor(box.height / (MIN_FONT * LINE_GAP)));
+    if (chosenLines.length > maxLines) {
+      chosenLines = chosenLines.slice(0, maxLines);
+      chosenLines[maxLines - 1] = chosenLines[maxLines - 1]!.replace(/.{0,3}$/, '…');
+    }
+  }
+
+  ctx.font = `900 ${chosenFont}px ${fontFamily}`;
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = Math.max(6, chosenFont * 0.14);
+  const lineHeight = chosenFont * LINE_GAP;
+  const startY = box.cy - ((chosenLines.length - 1) * lineHeight) / 2;
+  for (let i = 0; i < chosenLines.length; i++) {
+    const y = startY + i * lineHeight;
+    ctx.strokeText(chosenLines[i]!, box.cx, y);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(chosenLines[i]!, box.cx, y);
+  }
+}
+
+function wrapToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
