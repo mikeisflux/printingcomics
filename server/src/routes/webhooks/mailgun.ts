@@ -48,7 +48,7 @@ router.post('/', async (req, res) => {
 
   const body = req.body as any;
   const sig = body?.signature;
-  if (!verifySignature(sig?.timestamp, sig?.token, sig?.signature, cfg.webhookSigningKey)) {
+  if (!verifySignature(sig?.timestamp ?? '', sig?.token ?? '', sig?.signature ?? '', cfg.webhookSigningKey)) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
@@ -98,7 +98,7 @@ router.post('/inbound', upload.any(), async (req, res) => {
   }
 
   const f = req.body as Record<string, string>;
-  if (!verifySignature(f.timestamp, f.token, f.signature, cfg.webhookSigningKey)) {
+  if (!verifySignature(f.timestamp ?? '', f.token ?? '', f.signature ?? '', cfg.webhookSigningKey)) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 

@@ -27,7 +27,7 @@ router.post('/', contactLimiter, async (req, res) => {
     return res.json({ ok: true });
   }
 
-  const inboundTo = (await getSetting('contact.inboundEmail')) ?? 'hello@printingcomics.com';
+  const inboundTo: string = (await getSetting<string>('contact.inboundEmail')) || 'hello@printingcomics.com';
   const subject = data.subject?.trim() || 'New contact form submission';
 
   const htmlBody = `
