@@ -177,24 +177,36 @@ function buildSpineCanvas(spec: BookSpec, thickness: number): HTMLCanvasElement 
 }
 
 /** Load an image URL into a THREE.Texture. Returns null until the image has
- *  actually loaded so we don't flash the cover black. */
-function useImageTexture(url?: string) {
+ *  actually loaded so we don't flash the cover black. Set flipX=true for the
+ *  back cover so the stored image appears unmirrored when viewed from the
+ *  camera's behind-the-book angle (BoxGeometry's -Z face UVs are mirrored
+ *  relative to the +Z face). */
+function useImageTexture(url?: string, flipX = false) {
   const [tex, setTex] = useState<THREE.Texture | null>(null);
   useMemo(() => {
     if (!url) { setTex(null); return; }
     const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
+    // Don't call setCrossOrigin for blob: URLs — they're same-origin in
+    // every browser we support and passing crossOrigin='anonymous' to an
+    // <img> loading a blob URL can cause silent taint/failure.
+    if (!url.startsWith('blob:')) loader.setCrossOrigin('anonymous');
     loader.load(
       url,
       (t) => {
         t.colorSpace = THREE.SRGBColorSpace;
         t.anisotropy = 8;
+        if (flipX) {
+          t.wrapS = THREE.RepeatWrapping;
+          t.repeat.x = -1;
+          t.offset.x = 1;
+          t.needsUpdate = true;
+        }
         setTex(t);
       },
       undefined,
       () => setTex(null),
     );
-  }, [url]);
+  }, [url, flipX]);
   return tex;
 }
 
@@ -228,7 +240,7 @@ function Book({ spec }: { spec: BookSpec }) {
   const coverOffset = coverT / 2 + 0.001;
 
   const frontImageTex = useImageTexture(spec.frontCoverImageUrl);
-  const backImageTex  = useImageTexture(spec.backCoverImageUrl);
+  const backImageTex  = useImageTexture(spec.backCoverImageUrl, /* flipX */ true);
   const spineImageTex = useImageTexture(spec.spineImageUrl);
 
   const proceduralCoverTexture = useMemo(() => {
@@ -239,6 +251,23 @@ function Book({ spec }: { spec: BookSpec }) {
   }, [
     spec.coverColor, spec.paperStyle, spec.hasFoil, spec.title, spec.subtitle,
   ]);
+
+  // Solid-color fallback texture for the back cover when no image is
+  // uploaded. Keeping the material's `map` slot always populated (rather
+  // than toggling between color-only and map-only) avoids an R3F
+  // reconciliation gotcha where the material sometimes renders black
+  // after switching from one mode to the other.
+  const backFallbackTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = spec.coverColor;
+    ctx.fillRect(0, 0, 2, 2);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, [spec.coverColor]);
+  const backMap = backImageTex ?? backFallbackTexture;
 
   const spineTexture = useMemo(() => {
     if (isSaddle) return null;  // no spine on stapled comics
@@ -365,19 +394,17 @@ function Book({ spec }: { spec: BookSpec }) {
           </group>
 
           {/* Back cover — mirrored tilt so the right edge is at -t/2.
-              The mesh itself is rotated 180° around Y so its local +Z face
-              (which carries the unmirrored texture UVs) points outward;
-              without this the uploaded back-cover image would either appear
-              mirrored or read black from the camera's back-of-book angle. */}
+              The material always carries a `map` (uploaded image, or a
+              solid-color fallback texture): if we toggle between map-set
+              and color-only R3F sometimes reconciles badly and the face
+              renders black. The image texture itself is pre-flipped in X
+              (see useImageTexture flipX) so it reads upright from behind
+              the book without mirroring. */}
           <group position={[-w / 2, 0, 0]} rotation={[0, saddleTilt, 0]}>
-            <mesh
-              position={[w / 2, 0, -coverT / 2]}
-              rotation={[0, Math.PI, 0]}
-              castShadow receiveShadow
-            >
+            <mesh position={[w / 2, 0, -coverT / 2]} castShadow receiveShadow>
               <boxGeometry args={[w, h, coverT]} />
               <meshStandardMaterial
-                {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
+                map={backMap}
                 metalness={coverMetalness}
                 roughness={coverRoughness}
               />
@@ -400,17 +427,17 @@ function Book({ spec }: { spec: BookSpec }) {
             />
           </mesh>
 
-          {/* Back cover — rotated 180° around Y so the mesh's local +Z face
-              (unmirrored UVs) points outward toward the camera when it
-              orbits behind the book. Same fix as saddle-stitch. */}
+          {/* Back cover — same treatment as saddle-stitch: always pass a
+              map (uploaded image or solid-color fallback texture) to avoid
+              R3F reconciliation glitches, and the back image is pre-flipped
+              in X so it reads upright from behind the book. */}
           <mesh
             position={[0, 0, -t / 2 - coverOffset]}
-            rotation={[0, Math.PI, 0]}
             castShadow receiveShadow
           >
             <boxGeometry args={[w, h, coverT]} />
             <meshStandardMaterial
-              {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
+              map={backMap}
               metalness={coverMetalness}
               roughness={coverRoughness}
             />
