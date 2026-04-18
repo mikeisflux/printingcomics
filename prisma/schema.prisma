@@ -143,6 +143,7 @@ model Product {
   options         ProductOption[]
   orderItems      OrderItem[]
   cartItems       CartItem[]
+  seoAnalysis     SeoAnalysis?
 }
 
 model ProductCategory {
