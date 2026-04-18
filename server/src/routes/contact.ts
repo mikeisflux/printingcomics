@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { sendEmail } from '../lib/brevo.js';
+import { sendEmail } from '../lib/smtp.js';
 import { getSetting } from '../lib/settings.js';
 import { HttpError } from '../middleware/error.js';
 

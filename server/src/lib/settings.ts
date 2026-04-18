@@ -9,6 +9,7 @@ export const SECRET_KEYS = new Set<string>([
   'paypal.clientSecret',
   'paypal.webhookId',
   'brevo.apiKey',
+  'smtp.password',
   'anthropic.apiKey',
 ]);
 
@@ -29,6 +30,7 @@ export const SETTING_KEYS = {
     country: 'store.country',
     logoUrl: 'store.logoUrl',
     currency: 'store.currency',
+    publicUrl: 'store.publicUrl',
   },
   paypal: {
     environment: 'paypal.environment', // "sandbox" | "live"
@@ -38,6 +40,21 @@ export const SETTING_KEYS = {
     enableCard: 'paypal.enableCard',
     enablePaypalButton: 'paypal.enablePaypalButton',
   },
+  smtp: {
+    host: 'smtp.host',
+    port: 'smtp.port',
+    secure: 'smtp.secure',
+    user: 'smtp.user',
+    password: 'smtp.password',
+    fromEmail: 'smtp.fromEmail',
+    fromName: 'smtp.fromName',
+    replyTo: 'smtp.replyTo',
+    testMode: 'smtp.testMode',
+    // Secret for the inbound email pipe auth. Requests to /api/inbound
+    // must present this as a Bearer token.
+    inboundSecret: 'smtp.inboundSecret',
+  },
+  // Kept for migration; remove after settings have been re-entered.
   brevo: {
     apiKey: 'brevo.apiKey',
     fromEmail: 'brevo.fromEmail',
@@ -65,10 +82,22 @@ function envFallback(key: string): unknown {
     case 'brevo.apiKey':        return process.env.BREVO_API_KEY ?? '';
     case 'brevo.fromEmail':     return process.env.BREVO_FROM_EMAIL ?? '';
     case 'brevo.fromName':      return process.env.BREVO_FROM_NAME ?? 'Printing Comics';
+    case 'smtp.host':           return process.env.SMTP_HOST ?? 'localhost';
+    case 'smtp.port':           return Number(process.env.SMTP_PORT ?? 25);
+    case 'smtp.secure':         return process.env.SMTP_SECURE === 'true';
+    case 'smtp.user':           return process.env.SMTP_USER ?? '';
+    case 'smtp.password':       return process.env.SMTP_PASSWORD ?? '';
+    case 'smtp.fromEmail':      return process.env.SMTP_FROM_EMAIL ?? '';
+    case 'smtp.fromName':       return process.env.SMTP_FROM_NAME ?? 'Printing Comics';
+    case 'smtp.replyTo':        return process.env.SMTP_REPLY_TO ?? '';
+    case 'smtp.testMode':       return process.env.SMTP_TEST_MODE === 'true';
+    case 'smtp.inboundSecret':  return process.env.SMTP_INBOUND_SECRET ?? '';
     case 'anthropic.apiKey':    return process.env.ANTHROPIC_API_KEY ?? '';
     case 'anthropic.model':     return process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-7';
     case 'store.currency':      return 'USD';
     case 'store.country':       return 'US';
+    case 'store.publicUrl':     return process.env.PUBLIC_URL ?? '';
+    case 'contact.inboundEmail': return process.env.CONTACT_INBOUND_EMAIL ?? '';
     default: return null;
   }
 }
@@ -172,6 +201,34 @@ export async function getPaypalConfig() {
   };
 }
 
+export async function getSmtpConfig() {
+  const [host, port, secure, user, password, fromEmail, fromName, replyTo, testMode, inboundSecret] = await Promise.all([
+    getSetting<string>('smtp.host'),
+    getSetting<number>('smtp.port'),
+    getSetting<boolean>('smtp.secure'),
+    getSetting<string>('smtp.user'),
+    getSetting<string>('smtp.password'),
+    getSetting<string>('smtp.fromEmail'),
+    getSetting<string>('smtp.fromName'),
+    getSetting<string>('smtp.replyTo'),
+    getSetting<boolean>('smtp.testMode'),
+    getSetting<string>('smtp.inboundSecret'),
+  ]);
+  return {
+    host: host ?? '',
+    port: Number(port) || 25,
+    secure: Boolean(secure),
+    user: user ?? '',
+    password: password ?? '',
+    fromEmail: fromEmail ?? '',
+    fromName: fromName ?? 'Printing Comics',
+    replyTo: replyTo ?? null,
+    testMode: Boolean(testMode),
+    inboundSecret: inboundSecret ?? '',
+  };
+}
+
+/** @deprecated — replaced by getSmtpConfig. Kept for existing callers only. */
 export async function getBrevoConfig() {
   const [apiKey, fromEmail, fromName, replyTo, testMode] = await Promise.all([
     getSetting<string>('brevo.apiKey'),

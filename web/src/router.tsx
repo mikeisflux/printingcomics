@@ -42,6 +42,7 @@ import { AdminEmailTemplateEdit } from './pages/admin/EmailTemplateEdit';
 import { AdminEmailCampaignEdit } from './pages/admin/EmailCampaignEdit';
 import { AdminSecurity } from './pages/admin/Security';
 import { AdminMedia } from './pages/admin/Media';
+import { AdminInbox } from './pages/admin/Inbox';
 
 export const router = createBrowserRouter([
   {
@@ -97,6 +98,7 @@ export const router = createBrowserRouter([
       { path: 'seo', element: <AdminSeo /> },
       { path: 'seo/:productId', element: <AdminSeoDetail /> },
       { path: 'email', element: <AdminEmail /> },
+      { path: 'inbox', element: <AdminInbox /> },
       { path: 'email/templates/:id', element: <AdminEmailTemplateEdit /> },
       { path: 'email/campaigns/:id', element: <AdminEmailCampaignEdit /> },
       { path: 'media', element: <AdminMedia /> },

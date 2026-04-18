@@ -6,7 +6,7 @@ import multer from 'multer';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
-import { sendEmail } from '../../lib/brevo.js';
+import { sendEmail } from '../../lib/smtp.js';
 import { runCampaignSend } from '../../lib/email-send.js';
 
 const router = Router();
@@ -346,53 +346,48 @@ router.get('/sends', async (req, res) => {
   res.json({ sends });
 });
 
-/**
- * Brevo Event Webhook receiver.
- *
- * Brevo POSTs JSON per event with shape:
- *   { event: "delivered" | "opened" | "click" | "hard_bounce" | ...,
- *     email, "message-id", date, reason, ... }
- *
- * Configure Brevo → Transactional → Settings → Webhook to point at
- *   https://<your-domain>/api/admin/email/webhooks/brevo
- */
-router.post('/webhooks/brevo', async (req, res) => {
-  // Brevo sends one event per request (not a batch) but we defensively
-  // handle both shapes.
-  const events = Array.isArray(req.body) ? req.body : [req.body];
-  const mapStatus: Record<string, any> = {
-    delivered: 'DELIVERED',
-    opened: 'OPENED',
-    proxy_open: 'OPENED',
-    unique_opened: 'OPENED',
-    click: 'CLICKED',
-    soft_bounce: 'BOUNCED',
-    hard_bounce: 'BOUNCED',
-    blocked: 'BOUNCED',
-    invalid_email: 'FAILED',
-    spam: 'BOUNCED',
-    deferred: 'QUEUED',
-    request: 'SENT',
-    unsubscribed: 'UNSUBSCRIBED',
-    list_addition: 'QUEUED',
-  };
-  for (const evt of events) {
-    if (!evt || typeof evt !== 'object') continue;
-    const providerRef = (evt['message-id'] ?? evt.messageId) as string | undefined;
-    if (!providerRef) continue;
-    const status = mapStatus[evt.event as string];
-    if (!status) continue;
-    await prisma.emailSend.updateMany({
-      where: { providerRef },
-      data: {
-        status,
-        ...(status === 'OPENED' ? { openedAt: new Date() } : {}),
-        ...(evt.event === 'click' ? { clickedAt: new Date() } : {}),
-        ...(evt.reason ? { errorMessage: String(evt.reason) } : {}),
-      },
-    });
-  }
-  res.status(204).end();
+// Brevo webhooks retired — we're on self-hosted SMTP now. Open/click
+// events come in through /api/track/*; bounces come in from Postfix via
+// the inbound handler. Leave a 410 here so any lingering configs fail loud.
+router.all('/webhooks/brevo', (_req, res) => {
+  res.status(410).json({ error: 'Brevo webhook endpoint has been retired; see /api/track/*' });
+});
+
+// -------- Inbound mailbox --------
+
+router.get('/inbound', async (req, res) => {
+  const kind = req.query.kind as string | undefined;
+  const handled = req.query.handled as string | undefined;
+  const where: any = {};
+  if (kind) where.kind = kind;
+  if (handled === 'true') where.handled = true;
+  else if (handled === 'false') where.handled = false;
+  const items = await prisma.inboundEmail.findMany({
+    where,
+    orderBy: { receivedAt: 'desc' },
+    take: 100,
+  });
+  res.json({ items });
+});
+
+router.get('/inbound/:id', async (req, res) => {
+  const item = await prisma.inboundEmail.findUnique({ where: { id: req.params.id } });
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  res.json({ item });
+});
+
+router.patch('/inbound/:id', async (req, res) => {
+  const handled = typeof req.body?.handled === 'boolean' ? req.body.handled : undefined;
+  const item = await prisma.inboundEmail.update({
+    where: { id: req.params.id },
+    data: { handled: handled ?? false },
+  });
+  res.json({ item });
+});
+
+router.delete('/inbound/:id', async (req, res) => {
+  await prisma.inboundEmail.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
 });
 
 export default router;

@@ -1,5 +1,5 @@
 import { prisma } from '../db.js';
-import { sendEmail } from './brevo.js';
+import { sendEmail } from './smtp.js';
 import { getSetting } from './settings.js';
 
 function formatMoney(cents: number): string {

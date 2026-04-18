@@ -36,6 +36,7 @@ export function AdminLayout() {
           <NavLink to="/admin/media">Media</NavLink>
           <NavLink to="/admin/seo">SEO</NavLink>
           <NavLink to="/admin/email">Email</NavLink>
+          <NavLink to="/admin/inbox">Inbox</NavLink>
           <NavLink to="/admin/security">Security</NavLink>
           <NavLink to="/admin/settings">Settings</NavLink>
         </nav>

@@ -157,21 +157,51 @@ function PaymentsSection() {
 function EmailSection() {
   const { settings, save } = useSettings();
   return (
-    <div className="admin-card">
-      <h3>Brevo</h3>
-      <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-        Get your API key from Brevo → <em>Your profile → SMTP &amp; API → API Keys</em>.
-      </p>
-      <Field label="API key" type="password" placeholder="paste to update" value={settings['brevo.apiKey']} onSave={(v) => save('brevo.apiKey', v)} />
-      <Field label="From email" value={settings['brevo.fromEmail']} onSave={(v) => save('brevo.fromEmail', v)} />
-      <Field label="From name" value={settings['brevo.fromName']} onSave={(v) => save('brevo.fromName', v)} />
-      <Field label="Reply-to" value={settings['brevo.replyTo']} onSave={(v) => save('brevo.replyTo', v)} />
-      <Toggle label="Test mode (log only, don't actually send)" value={settings['brevo.testMode']} onSave={(v) => save('brevo.testMode', v)} />
-      <p className="muted" style={{ fontSize: '.85rem', marginTop: '.75rem' }}>
-        Event webhook URL for delivery/open/click/bounce tracking: <code>/api/admin/email/webhooks/brevo</code>.
-        Configure in Brevo → Transactional → Settings → Webhook.
-      </p>
-    </div>
+    <>
+      <div className="admin-card">
+        <h3>SMTP</h3>
+        <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
+          Transactional + campaign email. Point at a local Postfix instance on the same host
+          (<code>localhost:25</code>, no auth) or an external relay. See <code>deploy/SMTP.md</code>
+          for the Postfix + DKIM + SPF + DMARC setup.
+        </p>
+        <div className="grid-2">
+          <Field label="Host" value={settings['smtp.host']} onSave={(v) => save('smtp.host', v)} placeholder="localhost" />
+          <Field label="Port" value={settings['smtp.port']} onSave={(v) => save('smtp.port', Number(v))} placeholder="25" />
+        </div>
+        <Toggle label="Secure (implicit TLS, usually for port 465)" value={settings['smtp.secure']} onSave={(v) => save('smtp.secure', v)} />
+        <div className="grid-2">
+          <Field label="Username (optional)" value={settings['smtp.user']} onSave={(v) => save('smtp.user', v)} />
+          <Field label="Password (optional)" type="password" placeholder="paste to update" value={settings['smtp.password']} onSave={(v) => save('smtp.password', v)} />
+        </div>
+        <div className="grid-2">
+          <Field label="From email" value={settings['smtp.fromEmail']} onSave={(v) => save('smtp.fromEmail', v)} placeholder="hello@printingcomics.com" />
+          <Field label="From name" value={settings['smtp.fromName']} onSave={(v) => save('smtp.fromName', v)} />
+        </div>
+        <Field label="Reply-to (optional)" value={settings['smtp.replyTo']} onSave={(v) => save('smtp.replyTo', v)} />
+        <Toggle label="Test mode (log only, don't actually send)" value={settings['smtp.testMode']} onSave={(v) => save('smtp.testMode', v)} />
+      </div>
+
+      <div className="admin-card">
+        <h3>Inbound mail</h3>
+        <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
+          Postfix pipes incoming RFC-822 messages to <code>POST /api/inbound</code> authenticated
+          with this secret (sent as <code>Authorization: Bearer …</code>). See
+          <code> deploy/SMTP.md </code> for the aliases / pipe config.
+        </p>
+        <Field label="Inbound secret" type="password" placeholder="rotate to update" value={settings['smtp.inboundSecret']} onSave={(v) => save('smtp.inboundSecret', v)} />
+      </div>
+
+      <div className="admin-card">
+        <h3>Tracking</h3>
+        <p className="muted" style={{ fontSize: '.85rem', marginBottom: 0 }}>
+          Open tracking uses a 1×1 pixel at <code>/api/track/open?t=…</code>. Click tracking
+          rewrites outbound links through <code>/api/track/click?t=…&amp;u=…</code>. Both require
+          <code> store.publicUrl </code> to be set.
+        </p>
+        <Field label="Public site URL" value={settings['store.publicUrl']} onSave={(v) => save('store.publicUrl', v)} placeholder="https://printingcomics.com" />
+      </div>
+    </>
   );
 }
 
