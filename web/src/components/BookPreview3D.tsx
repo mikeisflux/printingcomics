@@ -208,12 +208,20 @@ function Book({ spec }: { spec: BookSpec }) {
   const w = spec.widthIn * k;
   const h = spec.heightIn * k;
 
-  // Saddle-stitched comics are a flat stapled booklet — thickness is just
-  // the paper stack, regardless of page count it stays thin (comic with 32
-  // pages is only ~2–3 mm). Perfect-bound scales noticeably.
+  // Saddle-stitched comics: fixed cover-thickness with the two covers'
+  // inside faces kissing at z = 0 — no page stack in between, regardless
+  // of pageCount. Perfect-bound scales with pageCount as the spine grows.
+  const COVER_T_SADDLE = 0.006;
+  const COVER_T_PERFECT = 0.022;
+  const coverT = isSaddle ? COVER_T_SADDLE : COVER_T_PERFECT;
   const t = isSaddle
-    ? Math.max(0.035, Math.min(0.09, spec.pageCount * 0.0012 * k * 6))
+    ? 0  // no page block between saddle-stitched covers
     : Math.max(0.06, Math.min(1.4, spec.pageCount * 0.0035 * k * 6));
+  // Offset from page-block face to cover centre. For saddle we want the
+  // covers flush against z = 0 — inside faces kiss, with a 0.0002-unit
+  // sliver to avoid z-fighting (not visible at this distance). For
+  // perfect-bound the cover sits just outside the page block.
+  const coverOffset = isSaddle ? coverT / 2 + 0.0002 : coverT / 2 + 0.001;
 
   const frontImageTex = useImageTexture(spec.frontCoverImageUrl);
   const backImageTex  = useImageTexture(spec.backCoverImageUrl);
@@ -255,15 +263,22 @@ function Book({ spec }: { spec: BookSpec }) {
 
   return (
     <group ref={ref}>
-      {/* Page block (interior) */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[w * 0.97, h * 0.97, t * 0.93]} />
-        <meshStandardMaterial color={spec.pageColor} roughness={0.92} />
-      </mesh>
+      {/* Page block (interior). Omitted on saddle-stitch (no stack). */}
+      {!isSaddle && (
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[w * 0.97, h * 0.97, t * 0.93]} />
+          <meshStandardMaterial color={spec.pageColor} roughness={0.92} />
+        </mesh>
+      )}
 
-      {/* Front cover — textured */}
-      <mesh position={[0, 0, t / 2 + 0.012]} castShadow receiveShadow>
-        <boxGeometry args={[w, h, 0.022]} />
+      {/* Front cover — textured. Paper-thin on saddle-stitched comics, card
+          stock on perfect-bound. On saddle-stitch, positioned so the inside
+          faces of front and back cover meet at z = 0 (touching). */}
+      <mesh
+        position={[0, 0, t / 2 + coverOffset]}
+        castShadow receiveShadow
+      >
+        <boxGeometry args={[w, h, coverT]} />
         <meshStandardMaterial
           map={frontMap}
           metalness={coverMetalness}
@@ -273,8 +288,11 @@ function Book({ spec }: { spec: BookSpec }) {
       </mesh>
 
       {/* Back cover — uploaded image, or solid cover color */}
-      <mesh position={[0, 0, -t / 2 - 0.012]} castShadow receiveShadow>
-        <boxGeometry args={[w, h, 0.022]} />
+      <mesh
+        position={[0, 0, -t / 2 - coverOffset]}
+        castShadow receiveShadow
+      >
+        <boxGeometry args={[w, h, coverT]} />
         <meshStandardMaterial
           {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
           metalness={coverMetalness}
@@ -296,11 +314,14 @@ function Book({ spec }: { spec: BookSpec }) {
         </mesh>
       )}
 
-      {/* Fore-edge (page block side facing reader's right) */}
-      <mesh position={[w / 2 - 0.005, 0, 0]}>
-        <boxGeometry args={[0.005, h * 0.97, t * 0.93]} />
-        <meshStandardMaterial color={spec.pageColor} roughness={0.95} />
-      </mesh>
+      {/* Fore-edge (page block side facing reader's right). Only relevant
+          for perfect-bound where there's an actual page stack. */}
+      {!isSaddle && (
+        <mesh position={[w / 2 - 0.005, 0, 0]}>
+          <boxGeometry args={[0.005, h * 0.97, t * 0.93]} />
+          <meshStandardMaterial color={spec.pageColor} roughness={0.95} />
+        </mesh>
+      )}
     </group>
   );
 }
