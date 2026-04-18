@@ -127,7 +127,7 @@ router.get('/_meta/categories/:slug/configure', async (req, res) => {
       active: true,
       categories: { some: { categoryId: category.id } },
     },
-    orderBy: [{ sortOrder: 'asc' }, { priceCents: 'asc' }],
+    orderBy: { priceCents: 'asc' },
     include: {
       images: { orderBy: { sortOrder: 'asc' } },
       options: {

@@ -44,7 +44,7 @@ router.post('/configure', async (req, res) => {
 
   const products = await prisma.product.findMany({
     where: { active: true, categories: { some: { categoryId: category.id } } },
-    orderBy: [{ sortOrder: 'asc' }, { priceCents: 'asc' }],
+    orderBy: { priceCents: 'asc' },
     include: {
       options: {
         orderBy: { sortOrder: 'asc' },
