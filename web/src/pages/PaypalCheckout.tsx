@@ -37,8 +37,23 @@ export function PaypalCheckout() {
   const [sameAsShip, setSameAsShip] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Shipping rate selection
+  interface ShipRate { id: string; name: string; rateCents: number; estimatedDays?: string | null }
+  const [shipRates, setShipRates] = useState<ShipRate[]>([]);
+  const [shipRateId, setShipRateId] = useState<string | null>(null);
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (user?.email) setEmail(user.email); }, [user]);
+  useEffect(() => {
+    if (!ship.country) return;
+    void fetch(`/api/public/shipping/rates?country=${encodeURIComponent(ship.country)}`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : { rates: [] })
+      .then((j: { rates: ShipRate[] }) => {
+        setShipRates(j.rates);
+        if (j.rates.length > 0 && !shipRateId) setShipRateId(j.rates[0]!.id);
+      })
+      .catch(() => setShipRates([]));
+  }, [ship.country]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch PayPal config from the API (reads from admin settings).
   useEffect(() => {
@@ -62,6 +77,7 @@ export function PaypalCheckout() {
       email,
       shippingAddress: ship,
       billingAddress: sameAsShip ? ship : bill,
+      shippingRateId: shipRateId,
     });
     return r.paypalOrderId;
   };
@@ -168,11 +184,45 @@ export function PaypalCheckout() {
               </div>
             );
           })}
-          <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
+          <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
             <span>Subtotal</span><span>{formatMoney(sub)}</span>
           </div>
-          <p className="muted" style={{ fontSize: '.8rem' }}>
-            Shipping + tax calculated after payment authorization on PayPal's review page.
+
+          {shipRates.length > 0 && (
+            <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: '.9rem', marginBottom: '.35rem' }}>Shipping</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
+                {shipRates.map((r) => (
+                  <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', fontSize: '.9rem' }}>
+                    <input
+                      type="radio"
+                      name="shiprate"
+                      checked={shipRateId === r.id}
+                      onChange={() => setShipRateId(r.id)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      {r.name}
+                      {r.estimatedDays && <span className="muted" style={{ fontSize: '.8rem' }}> ({r.estimatedDays})</span>}
+                    </span>
+                    <span>{formatMoney(r.rateCents)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(() => {
+            const ship = shipRates.find((r) => r.id === shipRateId);
+            const shipCents = ship?.rateCents ?? 0;
+            return (
+              <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
+                <span>Total</span><span>{formatMoney(sub + shipCents)}</span>
+              </div>
+            );
+          })()}
+          <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>
+            Tax (if applicable) calculated on PayPal's review page.
           </p>
         </div>
       </aside>

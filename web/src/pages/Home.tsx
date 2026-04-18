@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom';
+import { useDocumentTitle, useMetaDescription } from '../hooks/useDocumentTitle';
 
 export function Home() {
+  useDocumentTitle(null);
+  useMetaDescription(
+    'Custom comic book and graphic novel printing for independent creators. Every run funds Divinity Comics, our 501(c)(3) nonprofit for youth and community storytelling.',
+  );
   return (
     <>
       {/* Hero */}

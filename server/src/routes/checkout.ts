@@ -64,7 +64,10 @@ const createSchema = z.object({
   email: z.string().email(),
   shippingAddress: addressSchema,
   billingAddress: addressSchema,
+  // Either an opaque shippingMethodId from the getQuote flow, or a
+  // ShippingRate.id picked directly on the checkout page.
   shippingMethodId: z.string().optional(),
+  shippingRateId: z.string().optional().nullable(),
   couponCode: z.string().optional(),
   notes: z.string().max(2000).optional(),
 });
@@ -74,13 +77,17 @@ router.post('/paypal/create', async (req, res) => {
   const cart = await findCart(req);
   if (!cart) throw new HttpError(400, 'No cart');
 
+  // shippingMethodId and shippingRateId both reference ShippingRate.id in
+  // the new flow — just forward whichever is set.
+  const shippingMethodId = data.shippingRateId ?? data.shippingMethodId;
+
   const result = await createPaypalOrder({
     cartId: cart.id,
     userId: req.session?.sub,
     email: data.email,
     shippingAddress: data.shippingAddress,
     billingAddress: data.billingAddress,
-    shippingMethodId: data.shippingMethodId,
+    shippingMethodId: shippingMethodId ?? undefined,
     couponCode: data.couponCode,
     notes: data.notes,
   });

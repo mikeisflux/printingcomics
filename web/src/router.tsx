@@ -1,5 +1,6 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { StoreLayout } from './components/StoreLayout';
+import { NotFound } from './pages/NotFound';
 import { AdminLayout } from './components/AdminLayout';
 
 import { Home } from './pages/Home';
@@ -111,5 +112,5 @@ export const router = createBrowserRouter([
       { path: 'settings', element: <AdminSettings /> },
     ],
   },
-  { path: '*', element: <Navigate to="/" replace /> },
+  { path: '*', element: <StoreLayout />, children: [{ index: true, element: <NotFound /> }] },
 ]);

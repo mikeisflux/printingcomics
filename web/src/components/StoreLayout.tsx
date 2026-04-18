@@ -58,6 +58,7 @@ export function StoreLayout() {
             <Link to="/contact">Contact</Link>
           </nav>
           <div className="actions">
+            <SearchBox />
             {user ? (
               <>
                 <Link to="/account" title={user.email} aria-label="Account">
@@ -139,6 +140,43 @@ export function StoreLayout() {
         </div>
       </footer>
     </>
+  );
+}
+
+function SearchBox() {
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (q.trim()) navigate(`/shop?q=${encodeURIComponent(q.trim())}`);
+      }}
+      style={{ display: 'flex', alignItems: 'center', gap: 0 }}
+    >
+      <input
+        type="search"
+        placeholder="Search products"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        style={{
+          padding: '.4rem .75rem', fontSize: '.85rem',
+          border: '1px solid var(--border)', borderRadius: '6px 0 0 6px',
+          borderRight: 'none', width: 180,
+        }}
+      />
+      <button
+        type="submit"
+        aria-label="Search"
+        style={{
+          padding: '.4rem .6rem', fontSize: '.9rem',
+          border: '1px solid var(--border)', borderRadius: '0 6px 6px 0',
+          background: 'var(--bg-alt)', cursor: 'pointer',
+        }}
+      >
+        🔍
+      </button>
+    </form>
   );
 }
 

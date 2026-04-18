@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 interface ProductCard {
   id: string;
@@ -27,11 +28,18 @@ type SortKey = 'newest' | 'price-asc' | 'price-desc' | 'name';
 
 export function Shop() {
   const { category } = useParams();
+  const [params] = useSearchParams();
   const [products, setProducts] = useState<ProductCard[]>([]);
   const [allCats, setAllCats] = useState<Category[]>([]);
   const [cat, setCat] = useState<Category | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(params.get('q') ?? '');
   const [sort, setSort] = useState<SortKey>('newest');
+  useDocumentTitle(cat?.name ?? (search ? `Search: ${search}` : 'Shop'));
+
+  // Sync the search input when the ?q= param changes (e.g. header search navigates here).
+  useEffect(() => {
+    setSearch(params.get('q') ?? '');
+  }, [params]);
 
   useEffect(() => {
     const qs = category ? `?category=${encodeURIComponent(category)}` : '';
