@@ -1,29 +1,56 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
+import {
+  deleteSetting,
+  invalidateSettingsCache,
+  listAllSettings,
+  setSetting,
+  SECRET_KEYS,
+} from '../../lib/settings.js';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
-  const settings = await prisma.setting.findMany();
-  const map: Record<string, unknown> = {};
-  for (const s of settings) map[s.key] = s.value;
-  res.json({ settings: map });
+  const settings = await listAllSettings();
+  res.json({ settings, secretKeys: [...SECRET_KEYS] });
 });
 
 const writeSchema = z.object({ key: z.string().min(1), value: z.any() });
 
 router.put('/', async (req, res) => {
   const { key, value } = writeSchema.parse(req.body);
-  const s = await prisma.setting.upsert({
-    where: { key },
-    create: { key, value },
-    update: { value },
-  });
-  res.json({ setting: s });
+  // Ignore writes that try to mask (••••) a secret — those are the mask values
+  // from list responses, not real credential updates.
+  if (SECRET_KEYS.has(key) && typeof value === 'string' && /^[•]+/.test(value)) {
+    return res.json({ ok: true, skipped: true });
+  }
+  await setSetting(key, value);
+  res.json({ ok: true });
 });
 
-// Shipping zones + rates
+// Bulk update
+const bulkSchema = z.object({ entries: z.array(z.object({ key: z.string(), value: z.any() })) });
+router.put('/bulk', async (req, res) => {
+  const { entries } = bulkSchema.parse(req.body);
+  for (const e of entries) {
+    if (SECRET_KEYS.has(e.key) && typeof e.value === 'string' && /^[•]+/.test(e.value)) continue;
+    await setSetting(e.key, e.value);
+  }
+  res.json({ ok: true });
+});
+
+router.delete('/:key', async (req, res) => {
+  await deleteSetting(req.params.key);
+  res.json({ ok: true });
+});
+
+router.post('/refresh', async (_req, res) => {
+  invalidateSettingsCache();
+  res.json({ ok: true });
+});
+
+// -------- Shipping zones + rates (kept from prior version) --------
 router.get('/shipping', async (_req, res) => {
   const zones = await prisma.shippingZone.findMany({ include: { rates: true } });
   res.json({ zones });
@@ -32,8 +59,7 @@ router.get('/shipping', async (_req, res) => {
 const zoneSchema = z.object({ name: z.string().min(1), countries: z.array(z.string()) });
 router.post('/shipping/zones', async (req, res) => {
   const data = zoneSchema.parse(req.body);
-  const zone = await prisma.shippingZone.create({ data });
-  res.json({ zone });
+  res.json({ zone: await prisma.shippingZone.create({ data }) });
 });
 
 const rateSchema = z.object({
@@ -47,14 +73,22 @@ const rateSchema = z.object({
 });
 router.post('/shipping/rates', async (req, res) => {
   const data = rateSchema.parse(req.body);
-  const rate = await prisma.shippingRate.create({ data });
-  res.json({ rate });
+  res.json({ rate: await prisma.shippingRate.create({ data }) });
 });
 
-// Tax rates
+router.delete('/shipping/rates/:id', async (req, res) => {
+  await prisma.shippingRate.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+router.delete('/shipping/zones/:id', async (req, res) => {
+  await prisma.shippingZone.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// -------- Tax rates --------
 router.get('/taxes', async (_req, res) => {
-  const taxes = await prisma.taxRate.findMany();
-  res.json({ taxes });
+  res.json({ taxes: await prisma.taxRate.findMany() });
 });
 
 const taxSchema = z.object({
@@ -64,15 +98,17 @@ const taxSchema = z.object({
   rateBps: z.number().int().min(0).max(10_000),
 });
 router.post('/taxes', async (req, res) => {
-  const data = taxSchema.parse(req.body);
-  const tax = await prisma.taxRate.create({ data });
-  res.json({ tax });
+  res.json({ tax: await prisma.taxRate.create({ data: taxSchema.parse(req.body) }) });
 });
 
-// Coupons
+router.delete('/taxes/:id', async (req, res) => {
+  await prisma.taxRate.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// -------- Coupons --------
 router.get('/coupons', async (_req, res) => {
-  const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
-  res.json({ coupons });
+  res.json({ coupons: await prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } }) });
 });
 
 const couponSchema = z.object({
@@ -87,10 +123,16 @@ const couponSchema = z.object({
 });
 router.post('/coupons', async (req, res) => {
   const data = couponSchema.parse(req.body);
-  const coupon = await prisma.coupon.create({
-    data: { ...data, expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined },
+  res.json({
+    coupon: await prisma.coupon.create({
+      data: { ...data, expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined },
+    }),
   });
-  res.json({ coupon });
+});
+
+router.delete('/coupons/:id', async (req, res) => {
+  await prisma.coupon.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
 });
 
 export default router;

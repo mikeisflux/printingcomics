@@ -262,7 +262,7 @@ model Payment {
   id              String        @id @default(cuid())
   order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId         String
-  provider        String        @default("stripe")
+  provider        String        @default("paypal")
   providerRef     String?
   amountCents     Int
   status          PaymentStatus @default(PENDING)
@@ -270,6 +270,7 @@ model Payment {
   createdAt       DateTime      @default(now())
 
   @@index([orderId])
+  @@index([providerRef])
 }
 
 model ShippingZone {
@@ -320,6 +321,221 @@ model Coupon {
 }
 
 model Setting {
-  key   String @id
-  value Json
+  key        String   @id
+  value      Json
+  // If true, `value` is AES-GCM encrypted ciphertext stored as hex "iv:ct:tag".
+  encrypted  Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+}
+
+// ============================================================
+// Bot blocker (ported from indiecrowdfund_2.0)
+// ============================================================
+
+model BlockedIP {
+  ipAddress      String   @id
+  reason         String
+  violationCount Int      @default(1)
+  blockedAt      DateTime @default(now())
+  expiresAt      DateTime
+  lastUserAgent  String?
+  lastPath       String?
+  lastActionId   String?
+
+  @@index([expiresAt])
+}
+
+model SuspiciousActivity {
+  id         String   @id @default(cuid())
+  ipAddress  String
+  reason     String
+  actionId   String?
+  path       String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([ipAddress, createdAt])
+  @@index([createdAt])
+}
+
+// ============================================================
+// SEO (Claude-powered)
+// ============================================================
+
+enum SeoStatus {
+  PENDING
+  COMPLETE
+  FAILED
+}
+
+model SeoAnalysis {
+  id              String    @id @default(cuid())
+  product         Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId       String?   @unique
+  // Page target (when not a product).
+  pageUrl         String?
+  status          SeoStatus @default(PENDING)
+  score           Int?
+  suggestedTitle  String?
+  suggestedDescription String?
+  headline        String?
+  summary         String?
+  issues          Json?     // [{ severity, message, field }]
+  rewrittenBody   String?
+  keywords        SeoKeyword[]
+  tokensUsed      Int       @default(0)
+  modelUsed       String?
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model SeoKeyword {
+  id           String      @id @default(cuid())
+  analysis     SeoAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId   String
+  keyword      String
+  intent       String?     // informational, commercial, transactional, navigational
+  difficulty   Int?        // 0-100 from Claude's estimate
+  relevance    Int?        // 0-100
+  createdAt    DateTime    @default(now())
+
+  @@index([analysisId])
+}
+
+// ============================================================
+// Email (SendGrid + CRUD)
+// ============================================================
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum EmailSendStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  FAILED
+  UNSUBSCRIBED
+}
+
+model EmailTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  subject      String
+  html         String
+  text         String?
+  // Free-form placeholder docs, e.g. {{first_name}}
+  variables    Json?
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaigns    EmailCampaign[]
+}
+
+model EmailSubscriber {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  firstName   String?
+  lastName    String?
+  optedIn     Boolean  @default(true)
+  unsubscribedAt DateTime?
+  tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lists       EmailListMember[]
+  sends       EmailSend[]
+}
+
+model EmailList {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members     EmailListMember[]
+  campaigns   EmailCampaign[]
+}
+
+model EmailListMember {
+  list         EmailList       @relation(fields: [listId], references: [id], onDelete: Cascade)
+  listId       String
+  subscriber   EmailSubscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscriberId String
+  addedAt      DateTime        @default(now())
+
+  @@id([listId, subscriberId])
+  @@index([subscriberId])
+}
+
+model EmailCampaign {
+  id              String          @id @default(cuid())
+  name            String
+  subject         String
+  fromName        String?
+  fromEmail       String?
+  replyTo         String?
+  html            String
+  text            String?
+  template        EmailTemplate?  @relation(fields: [templateId], references: [id])
+  templateId      String?
+  list            EmailList?      @relation(fields: [listId], references: [id])
+  listId          String?
+  // Optional: list of subscriber ids beyond the list (e.g. manual picks).
+  extraRecipients String[]
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  status          CampaignStatus  @default(DRAFT)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  attachments     EmailAttachment[]
+  sends           EmailSend[]
+}
+
+model EmailAttachment {
+  id          String        @id @default(cuid())
+  campaign    EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId  String
+  filename    String
+  contentType String
+  sizeBytes   Int
+  storageKey  String        // path relative to UPLOADS_DIR
+  createdAt   DateTime      @default(now())
+
+  @@index([campaignId])
+}
+
+model EmailSend {
+  id            String          @id @default(cuid())
+  campaign      EmailCampaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignId    String?
+  subscriber    EmailSubscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  subscriberId  String?
+  toEmail       String
+  subject       String
+  status        EmailSendStatus @default(QUEUED)
+  providerRef   String?         // SendGrid x-message-id
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  errorMessage  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([campaignId])
+  @@index([subscriberId])
+  @@index([status])
+  @@index([providerRef])
 }

@@ -5,6 +5,10 @@ import orders from './orders.js';
 import users from './users.js';
 import categories from './categories.js';
 import settings from './settings.js';
+import seo from './seo.js';
+import email from './email.js';
+import security from './security.js';
+import backup from './backup.js';
 import { requireAdmin } from '../../middleware/auth.js';
 
 const router = Router();
@@ -16,5 +20,9 @@ router.use('/orders', orders);
 router.use('/users', users);
 router.use('/categories', categories);
 router.use('/settings', settings);
+router.use('/seo', seo);
+router.use('/email', email);
+router.use('/security', security);
+router.use('/backup', backup);
 
 export default router;

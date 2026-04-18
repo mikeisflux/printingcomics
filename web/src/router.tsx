@@ -6,7 +6,7 @@ import { Home } from './pages/Home';
 import { Shop } from './pages/Shop';
 import { Product } from './pages/Product';
 import { CartPage } from './pages/CartPage';
-import { Checkout } from './pages/Checkout';
+import { PaypalCheckout } from './pages/PaypalCheckout';
 import { OrderConfirmation } from './pages/OrderConfirmation';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -21,6 +21,12 @@ import { AdminOrderDetail } from './pages/admin/OrderDetail';
 import { AdminCustomers } from './pages/admin/Customers';
 import { AdminCategories } from './pages/admin/Categories';
 import { AdminSettings } from './pages/admin/Settings';
+import { AdminSeo } from './pages/admin/Seo';
+import { AdminSeoDetail } from './pages/admin/SeoDetail';
+import { AdminEmail } from './pages/admin/Email';
+import { AdminEmailTemplateEdit } from './pages/admin/EmailTemplateEdit';
+import { AdminEmailCampaignEdit } from './pages/admin/EmailCampaignEdit';
+import { AdminSecurity } from './pages/admin/Security';
 
 export const router = createBrowserRouter([
   {
@@ -32,7 +38,7 @@ export const router = createBrowserRouter([
       { path: 'shop/:category', element: <Shop /> },
       { path: 'product/:slug', element: <Product /> },
       { path: 'cart', element: <CartPage /> },
-      { path: 'checkout', element: <Checkout /> },
+      { path: 'checkout', element: <PaypalCheckout /> },
       { path: 'order/:number', element: <OrderConfirmation /> },
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
@@ -52,6 +58,12 @@ export const router = createBrowserRouter([
       { path: 'orders/:id', element: <AdminOrderDetail /> },
       { path: 'customers', element: <AdminCustomers /> },
       { path: 'categories', element: <AdminCategories /> },
+      { path: 'seo', element: <AdminSeo /> },
+      { path: 'seo/:productId', element: <AdminSeoDetail /> },
+      { path: 'email', element: <AdminEmail /> },
+      { path: 'email/templates/:id', element: <AdminEmailTemplateEdit /> },
+      { path: 'email/campaigns/:id', element: <AdminEmailCampaignEdit /> },
+      { path: 'security', element: <AdminSecurity /> },
       { path: 'settings', element: <AdminSettings /> },
     ],
   },
