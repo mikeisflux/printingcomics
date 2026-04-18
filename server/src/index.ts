@@ -10,6 +10,7 @@ import { attachSession } from './middleware/auth.js';
 import { errorHandler, notFound } from './middleware/error.js';
 import { botBlockerGate } from './middleware/botblocker.js';
 import { cleanupExpiredData } from './lib/bot-blocker.js';
+import { startCampaignScheduler } from './lib/email-send.js';
 
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
@@ -65,6 +66,9 @@ app.use(errorHandler);
 setInterval(() => {
   void cleanupExpiredData();
 }, 6 * 60 * 60 * 1000);
+
+// Poll for scheduled email campaigns every minute.
+startCampaignScheduler(60_000);
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console

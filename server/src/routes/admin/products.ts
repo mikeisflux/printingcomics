@@ -137,6 +137,45 @@ router.delete('/:id/variants/:variantId', async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Bulk actions ---
+const bulkSchema = z.object({
+  ids: z.array(z.string()).min(1),
+  action: z.enum(['activate', 'deactivate', 'delete', 'assign-categories']),
+  categoryIds: z.array(z.string()).optional(),
+});
+
+router.post('/bulk', async (req, res) => {
+  const { ids, action, categoryIds } = bulkSchema.parse(req.body);
+
+  if (action === 'activate' || action === 'deactivate') {
+    await prisma.product.updateMany({
+      where: { id: { in: ids } },
+      data: { active: action === 'activate' },
+    });
+    res.json({ ok: true, affected: ids.length });
+    return;
+  }
+
+  if (action === 'delete') {
+    await prisma.product.deleteMany({ where: { id: { in: ids } } });
+    res.json({ ok: true, affected: ids.length });
+    return;
+  }
+
+  if (action === 'assign-categories') {
+    if (!categoryIds) throw new HttpError(400, 'categoryIds required');
+    await prisma.$transaction(async (tx) => {
+      await tx.productCategory.deleteMany({ where: { productId: { in: ids } } });
+      const rows = ids.flatMap((productId) => categoryIds.map((categoryId) => ({ productId, categoryId })));
+      if (rows.length) await tx.productCategory.createMany({ data: rows });
+    });
+    res.json({ ok: true, affected: ids.length });
+    return;
+  }
+
+  throw new HttpError(400, 'Unknown action');
+});
+
 // --- Configurator options ---
 const OPTION_TYPES = ['TILES', 'RADIO', 'SELECT', 'TOGGLE', 'TEXT', 'NUMBER', 'UPLOAD', 'CONFIRM'] as const;
 

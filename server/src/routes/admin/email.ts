@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import { sendEmail } from '../../lib/brevo.js';
+import { runCampaignSend } from '../../lib/email-send.js';
 
 const router = Router();
 
@@ -261,96 +262,47 @@ router.delete('/campaigns/:campaignId/attachments/:attachmentId', async (req, re
 });
 
 // Send campaign immediately (to list members + extraRecipients).
-// For small lists this is fine inline; for large lists you'd want a queue.
 router.post('/campaigns/:id/send', async (req, res) => {
-  const campaign = await prisma.emailCampaign.findUnique({
-    where: { id: req.params.id },
-    include: {
-      list: { include: { members: { include: { subscriber: true } } } },
-      attachments: true,
-    },
-  });
+  try {
+    const result = await runCampaignSend(req.params.id);
+    res.json(result);
+  } catch (e: any) {
+    if (e.message === 'Campaign not found') throw new HttpError(404, e.message);
+    throw new HttpError(400, e.message ?? 'Send failed');
+  }
+});
+
+// Schedule a campaign — flips it to SCHEDULED with a future scheduledAt.
+// The scheduler picks it up when scheduledAt <= now.
+const scheduleSchema = z.object({ scheduledAt: z.string().datetime() });
+router.post('/campaigns/:id/schedule', async (req, res) => {
+  const { scheduledAt } = scheduleSchema.parse(req.body);
+  const when = new Date(scheduledAt);
+  if (when.getTime() <= Date.now()) throw new HttpError(400, 'scheduledAt must be in the future');
+
+  const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
   if (!campaign) throw new HttpError(404, 'Campaign not found');
   if (campaign.status === 'SENDING' || campaign.status === 'SENT') {
     throw new HttpError(400, `Campaign is already ${campaign.status.toLowerCase()}`);
   }
 
-  await prisma.emailCampaign.update({
+  const updated = await prisma.emailCampaign.update({
     where: { id: campaign.id },
-    data: { status: 'SENDING' },
+    data: { status: 'SCHEDULED', scheduledAt: when },
   });
+  res.json({ campaign: updated });
+});
 
-  const recipients = new Map<string, { email: string; subscriberId?: string }>();
-  for (const m of campaign.list?.members ?? []) {
-    if (m.subscriber.optedIn) recipients.set(m.subscriber.email, { email: m.subscriber.email, subscriberId: m.subscriber.id });
-  }
-  for (const extra of campaign.extraRecipients ?? []) {
-    if (/.+@.+/.test(extra)) recipients.set(extra, { email: extra });
-  }
-
-  // Load attachments into memory (base64) for Brevo
-  const encodedAttachments = [];
-  for (const a of campaign.attachments) {
-    try {
-      const buffer = await fs.readFile(path.join(UPLOADS_DIR, a.storageKey));
-      encodedAttachments.push({
-        filename: a.filename,
-        contentType: a.contentType,
-        contentBase64: buffer.toString('base64'),
-      });
-    } catch {
-      // skip missing files
-    }
-  }
-
-  let ok = 0;
-  let fail = 0;
-  for (const r of recipients.values()) {
-    try {
-      const { providerRef } = await sendEmail({
-        to: { email: r.email },
-        subject: campaign.subject,
-        html: campaign.html,
-        text: campaign.text ?? undefined,
-        attachments: encodedAttachments,
-        params: { campaignId: campaign.id, ...(r.subscriberId ? { subscriberId: r.subscriberId } : {}) },
-        tags: [`campaign:${campaign.id}`],
-      });
-      await prisma.emailSend.create({
-        data: {
-          campaignId: campaign.id,
-          subscriberId: r.subscriberId,
-          toEmail: r.email,
-          subject: campaign.subject,
-          status: 'SENT',
-          providerRef,
-        },
-      });
-      ok++;
-    } catch (e: any) {
-      await prisma.emailSend.create({
-        data: {
-          campaignId: campaign.id,
-          subscriberId: r.subscriberId,
-          toEmail: r.email,
-          subject: campaign.subject,
-          status: 'FAILED',
-          errorMessage: e.message,
-        },
-      });
-      fail++;
-    }
-  }
-
-  await prisma.emailCampaign.update({
+// Cancel a scheduled campaign, reverting it to DRAFT.
+router.post('/campaigns/:id/unschedule', async (req, res) => {
+  const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+  if (!campaign) throw new HttpError(404, 'Campaign not found');
+  if (campaign.status !== 'SCHEDULED') throw new HttpError(400, 'Campaign is not scheduled');
+  const updated = await prisma.emailCampaign.update({
     where: { id: campaign.id },
-    data: {
-      status: fail === 0 ? 'SENT' : ok > 0 ? 'SENT' : 'FAILED',
-      sentAt: new Date(),
-    },
+    data: { status: 'DRAFT', scheduledAt: null },
   });
-
-  res.json({ sent: ok, failed: fail, total: recipients.size });
+  res.json({ campaign: updated });
 });
 
 // One-off transactional send
