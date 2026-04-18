@@ -47,8 +47,6 @@ export function Home() {
           {[
             { slug: 'comic-books', name: 'Comic Books', blurb: 'Saddle-stitched, soft-cover, 24-32 pages.' },
             { slug: 'graphic-novels', name: 'Graphic Novels', blurb: 'Perfect-bound, soft or hard cover.' },
-            { slug: 'manga', name: 'Manga', blurb: 'Right-to-left or left-to-right bound.' },
-            { slug: 'zines', name: 'Zines', blurb: 'Short runs, stapled and folded.' },
             { slug: 'artist-tools', name: 'Artist Tools', blurb: 'Sketchbooks, templates, panel pads.' },
           ].map((c) => (
             <Link

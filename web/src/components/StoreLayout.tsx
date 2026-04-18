@@ -31,8 +31,6 @@ export function StoreLayout() {
               items={[
                 { to: '/shop/comic-books', label: 'Comic Books' },
                 { to: '/shop/graphic-novels', label: 'Graphic Novels' },
-                { to: '/shop/manga', label: 'Manga' },
-                { to: '/shop/zines', label: 'Zines' },
                 { to: '/shop/artist-tools', label: 'Artist Tools' },
               ]}
             />
@@ -115,8 +113,6 @@ export function StoreLayout() {
               <ul>
                 <li><Link to="/shop/comic-books">Comic Books</Link></li>
                 <li><Link to="/shop/graphic-novels">Graphic Novels</Link></li>
-                <li><Link to="/shop/manga">Manga</Link></li>
-                <li><Link to="/shop/zines">Zines</Link></li>
                 <li><Link to="/shop/artist-tools">Artist Tools</Link></li>
               </ul>
             </div>
