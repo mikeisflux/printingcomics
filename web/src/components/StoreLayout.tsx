@@ -52,7 +52,7 @@ export function StoreLayout() {
               onToggle={() => setAboutOpen(!aboutOpen)}
               items={[
                 { to: '/about', label: 'About Us' },
-                { to: '/terms', label: 'Terms &amp; Conditions' },
+                { to: '/terms', label: 'Terms & Conditions' },
               ]}
             />
             <Link to="/contact">Contact</Link>
