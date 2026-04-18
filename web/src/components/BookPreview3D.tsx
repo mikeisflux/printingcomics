@@ -224,12 +224,12 @@ function Book({ spec }: { spec: BookSpec }) {
 export function BookPreview3D({ spec }: { spec: BookSpec }) {
   return (
     <div style={{
-      width: '100%', height: '100%', minHeight: 480,
+      width: '100%', height: 520,
       background: 'radial-gradient(ellipse at top, #1e293b 0%, #0f172a 100%)',
       borderRadius: 16, overflow: 'hidden',
       boxShadow: '0 25px 60px -20px rgba(0,0,0,0.6)',
     }}>
-      <Canvas shadows camera={{ position: [3.6, 2, 5.4], fov: 36 }} dpr={[1, 2]}>
+      <Canvas shadows camera={{ position: [2.8, 0.4, 4.2], fov: 34 }} dpr={[1, 2]}>
         <ambientLight intensity={0.4} />
         <directionalLight
           position={[4, 6, 5]}
