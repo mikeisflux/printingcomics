@@ -633,3 +633,31 @@ model EmailSend {
   @@index([status])
   @@index([providerRef])
 }
+
+// Incoming email delivered by Mailgun Routes → /api/webhooks/mailgun/inbound.
+// Replies thread back to our outbound sends by matching inReplyTo against
+// EmailSend.providerRef (Mailgun's message-id we stored on send).
+model InboundEmail {
+  id             String   @id @default(cuid())
+  messageId      String?  @unique
+  inReplyTo      String?
+  fromEmail      String
+  fromName       String?
+  toEmail        String
+  subject        String
+  textBody       String?
+  strippedText   String?  // Mailgun's auto-stripped "just the new reply" text
+  htmlBody       String?
+  rawHeaders     Json?
+  attachments    Json?    // [{ filename, url, size, contentType }]
+  kind           String   @default("inbound")  // "inbound" | "bounce" | "complaint"
+  bounceType     String?  // "hard" | "soft" | null
+  linkedSendId   String?
+  handled        Boolean  @default(false)
+  receivedAt     DateTime @default(now())
+
+  @@index([receivedAt])
+  @@index([kind])
+  @@index([fromEmail])
+  @@index([inReplyTo])
+}

@@ -2,20 +2,20 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 
-type Tab = 'campaigns' | 'templates' | 'subscribers' | 'sends';
+type Tab = 'inbox' | 'campaigns' | 'templates' | 'subscribers' | 'sends';
 
 export function AdminEmail() {
-  const [tab, setTab] = useState<Tab>('campaigns');
+  const [tab, setTab] = useState<Tab>('inbox');
 
   return (
     <div>
       <div className="spread" style={{ marginBottom: '1rem' }}>
         <h1 style={{ margin: 0 }}>Email Center</h1>
-        <Link to="/admin/email/campaigns/new" className="btn">New campaign</Link>
+        {tab === 'campaigns' && <Link to="/admin/email/campaigns/new" className="btn">New campaign</Link>}
       </div>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['campaigns', 'templates', 'subscribers', 'sends'] as Tab[]).map((t) => (
+          {(['inbox', 'campaigns', 'templates', 'subscribers', 'sends'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -35,10 +35,246 @@ export function AdminEmail() {
           ))}
         </div>
       </div>
+      {tab === 'inbox' && <InboxTab />}
       {tab === 'campaigns' && <CampaignsTab />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'subscribers' && <SubscribersTab />}
       {tab === 'sends' && <SendsTab />}
+    </div>
+  );
+}
+
+interface InboundMessage {
+  id: string;
+  messageId?: string | null;
+  inReplyTo?: string | null;
+  fromEmail: string;
+  fromName?: string | null;
+  toEmail: string;
+  subject: string;
+  strippedText?: string | null;
+  kind: string;
+  bounceType?: string | null;
+  linkedSendId?: string | null;
+  handled: boolean;
+  receivedAt: string;
+}
+
+interface InboundFull extends InboundMessage {
+  textBody?: string | null;
+  htmlBody?: string | null;
+  attachments?: { filename: string; contentType: string; size: number }[] | null;
+}
+
+const INBOX_FILTERS: { label: string; query: Record<string, string> }[] = [
+  { label: 'Unhandled', query: { handled: 'false' } },
+  { label: 'All', query: {} },
+  { label: 'Replies', query: { kind: 'inbound' } },
+  { label: 'Bounces', query: { kind: 'bounce' } },
+  { label: 'Handled', query: { handled: 'true' } },
+];
+
+function InboxTab() {
+  const [items, setItems] = useState<InboundMessage[]>([]);
+  const [filter, setFilter] = useState(0);
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<InboundFull | null>(null);
+  const [replyHtml, setReplyHtml] = useState('');
+  const [replyBusy, setReplyBusy] = useState(false);
+
+  const load = async () => {
+    const params = { ...INBOX_FILTERS[filter]!.query };
+    if (search) (params as any).q = search;
+    const qs = new URLSearchParams(params).toString();
+    const r = await api.get<{ items: InboundMessage[] }>(`/admin/email/inbound${qs ? `?${qs}` : ''}`);
+    setItems(r.items);
+    if (r.items.length > 0 && !selectedId) setSelectedId(r.items[0]!.id);
+    else if (r.items.length === 0) { setSelectedId(null); setSelected(null); }
+  };
+
+  useEffect(() => { void load(); }, [filter]);
+
+  useEffect(() => {
+    if (!selectedId) return setSelected(null);
+    void api.get<{ item: InboundFull }>(`/admin/email/inbound/${selectedId}`).then((r) => setSelected(r.item));
+  }, [selectedId]);
+
+  async function toggleHandled(id: string, handled: boolean) {
+    await api.patch(`/admin/email/inbound/${id}`, { handled });
+    await load();
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Delete this message?')) return;
+    await api.del(`/admin/email/inbound/${id}`);
+    setSelectedId(null);
+    await load();
+  }
+
+  async function sendReply() {
+    if (!selected || !replyHtml.trim()) return;
+    setReplyBusy(true);
+    try {
+      await api.post(`/admin/email/inbound/${selected.id}/reply`, {
+        html: replyHtml,
+        text: replyHtml.replace(/<[^>]+>/g, ''),
+      });
+      setReplyHtml('');
+      await load();
+    } catch (e: any) {
+      alert(e.message ?? 'Reply failed');
+    } finally {
+      setReplyBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="row" style={{ gap: '.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {INBOX_FILTERS.map((f, i) => (
+          <button
+            key={f.label}
+            className={filter === i ? 'btn' : 'btn secondary'}
+            style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}
+            onClick={() => { setFilter(i); setSelectedId(null); }}
+          >
+            {f.label}
+          </button>
+        ))}
+        <form
+          onSubmit={(e) => { e.preventDefault(); void load(); }}
+          style={{ marginLeft: 'auto', display: 'flex', gap: '.5rem' }}
+        >
+          <input
+            placeholder="Search subject or sender"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 240 }}
+          />
+          <button className="btn secondary" style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>Search</button>
+        </form>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 380px) 1fr', gap: '1rem' }}>
+        <div className="admin-card" style={{ margin: 0, padding: 0, maxHeight: '70vh', overflowY: 'auto' }}>
+          {items.length === 0 ? (
+            <p className="muted" style={{ padding: '1rem' }}>No messages.</p>
+          ) : (
+            items.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => setSelectedId(it.id)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '.75rem 1rem', border: 'none',
+                  background: selectedId === it.id ? 'var(--bg-alt)' : '#fff',
+                  borderBottom: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div className="spread" style={{ marginBottom: '.25rem' }}>
+                  <strong style={{ fontSize: '.9rem', fontWeight: it.handled ? 400 : 700 }}>
+                    {it.fromName || it.fromEmail}
+                  </strong>
+                  {it.kind === 'bounce' && (
+                    <span style={{ background: '#fee2e2', color: '#991b1b', padding: '.1rem .4rem', borderRadius: 4, fontSize: '.7rem', fontWeight: 600 }}>
+                      {it.bounceType ?? 'bounce'}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '.85rem', color: 'var(--ink)', fontWeight: it.handled ? 400 : 500 }}>
+                  {it.subject || '(no subject)'}
+                </div>
+                {it.strippedText && (
+                  <div className="muted" style={{ fontSize: '.78rem', marginTop: '.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {it.strippedText.slice(0, 120)}
+                  </div>
+                )}
+                <div className="muted" style={{ fontSize: '.75rem', marginTop: '.25rem' }}>
+                  {new Date(it.receivedAt).toLocaleString()}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="admin-card" style={{ margin: 0 }}>
+          {!selected ? (
+            <p className="muted">Select a message.</p>
+          ) : (
+            <>
+              <div className="spread" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '.5rem' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>{selected.subject || '(no subject)'}</h3>
+                  <div className="muted" style={{ fontSize: '.85rem' }}>
+                    From <strong>{selected.fromName || selected.fromEmail}</strong> &lt;{selected.fromEmail}&gt;
+                    {' · '}to {selected.toEmail}
+                    {' · '}{new Date(selected.receivedAt).toLocaleString()}
+                  </div>
+                </div>
+                <div className="row" style={{ gap: '.5rem' }}>
+                  <button
+                    className="btn secondary"
+                    onClick={() => void toggleHandled(selected.id, !selected.handled)}
+                  >
+                    {selected.handled ? 'Mark unhandled' : 'Mark handled'}
+                  </button>
+                  <button className="btn secondary" style={{ color: '#b91c1c' }} onClick={() => void remove(selected.id)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              {selected.inReplyTo && (
+                <div className="muted" style={{ fontSize: '.75rem', marginBottom: '.75rem' }}>
+                  In reply to: <code>{selected.inReplyTo}</code>
+                  {selected.linkedSendId && <> · Linked to send: <code>{selected.linkedSendId}</code></>}
+                </div>
+              )}
+
+              {selected.attachments && selected.attachments.length > 0 && (
+                <div className="muted" style={{ fontSize: '.85rem', marginBottom: '.75rem' }}>
+                  Attachments: {selected.attachments.map((a) => a.filename).join(', ')}
+                </div>
+              )}
+
+              {selected.htmlBody ? (
+                <iframe
+                  title="message"
+                  srcDoc={selected.htmlBody}
+                  sandbox=""
+                  style={{ width: '100%', minHeight: 360, border: '1px solid var(--border)', borderRadius: 4 }}
+                />
+              ) : (
+                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, padding: '.5rem', background: 'var(--bg-alt)', borderRadius: 4 }}>
+                  {selected.strippedText ?? selected.textBody ?? '(empty body)'}
+                </pre>
+              )}
+
+              {selected.kind !== 'bounce' && (
+                <div style={{ marginTop: '1rem' }}>
+                  <h4>Reply</h4>
+                  <textarea
+                    rows={6}
+                    value={replyHtml}
+                    onChange={(e) => setReplyHtml(e.target.value)}
+                    placeholder={`Re: ${selected.subject}\n\nHi ${selected.fromName || ''},\n\n`}
+                  />
+                  <div className="row" style={{ marginTop: '.5rem' }}>
+                    <button className="btn" disabled={replyBusy || !replyHtml.trim()} onClick={() => void sendReply()}>
+                      {replyBusy ? 'Sending…' : 'Send reply'}
+                    </button>
+                    <span className="muted" style={{ fontSize: '.8rem' }}>
+                      Sent from {selected.toEmail || 'your configured From address'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

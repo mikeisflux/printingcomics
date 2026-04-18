@@ -352,4 +352,91 @@ router.all('/webhooks/brevo', (_req, res) => {
   res.status(410).json({ error: 'Retired; see /api/webhooks/mailgun' });
 });
 
+// -------- Inbox (stores messages Mailgun delivers to /webhooks/mailgun/inbound) --------
+
+router.get('/inbound', async (req, res) => {
+  const kind = req.query.kind as string | undefined;
+  const handled = req.query.handled as string | undefined;
+  const q = (req.query.q as string | undefined)?.trim();
+  const where: any = {};
+  if (kind) where.kind = kind;
+  if (handled === 'true') where.handled = true;
+  else if (handled === 'false') where.handled = false;
+  if (q) where.OR = [
+    { subject: { contains: q, mode: 'insensitive' } },
+    { fromEmail: { contains: q, mode: 'insensitive' } },
+    { fromName: { contains: q, mode: 'insensitive' } },
+  ];
+  const items = await prisma.inboundEmail.findMany({
+    where,
+    orderBy: { receivedAt: 'desc' },
+    take: 200,
+    select: {
+      id: true, messageId: true, inReplyTo: true,
+      fromEmail: true, fromName: true, toEmail: true, subject: true,
+      strippedText: true,
+      kind: true, bounceType: true, linkedSendId: true, handled: true,
+      receivedAt: true,
+    },
+  });
+  res.json({ items });
+});
+
+router.get('/inbound/:id', async (req, res) => {
+  const item = await prisma.inboundEmail.findUnique({ where: { id: req.params.id } });
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  res.json({ item });
+});
+
+router.patch('/inbound/:id', async (req, res) => {
+  const handled = typeof req.body?.handled === 'boolean' ? req.body.handled : undefined;
+  const item = await prisma.inboundEmail.update({
+    where: { id: req.params.id },
+    data: { handled: handled ?? false },
+  });
+  res.json({ item });
+});
+
+router.delete('/inbound/:id', async (req, res) => {
+  await prisma.inboundEmail.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// Reply composer — sends a reply via Mailgun and auto-marks the inbound as
+// handled. Threads by stamping In-Reply-To + References headers.
+const replySchema = z.object({
+  html: z.string().min(1),
+  text: z.string().optional(),
+  subject: z.string().optional(),
+});
+router.post('/inbound/:id/reply', async (req, res) => {
+  const parent = await prisma.inboundEmail.findUnique({ where: { id: req.params.id } });
+  if (!parent) throw new HttpError(404, 'Message not found');
+
+  const data = replySchema.parse(req.body);
+  const subject = data.subject ?? (parent.subject.startsWith('Re:') ? parent.subject : `Re: ${parent.subject}`);
+
+  const threadHeaders: Record<string, string> = {};
+  if (parent.messageId) {
+    threadHeaders['In-Reply-To'] = parent.messageId;
+    threadHeaders['References'] = parent.messageId;
+  }
+
+  const { providerRef } = await sendEmail({
+    to: { email: parent.fromEmail, name: parent.fromName ?? undefined },
+    subject,
+    html: data.html,
+    text: data.text,
+    headers: threadHeaders,
+    tags: ['admin-reply', parent.linkedSendId ? `send:${parent.linkedSendId}` : 'standalone'],
+  });
+
+  await prisma.inboundEmail.update({
+    where: { id: parent.id },
+    data: { handled: true },
+  });
+
+  res.json({ ok: true, providerRef });
+});
+
 export default router;
