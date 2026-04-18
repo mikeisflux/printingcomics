@@ -1,0 +1,141 @@
+/* ----- Animated background mesh on the hero ----- */
+@keyframes pc-mesh-shift {
+  0%, 100% { background-position: 0% 0%, 100% 100%, 50% 50%; }
+  50%      { background-position: 100% 100%, 0% 0%, 0% 100%; }
+}
+.pc-hero-mesh {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.45) 0%, transparent 45%),
+    radial-gradient(circle at 80% 60%, rgba(236, 72, 153, 0.40) 0%, transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(30, 116, 252, 0.45) 0%, transparent 50%),
+    linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  background-size: 180% 180%, 180% 180%, 180% 180%, 100% 100%;
+  animation: pc-mesh-shift 18s ease-in-out infinite;
+}
+
+/* ----- Animated AI pill: rainbow gradient sweep + glow ----- */
+@keyframes pc-rainbow-sweep {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes pc-glow-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(236, 72, 153, 0.0); }
+  50%      { box-shadow: 0 4px 28px rgba(236, 72, 153, 0.7), 0 0 0 8px rgba(236, 72, 153, 0.10); }
+}
+.pc-ai-pill {
+  background: linear-gradient(90deg, #8b5cf6, #ec4899, #1e74fc, #8b5cf6);
+  background-size: 200% 200%;
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1.25rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  animation: pc-rainbow-sweep 6s linear infinite, pc-glow-pulse 3s ease-in-out infinite;
+}
+.pc-ai-pill:hover {
+  transform: translateY(-1px);
+  transition: transform 0.15s;
+}
+
+/* ----- Selected size/option tile glow ring ----- */
+@keyframes pc-selected-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 26, 34, 0.45), 0 8px 22px -6px rgba(198, 26, 34, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(198, 26, 34, 0.18), 0 12px 28px -6px rgba(198, 26, 34, 0.7); }
+}
+.pc-tile-selected {
+  animation: pc-selected-pulse 2.4s ease-in-out infinite;
+}
+.pc-tile {
+  transition: all 0.18s ease;
+}
+.pc-tile:not(.pc-tile-selected):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px -4px rgba(0, 0, 0, 0.18);
+}
+
+/* ----- Add to cart pulse ----- */
+@keyframes pc-cta-pulse {
+  0%, 100% { box-shadow: 0 4px 14px -2px rgba(198, 26, 34, 0.45), 0 0 0 0 rgba(198, 26, 34, 0.0); }
+  50%      { box-shadow: 0 4px 22px -2px rgba(198, 26, 34, 0.7), 0 0 0 6px rgba(198, 26, 34, 0.10); }
+}
+.pc-cta {
+  animation: pc-cta-pulse 2.2s ease-in-out infinite;
+}
+.pc-cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+/* ----- Section card with accent bar ----- */
+.pc-section {
+  position: relative;
+  overflow: hidden;
+}
+.pc-section::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #8b5cf6, #ec4899, #1e74fc);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.pc-section.pc-section-open::before {
+  opacity: 1;
+}
+
+/* ----- Price flash on change ----- */
+@keyframes pc-price-flash {
+  0%   { color: var(--brand); transform: scale(1); }
+  50%  { color: #f97316; transform: scale(1.06); text-shadow: 0 0 18px rgba(249, 115, 22, 0.55); }
+  100% { color: var(--brand); transform: scale(1); }
+}
+.pc-price-flash {
+  animation: pc-price-flash 0.55s ease-out;
+}
+
+/* ----- Order summary card glow accent ----- */
+.pc-summary-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fefefe 100%);
+  border: 1px solid var(--border);
+  position: relative;
+}
+.pc-summary-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.0), rgba(236, 72, 153, 0.0), rgba(30, 116, 252, 0.0));
+  border-radius: inherit;
+  z-index: -1;
+  transition: opacity 0.3s;
+  filter: blur(12px);
+}
+.pc-summary-card:hover::after {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(236, 72, 153, 0.25), rgba(30, 116, 252, 0.25));
+}
+
+/* ----- AI input glow on focus ----- */
+.pc-ai-input {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+.pc-ai-input:focus {
+  outline: none;
+  border-color: rgba(236, 72, 153, 0.7);
+  box-shadow: 0 0 0 4px rgba(236, 72, 153, 0.15), 0 0 24px rgba(139, 92, 246, 0.3);
+  background: rgba(255, 255, 255, 0.18);
+}
+.pc-ai-input::placeholder { color: rgba(255, 255, 255, 0.55); }
+
+/* ----- Smooth section open/close ----- */
+.pc-section-body {
+  overflow: hidden;
+  transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}

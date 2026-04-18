@@ -1,6 +1,8 @@
 import { Suspense, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Environment, ContactShadows, OrbitControls, Float } from '@react-three/drei';
+import { Environment, ContactShadows, OrbitControls, Float, Sparkles } from '@react-three/drei';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
 
 export type PaperStyle = 'uncoated' | 'matte' | 'gloss' | 'foil' | 'uv';
@@ -269,11 +271,37 @@ export function BookPreview3D({ spec }: { spec: BookSpec }) {
         <Suspense fallback={null}>
           <Float floatIntensity={0.45} rotationIntensity={0.25} speed={1.2}>
             <Book spec={spec} />
+            {/* Sparkles drift around foil books for that holo shimmer */}
+            {(spec.hasFoil || spec.paperStyle === 'foil') && (
+              <Sparkles
+                count={60}
+                scale={[3.5, 4.5, 1.5]}
+                size={3}
+                speed={0.4}
+                color="#fde68a"
+              />
+            )}
           </Float>
           <Environment preset="city" />
         </Suspense>
 
         <ContactShadows position={[0, -2.4, 0]} opacity={0.5} scale={10} blur={2.5} far={4} />
+
+        {/* Post-processing: bloom makes foil/UV glow, slight vignette frames the scene */}
+        <EffectComposer>
+          <Bloom
+            intensity={spec.hasFoil || spec.paperStyle === 'foil' ? 1.4 : 0.6}
+            luminanceThreshold={0.55}
+            luminanceSmoothing={0.85}
+            mipmapBlur
+          />
+          <Vignette
+            eskil={false}
+            offset={0.18}
+            darkness={0.65}
+            blendFunction={BlendFunction.NORMAL}
+          />
+        </EffectComposer>
 
         <OrbitControls
           enablePan={false}

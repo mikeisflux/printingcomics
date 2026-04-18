@@ -1,8 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import confetti from 'canvas-confetti';
 import { api } from '../api/client';
 import { useCart } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
+import '../styles/configurator.css';
 
 // 3D book preview lives behind a lazy import — its R3F deps add ~250KB and
 // most page traffic won't sit on this view long enough to need it pre-loaded.
@@ -99,6 +101,8 @@ export function CategoryConfigure() {
 
   // Animated price ticker
   const [displayPrice, setDisplayPrice] = useState(0);
+  const [priceFlash, setPriceFlash] = useState(0);
+  const cartBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!categorySlug) return;
@@ -164,6 +168,7 @@ export function CategoryConfigure() {
   // Animate price reveal — interpolates over ~400ms whenever the target changes.
   useEffect(() => {
     const target = breakdown?.totalCents ?? (product ? product.priceCents * qty : 0);
+    if (target !== displayPrice) setPriceFlash((n) => n + 1);
     let raf = 0;
     const start = performance.now();
     const from = displayPrice;
@@ -249,7 +254,18 @@ export function CategoryConfigure() {
         optionsForCart[k] = String(v);
       }
       await add({ productId: product.id, quantity: qty, options: optionsForCart });
-      navigate('/cart');
+      // Confetti burst from the button position
+      const rect = cartBtnRef.current?.getBoundingClientRect();
+      const x = rect ? (rect.left + rect.width / 2) / window.innerWidth : 0.5;
+      const y = rect ? (rect.top + rect.height / 2) / window.innerHeight : 0.5;
+      confetti({
+        particleCount: 90,
+        spread: 75,
+        origin: { x, y },
+        colors: ['#c61a22', '#1e74fc', '#8b5cf6', '#ec4899', '#fde68a'],
+        scalar: 0.9,
+      });
+      setTimeout(() => navigate('/cart'), 650);
     } catch (e: any) {
       setError(e.message ?? 'Could not add to cart');
     } finally {
@@ -271,8 +287,7 @@ export function CategoryConfigure() {
   return (
     <>
       {/* Hero band */}
-      <section style={{
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)',
+      <section className="pc-hero-mesh" style={{
         color: '#fff',
         padding: '2.5rem 0 1.5rem',
         marginBottom: '1.5rem',
@@ -288,16 +303,7 @@ export function CategoryConfigure() {
                 <p style={{ margin: 0, opacity: .85, maxWidth: 580 }}>{category.description}</p>
               )}
             </div>
-            <button
-              onClick={() => setAiOpen((o) => !o)}
-              style={{
-                background: 'linear-gradient(135deg, #8b5cf6, #ec4899)',
-                color: '#fff', border: 'none', padding: '.7rem 1.25rem',
-                borderRadius: 999, fontWeight: 600, cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-                fontSize: '.95rem',
-              }}
-            >
+            <button className="pc-ai-pill" onClick={() => setAiOpen((o) => !o)}>
               ✨ Configure with AI
             </button>
           </div>
@@ -305,18 +311,12 @@ export function CategoryConfigure() {
           {aiOpen && (
             <div style={{ marginTop: '1.25rem', display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
               <input
+                className="pc-ai-input"
                 placeholder='Describe what you want — e.g. "100 copies of a 48-page comic with foil cover"'
                 value={aiInput}
                 onChange={(e) => setAiInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void applyAi(); }}
-                style={{
-                  flex: 1, minWidth: 280,
-                  background: 'rgba(255,255,255,.1)',
-                  border: '1px solid rgba(255,255,255,.25)',
-                  color: '#fff',
-                  padding: '.7rem 1rem', borderRadius: 8,
-                  fontSize: '.95rem',
-                }}
+                style={{ flex: 1, minWidth: 280 }}
               />
               <button className="btn" disabled={aiBusy || !aiInput.trim()} onClick={() => void applyAi()}>
                 {aiBusy ? 'Thinking…' : 'Configure'}
@@ -340,7 +340,7 @@ export function CategoryConfigure() {
           </div>
 
           {product && (
-            <div className="admin-card" style={{ marginTop: '1rem' }}>
+            <div className="admin-card pc-summary-card" style={{ marginTop: '1rem' }}>
               <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em' }}>
                 Order summary
               </div>
@@ -355,7 +355,9 @@ export function CategoryConfigure() {
               <div style={{ borderTop: '1px solid var(--border)', marginTop: '.75rem', paddingTop: '.75rem' }}>
                 <div className="spread" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--brand)' }}>
                   <span>Total</span>
-                  <span>{formatMoney(displayPrice)}</span>
+                  <span key={priceFlash} className="pc-price-flash" style={{ display: 'inline-block' }}>
+                    {formatMoney(displayPrice)}
+                  </span>
                 </div>
                 {breakdown && (
                   <div className="muted" style={{ fontSize: '.8rem', textAlign: 'right' }}>
@@ -372,7 +374,13 @@ export function CategoryConfigure() {
                   onChange={(e) => setQty(Math.max(product.minQuantity, Number(e.target.value)))}
                   style={{ width: 100 }}
                 />
-                <button className="btn" style={{ flex: 1 }} disabled={adding} onClick={() => void addToCart()}>
+                <button
+                  ref={cartBtnRef}
+                  className="btn pc-cta"
+                  style={{ flex: 1 }}
+                  disabled={adding}
+                  onClick={() => void addToCart()}
+                >
                   {adding ? 'Adding…' : 'Add to cart →'}
                 </button>
               </div>
@@ -393,6 +401,7 @@ export function CategoryConfigure() {
                   <button
                     key={p.id}
                     onClick={() => setProductId(p.id)}
+                    className={`pc-tile ${selected ? 'pc-tile-selected' : ''}`}
                     style={{
                       background: selected ? 'var(--brand)' : '#fff',
                       color: selected ? '#fff' : 'var(--ink)',
@@ -400,9 +409,7 @@ export function CategoryConfigure() {
                       borderRadius: 12,
                       padding: '1rem .5rem',
                       cursor: 'pointer',
-                      transition: 'all .2s',
-                      transform: selected ? 'scale(1.02)' : 'scale(1)',
-                      boxShadow: selected ? '0 4px 14px rgba(198, 26, 34, 0.3)' : 'none',
+                      transform: selected ? 'scale(1.04)' : 'scale(1)',
                     }}
                   >
                     <div style={{ fontWeight: 600, fontSize: '.95rem' }}>
@@ -441,7 +448,7 @@ export function CategoryConfigure() {
 function ConfigSection({ title, subtitle, defaultOpen, children }: { title: string; subtitle?: string; defaultOpen?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   return (
-    <div className="admin-card" style={{ marginBottom: '1rem', overflow: 'hidden' }}>
+    <div className={`admin-card pc-section ${open ? 'pc-section-open' : ''}`} style={{ marginBottom: '1rem', overflow: 'hidden' }}>
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -490,6 +497,7 @@ function OptionField({ opt, value, onChange }: { opt: ProductOption; value: stri
                 <button
                   key={v.id}
                   onClick={() => onChange(v.label)}
+                  className={`pc-tile ${selected ? 'pc-tile-selected' : ''}`}
                   style={{
                     background: selected ? 'var(--brand)' : '#fff',
                     color: selected ? '#fff' : 'var(--ink)',
@@ -497,7 +505,6 @@ function OptionField({ opt, value, onChange }: { opt: ProductOption; value: stri
                     borderRadius: 8,
                     padding: '.6rem .5rem',
                     cursor: 'pointer',
-                    transition: 'all .15s',
                     fontSize: '.85rem',
                     fontWeight: selected ? 600 : 500,
                   }}
