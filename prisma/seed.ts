@@ -22,7 +22,7 @@ async function main() {
       role: 'ADMIN',
     },
   });
-  console.log(`Admin user ready: ${adminEmail} / ${adminPassword}`);
+  console.log(`Admin user ready: ${adminEmail} (password set from ADMIN_PASSWORD env var)`);
 
   const categories = [
     { slug: 'comic-books', name: 'Comic Books', description: 'Single-issue comics, soft cover, saddle-stitched.' },
