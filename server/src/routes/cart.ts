@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { priceForQuantity, type VolumeTier } from '../lib/money.js';
+import { computePricing, type PricingConfig } from '../lib/pricing.js';
 import { isProd } from '../config.js';
 
 const router = Router();
@@ -90,7 +91,20 @@ router.post('/items', async (req, res) => {
     variantId = variant.id;
   }
 
-  unitPriceCents = priceForQuantity(unitPriceCents, data.quantity, product.volumeTiers as VolumeTier[] | null);
+  // Configurator products (with pricingConfig) compute unit price from
+  // selections instead of base+variant+volume.
+  const cfg = product.pricingConfig as PricingConfig | null;
+  if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
+    const optionInputs: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(data.options ?? {})) {
+      const n = Number(v);
+      optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
+    }
+    const breakdown = computePricing(cfg, { quantity: data.quantity, options: optionInputs });
+    unitPriceCents = breakdown.unitCents;
+  } else {
+    unitPriceCents = priceForQuantity(unitPriceCents, data.quantity, product.volumeTiers as VolumeTier[] | null);
+  }
 
   const item = await prisma.cartItem.create({
     data: {
@@ -121,7 +135,19 @@ router.patch('/items/:id', async (req, res) => {
   if (!item) throw new HttpError(404, 'Cart item not found');
 
   const baseCents = item.variant?.priceCents ?? item.product.priceCents;
-  const unitPriceCents = priceForQuantity(baseCents, quantity, item.product.volumeTiers as VolumeTier[] | null);
+  let unitPriceCents: number;
+  const cfg = item.product.pricingConfig as PricingConfig | null;
+  if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
+    const optionInputs: Record<string, string | number> = {};
+    const stored = (item.options as Record<string, string> | null) ?? {};
+    for (const [k, v] of Object.entries(stored)) {
+      const n = Number(v);
+      optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
+    }
+    unitPriceCents = computePricing(cfg, { quantity, options: optionInputs }).unitCents;
+  } else {
+    unitPriceCents = priceForQuantity(baseCents, quantity, item.product.volumeTiers as VolumeTier[] | null);
+  }
 
   await prisma.cartItem.update({
     where: { id: item.id },

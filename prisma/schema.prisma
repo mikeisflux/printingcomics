@@ -105,6 +105,15 @@ model Product {
   weightGrams     Int      @default(0)
   // Tier-based volume discounts: JSON array of { minQty, pricePerUnitCents }.
   volumeTiers     Json?
+  // PDF print template the buyer downloads before uploading artwork.
+  templateUrl     String?
+  // Array of { q, a } rendered as an accordion on the product page.
+  faq             Json?
+  // Structured pricing rules the storefront + server both use to compute
+  // unit price from configurator selections. Shape: { baseCents,
+  // qtyTiers[], modifiers[], pages: { baseline, perFourPagesCents{} } }.
+  // See server/src/lib/pricing.ts.
+  pricingConfig   Json?
   seoTitle        String?
   seoDescription  String?
   createdAt       DateTime @default(now())
@@ -139,14 +148,45 @@ model ProductImage {
   @@index([productId])
 }
 
-// Configurable option on a product (e.g. "Page Count", "Cover Type").
+enum ProductOptionType {
+  TILES     // Image grid (cover paper, interior paper)
+  RADIO     // Inline buttons (Yes / No)
+  SELECT    // Dropdown (interior pages)
+  TOGGLE    // Boolean switch (is reorder)
+  TEXT      // Free text (title of comic)
+  NUMBER    // Numeric (page count)
+  UPLOAD    // File upload to media library
+  CONFIRM   // Required acknowledgement checkbox
+}
+
+// Configurable option on a product. Options are grouped into "sections"
+// (Your Cover, Your Pages, Finalize Setup) and can be made conditionally
+// visible by another option's selected value.
 model ProductOption {
-  id        String               @id @default(cuid())
-  product   Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId String
-  name      String
-  sortOrder Int                  @default(0)
-  values    ProductOptionValue[]
+  id          String               @id @default(cuid())
+  product     Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId   String
+  name        String
+  // Stable key written into cart/order options JSON; defaults to a slugified
+  // version of `name` if blank.
+  internalKey String?
+  // Display grouping — free-text label shown as the section title.
+  section     String?
+  type        ProductOptionType    @default(SELECT)
+  required    Boolean              @default(false)
+  helpText    String?
+  // Description shown under the full prompt, e.g. the long "I confirm" body.
+  longDescription String?
+  sortOrder   Int                  @default(0)
+
+  // Conditional visibility: only show this option when the option with
+  // id = dependsOnOptionId has its selected value = dependsOnValue.
+  dependsOnOptionId String?
+  dependsOnOption   ProductOption?  @relation("OptionDep", fields: [dependsOnOptionId], references: [id])
+  dependents        ProductOption[] @relation("OptionDep")
+  dependsOnValue    String?
+
+  values      ProductOptionValue[]
 
   @@index([productId])
 }
@@ -156,6 +196,10 @@ model ProductOptionValue {
   option        ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
   optionId      String
   label         String
+  // Secondary small text shown under the label (e.g. "80lb Uncoated Cover").
+  subLabel      String?
+  // Thumbnail image for TILES-type options.
+  imageUrl      String?
   priceModifierCents Int      @default(0)
   sortOrder     Int           @default(0)
 

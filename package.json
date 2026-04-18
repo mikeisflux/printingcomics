@@ -21,6 +21,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:cws": "tsx prisma/seed-cws.ts",
     "db:reset": "prisma migrate reset"
   },
   "prisma": {
