@@ -36,6 +36,22 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Pull DATABASE_URL from the app's .env if DB credentials weren't injected by
+# systemd. Format: postgresql://user:pass@host:port/dbname[?...]
+if [ -z "${DB_PASS:-}" ] && [ -f /opt/printingcomics/.env ]; then
+  RAW_URL=$(grep -E '^DATABASE_URL=' /opt/printingcomics/.env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+  if [[ "$RAW_URL" =~ postgresql://([^:]+):([^@]+)@([^:/]+)(:([0-9]+))?/([^?]+) ]]; then
+    DB_USER="${DB_USER:-${BASH_REMATCH[1]}}"
+    DB_PASS="${DB_PASS:-${BASH_REMATCH[2]}}"
+    DB_HOST="${DB_HOST:-${BASH_REMATCH[3]}}"
+    DB_NAME="${DB_NAME:-${BASH_REMATCH[6]}}"
+  fi
+fi
+
+DB_HOST="${DB_HOST:-localhost}"
+DB_USER="${DB_USER:-printingcomics}"
+DB_NAME="${DB_NAME:-printingcomics}"
+
 # Ensure the BOTBLOCK chain exists
 if ! iptables -n -L "$CHAIN" >/dev/null 2>&1; then
   log "Creating chain $CHAIN"
@@ -49,17 +65,17 @@ if ! iptables -C INPUT -j "$CHAIN" 2>/dev/null; then
 fi
 
 # ---- On startup, restore all blocked IPs from database into iptables ----
-DB_HOST="${DB_HOST:-localhost}"
-DB_USER="${DB_USER:-printingcomics}"
-DB_PASS="${DB_PASS:?DB_PASS environment variable is required}"
-DB_NAME="${DB_NAME:-printingcomics}"
-
-log "Restoring blocked IPs from database on startup..."
-RESTORE_IPS=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -A -c \
-  "SELECT \"ipAddress\" FROM \"BlockedIP\" WHERE \"expiresAt\" > NOW();" 2>/dev/null) || {
-  log "Warning: failed to query database for startup restore"
+if [ -z "${DB_PASS:-}" ]; then
+  log "DB_PASS not set and DATABASE_URL not found in .env — skipping startup DB restore"
   RESTORE_IPS=""
-}
+else
+  log "Restoring blocked IPs from database on startup..."
+  RESTORE_IPS=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -A -c \
+    "SELECT \"ipAddress\" FROM \"BlockedIP\" WHERE \"expiresAt\" > NOW();" 2>/dev/null) || {
+    log "Warning: failed to query database for startup restore"
+    RESTORE_IPS=""
+  }
+fi
 
 restored=0
 while IFS= read -r ip; do
