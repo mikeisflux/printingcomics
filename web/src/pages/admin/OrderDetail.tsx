@@ -119,59 +119,6 @@ export function AdminOrderDetail() {
         <div className="row" style={{ gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
-          <button
-            className="btn secondary"
-            onClick={async () => {
-              try {
-                const packages = await api.get<{ items: { id: string; name: string }[] }>('/admin/fulfillment/packages');
-                if (packages.items.length === 0) {
-                  alert('Add at least one package in /admin/fulfillment → Packages first.');
-                  return;
-                }
-                const pkgChoice = prompt(
-                  'Which package?\n' + packages.items.map((p, i) => `${i + 1}. ${p.name}`).join('\n'),
-                  '1',
-                );
-                const pkgIdx = Number(pkgChoice) - 1;
-                const pkg = packages.items[pkgIdx];
-                if (!pkg) return;
-
-                const ratesResp = await api.post<{
-                  shipmentId: string;
-                  rates: { id: string; carrier: string; service: string; rate: string; currency: string; delivery_days: number | null }[];
-                }>(
-                  '/admin/fulfillment/easypost/rates',
-                  { orderId: order.id, packageId: pkg.id },
-                );
-                if (ratesResp.rates.length === 0) {
-                  alert('EasyPost returned no rates for this route/package.');
-                  return;
-                }
-                const sorted = [...ratesResp.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate));
-                const pick = prompt(
-                  'Pick a rate (cheapest first):\n' + sorted.map((r, i) =>
-                    `${i + 1}. ${r.carrier} ${r.service} — $${r.rate} ${r.currency}${r.delivery_days ? ` (${r.delivery_days}d)` : ''}`,
-                  ).join('\n'),
-                  '1',
-                );
-                const rIdx = Number(pick) - 1;
-                const rate = sorted[rIdx];
-                if (!rate) return;
-                if (!confirm(`Buy label for ${rate.carrier} ${rate.service} at $${rate.rate}? This charges your EasyPost account.`)) return;
-
-                await api.post(`/admin/fulfillment/easypost/buy/${order.id}`, {
-                  shipmentId: ratesResp.shipmentId,
-                  rateId: rate.id,
-                });
-                alert(`Label purchased: ${rate.carrier} ${rate.service}.`);
-                load();
-              } catch (e: any) {
-                alert(e.message ?? 'Purchase failed');
-              }
-            }}
-          >
-            Buy EasyPost label
-          </button>
           {order.paymentStatus === 'CAPTURED' && (
             <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
               Refund via PayPal
@@ -233,6 +180,8 @@ export function AdminOrderDetail() {
           }}
         />
       </div>
+
+      <ShipmentsSection orderId={order.id} />
 
       <div className="admin-card">
         <h3>Items</h3>
@@ -352,6 +301,289 @@ export function AdminOrderDetail() {
       </div>
 
       {saving && <p className="muted">Saving…</p>}
+    </div>
+  );
+}
+
+interface RemainingItem {
+  orderItemId: string;
+  name: string;
+  unitPriceCents: number;
+  totalQuantity: number;
+  remaining: number;
+  weightGramsEach: number;
+}
+
+interface ShipmentRow {
+  id: string;
+  status: string;
+  carrier?: string | null;
+  service?: string | null;
+  trackingCode?: string | null;
+  labelUrl?: string | null;
+  rateAmountCents?: number | null;
+  insuredValueCents?: number | null;
+  weightOz?: number | null;
+  lengthIn?: number | null;
+  widthIn?: number | null;
+  heightIn?: number | null;
+  package?: { id: string; name: string } | null;
+  items: { orderItemId: string; quantity: number }[];
+  createdAt: string;
+}
+
+interface EpRate {
+  id: string;
+  carrier: string;
+  service: string;
+  rate: string;
+  currency: string;
+  delivery_days: number | null;
+}
+
+function ShipmentsSection({ orderId }: { orderId: string }) {
+  const [shipments, setShipments] = useState<ShipmentRow[]>([]);
+  const [remaining, setRemaining] = useState<RemainingItem[]>([]);
+  const [packages, setPackages] = useState<{ id: string; name: string }[]>([]);
+  const [building, setBuilding] = useState(false);
+
+  const load = async () => {
+    const r = await api.get<{ shipments: ShipmentRow[]; remaining: RemainingItem[] }>(`/admin/fulfillment/orders/${orderId}/shipments`);
+    setShipments(r.shipments);
+    setRemaining(r.remaining);
+  };
+  useEffect(() => {
+    void load();
+    void api.get<{ items: { id: string; name: string }[] }>('/admin/fulfillment/packages').then((r) => setPackages(r.items));
+  }, [orderId]);
+
+  const remainingCount = remaining.reduce((sum, r) => sum + r.remaining, 0);
+
+  return (
+    <div className="admin-card">
+      <div className="spread" style={{ marginBottom: '.75rem' }}>
+        <h3 style={{ margin: 0 }}>Shipments ({shipments.length})</h3>
+        {!building && remainingCount > 0 && (
+          <button className="btn" onClick={() => setBuilding(true)}>Add shipment</button>
+        )}
+        {!building && remainingCount === 0 && shipments.length > 0 && (
+          <span className="muted" style={{ fontSize: '.85rem' }}>All items allocated.</span>
+        )}
+      </div>
+
+      {shipments.length === 0 && !building && (
+        <p className="muted">No shipments yet. Click <em>Add shipment</em> to build one.</p>
+      )}
+
+      {shipments.length > 0 && (
+        <table className="admin-table">
+          <thead><tr>
+            <th>Box</th><th>Carrier / Service</th><th>Tracking</th><th>Insured</th><th>Postage</th><th>Status</th><th>Label</th><th />
+          </tr></thead>
+          <tbody>
+            {shipments.map((s, i) => (
+              <tr key={s.id}>
+                <td>
+                  <strong>#{i + 1}</strong>
+                  {s.package && <div className="muted" style={{ fontSize: '.75rem' }}>{s.package.name}</div>}
+                  <div className="muted" style={{ fontSize: '.75rem' }}>
+                    {s.lengthIn}×{s.widthIn}×{s.heightIn}″, {s.weightOz}oz
+                  </div>
+                </td>
+                <td>{s.carrier && s.service ? `${s.carrier} ${s.service}` : <span className="muted">—</span>}</td>
+                <td>{s.trackingCode ?? <span className="muted">—</span>}</td>
+                <td>{s.insuredValueCents != null ? formatMoney(s.insuredValueCents) : <span className="muted">—</span>}</td>
+                <td>{s.rateAmountCents != null ? formatMoney(s.rateAmountCents) : <span className="muted">—</span>}</td>
+                <td><StatusBadge status={s.status} /></td>
+                <td>
+                  {s.labelUrl
+                    ? <a href={s.labelUrl} target="_blank" rel="noreferrer">PDF</a>
+                    : <span className="muted">—</span>}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  {s.status === 'PURCHASED' && (
+                    <button
+                      className="btn secondary"
+                      style={{ color: '#b91c1c' }}
+                      onClick={async () => {
+                        if (!confirm('Request a refund for this label from EasyPost?')) return;
+                        try {
+                          await api.post(`/admin/fulfillment/shipments/${s.id}/refund`);
+                          await load();
+                        } catch (e: any) { alert(e.message ?? 'Refund failed'); }
+                      }}
+                    >Refund label</button>
+                  )}
+                  {s.status === 'CREATED' && (
+                    <button
+                      className="btn secondary"
+                      style={{ color: '#b91c1c' }}
+                      onClick={async () => {
+                        if (!confirm('Delete this unpurchased shipment?')) return;
+                        try {
+                          await api.del(`/admin/fulfillment/shipments/${s.id}`);
+                          await load();
+                        } catch (e: any) { alert(e.message ?? 'Delete failed'); }
+                      }}
+                    >Delete</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {building && (
+        <ShipmentBuilder
+          orderId={orderId}
+          remaining={remaining}
+          packages={packages}
+          onCancel={() => setBuilding(false)}
+          onDone={async () => { setBuilding(false); await load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ShipmentBuilder({
+  orderId, remaining, packages, onCancel, onDone,
+}: {
+  orderId: string;
+  remaining: RemainingItem[];
+  packages: { id: string; name: string }[];
+  onCancel: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const [packageId, setPackageId] = useState<string>(packages[0]?.id ?? '');
+  const [qtys, setQtys] = useState<Record<string, number>>(
+    () => Object.fromEntries(remaining.map((r) => [r.orderItemId, 0])),
+  );
+  const [rates, setRates] = useState<EpRate[] | null>(null);
+  const [shipmentId, setShipmentId] = useState<string | null>(null);
+  const [insuredValueCents, setInsuredValueCents] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  const allocatedValueCents = remaining.reduce((sum, r) => sum + (qtys[r.orderItemId] ?? 0) * r.unitPriceCents, 0);
+  const allocatedCount = remaining.reduce((sum, r) => sum + (qtys[r.orderItemId] ?? 0), 0);
+
+  async function getRates() {
+    setBusy(true);
+    try {
+      const allocations = remaining
+        .filter((r) => (qtys[r.orderItemId] ?? 0) > 0)
+        .map((r) => ({ orderItemId: r.orderItemId, quantity: qtys[r.orderItemId] }));
+      if (allocations.length === 0) { alert('Allocate at least one item to this box.'); return; }
+      if (!packageId) { alert('Pick a package.'); return; }
+      const r = await api.post<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(
+        `/admin/fulfillment/orders/${orderId}/shipments`,
+        { packageId, allocations },
+      );
+      setShipmentId(r.shipment.id);
+      setRates([...r.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate)));
+      setInsuredValueCents(r.insuredValueCents);
+    } catch (e: any) { alert(e.message ?? 'Failed to fetch rates'); }
+    finally { setBusy(false); }
+  }
+
+  async function buy(rate: EpRate) {
+    if (!shipmentId) return;
+    if (!confirm(
+      `Buy ${rate.carrier} ${rate.service} label at $${rate.rate} and insure for ${formatMoney(insuredValueCents)}?\n\n` +
+      `EasyPost charges postage + 1% of declared value ($1 min) to your account.`
+    )) return;
+    setBusy(true);
+    try {
+      await api.post(`/admin/fulfillment/shipments/${shipmentId}/buy`, { rateId: rate.id });
+      await onDone();
+    } catch (e: any) { alert(e.message ?? 'Buy failed'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ border: '1px dashed var(--border)', padding: '1rem', borderRadius: 8, marginTop: '1rem' }}>
+      <h4 style={{ marginTop: 0 }}>New shipment</h4>
+
+      {!rates && (
+        <>
+          <label>Package</label>
+          <select value={packageId} onChange={(e) => setPackageId(e.target.value)}>
+            <option value="" disabled>Select a package…</option>
+            {packages.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+
+          <label style={{ marginTop: '.75rem', display: 'block', fontWeight: 600 }}>Allocate items to this box</label>
+          <table className="admin-table">
+            <thead><tr><th>Item</th><th>Unit</th><th>Remaining</th><th>This box</th><th>Subtotal</th></tr></thead>
+            <tbody>
+              {remaining.map((r) => (
+                <tr key={r.orderItemId} style={{ opacity: r.remaining === 0 ? 0.4 : 1 }}>
+                  <td>{r.name}</td>
+                  <td>{formatMoney(r.unitPriceCents)}</td>
+                  <td>{r.remaining} / {r.totalQuantity}</td>
+                  <td>
+                    <input
+                      type="number"
+                      min={0}
+                      max={r.remaining}
+                      value={qtys[r.orderItemId] ?? 0}
+                      disabled={r.remaining === 0}
+                      onChange={(e) => {
+                        const v = Math.max(0, Math.min(r.remaining, Number(e.target.value) || 0));
+                        setQtys({ ...qtys, [r.orderItemId]: v });
+                      }}
+                      style={{ width: 80 }}
+                    />
+                  </td>
+                  <td>{formatMoney((qtys[r.orderItemId] ?? 0) * r.unitPriceCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="spread" style={{ marginTop: '.75rem', fontSize: '.9rem' }}>
+            <span>
+              {allocatedCount} item{allocatedCount === 1 ? '' : 's'} allocated — insured value{' '}
+              <strong>{formatMoney(allocatedValueCents)}</strong>
+            </span>
+            <div className="row" style={{ gap: '.5rem' }}>
+              <button type="button" className="btn secondary" onClick={onCancel}>Cancel</button>
+              <button type="button" className="btn" disabled={busy || allocatedCount === 0 || !packageId} onClick={getRates}>
+                {busy ? 'Fetching rates…' : 'Get rates'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {rates && (
+        <>
+          <p className="muted" style={{ fontSize: '.85rem' }}>
+            Insured value: <strong>{formatMoney(insuredValueCents)}</strong> —{' '}
+            {rates.length} rate{rates.length === 1 ? '' : 's'} from EasyPost.
+          </p>
+          <table className="admin-table">
+            <thead><tr><th>Carrier</th><th>Service</th><th>Postage</th><th>Transit</th><th /></tr></thead>
+            <tbody>
+              {rates.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.carrier}</td>
+                  <td>{r.service}</td>
+                  <td>${r.rate} {r.currency}</td>
+                  <td>{r.delivery_days ? `${r.delivery_days}d` : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button className="btn" disabled={busy} onClick={() => buy(r)}>Buy label</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="row" style={{ marginTop: '.75rem', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn secondary" onClick={onCancel}>Cancel</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

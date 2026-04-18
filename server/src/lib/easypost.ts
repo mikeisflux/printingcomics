@@ -122,11 +122,21 @@ export async function epCreateShipment(input: EpCreateShipmentInput): Promise<Ep
   });
 }
 
-/** Buys the given rate for a shipment (generates the label). */
-export async function epBuyShipment(shipmentId: string, rateId: string): Promise<EpShipment> {
+/** Buys the given rate for a shipment (generates the label). Optionally
+ *  requests insurance at the specified declared value (a decimal string like
+ *  "99.99"). EasyPost books the insurance via Shipsurance for US domestic. */
+export async function epBuyShipment(
+  shipmentId: string,
+  rateId: string,
+  opts: { insurance?: string } = {},
+): Promise<EpShipment> {
+  const body: Record<string, unknown> = { rate: { id: rateId } };
+  if (opts.insurance && parseFloat(opts.insurance) > 0) {
+    body.insurance = opts.insurance;
+  }
   return request(`/shipments/${encodeURIComponent(shipmentId)}/buy`, {
     method: 'POST',
-    body: JSON.stringify({ rate: { id: rateId } }),
+    body: JSON.stringify(body),
   });
 }
 

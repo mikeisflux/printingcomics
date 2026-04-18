@@ -58,38 +58,63 @@ router.post(
 );
 
 async function handleTrackerEvent(tracker: any) {
-  const shipmentId: string | undefined = tracker?.shipment_id;
+  const easypostShipmentId: string | undefined = tracker?.shipment_id;
   const status: string = String(tracker?.status ?? '').toLowerCase();
   const trackingCode: string | null = tracker?.tracking_code ?? null;
-  if (!shipmentId) return;
+  if (!easypostShipmentId) return;
 
-  const order = await prisma.order.findFirst({
-    where: { epShipmentId: shipmentId },
-    select: { id: true, status: true, trackingNumber: true },
+  const shipment = await prisma.shipment.findUnique({
+    where: { easypostId: easypostShipmentId },
+    include: { order: { include: { shipments: true } } },
   });
-  if (!order) return;
+  if (!shipment) return;
 
-  let newStatus = order.status;
-  if (status === 'delivered') newStatus = 'DELIVERED';
-  else if (status === 'in_transit' || status === 'out_for_delivery' || status === 'pre_transit') newStatus = 'SHIPPED';
+  // Update this Shipment row.
+  let newShipmentStatus = shipment.status;
+  if (status === 'delivered') newShipmentStatus = 'DELIVERED';
+  else if (status === 'in_transit' || status === 'out_for_delivery' || status === 'pre_transit') newShipmentStatus = 'IN_TRANSIT';
 
-  const patch: Record<string, unknown> = {};
-  if (trackingCode && trackingCode !== order.trackingNumber) patch.trackingNumber = trackingCode;
-  if (newStatus !== order.status) patch.status = newStatus;
-  if (Object.keys(patch).length === 0) return;
+  const shipmentPatch: Record<string, unknown> = {};
+  if (trackingCode && trackingCode !== shipment.trackingCode) shipmentPatch.trackingCode = trackingCode;
+  if (newShipmentStatus !== shipment.status) shipmentPatch.status = newShipmentStatus;
+  if (Object.keys(shipmentPatch).length > 0) {
+    await prisma.shipment.update({ where: { id: shipment.id }, data: shipmentPatch });
+  }
 
-  await prisma.order.update({ where: { id: order.id }, data: patch });
+  // Aggregate up to the order. If every shipment on the order is DELIVERED,
+  // mark the order DELIVERED. Otherwise if any shipment is IN_TRANSIT /
+  // PURCHASED and the order isn't already shipped, flip it to SHIPPED.
+  const allShipments = shipment.order.shipments.map((s) =>
+    s.id === shipment.id ? { ...s, ...shipmentPatch } : s,
+  );
+  const nonTerminal = allShipments.filter((s) => s.status !== 'REFUNDED' && s.status !== 'VOIDED');
+  let newOrderStatus = shipment.order.status;
+  if (nonTerminal.length > 0 && nonTerminal.every((s) => s.status === 'DELIVERED')) {
+    newOrderStatus = 'DELIVERED';
+  } else if (nonTerminal.some((s) => s.status === 'IN_TRANSIT' || s.status === 'PURCHASED') && shipment.order.status !== 'DELIVERED') {
+    newOrderStatus = 'SHIPPED';
+  }
+
+  const orderPatch: Record<string, unknown> = {};
+  if (trackingCode && trackingCode !== shipment.order.trackingNumber) orderPatch.trackingNumber = trackingCode;
+  if (newOrderStatus !== shipment.order.status) orderPatch.status = newOrderStatus;
+
+  if (Object.keys(orderPatch).length > 0) {
+    await prisma.order.update({ where: { id: shipment.orderId }, data: orderPatch });
+  }
+
   await prisma.orderStatusEvent.create({
     data: {
-      orderId: order.id,
+      orderId: shipment.orderId,
       kind: 'fulfillment',
-      fromStatus: order.status,
-      toStatus: (patch.status as string | undefined) ?? order.status,
-      message: `EasyPost tracker: ${status}${trackingCode ? ` — ${trackingCode}` : ''}`,
+      fromStatus: shipment.order.status,
+      toStatus: (orderPatch.status as string | undefined) ?? shipment.order.status,
+      message: `EasyPost tracker for shipment ${shipment.id}: ${status}${trackingCode ? ` — ${trackingCode}` : ''}`,
     },
   });
-  if (patch.status === 'SHIPPED' && trackingCode) {
-    void sendShippingNotificationEmail(order.id);
+
+  if (orderPatch.status === 'SHIPPED' && trackingCode) {
+    void sendShippingNotificationEmail(shipment.orderId);
   }
 }
 

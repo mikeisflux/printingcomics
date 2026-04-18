@@ -62,7 +62,7 @@ router.delete('/packages/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ============ EasyPost operations ============
+// ============ EasyPost — shared helpers ============
 
 async function fromAddress(): Promise<EpAddress> {
   const cfg = await getEasyPostConfig();
@@ -82,60 +82,24 @@ async function fromAddress(): Promise<EpAddress> {
   };
 }
 
-async function buildShipmentInput(orderId: string, packageId: string): Promise<EpCreateShipmentInput & { orderNumber: string }> {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: { include: { product: true } } },
-  });
-  if (!order) throw new HttpError(404, 'Order not found');
-
-  const pkg = await prisma.package.findUnique({ where: { id: packageId } });
-  if (!pkg) throw new HttpError(404, 'Package not found');
-
-  const productWeightOz = order.items.reduce((sum, i) => {
-    const grams = i.product.weightGrams ?? 0;
-    const oz = (grams * i.quantity) / 28.3495;
-    return sum + oz;
-  }, 0);
-  const totalWeightOz = Math.max(0.5, productWeightOz + pkg.emptyWeightOz);
-
+function toAddressFromOrder(order: { email: string; shippingAddress: unknown }): EpAddress {
   const ship: any = order.shippingAddress;
-  const from = await fromAddress();
-
   return {
-    orderNumber: order.number,
-    from_address: from,
-    to_address: {
-      name: `${ship.firstName ?? ''} ${ship.lastName ?? ''}`.trim() || order.email,
-      company: ship.company ?? undefined,
-      email: order.email,
-      phone: ship.phone ?? undefined,
-      street1: ship.line1,
-      street2: ship.line2 ?? undefined,
-      city: ship.city,
-      state: ship.region ?? undefined,
-      zip: ship.postalCode,
-      country: ship.country ?? 'US',
-    },
-    parcel: {
-      length: pkg.lengthIn,
-      width: pkg.widthIn,
-      height: pkg.heightIn,
-      weight: +totalWeightOz.toFixed(2),
-    },
-    options: {
-      label_format: 'PDF',
-      print_custom_1: order.number,
-    },
-    reference: order.number,
+    name: `${ship.firstName ?? ''} ${ship.lastName ?? ''}`.trim() || order.email,
+    company: ship.company ?? undefined,
+    email: order.email,
+    phone: ship.phone ?? undefined,
+    street1: ship.line1,
+    street2: ship.line2 ?? undefined,
+    city: ship.city,
+    state: ship.region ?? undefined,
+    zip: ship.postalCode,
+    country: ship.country ?? 'US',
   };
 }
 
 router.get('/easypost/test', async (_req, res) => {
-  const cfg = await getEasyPostConfig();
-  if (!cfg.fromPostalCode) throw new HttpError(400, 'Set your sender postal code before testing');
   const from = await fromAddress();
-  // Hit a realistic US→US consumer address for the probe: San Francisco CA.
   const to: EpAddress = {
     name: 'EasyPost Test', street1: '417 Montgomery St', city: 'San Francisco',
     state: 'CA', zip: '94104', country: 'US',
@@ -148,39 +112,180 @@ router.get('/easypost/test', async (_req, res) => {
   }
 });
 
-const ratesSchema = z.object({
-  orderId: z.string(),
-  packageId: z.string(),
+// ============ Shipments: list / create / buy / refund ============
+
+/** List shipments on an order, with enough info for the admin UI to render
+ *  both the "already built" list and the remaining-to-pack item pool. */
+router.get('/orders/:orderId/shipments', async (req, res) => {
+  const [order, shipments] = await Promise.all([
+    prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { items: { include: { product: true } } },
+    }),
+    prisma.shipment.findMany({
+      where: { orderId: req.params.orderId },
+      orderBy: { createdAt: 'asc' },
+      include: { items: true, package: true },
+    }),
+  ]);
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  // Compute remaining quantity per order item (total qty − already-allocated qty).
+  const allocatedByItem = new Map<string, number>();
+  for (const s of shipments) {
+    for (const si of s.items) {
+      allocatedByItem.set(si.orderItemId, (allocatedByItem.get(si.orderItemId) ?? 0) + si.quantity);
+    }
+  }
+  const remaining = order.items.map((i) => ({
+    orderItemId: i.id,
+    name: i.name,
+    unitPriceCents: i.unitPriceCents,
+    totalQuantity: i.quantity,
+    remaining: Math.max(0, i.quantity - (allocatedByItem.get(i.id) ?? 0)),
+    weightGramsEach: i.product.weightGrams ?? 0,
+  }));
+
+  res.json({ shipments, remaining });
 });
 
-/** Create a shipment at EasyPost and return the rate options.
- *  Does NOT buy postage — the admin picks a rate next. */
-router.post('/easypost/rates', async (req, res) => {
-  const { orderId, packageId } = ratesSchema.parse(req.body);
-  const input = await buildShipmentInput(orderId, packageId);
-  const shipment = await epCreateShipment(input);
+const createSchema = z.object({
+  packageId: z.string(),
+  allocations: z.array(z.object({
+    orderItemId: z.string(),
+    quantity: z.number().int().positive(),
+  })).min(1),
+});
+
+/** Create a Shipment record for an order, fetch EasyPost rates for it, and
+ *  return the rates. The Shipment is persisted in CREATED status; no label
+ *  is purchased yet. */
+router.post('/orders/:orderId/shipments', async (req, res) => {
+  const { packageId, allocations } = createSchema.parse(req.body);
+
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.orderId },
+    include: { items: { include: { product: true } }, shipments: { include: { items: true } } },
+  });
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  const pkg = await prisma.package.findUnique({ where: { id: packageId } });
+  if (!pkg) throw new HttpError(404, 'Package not found');
+
+  // Validate allocation against remaining quantities.
+  const allocatedByItem = new Map<string, number>();
+  for (const s of order.shipments) {
+    for (const si of s.items) {
+      allocatedByItem.set(si.orderItemId, (allocatedByItem.get(si.orderItemId) ?? 0) + si.quantity);
+    }
+  }
+  let contentWeightOz = 0;
+  let insuredValueCents = 0;
+  for (const a of allocations) {
+    const item = order.items.find((i: any) => i.id === a.orderItemId);
+    if (!item) throw new HttpError(400, `Order item ${a.orderItemId} not on this order`);
+    const alreadyAllocated = allocatedByItem.get(a.orderItemId) ?? 0;
+    if (alreadyAllocated + a.quantity > item.quantity) {
+      throw new HttpError(400, `Allocation for "${item.name}" exceeds remaining qty (${item.quantity - alreadyAllocated} left)`);
+    }
+    const perUnitOz = ((item.product?.weightGrams ?? 0) as number) / 28.3495;
+    contentWeightOz += perUnitOz * a.quantity;
+    insuredValueCents += (item.unitPriceCents as number) * a.quantity;
+  }
+  const totalWeightOz = Math.max(0.5, +(contentWeightOz + pkg.emptyWeightOz).toFixed(2));
+
+  const from = await fromAddress();
+  const to = toAddressFromOrder(order);
+
+  const input: EpCreateShipmentInput = {
+    from_address: from,
+    to_address: to,
+    parcel: {
+      length: pkg.lengthIn,
+      width: pkg.widthIn,
+      height: pkg.heightIn,
+      weight: totalWeightOz,
+    },
+    options: { label_format: 'PDF', print_custom_1: order.number },
+    reference: order.number,
+  };
+  const epShipment = await epCreateShipment(input);
+
+  const shipment = await prisma.shipment.create({
+    data: {
+      orderId: order.id,
+      packageId: pkg.id,
+      easypostId: epShipment.id,
+      weightOz: totalWeightOz,
+      lengthIn: pkg.lengthIn,
+      widthIn: pkg.widthIn,
+      heightIn: pkg.heightIn,
+      insuredValueCents,
+      status: 'CREATED',
+      items: {
+        create: allocations.map((a) => ({
+          orderItemId: a.orderItemId,
+          quantity: a.quantity,
+        })),
+      },
+    },
+    include: { items: true },
+  });
+
   res.json({
-    shipmentId: shipment.id,
-    rates: shipment.rates ?? [],
-    weightOz: input.parcel.weight,
+    shipment,
+    rates: epShipment.rates ?? [],
+    insuredValueCents,
   });
 });
 
-const buySchema = z.object({ shipmentId: z.string(), rateId: z.string() });
-/** Buy the selected rate. This creates the label and starts tracking. */
-router.post('/easypost/buy/:orderId', async (req, res) => {
-  const { shipmentId, rateId } = buySchema.parse(req.body);
-  const shipment = await epBuyShipment(shipmentId, rateId);
+const buySchema = z.object({ rateId: z.string() });
 
-  const carrier = shipment.selected_rate?.carrier ?? null;
-  const service = shipment.selected_rate?.service ?? null;
+/** Buy the selected rate for a Shipment. Insurance is always requested at the
+ *  shipment's insuredValueCents (= sum of allocated item price × qty). */
+router.post('/shipments/:shipmentId/buy', async (req, res) => {
+  const { rateId } = buySchema.parse(req.body);
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { id: req.params.shipmentId },
+    include: { order: true },
+  });
+  if (!shipment) throw new HttpError(404, 'Shipment not found');
+  if (!shipment.easypostId) throw new HttpError(400, 'Shipment has no EasyPost id — recreate it');
+  if (shipment.status !== 'CREATED') throw new HttpError(400, `Shipment already ${shipment.status}`);
+
+  // Refetch EasyPost shipment first so we can set the `insurance` field on
+  // the buy call (EasyPost accepts insurance on /buy as well).
+  const insuranceAmount = ((shipment.insuredValueCents ?? 0) / 100).toFixed(2);
+
+  const bought = await epBuyShipment(shipment.easypostId, rateId, {
+    insurance: insuranceAmount,
+  });
+
+  const carrier = bought.selected_rate?.carrier ?? null;
+  const service = bought.selected_rate?.service ?? null;
+  const rateAmount = bought.selected_rate ? Math.round(parseFloat(bought.selected_rate.rate) * 100) : null;
   const method = [carrier, service].filter(Boolean).join(' ') || null;
-  const tracking = shipment.tracking_code ?? null;
+  const tracking = bought.tracking_code ?? null;
+  const labelUrl = bought.postage_label?.label_url ?? null;
 
-  await prisma.order.update({
-    where: { id: req.params.orderId },
+  await prisma.shipment.update({
+    where: { id: shipment.id },
     data: {
-      epShipmentId: shipment.id,
+      status: 'PURCHASED',
+      carrier,
+      service,
+      trackingCode: tracking,
+      labelUrl,
+      rateAmountCents: rateAmount,
+    },
+  });
+
+  // Mirror the latest shipment's summary onto the order for the customer
+  // email + public order page, and flip the order to SHIPPED.
+  await prisma.order.update({
+    where: { id: shipment.orderId },
+    data: {
       trackingNumber: tracking,
       shippingMethod: method,
       status: 'SHIPPED',
@@ -189,22 +294,50 @@ router.post('/easypost/buy/:orderId', async (req, res) => {
 
   await prisma.orderStatusEvent.create({
     data: {
-      orderId: req.params.orderId,
+      orderId: shipment.orderId,
       kind: 'fulfillment',
-      message: `EasyPost label purchased (${method ?? 'unknown'}${tracking ? ` — tracking ${tracking}` : ''})`,
+      message: `Label purchased for shipment ${shipment.id}: ${method ?? 'unknown'}${tracking ? ` — tracking ${tracking}` : ''}, insured for $${insuranceAmount}`,
     },
   });
-  res.json({ ok: true, shipment });
+
+  res.json({ ok: true, easypost: bought });
 });
 
-router.get('/easypost/shipments/:id', async (req, res) => {
-  const shipment = await epFetchShipment(req.params.id);
-  res.json({ shipment });
+router.post('/shipments/:shipmentId/refund', async (req, res) => {
+  const shipment = await prisma.shipment.findUnique({ where: { id: req.params.shipmentId } });
+  if (!shipment) throw new HttpError(404, 'Shipment not found');
+  if (!shipment.easypostId) throw new HttpError(400, 'Shipment has no EasyPost id');
+  const refunded = await epRefundShipment(shipment.easypostId);
+  await prisma.shipment.update({
+    where: { id: shipment.id },
+    data: { status: 'REFUNDED' },
+  });
+  await prisma.orderStatusEvent.create({
+    data: {
+      orderId: shipment.orderId,
+      kind: 'fulfillment',
+      message: `Shipment ${shipment.id} label refund requested`,
+    },
+  });
+  res.json({ ok: true, easypost: refunded });
 });
 
-router.post('/easypost/shipments/:id/refund', async (req, res) => {
-  const shipment = await epRefundShipment(req.params.id);
-  res.json({ shipment });
+router.delete('/shipments/:shipmentId', async (req, res) => {
+  const shipment = await prisma.shipment.findUnique({ where: { id: req.params.shipmentId } });
+  if (!shipment) throw new HttpError(404, 'Shipment not found');
+  if (shipment.status !== 'CREATED') {
+    throw new HttpError(400, `Cannot delete a ${shipment.status} shipment — refund the label first`);
+  }
+  await prisma.shipment.delete({ where: { id: shipment.id } });
+  res.json({ ok: true });
+});
+
+router.get('/shipments/:shipmentId/fetch', async (req, res) => {
+  const shipment = await prisma.shipment.findUnique({ where: { id: req.params.shipmentId } });
+  if (!shipment) throw new HttpError(404, 'Shipment not found');
+  if (!shipment.easypostId) throw new HttpError(400, 'Shipment has no EasyPost id');
+  const ep = await epFetchShipment(shipment.easypostId);
+  res.json({ easypost: ep });
 });
 
 export default router;

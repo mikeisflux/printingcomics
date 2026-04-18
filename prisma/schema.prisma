@@ -293,16 +293,17 @@ model Order {
 
   shippingAddress Json
   billingAddress  Json
+  // Latest shipment's carrier+service, for the customer-facing summary and
+  // shipping-notification email. See the Shipment table for the full list —
+  // an order can have multiple shipments when split across boxes.
   shippingMethod  String?
   trackingNumber  String?
-  // EasyPost shipment id once the order has been labeled. Used to correlate
-  // incoming tracker webhooks back to the order.
-  epShipmentId    String?
   notes           String?
 
   items           OrderItem[]
   payments        Payment[]
   events          OrderStatusEvent[]
+  shipments       Shipment[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -352,6 +353,8 @@ model Package {
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  shipments     Shipment[]
 }
 
 model OrderItem {
@@ -368,7 +371,67 @@ model OrderItem {
   unitPriceCents Int
   totalCents Int
 
+  shipmentItems ShipmentItem[]
+
   @@index([orderId])
+}
+
+// A physical box going out for an order. Orders may require multiple
+// shipments when contents don't fit in one parcel; each shipment tracks its
+// own EasyPost label, carrier, tracking code, and insurance policy. The
+// insured value is the sum of the allocated items' price × quantity — never
+// the order total — so a $400 order split 3 ways insures each box for only
+// what's physically in it.
+model Shipment {
+  id               String   @id @default(cuid())
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId          String
+  package          Package? @relation(fields: [packageId], references: [id])
+  packageId        String?
+
+  // EasyPost correlation. easypostId is set as soon as /rates is called;
+  // the rest populate once /buy succeeds.
+  easypostId       String?  @unique
+  trackingCode     String?
+  carrier          String?
+  service          String?
+  labelUrl         String?
+  rateAmountCents  Int?     // postage paid, cents
+  insuredValueCents Int?    // declared value sent to Shipsurance via EasyPost
+  insuranceFeeCents Int?    // what EasyPost billed for the insurance leg
+
+  // Snapshot of the parcel at buy time — keeps things reproducible even if
+  // the Package template is later edited.
+  weightOz   Float?
+  lengthIn   Float?
+  widthIn    Float?
+  heightIn   Float?
+
+  // CREATED → PURCHASED → IN_TRANSIT → DELIVERED. Terminal: REFUNDED / VOIDED.
+  status     String   @default("CREATED")
+
+  items      ShipmentItem[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([easypostId])
+}
+
+// Which OrderItems (and how many of each) went into a given Shipment.
+// quantity is bounded by the OrderItem.quantity; the sum of ShipmentItem
+// quantities across shipments for one OrderItem should equal OrderItem.quantity
+// once the order is fully packed.
+model ShipmentItem {
+  id          String    @id @default(cuid())
+  shipment    Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentId  String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  orderItemId String
+  quantity    Int
+
+  @@index([shipmentId])
+  @@index([orderItemId])
 }
 
 model Payment {
