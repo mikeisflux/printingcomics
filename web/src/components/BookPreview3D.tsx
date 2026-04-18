@@ -229,7 +229,7 @@ export function BookPreview3D({ spec }: { spec: BookSpec }) {
       borderRadius: 16, overflow: 'hidden',
       boxShadow: '0 25px 60px -20px rgba(0,0,0,0.6)',
     }}>
-      <Canvas shadows camera={{ position: [2.8, 0.4, 4.2], fov: 34 }} dpr={[1, 2]}>
+      <Canvas shadows camera={{ position: [4, 1.2, 7.8], fov: 32 }} dpr={[1, 2]}>
         <ambientLight intensity={0.4} />
         <directionalLight
           position={[4, 6, 5]}
@@ -253,8 +253,8 @@ export function BookPreview3D({ spec }: { spec: BookSpec }) {
         <OrbitControls
           enablePan={false}
           enableZoom
-          minDistance={3}
-          maxDistance={9}
+          minDistance={5}
+          maxDistance={14}
           minPolarAngle={Math.PI / 4}
           maxPolarAngle={Math.PI / 1.7}
         />
