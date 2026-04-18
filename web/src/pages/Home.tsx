@@ -31,7 +31,7 @@ export function Home() {
             Soft-cover, hard-cover, trade paperbacks &mdash; printed and shipped from the US.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link to="/shop" className="btn">Shop printing services</Link>
+            <Link to="/shop/comic-books" className="btn">Comics</Link>
             <Link to="/shop/graphic-novels" className="btn secondary">Graphic novels</Link>
           </div>
         </div>
