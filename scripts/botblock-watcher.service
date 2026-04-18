@@ -6,13 +6,12 @@ Wants=network.target
 [Service]
 Type=simple
 ExecStart=/bin/bash /opt/printingcomics/scripts/botblock-watcher.sh
-EnvironmentFile=/etc/default/botblock-watcher
+EnvironmentFile=-/etc/default/botblock-watcher
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=0
 StandardOutput=append:/var/log/botblock-watcher.log
 StandardError=append:/var/log/botblock-watcher.log
-WatchdogSec=120
 
 [Install]
 WantedBy=multi-user.target
