@@ -390,47 +390,39 @@ function drawAutoFitTitle(
   fontFamily: string,
 ) {
   const MAX_FONT = 130;
-  const MIN_FONT = 18;
-  const LINE_GAP = 1.05;
+  const MIN_FONT = 14;
 
-  // Find the largest font size that fits both axes. Try wrapping at each size.
+  // Single line — shrink until the entire text fits both width and height.
   let chosenFont = MIN_FONT;
-  let chosenLines: string[] = [text];
+  let display = text;
   for (let size = MAX_FONT; size >= MIN_FONT; size -= 2) {
     ctx.font = `900 ${size}px ${fontFamily}`;
-    const lines = wrapToWidth(ctx, text, box.width);
-    const totalH = lines.length * size * LINE_GAP;
-    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-    if (totalH <= box.height && widest <= box.width) {
+    const w = ctx.measureText(text).width;
+    if (w <= box.width && size <= box.height) {
       chosenFont = size;
-      chosenLines = lines;
+      display = text;
       break;
     }
   }
 
-  // If even the smallest font + greedy wrap can't fit a single word, force-fit
-  // by truncating with an ellipsis at the chosen min font size.
+  // If still too wide at min font, truncate with an ellipsis until it fits.
   if (chosenFont === MIN_FONT) {
     ctx.font = `900 ${MIN_FONT}px ${fontFamily}`;
-    chosenLines = wrapToWidth(ctx, text, box.width);
-    const maxLines = Math.max(1, Math.floor(box.height / (MIN_FONT * LINE_GAP)));
-    if (chosenLines.length > maxLines) {
-      chosenLines = chosenLines.slice(0, maxLines);
-      chosenLines[maxLines - 1] = chosenLines[maxLines - 1]!.replace(/.{0,3}$/, '…');
+    if (ctx.measureText(text).width > box.width) {
+      let s = text;
+      while (s.length > 1 && ctx.measureText(s + '…').width > box.width) {
+        s = s.slice(0, -1);
+      }
+      display = s + '…';
     }
   }
 
   ctx.font = `900 ${chosenFont}px ${fontFamily}`;
   ctx.strokeStyle = '#000';
   ctx.lineWidth = Math.max(6, chosenFont * 0.14);
-  const lineHeight = chosenFont * LINE_GAP;
-  const startY = box.cy - ((chosenLines.length - 1) * lineHeight) / 2;
-  for (let i = 0; i < chosenLines.length; i++) {
-    const y = startY + i * lineHeight;
-    ctx.strokeText(chosenLines[i]!, box.cx, y);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(chosenLines[i]!, box.cx, y);
-  }
+  ctx.strokeText(display, box.cx, box.cy);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(display, box.cx, box.cy);
 }
 
 function wrapToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
