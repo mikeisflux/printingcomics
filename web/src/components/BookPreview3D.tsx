@@ -248,16 +248,21 @@ function Book({ spec }: { spec: BookSpec }) {
   }, [spec.coverColor, spec.hasFoil, spec.title, t, isSaddle]);
 
   // Wedge-shaped page block for saddle-stitched comics: zero thickness at
-  // the spine fold (x=-w/2, z=0), `t` thick at the fore-edge. Sits snugly
-  // between the two tilted covers, slightly inset on Y (top/bottom) and
-  // fore-edge so the cover visibly wraps around the page block.
+  // the spine fold (x=-w/2, z=0), thick at the fore-edge. Trimmed exactly
+  // to the cover's outer edge — pages never hang beyond the cover at any
+  // trim size or page count. Only a 0.001-unit epsilon keeps the shared
+  // top/bottom/fore-edge planes from z-fighting the cover faces; at
+  // normal camera distance that's sub-pixel and invisible. The fore-edge
+  // thickness stays inside the cover spread in Z (0.92 * t vs the cover's
+  // t) so the covers still visibly wrap around the paper stack there.
   const saddlePagesGeometry = useMemo(() => {
     if (!isSaddle) return null;
-    const spineX = -w / 2;
-    const foreX  =  w / 2 - 0.012;
-    const topY   =  h / 2 - 0.008;
-    const botY   = -h / 2 + 0.008;
-    const pt     = t * 0.92;   // page stack fore-edge thickness
+    const EPS = 0.001;
+    const spineX = -w / 2;           // pages share spine line with covers
+    const foreX  =  w / 2 - EPS;     // trimmed to cover's fore-edge
+    const topY   =  h / 2 - EPS;     // trimmed to cover's top edge
+    const botY   = -h / 2 + EPS;     // trimmed to cover's bottom edge
+    const pt     = t * 0.92;         // page stack fore-edge thickness
     const g = new THREE.BufferGeometry();
     // 6 vertices forming a triangular prism on its side:
     //   0/1 = spine top/bottom (both at z=0)
