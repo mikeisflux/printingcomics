@@ -38,17 +38,56 @@ export function About() {
   return (
     <Page
       title="About Printing Comics"
-      intro="Printing Comics is a creator-owned print shop dedicated exclusively to comic books, graphic novels, manga, and zines."
+      intro="Every print run helps fund a 501(c)(3) nonprofit that uses comics to educate, inspire, and uplift communities."
     >
       <p>
-        We were founded by independent creators who were frustrated with print brokers that treated
-        comics as an afterthought. Today we run a full in-house print floor with offset and digital
-        presses tuned for comic-book stock, registration, and bindery.
+        Printing Comics is the print-services arm of <strong>Divinity Comics, Inc.</strong> — an
+        Indiana-based 501(c)(3) tax-exempt nonprofit organization dedicated to harnessing the power
+        of comics, free speech, and storytelling to inspire, educate, and uplift communities.
+        Operating as a DBA under the Divinity Comics umbrella, we exist for one reason: to give
+        independent creators world-class printing while channeling every dollar of profit back into
+        the nonprofit's charitable mission.
       </p>
+
+      <h3>What that means for you</h3>
       <p>
-        Whether you're printing a 24-page floppy, a 400-page omnibus, a magazine-sized art book, or a
-        zine stapled in an afternoon — we'll match the paper, ink, and finishing to what your story
-        needs.
+        When you print with us, you aren't paying a broker, a private equity holding company, or a
+        publicly-traded conglomerate. You're paying a press shop whose surplus goes directly to:
+      </p>
+      <ul>
+        <li><strong>Educational content</strong> — comics and graphic novels that teach literacy, history, and social values in an engaging format.</li>
+        <li><strong>Youth programs</strong> — workshops that help young people explore creativity through storytelling and art.</li>
+        <li><strong>Community partnerships</strong> — collaborating with local organizations to address social challenges through creative projects.</li>
+        <li><strong>Diverse voices</strong> — celebrating perspectives that traditional publishing too often overlooks.</li>
+      </ul>
+
+      <h3>Our nonprofit status</h3>
+      <p>
+        Divinity Comics, Inc. is a registered 501(c)(3) tax-exempt organization under IRS code. We
+        operate with full transparency and accountability, adhering to all federal and Indiana state
+        regulations for nonprofit organizations. Our financial activities — including income
+        generated through Printing Comics and our other mission-aligned LLCs — are reported
+        annually on IRS Form 990. Donations to the parent organization are tax-deductible to the
+        extent allowed by law.
+      </p>
+
+      <h3>Our impact</h3>
+      <p>
+        Since our founding, Divinity Comics has reached thousands of readers, students, and
+        creators with our work. By routing print-shop profits into the nonprofit, we keep the
+        funding sustainable and the mission expanding — in Indiana and beyond.
+      </p>
+
+      <h3>What we print</h3>
+      <p>
+        Single-issue comics, graphic novels, magazine-sized art books, sketchbooks, and creator
+        tools. We tune the paper, ink, and finishing to what your story needs — not whatever the
+        broker has on hand. Short runs welcome, big runs welcome, weird runs especially welcome.
+      </p>
+
+      <p style={{ marginTop: '2rem' }}>
+        Learn more about the parent organization at{' '}
+        <a href="https://divinitycomics.com" target="_blank" rel="noreferrer">divinitycomics.com</a>.
       </p>
     </Page>
   );
