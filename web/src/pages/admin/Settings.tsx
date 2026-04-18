@@ -172,7 +172,7 @@ function EmailSection() {
         <div className="grid-2">
           <div>
             <label>Region</label>
-            <select value={settings['mailgun.region'] ?? 'us'} onChange={(e) => save('mailgun.region', e.target.value)}>
+            <select value={String(settings['mailgun.region'] ?? 'us')} onChange={(e) => save('mailgun.region', e.target.value)}>
               <option value="us">US (api.mailgun.net)</option>
               <option value="eu">EU (api.eu.mailgun.net)</option>
             </select>

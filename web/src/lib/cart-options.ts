@@ -15,12 +15,11 @@ interface OptionLite {
   values: OptionValueLite[];
 }
 
-interface ProductLite {
-  options?: OptionLite[];
-}
-
+// Loose typing — cart and order items both flow through here and have
+// slightly different product shapes. We only read `product.options` when
+// it's present.
 interface CartItemLite {
-  product: ProductLite;
+  product: { options?: OptionLite[] | null } & Record<string, unknown>;
   options?: Record<string, unknown> | null;
 }
 

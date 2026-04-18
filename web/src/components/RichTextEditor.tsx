@@ -25,7 +25,7 @@ export function RichTextEditor({ value, onChange, minHeight = 240 }: Props) {
   // Keep editor in sync when the `value` prop changes from outside (e.g. loading a template).
   useEffect(() => {
     if (editor && editor.getHTML() !== value) {
-      editor.commands.setContent(value || '', { emitUpdate: false });
+      editor.commands.setContent(value || '', false);
     }
   }, [value, editor]);
 

@@ -120,7 +120,7 @@ export function PaypalCheckout() {
               currency: 'USD',
               intent: 'capture',
               components: `buttons${enableCard ? ',card-fields' : ''}`,
-              environment: env,
+              environment: env === 'live' ? 'production' : 'sandbox',
             }}
           >
             {enableButton && (
