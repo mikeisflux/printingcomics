@@ -240,7 +240,7 @@ function Book({ spec }: { spec: BookSpec }) {
   const coverOffset = coverT / 2 + 0.001;
 
   const frontImageTex = useImageTexture(spec.frontCoverImageUrl);
-  const backImageTex  = useImageTexture(spec.backCoverImageUrl, /* flipX */ true);
+  const backImageTex  = useImageTexture(spec.backCoverImageUrl);
   const spineImageTex = useImageTexture(spec.spineImageUrl);
 
   const proceduralCoverTexture = useMemo(() => {
