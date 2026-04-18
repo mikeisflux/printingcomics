@@ -34,7 +34,6 @@ export function StoreLayout() {
                 { to: '/shop/artist-tools', label: 'Artist Tools' },
               ]}
             />
-            <Link to="/shop">Print-On-Demand</Link>
             <Link to="/crowdfunding">Crowdfunding</Link>
             <NavItem
               label="Resources"
@@ -56,7 +55,6 @@ export function StoreLayout() {
                 { to: '/terms', label: 'Terms &amp; Conditions' },
               ]}
             />
-            <Link to="/media">CWS Media</Link>
             <Link to="/contact">Contact</Link>
           </nav>
           <div className="actions">
@@ -132,7 +130,6 @@ export function StoreLayout() {
                 <li><Link to="/about">About</Link></li>
                 <li><Link to="/contact">Contact</Link></li>
                 <li><Link to="/terms">Terms and Conditions</Link></li>
-                <li><Link to="/media">CWS Media</Link></li>
                 <li><Link to="/sample-pack">Sample Pack</Link></li>
               </ul>
             </div>
