@@ -201,6 +201,9 @@ router.post('/packlink/rates', async (req, res) => {
     toPostalCode: ship.postalCode,
     priceCents: order.subtotalCents,
     weightKg: ozToKg(totalWeightOz),
+    lengthCm: inToCm(pkg.lengthIn),
+    widthCm: inToCm(pkg.widthIn),
+    heightCm: inToCm(pkg.heightIn),
   });
   res.json({ services, weightKg: ozToKg(totalWeightOz) });
 });

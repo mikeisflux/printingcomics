@@ -7,9 +7,13 @@ import { HttpError } from '../middleware/error.js';
  *   Base:   https://api.packlink.com/v1
  *   Auth:   request header `Authorization: <apiKey>` (no Bearer prefix)
  *   Docs:   https://support-pro.packlink.com/hc/en-gb  (API reference)
+ *   Ref:    https://github.com/wout/packlink.cr (Crystal client — authoritative
+ *           format for /services query)
  *
  * Key operations we use:
- *   - quote rates: GET /services/from/{fromCc}/{fromZip}/to/{toCc}/{toZip}/price/{priceEUR}/weight/{weightKg}
+ *   - quote rates: GET /services?from[country]=..&from[zip]=..&to[country]=..
+ *                      &to[zip]=..&packages[0][weight]=..&packages[0][length]=..
+ *                      &packages[0][width]=..&packages[0][height]=..
  *   - create shipment: POST /shipments
  *   - fetch shipment: GET /shipments/{reference}
  *   - download label: GET /shipments/{reference}/labels
@@ -49,8 +53,11 @@ export interface PlpRateQuery {
   fromPostalCode: string;
   toCountry: string;
   toPostalCode: string;
-  priceCents: number;    // package content value
   weightKg: number;      // total weight in kg
+  lengthCm?: number;     // package dims (cm) — Packlink requires all three
+  widthCm?: number;
+  heightCm?: number;
+  priceCents?: number;   // optional content value (not part of /services query)
 }
 
 export interface PlpService {
@@ -63,10 +70,21 @@ export interface PlpService {
 }
 
 export async function plpGetRates(q: PlpRateQuery): Promise<PlpService[]> {
-  const priceEUR = (q.priceCents / 100).toFixed(2);
-  const weight = q.weightKg.toFixed(2);
-  const path = `/services/from/${q.fromCountry}/${q.fromPostalCode}/to/${q.toCountry}/${q.toPostalCode}/price/${priceEUR}/weight/${weight}`;
-  return request(path);
+  // Packlink's /services endpoint uses nested bracket query params, not path
+  // segments. See wout/packlink.cr Service::Query + Util.build_nested_query.
+  // All four package dims (weight, length, width, height) are required; we
+  // fall back to a small envelope if the caller didn't supply them so the
+  // probe-style "test connection" call still works.
+  const params = new URLSearchParams();
+  params.append('from[country]', q.fromCountry);
+  params.append('from[zip]', q.fromPostalCode);
+  params.append('to[country]', q.toCountry);
+  params.append('to[zip]', q.toPostalCode);
+  params.append('packages[0][weight]', q.weightKg.toFixed(3));
+  params.append('packages[0][length]', (q.lengthCm ?? 20).toFixed(2));
+  params.append('packages[0][width]', (q.widthCm ?? 15).toFixed(2));
+  params.append('packages[0][height]', (q.heightCm ?? 3).toFixed(2));
+  return request(`/services?${params.toString()}`);
 }
 
 // ----- Shipments -----
