@@ -104,6 +104,29 @@ export function CategoryConfigure() {
   const [priceFlash, setPriceFlash] = useState(0);
   const cartBtnRef = useRef<HTMLButtonElement>(null);
 
+  // Local-only cover image previews. These are object URLs pointing at
+  // File objects in the browser's memory — never uploaded. They live for
+  // the page session; revoked when replaced or on unmount.
+  const [frontCoverUrl, setFrontCoverUrl] = useState<string | null>(null);
+  const [backCoverUrl, setBackCoverUrl] = useState<string | null>(null);
+  const [spineCoverUrl, setSpineCoverUrl] = useState<string | null>(null);
+  useEffect(() => () => {
+    if (frontCoverUrl) URL.revokeObjectURL(frontCoverUrl);
+    if (backCoverUrl) URL.revokeObjectURL(backCoverUrl);
+    if (spineCoverUrl) URL.revokeObjectURL(spineCoverUrl);
+  }, [frontCoverUrl, backCoverUrl, spineCoverUrl]);
+
+  const pickCover = (side: 'front' | 'back' | 'spine') => (file: File | null | undefined) => {
+    const setter =
+      side === 'front' ? setFrontCoverUrl :
+      side === 'back' ? setBackCoverUrl : setSpineCoverUrl;
+    const current =
+      side === 'front' ? frontCoverUrl :
+      side === 'back' ? backCoverUrl : spineCoverUrl;
+    if (current) URL.revokeObjectURL(current);
+    setter(file ? URL.createObjectURL(file) : null);
+  };
+
   useEffect(() => {
     if (!categorySlug) return;
     void api.get<{ category: Category; products: ProductDetail[] }>(`/products/_meta/categories/${categorySlug}/configure`)
@@ -202,6 +225,12 @@ export function CategoryConfigure() {
     else if (/gloss/i.test(lamStyle)) paperStyle = 'gloss';
     else if (/matte/i.test(lamStyle)) paperStyle = 'matte';
 
+    // Comics are saddle-stitched (stapled through the fold) — no spine.
+    // Anything else (graphic novels, trade paperbacks, zines above a page
+    // count) defaults to perfect binding with a real spine.
+    const binding: 'saddle-stitch' | 'perfect' =
+      /comic/i.test(categorySlug ?? '') ? 'saddle-stitch' : 'perfect';
+
     return {
       widthIn: dim.widthIn,
       heightIn: dim.heightIn,
@@ -212,8 +241,12 @@ export function CategoryConfigure() {
       paperStyle,
       title: userTitle,   // undefined when blank → no top-of-cover label
       subtitle: sizeLabel,
+      binding,
+      frontCoverImageUrl: frontCoverUrl ?? undefined,
+      backCoverImageUrl: backCoverUrl ?? undefined,
+      spineImageUrl: binding === 'perfect' ? (spineCoverUrl ?? undefined) : undefined,
     };
-  }, [product, selections]);
+  }, [product, selections, categorySlug, frontCoverUrl, backCoverUrl, spineCoverUrl]);
 
   const setSel = (k: string, v: string | number | boolean) => setSelections((cur) => ({ ...cur, [k]: v }));
 
@@ -337,6 +370,44 @@ export function CategoryConfigure() {
           </Suspense>
           <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '.85rem', color: 'var(--muted)' }}>
             Live preview — drag to orbit, scroll to zoom
+          </div>
+
+          <div className="admin-card" style={{ marginTop: '1rem' }}>
+            <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em', marginBottom: '.5rem' }}>
+              Cover artwork (optional)
+            </div>
+            <p className="muted" style={{ fontSize: '.8rem', marginTop: 0, marginBottom: '.75rem' }}>
+              Drop your front / back cover images to see them on the preview. Images stay in your
+              browser — nothing is uploaded until you finalize the order.
+            </p>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: bookSpec?.binding === 'perfect' ? '1fr 1fr 1fr' : '1fr 1fr',
+                gap: '.75rem',
+              }}
+            >
+              <CoverUploadTile
+                label="Front cover"
+                url={frontCoverUrl}
+                onPick={pickCover('front')}
+                onClear={() => pickCover('front')(null)}
+              />
+              {bookSpec?.binding === 'perfect' && (
+                <CoverUploadTile
+                  label="Spine art"
+                  url={spineCoverUrl}
+                  onPick={pickCover('spine')}
+                  onClear={() => pickCover('spine')(null)}
+                />
+              )}
+              <CoverUploadTile
+                label="Back cover"
+                url={backCoverUrl}
+                onPick={pickCover('back')}
+                onClear={() => pickCover('back')(null)}
+              />
+            </div>
           </div>
 
           {product && (
@@ -580,4 +651,48 @@ function OptionField({ opt, value, onChange }: { opt: ProductOption; value: stri
     default:
       return null;
   }
+}
+
+
+function CoverUploadTile({
+  label, url, onPick, onClear,
+}: {
+  label: string;
+  url: string | null;
+  onPick: (file: File | null) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      style={{
+        border: '1px dashed var(--border)',
+        borderRadius: 8,
+        padding: '.5rem',
+        textAlign: 'center',
+        position: 'relative',
+        minHeight: 120,
+        display: 'flex', flexDirection: 'column', gap: '.4rem', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div style={{ fontSize: '.8rem', fontWeight: 600 }}>{label}</div>
+      {url ? (
+        <>
+          <img src={url} alt={label} style={{ maxWidth: '100%', maxHeight: 120, borderRadius: 4, objectFit: 'contain' }} />
+          <button type="button" className="btn secondary" style={{ fontSize: '.75rem', padding: '.25rem .5rem' }} onClick={onClear}>
+            Remove
+          </button>
+        </>
+      ) : (
+        <label className="btn secondary" style={{ fontSize: '.8rem', cursor: 'pointer' }}>
+          Choose file
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+          />
+        </label>
+      )}
+    </div>
+  );
 }

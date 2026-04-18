@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, ContactShadows, OrbitControls, Float, Sparkles } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
@@ -25,6 +25,22 @@ export interface BookSpec {
   title?: string;
   /** Subtitle / volume painted below the title. */
   subtitle?: string;
+  /**
+   * Binding style. Saddle-stitched comics are stapled through the fold, so
+   * they have NO spine — just a crease at the left edge. Perfect-bound
+   * books (graphic novels, trade paperbacks) have a flat spine whose
+   * thickness scales with pageCount. Default: 'perfect'.
+   */
+  binding?: 'perfect' | 'saddle-stitch';
+  /** Optional uploaded front cover image (URL). Replaces the procedural
+   *  cover texture when present. */
+  frontCoverImageUrl?: string;
+  /** Optional uploaded back cover image (URL). Replaces the back cover
+   *  color when present. */
+  backCoverImageUrl?: string;
+  /** Optional uploaded spine artwork (URL). Only meaningful for
+   *  perfect-bound books — saddle-stitched comics have no spine. */
+  spineImageUrl?: string;
 }
 
 const SCALE = 0.5;  // scene units per inch
@@ -160,18 +176,50 @@ function buildSpineCanvas(spec: BookSpec, thickness: number): HTMLCanvasElement 
   return canvas;
 }
 
+/** Load an image URL into a THREE.Texture. Returns null until the image has
+ *  actually loaded so we don't flash the cover black. */
+function useImageTexture(url?: string) {
+  const [tex, setTex] = useState<THREE.Texture | null>(null);
+  useMemo(() => {
+    if (!url) { setTex(null); return; }
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(
+      url,
+      (t) => {
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 8;
+        setTex(t);
+      },
+      undefined,
+      () => setTex(null),
+    );
+  }, [url]);
+  return tex;
+}
+
 function Book({ spec }: { spec: BookSpec }) {
   const ref = useRef<THREE.Group>(null);
+  const isSaddle = spec.binding === 'saddle-stitch';
+
   // Normalize the book so its largest dimension is always ~3.2 scene units.
-  // Different trim sizes still differ in aspect ratio, but they all frame
-  // the same way against the static camera.
   const TARGET_MAX = 3.2;
   const k = TARGET_MAX / Math.max(spec.widthIn, spec.heightIn);
   const w = spec.widthIn * k;
   const h = spec.heightIn * k;
-  const t = Math.max(0.06, Math.min(1.4, spec.pageCount * 0.0035 * k * 6));
 
-  const coverTexture = useMemo(() => {
+  // Saddle-stitched comics are a flat stapled booklet — thickness is just
+  // the paper stack, regardless of page count it stays thin (comic with 32
+  // pages is only ~2–3 mm). Perfect-bound scales noticeably.
+  const t = isSaddle
+    ? Math.max(0.035, Math.min(0.09, spec.pageCount * 0.0012 * k * 6))
+    : Math.max(0.06, Math.min(1.4, spec.pageCount * 0.0035 * k * 6));
+
+  const frontImageTex = useImageTexture(spec.frontCoverImageUrl);
+  const backImageTex  = useImageTexture(spec.backCoverImageUrl);
+  const spineImageTex = useImageTexture(spec.spineImageUrl);
+
+  const proceduralCoverTexture = useMemo(() => {
     const tex = new THREE.CanvasTexture(buildCoverCanvas(spec));
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
@@ -181,10 +229,11 @@ function Book({ spec }: { spec: BookSpec }) {
   ]);
 
   const spineTexture = useMemo(() => {
+    if (isSaddle) return null;  // no spine on stapled comics
     const tex = new THREE.CanvasTexture(buildSpineCanvas(spec, t));
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
-  }, [spec.coverColor, spec.hasFoil, spec.title, t]);
+  }, [spec.coverColor, spec.hasFoil, spec.title, t, isSaddle]);
 
   const coverMetalness =
     spec.paperStyle === 'foil' || spec.hasFoil ? 0.85 :
@@ -200,6 +249,10 @@ function Book({ spec }: { spec: BookSpec }) {
     if (ref.current) ref.current.rotation.y += dt * 0.18;
   });
 
+  // Use the uploaded image where provided; otherwise fall back to the
+  // procedural render.
+  const frontMap = frontImageTex ?? proceduralCoverTexture;
+
   return (
     <group ref={ref}>
       {/* Page block (interior) */}
@@ -212,32 +265,36 @@ function Book({ spec }: { spec: BookSpec }) {
       <mesh position={[0, 0, t / 2 + 0.012]} castShadow receiveShadow>
         <boxGeometry args={[w, h, 0.022]} />
         <meshStandardMaterial
-          map={coverTexture}
+          map={frontMap}
           metalness={coverMetalness}
           roughness={coverRoughness}
           envMapIntensity={1.2 + (spec.hasFoil ? 1.4 : 0)}
         />
       </mesh>
 
-      {/* Back cover — solid */}
+      {/* Back cover — uploaded image, or solid cover color */}
       <mesh position={[0, 0, -t / 2 - 0.012]} castShadow receiveShadow>
         <boxGeometry args={[w, h, 0.022]} />
         <meshStandardMaterial
-          color={spec.coverColor}
+          {...(backImageTex ? { map: backImageTex } : { color: spec.coverColor })}
           metalness={coverMetalness}
           roughness={coverRoughness}
         />
       </mesh>
 
-      {/* Spine — textured */}
-      <mesh position={[-w / 2 - 0.012, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.022, h, t]} />
-        <meshStandardMaterial
-          map={spineTexture}
-          metalness={coverMetalness}
-          roughness={coverRoughness}
-        />
-      </mesh>
+      {/* Spine — only on perfect-bound. Saddle-stitched comics fold along
+          the left edge instead of having a spine. Uploaded spine art
+          replaces the procedural (title-painted) spine texture. */}
+      {!isSaddle && (spineImageTex || spineTexture) && (
+        <mesh position={[-w / 2 - 0.012, 0, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.022, h, t]} />
+          <meshStandardMaterial
+            map={spineImageTex ?? spineTexture}
+            metalness={coverMetalness}
+            roughness={coverRoughness}
+          />
+        </mesh>
+      )}
 
       {/* Fore-edge (page block side facing reader's right) */}
       <mesh position={[w / 2 - 0.005, 0, 0]}>
@@ -255,7 +312,28 @@ export function BookPreview3D({ spec }: { spec: BookSpec }) {
       background: 'radial-gradient(ellipse at top, #1e293b 0%, #0f172a 100%)',
       borderRadius: 16, overflow: 'hidden',
       boxShadow: '0 25px 60px -20px rgba(0,0,0,0.6)',
+      position: 'relative',
     }}>
+      {/* Watermark — bottom-right, subtle but always visible */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          right: 14,
+          bottom: 12,
+          zIndex: 2,
+          pointerEvents: 'none',
+          fontSize: '.75rem',
+          fontWeight: 700,
+          letterSpacing: '.08em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.55)',
+          textShadow: '0 1px 2px rgba(0,0,0,0.65)',
+          fontFamily: 'system-ui, sans-serif',
+        }}
+      >
+        Printing Comics
+      </div>
       <Canvas shadows camera={{ position: [4, 1.2, 7.8], fov: 32 }} dpr={[1, 2]}>
         <ambientLight intensity={0.4} />
         <directionalLight
