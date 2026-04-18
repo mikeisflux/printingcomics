@@ -137,7 +137,34 @@ router.get('/packlink/test', async (_req, res) => {
     const result = await plpTestConnection(cfg.fromCountry, cfg.fromPostalCode);
     res.json(result);
   } catch (e: any) {
-    throw new HttpError(502, e.message ?? 'Packlink test failed');
+    // Return as a 502 with body — don't throw, so admin UI sees the full message.
+    res.status(502).json({ ok: false, error: e.message ?? 'Packlink test failed' });
+  }
+});
+
+/** Raw probe — lets us try arbitrary paths against the configured base URL to
+ *  figure out which Packlink endpoint shape is right for the account. */
+router.get('/packlink/raw', async (req, res) => {
+  const pathQ = typeof req.query.path === 'string' ? req.query.path : '/services';
+  const cfg = await getPacklinkConfig();
+  if (!cfg.apiKey) return res.status(400).json({ error: 'API key not set' });
+  const url = cfg.baseUrl.replace(/\/$/, '') + (pathQ.startsWith('/') ? pathQ : '/' + pathQ);
+  try {
+    const r = await fetch(url, {
+      headers: {
+        Authorization: cfg.apiKey,
+        Accept: 'application/json',
+      },
+    });
+    const text = await r.text();
+    res.json({
+      url,
+      status: r.status,
+      contentType: r.headers.get('content-type'),
+      body: text.length > 2000 ? text.slice(0, 2000) + '…' : text,
+    });
+  } catch (e: any) {
+    res.status(502).json({ url, error: e.message });
   }
 });
 

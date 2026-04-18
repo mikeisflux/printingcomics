@@ -1,3 +1,6 @@
+import 'express-async-errors';   // monkey-patches Express 4 to forward
+                                  // async rejections to the error handler
+                                  // instead of crashing the process.
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
