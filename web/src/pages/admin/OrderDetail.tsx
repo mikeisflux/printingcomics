@@ -346,6 +346,8 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
   const [remaining, setRemaining] = useState<RemainingItem[]>([]);
   const [packages, setPackages] = useState<{ id: string; name: string }[]>([]);
   const [building, setBuilding] = useState(false);
+  const [autoPacking, setAutoPacking] = useState(false);
+  const [autoPackSummary, setAutoPackSummary] = useState<{ boxCount: number; estimatedShippingCents: number; unpacked: number } | null>(null);
 
   const load = async () => {
     const r = await api.get<{ shipments: ShipmentRow[]; remaining: RemainingItem[] }>(`/admin/fulfillment/orders/${orderId}/shipments`);
@@ -359,20 +361,73 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
 
   const remainingCount = remaining.reduce((sum, r) => sum + r.remaining, 0);
 
+  // Cheapest-rate total across ALL shipments on this order (both the
+  // already-created CREATED ones, and after auto-pack). Lets the admin see
+  // what shipping will cost before buying anything.
+  const cheapestTotalCents = shipments.reduce((sum, s) => {
+    if (s.rateAmountCents != null) return sum + s.rateAmountCents;
+    // CREATED but not yet bought — we don't have rates on the shipment row
+    // itself (they're only on the one-shot create response). Skip in rollup.
+    return sum;
+  }, 0);
+
+  async function autoPack() {
+    if (!confirm('Auto-pack the remaining items into boxes and fetch rates from EasyPost? This creates shipments but does not buy labels yet.')) return;
+    setAutoPacking(true);
+    setAutoPackSummary(null);
+    try {
+      const r = await api.post<{ boxCount: number; estimatedShippingCents: number; unpacked: { orderItemId: string }[] }>(
+        `/admin/fulfillment/orders/${orderId}/auto-pack`,
+        {},
+      );
+      setAutoPackSummary({
+        boxCount: r.boxCount,
+        estimatedShippingCents: r.estimatedShippingCents,
+        unpacked: r.unpacked?.length ?? 0,
+      });
+      await load();
+    } catch (e: any) {
+      alert(e.message ?? 'Auto-pack failed');
+    } finally { setAutoPacking(false); }
+  }
+
   return (
     <div className="admin-card">
       <div className="spread" style={{ marginBottom: '.75rem' }}>
         <h3 style={{ margin: 0 }}>Shipments ({shipments.length})</h3>
-        {!building && remainingCount > 0 && (
-          <button className="btn" onClick={() => setBuilding(true)}>Add shipment</button>
-        )}
-        {!building && remainingCount === 0 && shipments.length > 0 && (
-          <span className="muted" style={{ fontSize: '.85rem' }}>All items allocated.</span>
-        )}
+        <div className="row" style={{ gap: '.5rem' }}>
+          {!building && remainingCount > 0 && (
+            <>
+              <button className="btn secondary" disabled={autoPacking} onClick={() => void autoPack()}>
+                {autoPacking ? 'Auto-packing…' : `Auto-pack ${remainingCount} item${remainingCount === 1 ? '' : 's'}`}
+              </button>
+              <button className="btn" onClick={() => setBuilding(true)}>Add shipment</button>
+            </>
+          )}
+          {!building && remainingCount === 0 && shipments.length > 0 && (
+            <span className="muted" style={{ fontSize: '.85rem' }}>All items allocated.</span>
+          )}
+        </div>
       </div>
 
+      {autoPackSummary && (
+        <div style={{ padding: '.6rem .75rem', background: 'var(--bg-alt, #f3f4f6)', borderRadius: 6, fontSize: '.85rem', marginBottom: '.75rem' }}>
+          Auto-pack: <strong>{autoPackSummary.boxCount}</strong> box{autoPackSummary.boxCount === 1 ? '' : 'es'} created,
+          estimated shipping <strong>{formatMoney(autoPackSummary.estimatedShippingCents)}</strong> (cheapest rates + 1% insurance)
+          {autoPackSummary.unpacked > 0 && (
+            <span style={{ color: '#b91c1c' }}> — {autoPackSummary.unpacked} item(s) too heavy for any active package</span>
+          )}
+        </div>
+      )}
+
       {shipments.length === 0 && !building && (
-        <p className="muted">No shipments yet. Click <em>Add shipment</em> to build one.</p>
+        <p className="muted">No shipments yet. Click <em>Auto-pack</em> to let the system size boxes automatically, or <em>Add shipment</em> to build one manually.</p>
+      )}
+
+      {shipments.length > 0 && cheapestTotalCents > 0 && (
+        <div style={{ fontSize: '.85rem', marginBottom: '.5rem', color: 'var(--muted)' }}>
+          Total postage purchased so far: <strong>{formatMoney(cheapestTotalCents)}</strong>
+        </div>
       )}
 
       {shipments.length > 0 && (

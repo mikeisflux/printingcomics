@@ -6,6 +6,7 @@ import {
   epCreateShipment, epBuyShipment, epFetchShipment, epRefundShipment, epTestConnection,
   type EpCreateShipmentInput, type EpAddress,
 } from '../../lib/easypost.js';
+import { autoPack, type PackageOption } from '../../lib/auto-pack.js';
 import { getEasyPostConfig } from '../../lib/settings.js';
 
 const router = Router();
@@ -236,6 +237,155 @@ router.post('/orders/:orderId/shipments', async (req, res) => {
     shipment,
     rates: epShipment.rates ?? [],
     insuredValueCents,
+  });
+});
+
+/** Auto-pack: given an order's remaining un-allocated items and the active
+ *  Package catalog, run first-fit-decreasing bin-packing and create one
+ *  Shipment per box with EasyPost rates pre-fetched. Admin still picks
+ *  which rate to buy per box — this just eliminates the manual allocation
+ *  step for every new shipment.
+ *
+ *  Response includes an `estimatedShippingCents` rollup (sum of cheapest
+ *  rate per box, plus the per-box "insurance cost" at 1% of insured value)
+ *  so the admin can quote / bill shipping to the customer in one glance. */
+router.post('/orders/:orderId/auto-pack', async (req, res) => {
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.orderId },
+    include: {
+      items: { include: { product: true } },
+      shipments: { include: { items: true } },
+    },
+  });
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  const packages = await prisma.package.findMany({ where: { active: true } });
+  if (packages.length === 0) {
+    throw new HttpError(400, 'Define at least one active Package in /admin/fulfillment before auto-packing');
+  }
+
+  // Build the pool of units still needing to be packed. Subtract anything
+  // already allocated into existing Shipments (so re-running auto-pack is
+  // safe — it only adds boxes for what's left).
+  const allocated = new Map<string, number>();
+  for (const s of order.shipments) {
+    for (const si of s.items) {
+      allocated.set(si.orderItemId, (allocated.get(si.orderItemId) ?? 0) + si.quantity);
+    }
+  }
+  const units: { orderItemId: string; weightOz: number }[] = [];
+  for (const item of (order.items as any[])) {
+    const remaining = item.quantity - (allocated.get(item.id) ?? 0);
+    if (remaining <= 0) continue;
+    // Default to 1oz per unit if a product is missing weightGrams — better
+    // than packing 1000 weightless items into one mailer and then having
+    // USPS reject it.
+    const perUnitOz = ((item.product?.weightGrams ?? 0) / 28.3495) || 1;
+    for (let i = 0; i < remaining; i++) {
+      units.push({ orderItemId: item.id, weightOz: perUnitOz });
+    }
+  }
+
+  if (units.length === 0) {
+    return res.json({ message: 'All items already packed', shipments: [], unpacked: [], estimatedShippingCents: 0 });
+  }
+
+  const pkgOptions: PackageOption[] = packages.map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    maxWeightOz: p.maxWeightOz,
+    emptyWeightOz: p.emptyWeightOz,
+    lengthIn: p.lengthIn,
+    widthIn: p.widthIn,
+    heightIn: p.heightIn,
+  }));
+  const plan = autoPack(units, pkgOptions);
+
+  // For each planned box, actually create a Shipment record and fetch rates
+  // from EasyPost. Errors on one box don't rollback — we still return what
+  // we got so the admin can see progress.
+  const from = await fromAddress();
+  const to = toAddressFromOrder(order);
+  const itemById = new Map<string, any>((order.items as any[]).map((i: any) => [i.id, i]));
+  const created: Array<{ shipment: any; rates: any[]; insuredValueCents: number; cheapestCents: number | null }> = [];
+
+  for (const box of plan.boxes) {
+    const pkg = packages.find((p: any) => p.id === box.packageId) as any;
+    if (!pkg) continue;
+
+    let contentWeightOz = 0;
+    let insuredValueCents = 0;
+    for (const alloc of box.allocations) {
+      const it = itemById.get(alloc.orderItemId);
+      if (!it) continue;
+      const perUnit = ((it.product?.weightGrams ?? 0) / 28.3495) || 1;
+      contentWeightOz += perUnit * alloc.quantity;
+      insuredValueCents += (it.unitPriceCents as number) * alloc.quantity;
+    }
+    const totalWeightOz = Math.max(0.5, +(contentWeightOz + pkg.emptyWeightOz).toFixed(2));
+
+    const input: EpCreateShipmentInput = {
+      from_address: from,
+      to_address: to,
+      parcel: {
+        length: pkg.lengthIn,
+        width: pkg.widthIn,
+        height: pkg.heightIn,
+        weight: totalWeightOz,
+      },
+      options: { label_format: 'PDF', print_custom_1: order.number },
+      reference: order.number,
+    };
+    const ep = await epCreateShipment(input);
+    const rates = ep.rates ?? [];
+    const cheapestCents = rates.length > 0
+      ? Math.round(Math.min(...rates.map((r) => parseFloat(r.rate))) * 100)
+      : null;
+
+    const shipment = await prisma.shipment.create({
+      data: {
+        orderId: order.id,
+        packageId: pkg.id,
+        easypostId: ep.id,
+        weightOz: totalWeightOz,
+        lengthIn: pkg.lengthIn,
+        widthIn: pkg.widthIn,
+        heightIn: pkg.heightIn,
+        insuredValueCents,
+        status: 'CREATED',
+        items: {
+          create: box.allocations.map((a) => ({
+            orderItemId: a.orderItemId,
+            quantity: a.quantity,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+
+    created.push({ shipment, rates, insuredValueCents, cheapestCents });
+  }
+
+  // Sum cheapest-rate + insurance-fee across all boxes → the number you'd
+  // bill the customer if you went with the least expensive option everywhere.
+  const estimatedShippingCents = created.reduce(
+    (sum, b) => sum + (b.cheapestCents ?? 0) + Math.max(100, Math.round((b.insuredValueCents ?? 0) * 0.01)),
+    0,
+  );
+
+  await prisma.orderStatusEvent.create({
+    data: {
+      orderId: order.id,
+      kind: 'fulfillment',
+      message: `Auto-pack: ${created.length} box${created.length === 1 ? '' : 'es'} created (est. $${(estimatedShippingCents / 100).toFixed(2)} shipping)`,
+    },
+  });
+
+  res.json({
+    shipments: created,
+    unpacked: plan.unpacked,
+    boxCount: created.length,
+    estimatedShippingCents,
   });
 });
 
