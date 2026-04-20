@@ -289,13 +289,28 @@ function NavItem({
   items: { to: string; label: string }[];
 }) {
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
       <button
         onClick={onToggle}
         onBlur={() => setTimeout(onToggle, 200)}
-        style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--ink)', fontWeight: 500, fontSize: '1rem', cursor: 'pointer' }}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          margin: 0,
+          color: 'var(--ink)',
+          fontWeight: 500,
+          fontSize: '1rem',
+          lineHeight: 1,
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '.25rem',
+        }}
       >
-        {label} ▾
+        <span>{label}</span>
+        <span style={{ fontSize: '.75rem', opacity: 0.7 }}>▾</span>
       </button>
       {isOpen && (
         <div
