@@ -70,18 +70,30 @@ function useSettings() {
 }
 
 function Field({
-  value, onSave, label, type = 'text', placeholder,
+  value, onSave, label, type = 'text', placeholder, autoComplete, name,
 }: {
   value: unknown; onSave: (v: string) => void; label: string; type?: string; placeholder?: string;
+  autoComplete?: string; name?: string;
 }) {
   const [local, setLocal] = useState(String(value ?? ''));
   useEffect(() => { setLocal(String(value ?? '')); }, [value]);
+  // Default to disabling browser autofill on admin settings — Firefox/Chrome will
+  // happily inject the logged-in user's email into a "Client ID" text field, and
+  // autofill often doesn't fire React's onChange, so nothing actually saves.
+  const ac = autoComplete ?? (type === 'password' ? 'new-password' : 'off');
+  // A unique non-standard name keeps Chrome's heuristic autofill away.
+  const fieldName = name ?? `pc-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${type}`;
   return (
     <div>
       <label>{label}</label>
       <input
         type={type}
         value={local}
+        name={fieldName}
+        autoComplete={ac}
+        data-lpignore="true"
+        data-1p-ignore="true"
+        data-form-type="other"
         placeholder={placeholder}
         onChange={(e) => setLocal(e.target.value)}
         onBlur={() => { if (local !== String(value ?? '')) onSave(local); }}
@@ -130,6 +142,8 @@ function StoreSection() {
 
 function PaymentsSection() {
   const { settings, save } = useSettings();
+  const clientIdSet = Boolean(String(settings['paypal.clientId'] ?? '').trim());
+  const clientSecretSet = Boolean(String(settings['paypal.clientSecret'] ?? '').trim());
   return (
     <>
       <div className="admin-card">
@@ -138,18 +152,38 @@ function PaymentsSection() {
           Configure your PayPal credentials here — they're stored encrypted (AES-GCM).
           Mode <code>sandbox</code> uses <code>api-m.sandbox.paypal.com</code>; <code>live</code> uses <code>api-m.paypal.com</code>.
         </p>
-        <div>
-          <label>Environment</label>
-          <select value={(settings['paypal.environment'] as string) ?? 'sandbox'} onChange={(e) => save('paypal.environment', e.target.value)}>
-            <option value="sandbox">Sandbox</option>
-            <option value="live">Live</option>
-          </select>
-        </div>
-        <Field label="Client ID" value={settings['paypal.clientId']} onSave={(v) => save('paypal.clientId', v)} />
-        <Field label="Client secret" value={settings['paypal.clientSecret']} onSave={(v) => save('paypal.clientSecret', v)} type="password" placeholder="paste to update (encrypted)" />
-        <Field label="Webhook ID" value={settings['paypal.webhookId']} onSave={(v) => save('paypal.webhookId', v)} />
-        <Toggle label="Enable PayPal button" value={settings['paypal.enablePaypalButton'] ?? true} onSave={(v) => save('paypal.enablePaypalButton', v)} />
-        <Toggle label="Enable credit/debit card fields" value={settings['paypal.enableCard'] ?? true} onSave={(v) => save('paypal.enableCard', v)} />
+        {/* Decoy fields: some browsers ignore autoComplete="off" but will dump
+            saved logins into the FIRST email/password fields they see in a form.
+            Sacrificing two hidden inputs spares the real PayPal fields below. */}
+        <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+          <input type="text" name="username" autoComplete="username" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+          <input type="password" name="password" autoComplete="current-password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+          <div>
+            <label>Environment</label>
+            <select value={(settings['paypal.environment'] as string) ?? 'sandbox'} onChange={(e) => save('paypal.environment', e.target.value)}>
+              <option value="sandbox">Sandbox</option>
+              <option value="live">Live</option>
+            </select>
+          </div>
+          <Field
+            label="Client ID"
+            value={settings['paypal.clientId']}
+            onSave={(v) => save('paypal.clientId', v)}
+            placeholder="A21AA…"
+          />
+          <p className="muted" style={{ fontSize: '.8rem', margin: '-.25rem 0 .75rem' }}>
+            {clientIdSet
+              ? '✓ Client ID saved.'
+              : 'Not saved yet. Paste the long Client ID from your PayPal app (looks like A21AA…), then click out of the field.'}
+          </p>
+          <Field label="Client secret" value={settings['paypal.clientSecret']} onSave={(v) => save('paypal.clientSecret', v)} type="password" placeholder="paste to update (encrypted)" />
+          <p className="muted" style={{ fontSize: '.8rem', margin: '-.25rem 0 .75rem' }}>
+            {clientSecretSet ? '✓ Client secret saved (encrypted).' : 'Not saved yet.'}
+          </p>
+          <Field label="Webhook ID" value={settings['paypal.webhookId']} onSave={(v) => save('paypal.webhookId', v)} />
+          <Toggle label="Enable PayPal button" value={settings['paypal.enablePaypalButton'] ?? true} onSave={(v) => save('paypal.enablePaypalButton', v)} />
+          <Toggle label="Enable credit/debit card fields" value={settings['paypal.enableCard'] ?? true} onSave={(v) => save('paypal.enableCard', v)} />
+        </form>
       </div>
     </>
   );

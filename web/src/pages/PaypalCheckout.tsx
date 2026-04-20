@@ -30,6 +30,8 @@ export function PaypalCheckout() {
   const [enableCard, setEnableCard] = useState(true);
   const [enableButton, setEnableButton] = useState(true);
   const [env, setEnv] = useState<'sandbox' | 'live'>('sandbox');
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   const [email, setEmail] = useState('');
   const [ship, setShip] = useState<Address>(emptyAddress);
@@ -58,15 +60,19 @@ export function PaypalCheckout() {
   // Fetch PayPal config from the API (reads from admin settings).
   useEffect(() => {
     void fetch('/api/config/paypal', { credentials: 'include' })
-      .then((r) => r.ok ? r.json() : null)
+      .then(async (r) => {
+        if (!r.ok) { setConfigError(`API ${r.status}`); return null; }
+        return r.json();
+      })
       .then((j) => {
+        setConfigLoaded(true);
         if (!j) return;
-        setPaypalClientId(j.clientId);
+        setPaypalClientId(j.clientId || null);
         setEnableCard(j.enableCard);
         setEnableButton(j.enableButton);
         setEnv(j.environment);
       })
-      .catch(() => undefined);
+      .catch((e) => { setConfigError(String(e)); setConfigLoaded(true); });
   }, []);
 
   const canCheckout = !!email && !!ship.line1 && !!ship.city && !!ship.postalCode && !!(cart?.items.length);
@@ -91,6 +97,15 @@ export function PaypalCheckout() {
     }
   };
 
+  if (!configLoaded) {
+    return (
+      <div className="container" style={{ padding: '2rem 0' }}>
+        <h1>Checkout</h1>
+        <p className="muted">Loading payment options…</p>
+      </div>
+    );
+  }
+
   if (!paypalClientId) {
     return (
       <div className="container" style={{ padding: '2rem 0' }}>
@@ -98,6 +113,11 @@ export function PaypalCheckout() {
         <div className="error">
           PayPal is not yet configured. Set the credentials in Admin → Settings → Payments.
         </div>
+        <p className="muted" style={{ marginTop: '1rem', fontSize: '.85rem' }}>
+          Diagnostic: {configError
+            ? `config endpoint failed (${configError})`
+            : `config endpoint returned environment=${env}, clientId=empty. Re-paste the Client ID in Admin → Settings → Payments and click outside the field to save (browser autofill can silently swallow it).`}
+        </p>
       </div>
     );
   }
