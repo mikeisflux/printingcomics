@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { api } from '../../api/client';
 
 type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'taxes' | 'coupons' | 'backup';
@@ -75,29 +75,88 @@ function Field({
   value: unknown; onSave: (v: string) => void; label: string; type?: string; placeholder?: string;
   autoComplete?: string; name?: string;
 }) {
-  const [local, setLocal] = useState(String(value ?? ''));
-  useEffect(() => { setLocal(String(value ?? '')); }, [value]);
-  // Default to disabling browser autofill on admin settings — Firefox/Chrome will
-  // happily inject the logged-in user's email into a "Client ID" text field, and
-  // autofill often doesn't fire React's onChange, so nothing actually saves.
+  const saved = String(value ?? '');
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  // When a save finishes and fresh data flows down via props, drop back to
+  // read-only so the user sees the canonical stored value.
+  useEffect(() => {
+    if (!editing) setLocal('');
+  }, [saved, editing]);
+
   const ac = autoComplete ?? (type === 'password' ? 'new-password' : 'off');
-  // A unique non-standard name keeps Chrome's heuristic autofill away.
   const fieldName = name ?? `pc-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${type}`;
+
+  const startEdit = () => { setLocal(''); setEditing(true); setJustSaved(false); };
+  const cancel = () => { setLocal(''); setEditing(false); };
+  const commit = async () => {
+    if (local === '') { cancel(); return; }
+    setSaving(true);
+    try {
+      await onSave(local);
+      setEditing(false);
+      setLocal('');
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const rowStyle: CSSProperties = { display: 'flex', gap: '.5rem', alignItems: 'stretch' };
+  const inputStyle: CSSProperties = { flex: 1 };
+  const btnBase: CSSProperties = { width: 'auto', padding: '.5rem .9rem', whiteSpace: 'nowrap' };
+
   return (
     <div>
-      <label>{label}</label>
-      <input
-        type={type}
-        value={local}
-        name={fieldName}
-        autoComplete={ac}
-        data-lpignore="true"
-        data-1p-ignore="true"
-        data-form-type="other"
-        placeholder={placeholder}
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => { if (local !== String(value ?? '')) onSave(local); }}
-      />
+      <label>{label} {justSaved && <span style={{ color: 'var(--brand, #16a34a)', fontSize: '.8rem', marginLeft: '.4rem' }}>✓ saved</span>}</label>
+      {editing ? (
+        <div style={rowStyle}>
+          <input
+            style={inputStyle}
+            type={type}
+            value={local}
+            name={fieldName}
+            autoFocus
+            autoComplete={ac}
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
+            placeholder={placeholder ?? 'Paste value'}
+            onChange={(e) => setLocal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); void commit(); }
+              else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+          />
+          <button type="button" className="btn" style={btnBase} onClick={commit} disabled={saving || local === ''}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" className="btn secondary" style={btnBase} onClick={cancel} disabled={saving}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div style={rowStyle}>
+          <input
+            style={{ ...inputStyle, opacity: 0.75, cursor: 'default' }}
+            type={type}
+            value={saved}
+            disabled
+            name={fieldName}
+            autoComplete={ac}
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
+            tabIndex={-1}
+          />
+          <button type="button" className="btn secondary" style={btnBase} onClick={startEdit}>
+            {saved ? 'Edit' : 'Set'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
