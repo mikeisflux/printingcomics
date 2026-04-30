@@ -29,6 +29,7 @@ import {
   Templates,
   Terms,
 } from './pages/StaticPages';
+import { Developers } from './pages/Developers';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminProducts } from './pages/admin/Products';
@@ -47,6 +48,7 @@ import { AdminEmailCampaignEdit } from './pages/admin/EmailCampaignEdit';
 import { AdminSecurity } from './pages/admin/Security';
 import { AdminMedia } from './pages/admin/Media';
 import { AdminFulfillment } from './pages/admin/Fulfillment';
+import { AdminApiKeys } from './pages/admin/ApiKeys';
 
 export const router = createBrowserRouter([
   {
@@ -86,6 +88,7 @@ export const router = createBrowserRouter([
       { path: 'resources/file-prep', element: <FilePrep /> },
       { path: 'resources/templates', element: <Templates /> },
       { path: 'resources/faq', element: <Faq /> },
+      { path: 'developers', element: <Developers /> },
     ],
   },
   {
@@ -109,6 +112,7 @@ export const router = createBrowserRouter([
       { path: 'media', element: <AdminMedia /> },
       { path: 'fulfillment', element: <AdminFulfillment /> },
       { path: 'security', element: <AdminSecurity /> },
+      { path: 'api-keys', element: <AdminApiKeys /> },
       { path: 'settings', element: <AdminSettings /> },
     ],
   },

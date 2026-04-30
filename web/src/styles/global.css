@@ -213,3 +213,8 @@ label { font-weight: 600; display: block; margin: .75rem 0 .25rem; font-size: .9
 .muted { color: var(--ink-muted); }
 .row { display: flex; gap: 1rem; align-items: center; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+
+.api-table { width: 100%; border-collapse: collapse; margin: .75rem 0 1rem; font-size: .9rem; }
+.api-table th, .api-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.api-table th { background: var(--bg-alt); font-weight: 600; }
+.api-table code { font-size: .85rem; }

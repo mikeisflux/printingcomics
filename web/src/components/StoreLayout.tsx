@@ -106,7 +106,7 @@ export function StoreLayout() {
 
       <footer className="site-footer">
         <div className="container">
-          <div className="cols" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="cols" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <div>
               <h4>Products</h4>
               <ul>
@@ -123,6 +123,18 @@ export function StoreLayout() {
                 <li><Link to="/resources/templates">Templates</Link></li>
                 <li><Link to="/account/orders">Order Status</Link></li>
                 <li><Link to="/resources/faq">FAQ</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Developers</h4>
+              <ul>
+                <li><Link to="/developers">API Overview</Link></li>
+                <li><Link to="/developers#getting-started">Getting Started</Link></li>
+                <li><Link to="/developers#catalog">Catalog API</Link></li>
+                <li><Link to="/developers#pricing">Pricing API</Link></li>
+                <li><Link to="/developers#orders">Orders API</Link></li>
+                <li><Link to="/developers#quickstart">Quickstart</Link></li>
+                <li><Link to="/contact">Request an API Key</Link></li>
               </ul>
             </div>
             <div>

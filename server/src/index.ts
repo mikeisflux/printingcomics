@@ -31,6 +31,7 @@ import publicRoutes from './routes/public.js';
 import mailgunWebhookRoutes from './routes/webhooks/mailgun.js';
 import paypalWebhookRoutes from './routes/webhooks/paypal.js';
 import easypostWebhookRoutes from './routes/webhooks/easypost.js';
+import v1Routes from './routes/v1/index.js';
 
 const app = express();
 
@@ -74,6 +75,21 @@ app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);
 app.use('/api/webhooks/paypal', paypalWebhookRoutes);
 app.use('/api/webhooks/easypost', easypostWebhookRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Public, key-authenticated developer API (orders, catalog, pricing,
+// shipping). Heavier rate limit since integrators may bulk-submit orders.
+app.use(
+  '/api/v1',
+  rateLimit({
+    windowMs: 60_000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Per-key limiting when the key is on the request, falling back to IP.
+    keyGenerator: (req: any) => req.apiKey?.id ?? req.ip,
+  }),
+  v1Routes,
+);
 
 // Public: serve uploaded email attachments (behind auth check in routes)
 app.use('/uploads', express.static(path.resolve(process.env.UPLOADS_DIR ?? './uploads')));

@@ -38,6 +38,7 @@ export function AdminLayout() {
           <NavLink to="/admin/seo">SEO</NavLink>
           <NavLink to="/admin/email">Email</NavLink>
           <NavLink to="/admin/security">Security</NavLink>
+          <NavLink to="/admin/api-keys">API Keys</NavLink>
           <NavLink to="/admin/settings">Settings</NavLink>
         </nav>
         <div style={{ marginTop: 'auto', padding: '1rem 1.5rem', borderTop: '1px solid #333' }}>

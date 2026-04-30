@@ -51,6 +51,7 @@ model User {
   carts          Cart[]
   mediaUploads   MediaFile[]
   passwordResets PasswordReset[]
+  apiKeysCreated ApiKey[]        @relation("ApiKeyCreator")
 }
 
 // Single-use password reset tokens. tokenHash is sha256(rawToken) so
@@ -305,11 +306,47 @@ model Order {
   events          OrderStatusEvent[]
   shipments       Shipment[]
 
+  // API integration: orders submitted by an external integrator (e.g. a
+  // crowdfunding platform) carry the ApiKey that created them and an
+  // optional externalRef (their pledge / order id) for idempotency.
+  source          String?       // "web" | "api"
+  apiKey          ApiKey?       @relation(fields: [apiKeyId], references: [id])
+  apiKeyId        String?
+  externalRef     String?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  @@unique([apiKeyId, externalRef])
   @@index([userId])
   @@index([status])
+  @@index([apiKeyId])
+}
+
+// API keys for third-party integrations (crowdfunding platforms, etc.) to
+// submit orders programmatically. The full key is shown exactly once at
+// creation time; the database stores only the SHA-256 hash and a short
+// prefix for identification.
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  prefix      String    @unique
+  keyHash     String    @unique
+  scopes      String[]  @default([])
+  active      Boolean   @default(true)
+  lastUsedAt  DateTime?
+  // Soft rate-limit ceiling per minute (null = use global default).
+  rateLimitPerMinute Int?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  createdById String?
+  createdBy   User?     @relation("ApiKeyCreator", fields: [createdById], references: [id])
+  revokedAt   DateTime?
+
+  orders      Order[]
+
+  @@index([keyHash])
+  @@index([prefix])
 }
 
 // Append-only log of order status / payment / tracking changes. Lets the
