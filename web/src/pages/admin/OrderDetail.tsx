@@ -36,6 +36,20 @@ interface OrderFull {
       images: { url: string }[];
       options: { id: string; name: string; internalKey?: string | null; type: string; values: { label: string; subLabel?: string | null }[] }[];
     };
+    files?: {
+      id: string;
+      purpose: string | null;
+      notes: string | null;
+      media: {
+        id: string;
+        originalName: string;
+        mimeType: string;
+        size: number;
+        url: string;
+        contentHash: string | null;
+        createdAt: string;
+      };
+    }[];
   }[];
   payments: { id: string; provider: string; providerRef?: string | null; amountCents: number; status: string; createdAt: string }[];
   events: OrderEvent[];
@@ -243,6 +257,36 @@ export function AdminOrderDetail() {
                       <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
                         {pairs.map((p, j) => <li key={j}>{p.label}: {p.value}</li>)}
                       </ul>
+                    )}
+                    {i.files && i.files.length > 0 && (
+                      <div style={{ marginTop: '.4rem', display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
+                        {i.files.map((f) => (
+                          <a
+                            key={f.id}
+                            href={f.media.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={f.notes ?? undefined}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '.3rem .55rem',
+                              borderRadius: 4,
+                              background: 'var(--bg-alt)',
+                              border: '1px solid var(--border)',
+                              fontSize: '.8rem',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            <span style={{ fontWeight: 600 }}>
+                              {f.purpose ? f.purpose.toUpperCase() : 'FILE'}
+                            </span>
+                            <span style={{ color: 'var(--ink)' }}>{f.media.originalName}</span>
+                            <span className="muted">({formatBytes(f.media.size)})</span>
+                          </a>
+                        ))}
+                      </div>
                     )}
                   </td>
                   <td>{i.quantity}</td>
@@ -692,4 +736,11 @@ function AddressDisplay({ a }: { a: any }) {
       {a.phone && <div className="muted">{a.phone}</div>}
     </div>
   );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }

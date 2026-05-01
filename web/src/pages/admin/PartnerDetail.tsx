@@ -11,7 +11,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { StatusBadge } from '../Account';
 
-type Tab = 'overview' | 'api-keys' | 'orders' | 'team' | 'webhooks' | 'activity';
+type Tab = 'overview' | 'api-keys' | 'orders' | 'team' | 'uploads' | 'webhooks' | 'activity';
 
 interface PartnerSummary {
   id: string;
@@ -202,7 +202,7 @@ export function AdminPartnerDetail() {
             padding: '0 .5rem',
           }}
         >
-          {(['overview', 'api-keys', 'orders', 'team', 'webhooks', 'activity'] as Tab[]).map((t) => (
+          {(['overview', 'api-keys', 'orders', 'team', 'uploads', 'webhooks', 'activity'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -227,6 +227,7 @@ export function AdminPartnerDetail() {
       {tab === 'api-keys' && <ApiKeysTab partnerId={id} apiKeys={data.apiKeys} availableScopes={data.availableScopes} onChanged={load} />}
       {tab === 'orders' && <OrdersTab partnerId={id} />}
       {tab === 'team' && <TeamTab partnerId={id} members={data.members} onChanged={load} />}
+      {tab === 'uploads' && <UploadsTab partnerId={id} />}
       {tab === 'webhooks' && <WebhooksTab partnerId={id} partner={data.partner} events={data.webhookEvents} onChanged={load} />}
       {tab === 'activity' && <ActivityTab partnerId={id} onChanged={load} />}
     </div>
@@ -1368,6 +1369,109 @@ function DeliveryDetailModal({ partnerId, deliveryId, onClose }: { partnerId: st
       </div>
     </div>
   );
+}
+
+// ---- Uploads tab ---------------------------------------------------------
+
+interface PartnerUpload {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  contentHash: string | null;
+  tags: string[];
+  apiKey: { id: string; name: string; prefix: string } | null;
+  attachedToOrders: number;
+  createdAt: string;
+}
+
+function UploadsTab({ partnerId }: { partnerId: string }) {
+  const [items, setItems] = useState<PartnerUpload[] | null>(null);
+  useEffect(() => {
+    void api
+      .get<{ uploads: PartnerUpload[] }>(`/admin/partners/${partnerId}/uploads`)
+      .then((r) => setItems(r.uploads));
+  }, [partnerId]);
+  return (
+    <div>
+      <p className="muted" style={{ maxWidth: 720, marginTop: 0 }}>
+        Print files this partner has uploaded via <code>POST /api/v1/uploads</code>. Click a file
+        to download — admin sessions don't need the access token query param.
+      </p>
+      <div className="admin-card" style={{ padding: 0 }}>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Purpose</th>
+              <th>Size</th>
+              <th>Type</th>
+              <th>Uploaded by key</th>
+              <th>Attached</th>
+              <th>Uploaded</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items === null && (
+              <tr>
+                <td colSpan={7}>Loading…</td>
+              </tr>
+            )}
+            {items?.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                  No uploads yet.
+                </td>
+              </tr>
+            )}
+            {items?.map((u) => {
+              const purpose = u.tags.find((t) => t.startsWith('purpose:'))?.slice('purpose:'.length) ?? '—';
+              return (
+                <tr key={u.id}>
+                  <td>
+                    <a href={u.url} target="_blank" rel="noreferrer">
+                      {u.filename}
+                    </a>
+                    {u.contentHash && (
+                      <div style={{ fontSize: '.7rem', color: 'var(--muted)' }} title={u.contentHash}>
+                        sha256: {u.contentHash.slice(0, 12)}…
+                      </div>
+                    )}
+                  </td>
+                  <td>{purpose === '—' ? <span className="muted">—</span> : <code>{purpose}</code>}</td>
+                  <td>{formatBytes(u.size)}</td>
+                  <td style={{ fontSize: '.85rem' }}>{u.mimeType}</td>
+                  <td style={{ fontSize: '.85rem' }}>
+                    {u.apiKey ? (
+                      <>
+                        {u.apiKey.name}
+                        <br />
+                        <code style={{ fontSize: '.75rem', color: 'var(--muted)' }}>{u.apiKey.prefix}</code>
+                      </>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td>{u.attachedToOrders}</td>
+                  <td style={{ fontSize: '.85rem', color: 'var(--muted)' }}>
+                    {new Date(u.createdAt).toLocaleString()}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 // ---- Activity tab --------------------------------------------------------

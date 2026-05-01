@@ -661,6 +661,37 @@ router.post('/:id/webhook-deliveries/:deliveryId/replay', async (req, res) => {
   res.json({ delivery });
 });
 
+// ---- Uploads (partner print files) --------------------------------------
+
+router.get('/:id/uploads', async (req, res) => {
+  const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+  if (!partner) throw new HttpError(404, 'Partner not found');
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const uploads = await prisma.mediaFile.findMany({
+    where: { partnerId: partner.id },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: {
+      apiKey: { select: { id: true, name: true, prefix: true } },
+      _count: { select: { orderItemFiles: true } },
+    },
+  });
+  res.json({
+    uploads: uploads.map((u) => ({
+      id: u.id,
+      filename: u.originalName,
+      mimeType: u.mimeType,
+      size: u.size,
+      url: u.url,
+      contentHash: u.contentHash,
+      tags: u.tags,
+      apiKey: u.apiKey,
+      attachedToOrders: u._count.orderItemFiles,
+      createdAt: u.createdAt,
+    })),
+  });
+});
+
 // ---- Activity feed -------------------------------------------------------
 
 router.get('/:id/events', async (req, res) => {

@@ -53,8 +53,9 @@ export function Developers() {
               <li>Full read access to the catalog (products, variants, configurator options, pricing rules)</li>
               <li>Server-side <strong>price quotes</strong> that match the storefront to the cent</li>
               <li>Live <strong>shipping rates</strong> by destination country</li>
+              <li><strong>Print file uploads</strong> (covers, interior PDFs, dust jackets, etc.) attached per line item</li>
               <li><strong>Order submission</strong> with idempotency by your platform's reference id</li>
-              <li>Order status & tracking lookup</li>
+              <li>Order status & tracking lookup with outbound webhooks</li>
             </ul>
           </Section>
 
@@ -102,6 +103,8 @@ export function Developers() {
                 <tr><td><code>shipping:read</code></td><td>List shipping rates and zones</td></tr>
                 <tr><td><code>orders:read</code></td><td>Look up orders submitted with this key</td></tr>
                 <tr><td><code>orders:write</code></td><td>Create and cancel orders</td></tr>
+                <tr><td><code>uploads:read</code></td><td>List and inspect print files you've uploaded</td></tr>
+                <tr><td><code>uploads:write</code></td><td>Upload, attach, and delete print files</td></tr>
               </tbody>
             </table>
             <p>
@@ -316,6 +319,97 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
             <p>Cancel an order that hasn't shipped yet. Optional body: <code>{`{ "reason": "Backer refunded" }`}</code>.</p>
           </Section>
 
+          <Section id="uploads" title="Uploads (print files)">
+            <p>
+              Send us your print PDFs (covers, interiors, dust jackets, wrap files, etc.) ahead of
+              order submission, then reference them by id when you create the order. Files are
+              attributed to your partner + key, capped at <strong>2&nbsp;GB</strong> each, and
+              served from a token-protected URL — only someone with the URL we returned can
+              download them.
+            </p>
+
+            <Endpoint method="POST" path="/uploads" scope="uploads:write" />
+            <p>
+              Multipart form. The file goes in field <code>file</code>; everything else is metadata.
+              Pass <code>X-Upload-Content-Hash</code> with the SHA-256 hex of your file for
+              integrity verification + dedupe (re-uploading the same hash returns the existing
+              record, byte-free).
+            </p>
+            <Code>{`curl https://printingcomics.com/api/v1/uploads \\
+  -H "Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx" \\
+  -H "X-Upload-Content-Hash: $(sha256sum cover.pdf | cut -d' ' -f1)" \\
+  -F "purpose=cover" \\
+  -F "notes=Variant A (foil)" \\
+  -F "file=@cover.pdf"
+# →
+# {
+#   "upload": {
+#     "id": "cmf12abcde...",
+#     "url": "/uploads/partner/1717428100-...pdf?t=...",
+#     "filename": "cover.pdf",
+#     "size": 28491782,
+#     "mimeType": "application/pdf",
+#     "contentHash": "8a8b...",
+#     "purpose": "cover",
+#     "notes": "Variant A (foil)",
+#     "createdAt": "2026-05-01T12:00:00.000Z"
+#   },
+#   "idempotent": false
+# }`}</Code>
+            <p>
+              The <code>url</code> we return contains a per-file access token. Treat the whole
+              URL as a capability — anyone with it can download the file. We accept any file
+              type, but the comic-printing flow expects PDFs preflighted to your spec sheet.
+            </p>
+
+            <Endpoint method="GET" path="/uploads" scope="uploads:read" />
+            <p>
+              List the files this key has uploaded, newest first. Optional <code>?limit=200</code>{' '}
+              and <code>?purpose=cover</code> filters.
+            </p>
+
+            <Endpoint method="GET" path="/uploads/:id" scope="uploads:read" />
+            <p>Fetch a single upload's metadata.</p>
+
+            <Endpoint method="DELETE" path="/uploads/:id" scope="uploads:write" />
+            <p>
+              Soft-delete an upload. The file is removed from disk and the URL stops working,
+              but we keep the audit row. Refused with <code>409</code> if the file is already
+              attached to an order — contact support to detach it first.
+            </p>
+
+            <h3>Attach files to a line item</h3>
+            <p>
+              When creating an order, each <code>items[]</code> entry can include a{' '}
+              <code>files[]</code> array referencing one or more uploads. The{' '}
+              <code>purpose</code> tag is free-form so you can use whatever conventions your
+              project needs (<code>cover</code>, <code>interior</code>, <code>back-cover</code>,{' '}
+              <code>dust-jacket</code>, etc.):
+            </p>
+            <Code>{`POST /api/v1/orders
+{
+  "externalRef": "kickstarter-pledge-9281",
+  "email": "backer@example.com",
+  "shippingAddress": { ... },
+  "items": [
+    {
+      "productSlug": "saddle-stitch-comic",
+      "quantity": 250,
+      "options": { "page-count": 24, "paper-stock": "premium" },
+      "files": [
+        { "uploadId": "cmf12abcde...", "purpose": "cover" },
+        { "uploadId": "cmf12fghij...", "purpose": "interior" }
+      ]
+    }
+  ]
+}`}</Code>
+            <p>
+              Files must have been uploaded by this same key, or by another key on the same
+              partner — otherwise the request is rejected with <code>403</code>. The order
+              response surfaces the file list inline on each line item.
+            </p>
+          </Section>
+
           <Section id="webhooks" title="Webhooks">
             <p>
               We POST signed JSON payloads to a URL you configure (give it to your account
@@ -380,6 +474,21 @@ function verify(secret, signatureHeader, rawBody) {
                 <tr><td><code>quantity</code></td><td>integer</td></tr>
                 <tr><td><code>unitPriceCents</code> / <code>totalCents</code></td><td>integer</td></tr>
                 <tr><td><code>options</code></td><td>object</td></tr>
+                <tr><td><code>files[]</code></td><td>array</td></tr>
+              </tbody>
+            </table>
+            <h3>OrderItemFile</h3>
+            <table className="api-table">
+              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td><code>uploadId</code></td><td>string</td><td>The MediaFile id from <code>POST /uploads</code></td></tr>
+                <tr><td><code>url</code></td><td>string</td><td>Token-protected download URL</td></tr>
+                <tr><td><code>filename</code></td><td>string</td><td>Original name you uploaded with</td></tr>
+                <tr><td><code>size</code></td><td>integer</td><td>Bytes</td></tr>
+                <tr><td><code>mimeType</code></td><td>string</td><td>e.g. <code>application/pdf</code></td></tr>
+                <tr><td><code>contentHash</code></td><td>string</td><td>SHA-256 hex of the file</td></tr>
+                <tr><td><code>purpose</code></td><td>string?</td><td>Free-form: <code>cover</code>, <code>interior</code>, etc.</td></tr>
+                <tr><td><code>notes</code></td><td>string?</td><td>Free-form integrator notes</td></tr>
               </tbody>
             </table>
           </Section>
@@ -440,7 +549,31 @@ const quote = await api('/pricing/quote', {
   }),
 });
 
-// 3. Submit the order with the campaign pledge id as externalRef
+// 3. Upload the print files (multipart, no auto-set Content-Type so fetch
+//    fills in the correct boundary).
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { File, FormData } from 'node-fetch';
+
+async function uploadPrintFile(localPath, purpose) {
+  const buf = readFileSync(localPath);
+  const hash = createHash('sha256').update(buf).digest('hex');
+  const fd = new FormData();
+  fd.set('file', new File([buf], localPath.split('/').pop(), { type: 'application/pdf' }));
+  fd.set('purpose', purpose);
+  const r = await fetch(BASE + '/uploads', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + KEY, 'X-Upload-Content-Hash': hash },
+    body: fd,
+  });
+  if (!r.ok) throw new Error(\`\${r.status} \${await r.text()}\`);
+  return (await r.json()).upload;
+}
+
+const cover = await uploadPrintFile('./cover.pdf', 'cover');
+const interior = await uploadPrintFile('./interior.pdf', 'interior');
+
+// 4. Submit the order with the campaign pledge id as externalRef
 const { order } = await api('/orders', {
   method: 'POST',
   body: JSON.stringify({
@@ -451,6 +584,10 @@ const { order } = await api('/orders', {
       productSlug: i.productSlug,
       quantity: i.quantity,
       options: i.options,
+      files: [
+        { uploadId: cover.id, purpose: 'cover' },
+        { uploadId: interior.id, purpose: 'interior' },
+      ],
     })),
     shippingRateId: quote.shippingOptions[0].id,
     markAsPaid: true,
@@ -523,6 +660,7 @@ function Sidebar() {
     ['pricing', 'Pricing'],
     ['shipping', 'Shipping'],
     ['orders', 'Orders'],
+    ['uploads', 'Uploads'],
     ['webhooks', 'Webhooks'],
     ['data-model', 'Data model'],
     ['errors', 'Errors'],
@@ -613,7 +751,15 @@ function Code({ children }: { children: string }) {
   );
 }
 
-const ALL_SCOPES = ['catalog:read', 'pricing:read', 'shipping:read', 'orders:read', 'orders:write'];
+const ALL_SCOPES = [
+  'catalog:read',
+  'pricing:read',
+  'shipping:read',
+  'orders:read',
+  'orders:write',
+  'uploads:read',
+  'uploads:write',
+];
 
 function RequestAccessForm() {
   const [name, setName] = useState('');

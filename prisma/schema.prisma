@@ -383,6 +383,7 @@ model ApiKey {
   requireRequestSigning  Boolean   @default(false)
 
   orders      Order[]
+  uploads     MediaFile[]
 
   @@index([keyHash])
   @@index([prefix])
@@ -428,6 +429,7 @@ model Partner {
   webhookDeliveries PartnerWebhookDelivery[]
   events            PartnerEvent[]
   applications      PartnerApplication[]
+  uploads           MediaFile[]
 
   @@index([status])
   @@index([platform])
@@ -563,8 +565,28 @@ model OrderItem {
   totalCents Int
 
   shipmentItems ShipmentItem[]
+  files         OrderItemFile[]
 
   @@index([orderId])
+}
+
+// Print files attached to an order line item — covers, interior PDFs, dust
+// jackets, etc. A line item can have any number; `purpose` is free-form so
+// new product types don't require a schema migration. The MediaFile carries
+// the actual storage details + tagging.
+model OrderItemFile {
+  id          String    @id @default(cuid())
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  orderItemId String
+  media       MediaFile @relation(fields: [mediaFileId], references: [id])
+  mediaFileId String
+  // e.g. "cover", "interior", "back-cover", "spot-uv", "dust-jacket", "other".
+  purpose     String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([orderItemId])
+  @@index([mediaFileId])
 }
 
 // A physical box going out for an order. Orders may require multiple
@@ -715,12 +737,30 @@ model MediaFile {
   altText      String?
   uploaderId   String?
   uploader     User?    @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  // When uploaded via the public /api/v1/uploads endpoint, attribute back to
+  // the originating partner + key so admins can audit and the partner can
+  // list their own uploads.
+  partnerId    String?
+  partner      Partner? @relation(fields: [partnerId], references: [id])
+  apiKeyId     String?
+  apiKey       ApiKey?  @relation(fields: [apiKeyId], references: [id])
+  // SHA-256 of the file contents. Lets us detect identical re-uploads and
+  // gives partners something stable to log.
+  contentHash  String?
+  // sha256(filename + JWT_SECRET) — used to gate /uploads/* downloads behind
+  // a token so a leaked filename alone can't be enumerated.
+  accessToken  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  orderItemFiles OrderItemFile[]
 
   @@index([folder])
   @@index([mimeType])
   @@index([createdAt])
+  @@index([partnerId])
+  @@index([apiKeyId])
+  @@index([contentHash])
 }
 
 // ============================================================

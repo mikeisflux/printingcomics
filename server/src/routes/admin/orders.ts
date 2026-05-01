@@ -54,6 +54,16 @@ router.get('/:id', async (req, res) => {
               options: { include: { values: true } },
             },
           },
+          files: {
+            include: {
+              media: {
+                select: {
+                  id: true, originalName: true, mimeType: true, size: true,
+                  url: true, contentHash: true, createdAt: true,
+                },
+              },
+            },
+          },
         },
       },
       payments: { orderBy: { createdAt: 'desc' } },

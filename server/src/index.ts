@@ -100,6 +100,24 @@ app.use(
   v1Routes,
 );
 
+// Partner-uploaded print files require ?t=<accessToken>. The token is
+// sha256(filename + JWT_SECRET) so leaked filenames alone can't be enumerated.
+// Authenticated admins skip the check (so the admin UI can preview without
+// chasing tokens).
+app.use('/uploads/partner', async (req, res, next) => {
+  const isAdmin = req.session?.role === 'ADMIN' || req.session?.role === 'STAFF';
+  if (isAdmin) return next();
+  const filename = path.basename(req.path);
+  const token = String(req.query.t ?? '');
+  if (!token || !filename) return res.status(403).json({ error: 'Missing access token' });
+  const { prisma: db } = await import('./db.js');
+  const media = await db.mediaFile.findUnique({ where: { filename } });
+  if (!media || !media.accessToken || media.accessToken !== token) {
+    return res.status(403).json({ error: 'Invalid access token' });
+  }
+  next();
+});
+
 // Public: serve uploaded email attachments (behind auth check in routes)
 app.use('/uploads', express.static(path.resolve(process.env.UPLOADS_DIR ?? './uploads')));
 

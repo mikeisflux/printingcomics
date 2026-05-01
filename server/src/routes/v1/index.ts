@@ -13,6 +13,7 @@ import catalog from './catalog.js';
 import pricing from './pricing.js';
 import shipping from './shipping.js';
 import orders from './orders.js';
+import uploads from './uploads.js';
 import partnerApplications from './partner-applications.js';
 import { requireApiKey } from '../../middleware/api-key.js';
 
@@ -27,6 +28,7 @@ router.use('/catalog', catalog);
 router.use('/pricing', pricing);
 router.use('/shipping', shipping);
 router.use('/orders', orders);
+router.use('/uploads', uploads);
 // Public, unauthenticated — submit a partner API access request.
 router.use('/partner-applications', partnerApplications);
 

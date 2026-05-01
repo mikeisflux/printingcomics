@@ -108,6 +108,8 @@ export const API_SCOPES = [
   'shipping:read',
   'orders:read',
   'orders:write',
+  'uploads:read',
+  'uploads:write',
 ] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 

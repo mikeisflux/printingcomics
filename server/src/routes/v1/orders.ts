@@ -34,12 +34,23 @@ const addressSchema = z.object({
   phone: z.string().optional(),
 });
 
+const itemFileSchema = z.object({
+  // The MediaFile id returned by POST /api/v1/uploads.
+  uploadId: z.string().min(1),
+  // Optional override of the purpose tag set at upload time.
+  purpose: z.string().max(60).optional(),
+  notes: z.string().max(500).optional(),
+});
+
 const itemSchema = z.object({
   productSlug: z.string().optional(),
   productId: z.string().optional(),
   variantId: z.string().optional(),
   quantity: z.number().int().min(1).max(100_000),
   options: z.record(z.union([z.string(), z.number()])).optional(),
+  // Print files for this line item — covers, interiors, etc. Each entry
+  // references an upload previously POSTed to /api/v1/uploads.
+  files: z.array(itemFileSchema).max(20).optional(),
 });
 
 const createSchema = z.object({
@@ -63,7 +74,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
   if (data.externalRef) {
     const existing = await prisma.order.findFirst({
       where: { apiKeyId, externalRef: data.externalRef },
-      include: { items: true },
+      include: { items: { include: { files: { include: { media: true } } } } },
     });
     if (existing) {
       return res.status(200).json({ order: serializeOrder(existing), idempotent: true });
@@ -78,6 +89,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     quantity: number;
     options: Record<string, string | number>;
     unitPriceCents: number;
+    files: { mediaFileId: string; purpose: string | null; notes: string | null }[];
   }> = [];
 
   let subtotal = 0;
@@ -122,6 +134,30 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       unitPriceCents = priceForQuantity(unitPriceCents, line.quantity, product.volumeTiers as VolumeTier[] | null);
     }
 
+    // Validate referenced uploads belong to the calling key (or its partner)
+    // and exist. Reject early so we don't half-create an order.
+    const lineFiles: { mediaFileId: string; purpose: string | null; notes: string | null }[] = [];
+    if (line.files && line.files.length) {
+      for (const f of line.files) {
+        const media = await prisma.mediaFile.findUnique({ where: { id: f.uploadId } });
+        if (!media) {
+          throw new HttpError(400, `Upload not found: ${f.uploadId}`);
+        }
+        const ownsByKey = media.apiKeyId === apiKeyId;
+        const ownsByPartner = !!req.apiKey!.partnerId && media.partnerId === req.apiKey!.partnerId;
+        if (!ownsByKey && !ownsByPartner) {
+          throw new HttpError(403, `Upload ${f.uploadId} does not belong to this partner / key`);
+        }
+        const tagPurpose = (media.tags ?? []).find((t) => t.startsWith('purpose:'));
+        const tagNote = (media.tags ?? []).find((t) => t.startsWith('note:'));
+        lineFiles.push({
+          mediaFileId: media.id,
+          purpose: f.purpose ?? (tagPurpose ? tagPurpose.slice('purpose:'.length) : null),
+          notes: f.notes ?? (tagNote ? tagNote.slice('note:'.length) : null),
+        });
+      }
+    }
+
     subtotal += unitPriceCents * line.quantity;
     resolved.push({
       productId: product.id,
@@ -130,6 +166,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       quantity: line.quantity,
       options: optionInputs,
       unitPriceCents,
+      files: lineFiles,
     });
   }
 
@@ -199,6 +236,15 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
           quantity: r.quantity,
           unitPriceCents: r.unitPriceCents,
           totalCents: r.unitPriceCents * r.quantity,
+          files: r.files.length
+            ? {
+                create: r.files.map((f) => ({
+                  mediaFileId: f.mediaFileId,
+                  purpose: f.purpose ?? undefined,
+                  notes: f.notes ?? undefined,
+                })),
+              }
+            : undefined,
         })),
       },
       events: {
@@ -212,7 +258,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
         },
       },
     },
-    include: { items: true },
+    include: { items: { include: { files: { include: { media: true } } } } },
   });
 
   if (data.markAsPaid) {
@@ -258,7 +304,7 @@ router.get('/', requireApiKey('orders:read'), async (req, res) => {
     where: { apiKeyId: req.apiKey!.id },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    include: { items: true },
+    include: { items: { include: { files: { include: { media: true } } } } },
   });
   res.json({ orders: orders.map(serializeOrder) });
 });
@@ -298,7 +344,7 @@ router.post('/:idOrNumber/cancel', requireApiKey('orders:write'), async (req, re
         },
       },
     },
-    include: { items: true },
+    include: { items: { include: { files: { include: { media: true } } } } },
   });
 
   if (req.apiKey!.partnerId) {
@@ -321,7 +367,7 @@ async function loadApiOrder(idOrNumber: string, apiKeyId: string) {
       apiKeyId,
       OR: [{ id: idOrNumber }, { number: idOrNumber }, { externalRef: idOrNumber }],
     },
-    include: { items: true },
+    include: { items: { include: { files: { include: { media: true } } } } },
   });
 }
 
@@ -353,6 +399,16 @@ function serializeOrder(o: any) {
       unitPriceCents: i.unitPriceCents,
       totalCents: i.totalCents,
       options: i.options ?? null,
+      files: (i.files ?? []).map((f: any) => ({
+        uploadId: f.mediaFileId,
+        url: f.media?.url ?? null,
+        filename: f.media?.originalName ?? null,
+        size: f.media?.size ?? null,
+        mimeType: f.media?.mimeType ?? null,
+        contentHash: f.media?.contentHash ?? null,
+        purpose: f.purpose ?? null,
+        notes: f.notes ?? null,
+      })),
     })),
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
