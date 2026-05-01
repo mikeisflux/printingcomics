@@ -4,11 +4,37 @@
  * static documentation — to mint a key the integrator must contact us, and
  * we provision it from /admin/api-keys.
  */
-import { type ReactNode, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { type ReactNode, useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 
 export function Developers() {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) {
+      window.scrollTo(0, 0);
+      return;
+    }
+    // Wait for the section to mount, then scroll + focus the first input if
+    // we're jumping to the request-access form.
+    const id = hash.slice(1);
+    const tryScroll = (attempt = 0) => {
+      const el = document.getElementById(id);
+      if (!el) {
+        if (attempt < 10) setTimeout(() => tryScroll(attempt + 1), 50);
+        return;
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (id === 'request-access') {
+        const firstInput = el.querySelector('input');
+        if (firstInput instanceof HTMLInputElement) {
+          setTimeout(() => firstInput.focus(), 350);
+        }
+      }
+    };
+    tryScroll();
+  }, [hash]);
+
   return (
     <div style={{ background: 'var(--bg-alt)', minHeight: '100vh' }}>
       <div className="container" style={{ padding: '3rem 1rem', maxWidth: 1100, display: 'grid', gridTemplateColumns: '240px 1fr', gap: '2rem' }}>

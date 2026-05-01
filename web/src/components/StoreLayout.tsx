@@ -134,7 +134,7 @@ export function StoreLayout() {
                 <li><Link to="/developers#pricing">Pricing API</Link></li>
                 <li><Link to="/developers#orders">Orders API</Link></li>
                 <li><Link to="/developers#quickstart">Quickstart</Link></li>
-                <li><Link to="/contact">Request an API Key</Link></li>
+                <li><Link to="/developers#request-access">Request an API Key</Link></li>
               </ul>
             </div>
             <div>
