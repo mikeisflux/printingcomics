@@ -32,11 +32,15 @@ export function Developers() {
             </ul>
           </Section>
 
+          <Section id="request-access" title="Request access">
+            <RequestAccessForm />
+          </Section>
+
           <Section id="getting-started" title="Getting started">
             <ol>
               <li>
                 <strong>Request an API key</strong> using the form in{' '}
-                <a href="#request-access">Request access</a> below. We typically respond within
+                <a href="#request-access">Request access</a> above. We typically respond within
                 1–2 business days. On approval you receive a one-time email containing your
                 bearer key and signing secret.
               </li>
@@ -55,10 +59,6 @@ export function Developers() {
             <p>
               The base URL of every endpoint below is <code>{`https://printingcomics.com/api/v1`}</code>.
             </p>
-          </Section>
-
-          <Section id="request-access" title="Request access">
-            <RequestAccessForm />
           </Section>
 
           <Section id="auth" title="Authentication & scopes">
@@ -458,6 +458,29 @@ function Hero() {
         backend, or shop. The API mirrors the storefront — every product, every option,
         every price tier.
       </p>
+      <div style={{ display: 'flex', gap: '.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
+        <a
+          href="#request-access"
+          className="btn"
+          style={{ textDecoration: 'none' }}
+          onClick={(e) => {
+            e.preventDefault();
+            const el = document.getElementById('request-access');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              const firstInput = el.querySelector('input');
+              if (firstInput instanceof HTMLInputElement) {
+                setTimeout(() => firstInput.focus(), 350);
+              }
+            }
+          }}
+        >
+          Request API access
+        </a>
+        <a href="#getting-started" className="btn secondary" style={{ textDecoration: 'none' }}>
+          Read the docs
+        </a>
+      </div>
     </div>
   );
 }
@@ -465,8 +488,8 @@ function Hero() {
 function Sidebar() {
   const items = [
     ['overview', 'Overview'],
-    ['getting-started', 'Getting started'],
     ['request-access', 'Request access'],
+    ['getting-started', 'Getting started'],
     ['auth', 'Authentication & scopes'],
     ['request-signing', 'Request signing'],
     ['rate-limits', 'Rate limits & idempotency'],
