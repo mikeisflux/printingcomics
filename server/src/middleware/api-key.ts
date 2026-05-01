@@ -10,7 +10,7 @@
  */
 import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../db.js';
-import { extractApiKey, hashApiKey, type ApiScope } from '../lib/api-keys.js';
+import { extractApiKey, hashApiKey, verifyRequestSignature, type ApiScope } from '../lib/api-keys.js';
 
 export interface ApiKeyContext {
   id: string;
@@ -60,6 +60,33 @@ export function requireApiKey(...requiredScopes: ApiScope[]) {
         return res.status(403).json({
           error: 'API key is missing required scope',
           missing,
+        });
+      }
+    }
+
+    // Optional/required HMAC request signature: when the key is configured
+    // with `requireRequestSigning`, every mutating request MUST carry a
+    // valid X-PC-Request-Signature. When not required, we still verify a
+    // signature header if the integrator chose to send one — gives them a
+    // way to opt into tamper-proofing without us flipping the flag.
+    const sigHeader = req.header('x-pc-request-signature');
+    const isWrite = req.method !== 'GET' && req.method !== 'HEAD';
+    if (record.requireRequestSigning && isWrite && !sigHeader) {
+      return res.status(401).json({
+        error: 'Missing X-PC-Request-Signature header',
+        hint: 'This key requires HMAC-signed requests. See /developers#request-signing.',
+      });
+    }
+    if (sigHeader && record.signingSecretEncrypted) {
+      const rawBody =
+        typeof (req as any).rawBody === 'string'
+          ? (req as any).rawBody
+          : JSON.stringify(req.body ?? {});
+      const r = verifyRequestSignature(sigHeader, rawBody, record.signingSecretEncrypted);
+      if (!r.ok) {
+        return res.status(401).json({
+          error: 'Invalid X-PC-Request-Signature',
+          reason: r.reason,
         });
       }
     }

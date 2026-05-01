@@ -6,6 +6,7 @@
  */
 import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { api } from '../api/client';
 
 export function Developers() {
   return (
@@ -34,11 +35,10 @@ export function Developers() {
           <Section id="getting-started" title="Getting started">
             <ol>
               <li>
-                <strong>Request an API key.</strong>{' '}
-                <Link to="/contact">Contact us</Link> with the name of your platform and the
-                scopes you need. Our team mints the key from the admin dashboard
-                (<code>/admin/api-keys</code>) and emails it to you. The full secret is shown
-                exactly once — store it somewhere safe.
+                <strong>Request an API key</strong> using the form in{' '}
+                <a href="#request-access">Request access</a> below. We typically respond within
+                1–2 business days. On approval you receive a one-time email containing your
+                bearer key and signing secret.
               </li>
               <li>
                 <strong>Authenticate every request</strong> with the <code>Authorization</code>{' '}
@@ -55,6 +55,10 @@ export function Developers() {
             <p>
               The base URL of every endpoint below is <code>{`https://printingcomics.com/api/v1`}</code>.
             </p>
+          </Section>
+
+          <Section id="request-access" title="Request access">
+            <RequestAccessForm />
           </Section>
 
           <Section id="auth" title="Authentication & scopes">
@@ -79,6 +83,44 @@ export function Developers() {
             </p>
             <Code>{`curl https://printingcomics.com/api/v1/me \\
   -H "Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx"`}</Code>
+          </Section>
+
+          <Section id="request-signing" title="Request signing (HMAC)">
+            <p>
+              In addition to the bearer key, each credential pair includes a{' '}
+              <strong>signing secret</strong> (<code>pcs_…</code>) that you can use to sign request
+              bodies for tamper-proofing. Signing is <em>optional by default</em>; we will turn on
+              the <code>requireRequestSigning</code> flag for your key on request, after which
+              every mutating request must be signed.
+            </p>
+            <p>
+              Add an <code>X-PC-Request-Signature</code> header in the form{' '}
+              <code>{'t=<unix>,v1=<hex>'}</code>, where <code>v1</code> is{' '}
+              <code>HMAC-SHA256(signingSecret, `${'$'}{'{t}'}.${'$'}{'{rawBody}'}`)</code>. The
+              timestamp must be within 5 minutes of server time.
+            </p>
+            <Code>{`import { createHmac } from 'node:crypto';
+
+const t = Math.floor(Date.now() / 1000);
+const body = JSON.stringify(payload);  // serialize ONCE; send the same string
+const sig = createHmac('sha256', signingSecret)
+  .update(\`\${t}.\${body}\`)
+  .digest('hex');
+
+await fetch('https://printingcomics.com/api/v1/orders', {
+  method: 'POST',
+  headers: {
+    'Authorization': \`Bearer \${apiKey}\`,
+    'Content-Type': 'application/json',
+    'X-PC-Request-Signature': \`t=\${t},v1=\${sig}\`,
+  },
+  body,
+});`}</Code>
+            <p>
+              Rotating the signing secret invalidates the old one immediately. Both keys can be
+              regenerated from your account contact at{' '}
+              <a href="mailto:developers@printingcomics.com">developers@printingcomics.com</a>.
+            </p>
           </Section>
 
           <Section id="rate-limits" title="Rate limits & idempotency">
@@ -424,7 +466,9 @@ function Sidebar() {
   const items = [
     ['overview', 'Overview'],
     ['getting-started', 'Getting started'],
+    ['request-access', 'Request access'],
     ['auth', 'Authentication & scopes'],
+    ['request-signing', 'Request signing'],
     ['rate-limits', 'Rate limits & idempotency'],
     ['catalog', 'Catalog'],
     ['pricing', 'Pricing'],
@@ -519,3 +563,242 @@ function Code({ children }: { children: string }) {
     </div>
   );
 }
+
+const ALL_SCOPES = ['catalog:read', 'pricing:read', 'shipping:read', 'orders:read', 'orders:write'];
+
+function RequestAccessForm() {
+  const [name, setName] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [platform, setPlatform] = useState('kickstarter');
+  const [website, setWebsite] = useState('');
+  const [scopes, setScopes] = useState<string[]>([...ALL_SCOPES]);
+  const [estimated, setEstimated] = useState('');
+  const [message, setMessage] = useState('');
+  const [website2, setWebsite2] = useState(''); // honeypot
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (success) {
+    return (
+      <div
+        style={{
+          background: '#d4f5dc',
+          border: '1px solid #1e6b32',
+          borderRadius: 8,
+          padding: '1.25rem',
+        }}
+      >
+        <h3 style={{ margin: '0 0 .25rem', color: '#1e6b32' }}>Request received</h3>
+        <p style={{ margin: 0 }}>{success}</p>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        setError(null);
+        try {
+          const r = await api.post<{ message: string }>('/v1/partner-applications', {
+            name,
+            contactName,
+            contactEmail,
+            platform: platform || undefined,
+            website: website.trim() || undefined,
+            scopes,
+            estimatedMonthlyOrders: estimated ? Number(estimated) : undefined,
+            message: message.trim() || undefined,
+            website2: website2 || undefined,
+          });
+          setSuccess(r.message);
+        } catch (err: any) {
+          setError(err.message || 'Submission failed');
+          setSubmitting(false);
+        }
+      }}
+      style={{
+        background: '#fff',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        padding: '1.25rem',
+        display: 'grid',
+        gap: '.75rem',
+      }}
+    >
+      <p style={{ margin: 0, color: 'var(--muted)' }}>
+        Tell us about your project and what you'd like to do with the API. We'll review and email
+        you back within 1–2 business days. On approval you'll receive a one-time email with your
+        bearer key and HMAC signing secret.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '.75rem' }}>
+        <FormField label="Project / partner name" required>
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Acme Comics on Kickstarter"
+            style={fieldInput}
+          />
+        </FormField>
+        <FormField label="Platform">
+          <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={fieldInput}>
+            <option value="kickstarter">Kickstarter</option>
+            <option value="indiegogo">Indiegogo</option>
+            <option value="backerkit">BackerKit</option>
+            <option value="gamefound">Gamefound</option>
+            <option value="zoop">Zoop</option>
+            <option value="publisher">Publisher</option>
+            <option value="other">Other</option>
+          </select>
+        </FormField>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
+        <FormField label="Your name" required>
+          <input
+            required
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            placeholder="Jane Doe"
+            style={fieldInput}
+          />
+        </FormField>
+        <FormField label="Your email" required>
+          <input
+            required
+            type="email"
+            value={contactEmail}
+            onChange={(e) => setContactEmail(e.target.value)}
+            placeholder="dev@your-platform.com"
+            style={fieldInput}
+          />
+        </FormField>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '.75rem' }}>
+        <FormField label="Project / campaign URL">
+          <input
+            type="url"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            placeholder="https://www.kickstarter.com/projects/…"
+            style={fieldInput}
+          />
+        </FormField>
+        <FormField label="Est. orders / month">
+          <input
+            type="number"
+            min={1}
+            value={estimated}
+            onChange={(e) => setEstimated(e.target.value)}
+            placeholder="e.g. 500"
+            style={fieldInput}
+          />
+        </FormField>
+      </div>
+
+      <FormField label="Scopes requested">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem' }}>
+          {ALL_SCOPES.map((s) => {
+            const on = scopes.includes(s);
+            return (
+              <label
+                key={s}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '.4rem',
+                  padding: '.35rem .65rem',
+                  borderRadius: 4,
+                  background: on ? 'rgba(30,116,252,.1)' : 'var(--bg-alt)',
+                  border: `1px solid ${on ? 'var(--brand)' : 'var(--border)'}`,
+                  cursor: 'pointer',
+                  fontSize: '.85rem',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) => {
+                    setScopes(e.target.checked ? [...scopes, s] : scopes.filter((x) => x !== s));
+                  }}
+                />
+                <code>{s}</code>
+              </label>
+            );
+          })}
+        </div>
+      </FormField>
+
+      <FormField label="Tell us about your project">
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+          placeholder="What products are you fulfilling? When does the campaign close? Any other context that helps us provision the right scopes."
+          style={{ ...fieldInput, fontFamily: 'inherit' }}
+        />
+      </FormField>
+
+      {/* Honeypot — hidden from users via inline style; bots tend to fill all fields */}
+      <input
+        type="text"
+        tabIndex={-1}
+        autoComplete="off"
+        value={website2}
+        onChange={(e) => setWebsite2(e.target.value)}
+        style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+        aria-hidden="true"
+      />
+
+      {error && (
+        <div style={{ background: '#f8d7da', color: '#721c24', padding: '.5rem .75rem', borderRadius: 4 }}>
+          {error}
+        </div>
+      )}
+
+      <div>
+        <button
+          type="submit"
+          className="btn"
+          disabled={submitting || !name.trim() || !contactName.trim() || !contactEmail.trim() || scopes.length === 0}
+        >
+          {submitting ? 'Submitting…' : 'Request API access'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function FormField({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: '.85rem', fontWeight: 600, marginBottom: 4 }}>
+        {label}
+        {required && <span style={{ color: '#b91c1c' }}> *</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const fieldInput: React.CSSProperties = {
+  width: '100%',
+  padding: '.5rem .65rem',
+  border: '1px solid var(--border)',
+  borderRadius: 4,
+  fontSize: '.95rem',
+};

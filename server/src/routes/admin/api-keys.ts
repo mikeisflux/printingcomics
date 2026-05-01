@@ -9,7 +9,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
-import { mintApiKey, isValidScope, API_SCOPES } from '../../lib/api-keys.js';
+import { mintApiKey, mintSigningSecret, isValidScope, API_SCOPES } from '../../lib/api-keys.js';
+import { decryptSecret } from '../../lib/crypto.js';
 
 const router = Router();
 
@@ -34,6 +35,8 @@ router.get('/', async (_req, res) => {
       lastUsedAt: k.lastUsedAt,
       createdAt: k.createdAt,
       notes: k.notes,
+      requireRequestSigning: k.requireRequestSigning,
+      hasSigningSecret: !!k.signingSecretEncrypted,
       orderCount: k._count.orders,
       createdBy: k.createdBy,
       partner: k.partner,
@@ -60,6 +63,7 @@ router.post('/', async (req, res) => {
       keyHash: minted.keyHash,
       scopes: data.scopes,
       notes: data.notes,
+      signingSecretEncrypted: minted.signingSecretEncrypted,
       createdById: (req.session?.sub as string | undefined) ?? null,
     },
   });
@@ -72,15 +76,39 @@ router.post('/', async (req, res) => {
       active: created.active,
       createdAt: created.createdAt,
     },
-    // The plaintext key — display once, never returned again.
+    // Plaintexts — display once, never returned again.
     secret: minted.rawKey,
+    signingSecret: minted.rawSigningSecret,
   });
+});
+
+// Rotate the signing secret for an existing key. The bearer key is unchanged.
+router.post('/:id/signing-secret/rotate', async (req, res) => {
+  const existing = await prisma.apiKey.findUnique({ where: { id: req.params.id } });
+  if (!existing) throw new HttpError(404, 'API key not found');
+  const { rawSigningSecret, signingSecretEncrypted } = mintSigningSecret();
+  await prisma.apiKey.update({
+    where: { id: existing.id },
+    data: { signingSecretEncrypted },
+  });
+  res.json({ signingSecret: rawSigningSecret });
+});
+
+// Reveal the current signing secret (decrypts from DB). One-time fetch.
+router.get('/:id/signing-secret', async (req, res) => {
+  const existing = await prisma.apiKey.findUnique({ where: { id: req.params.id } });
+  if (!existing) throw new HttpError(404, 'API key not found');
+  if (!existing.signingSecretEncrypted) {
+    return res.json({ signingSecret: null });
+  }
+  res.json({ signingSecret: decryptSecret(existing.signingSecretEncrypted) });
 });
 
 const updateSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   scopes: z.array(z.string()).optional(),
   notes: z.string().max(2000).nullable().optional(),
+  requireRequestSigning: z.boolean().optional(),
 });
 
 router.patch('/:id', async (req, res) => {
@@ -98,6 +126,7 @@ router.patch('/:id', async (req, res) => {
       name: data.name ?? undefined,
       scopes: data.scopes ?? undefined,
       notes: data.notes === null ? null : data.notes ?? undefined,
+      requireRequestSigning: data.requireRequestSigning ?? undefined,
     },
   });
   res.json({
@@ -109,6 +138,7 @@ router.patch('/:id', async (req, res) => {
       notes: updated.notes,
       active: updated.active,
       revokedAt: updated.revokedAt,
+      requireRequestSigning: updated.requireRequestSigning,
     },
   });
 });

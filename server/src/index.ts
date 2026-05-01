@@ -48,7 +48,16 @@ app.use(
 app.use(cookieParser());
 // JSON body limit stays modest — large files flow through multer (multipart),
 // not JSON. If you truly need a 2 GB JSON payload, bump this too.
-app.use(express.json({ limit: '25mb' }));
+// Capture the raw body string so the API-key middleware can verify HMAC
+// signatures byte-for-byte (JSON re-serialization isn't stable enough).
+app.use(
+  express.json({
+    limit: '25mb',
+    verify: (req, _res, buf) => {
+      (req as any).rawBody = buf.toString('utf8');
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(attachSession);
 

@@ -12,7 +12,8 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import { hashPassword } from '../../lib/password.js';
-import { mintApiKey, isValidScope, API_SCOPES } from '../../lib/api-keys.js';
+import { mintApiKey, mintSigningSecret, isValidScope, API_SCOPES } from '../../lib/api-keys.js';
+import { decryptSecret } from '../../lib/crypto.js';
 import {
   uniquePartnerSlug,
   mintWebhookSecret,
@@ -21,6 +22,7 @@ import {
   PARTNER_WEBHOOK_EVENTS,
   fingerprintWebhookSecret,
 } from '../../lib/partners.js';
+import { sendEmail } from '../../lib/mailgun.js';
 
 const router = Router();
 
@@ -197,6 +199,7 @@ router.get('/:id', async (req, res) => {
         select: {
           id: true, name: true, prefix: true, scopes: true, active: true,
           revokedAt: true, lastUsedAt: true, createdAt: true, notes: true,
+          requireRequestSigning: true, signingSecretEncrypted: true,
         },
       },
       members: {
@@ -232,7 +235,13 @@ router.get('/:id', async (req, res) => {
 
   res.json({
     partner: partnerSummary(partner),
-    apiKeys: partner.apiKeys,
+    apiKeys: partner.apiKeys.map((k) => ({
+      id: k.id, name: k.name, prefix: k.prefix, scopes: k.scopes,
+      active: k.active, revokedAt: k.revokedAt, lastUsedAt: k.lastUsedAt,
+      createdAt: k.createdAt, notes: k.notes,
+      requireRequestSigning: k.requireRequestSigning,
+      hasSigningSecret: !!k.signingSecretEncrypted,
+    })),
     members: partner.members,
     stats: {
       totalOrders: stats._count._all,
@@ -359,6 +368,7 @@ router.post('/:id/api-keys', async (req, res) => {
       keyHash: minted.keyHash,
       scopes: data.scopes,
       notes: data.notes,
+      signingSecretEncrypted: minted.signingSecretEncrypted,
       partnerId: partner.id,
       createdById: (req.session?.sub as string | undefined) ?? null,
     },
@@ -377,7 +387,49 @@ router.post('/:id/api-keys', async (req, res) => {
       createdAt: created.createdAt,
     },
     secret: minted.rawKey,
+    signingSecret: minted.rawSigningSecret,
   });
+});
+
+// Rotate the signing secret for one of this partner's keys.
+router.post('/:id/api-keys/:keyId/signing-secret/rotate', async (req, res) => {
+  const key = await prisma.apiKey.findFirst({
+    where: { id: req.params.keyId, partnerId: req.params.id },
+  });
+  if (!key) throw new HttpError(404, 'API key not found for this partner');
+  const { rawSigningSecret, signingSecretEncrypted } = mintSigningSecret();
+  await prisma.apiKey.update({
+    where: { id: key.id },
+    data: { signingSecretEncrypted },
+  });
+  await logEvent(req.params.id, 'updated', `Rotated signing secret for "${key.name}"`, req, {
+    apiKeyId: key.id,
+  });
+  res.json({ signingSecret: rawSigningSecret });
+});
+
+router.get('/:id/api-keys/:keyId/signing-secret', async (req, res) => {
+  const key = await prisma.apiKey.findFirst({
+    where: { id: req.params.keyId, partnerId: req.params.id },
+  });
+  if (!key) throw new HttpError(404, 'API key not found for this partner');
+  if (!key.signingSecretEncrypted) return res.json({ signingSecret: null });
+  res.json({ signingSecret: decryptSecret(key.signingSecretEncrypted) });
+});
+
+// Toggle whether a key requires signed requests.
+router.patch('/:id/api-keys/:keyId', async (req, res) => {
+  const schema = z.object({ requireRequestSigning: z.boolean().optional() });
+  const data = schema.parse(req.body);
+  const key = await prisma.apiKey.findFirst({
+    where: { id: req.params.keyId, partnerId: req.params.id },
+  });
+  if (!key) throw new HttpError(404, 'API key not found for this partner');
+  const updated = await prisma.apiKey.update({
+    where: { id: key.id },
+    data: { requireRequestSigning: data.requireRequestSigning ?? undefined },
+  });
+  res.json({ apiKey: { id: updated.id, requireRequestSigning: updated.requireRequestSigning } });
 });
 
 router.post('/:id/api-keys/:keyId/revoke', async (req, res) => {
@@ -628,5 +680,249 @@ router.post('/:id/notes', async (req, res) => {
   await logEvent(partner.id, 'note', data.message, req);
   res.status(201).json({ ok: true });
 });
+
+// ---- Applications (inbound API access requests) --------------------------
+
+router.get('/applications/list', async (req, res) => {
+  const status = (req.query.status as string | undefined)?.toUpperCase();
+  const where: any = {};
+  if (status === 'PENDING' || status === 'APPROVED' || status === 'REJECTED') {
+    where.status = status;
+  }
+  const [applications, pendingCount] = await Promise.all([
+    prisma.partnerApplication.findMany({
+      where,
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      take: 200,
+      include: {
+        reviewer: { select: { id: true, email: true, firstName: true, lastName: true } },
+        partner: { select: { id: true, slug: true, name: true } },
+      },
+    }),
+    prisma.partnerApplication.count({ where: { status: 'PENDING' } }),
+  ]);
+  res.json({ applications, pendingCount });
+});
+
+router.get('/applications/:id', async (req, res) => {
+  const application = await prisma.partnerApplication.findUnique({
+    where: { id: req.params.id },
+    include: {
+      reviewer: { select: { id: true, email: true, firstName: true, lastName: true } },
+      partner: { select: { id: true, slug: true, name: true, status: true } },
+    },
+  });
+  if (!application) throw new HttpError(404, 'Application not found');
+  res.json({ application });
+});
+
+const approveSchema = z.object({
+  // Admin can override what the requester proposed before provisioning.
+  partnerName: z.string().min(1).max(120).optional(),
+  slug: z.string().min(1).max(60).optional(),
+  platform: z.string().max(60).optional(),
+  scopes: z.array(z.string()).default([...API_SCOPES]),
+  webhookUrl: z.string().url().optional(),
+  rateLimitPerMinute: z.number().int().positive().max(10_000).optional(),
+  monthlyOrderCap: z.number().int().positive().max(1_000_000).optional(),
+  reviewNotes: z.string().max(2000).optional(),
+  // Mint a key now (default true). Admin can also approve without minting.
+  mintInitialKey: z.boolean().default(true),
+  initialKeyName: z.string().max(120).default('Production key'),
+  // Email the credentials to the contact (default true).
+  emailCredentials: z.boolean().default(true),
+});
+
+router.post('/applications/:id/approve', async (req, res) => {
+  const data = approveSchema.parse(req.body);
+  const application = await prisma.partnerApplication.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!application) throw new HttpError(404, 'Application not found');
+  if (application.status !== 'PENDING') {
+    throw new HttpError(409, `Application is ${application.status.toLowerCase()}`);
+  }
+  for (const s of data.scopes) {
+    if (!isValidScope(s)) throw new HttpError(400, `Unknown scope: ${s}`);
+  }
+
+  const partnerName = data.partnerName ?? application.name;
+  const slug = await uniquePartnerSlug(data.slug ?? partnerName);
+
+  const partner = await prisma.partner.create({
+    data: {
+      slug,
+      name: partnerName,
+      platform: data.platform ?? application.platform,
+      contactName: application.contactName,
+      contactEmail: application.contactEmail,
+      website: application.website,
+      webhookUrl: data.webhookUrl,
+      webhookSecret: mintWebhookSecret(),
+      rateLimitPerMinute: data.rateLimitPerMinute,
+      monthlyOrderCap: data.monthlyOrderCap,
+      createdById: (req.session?.sub as string | undefined) ?? null,
+    },
+  });
+
+  let mintedKey: ReturnType<typeof mintApiKey> | null = null;
+  if (data.mintInitialKey) {
+    mintedKey = mintApiKey();
+    await prisma.apiKey.create({
+      data: {
+        name: data.initialKeyName,
+        prefix: mintedKey.prefix,
+        keyHash: mintedKey.keyHash,
+        scopes: data.scopes,
+        signingSecretEncrypted: mintedKey.signingSecretEncrypted,
+        partnerId: partner.id,
+        createdById: (req.session?.sub as string | undefined) ?? null,
+      },
+    });
+  }
+
+  // Get reviewer details for the audit trail.
+  const reviewer = req.session?.sub
+    ? await prisma.user.findUnique({
+        where: { id: req.session.sub },
+        select: { id: true, email: true, firstName: true, lastName: true },
+      })
+    : null;
+
+  await prisma.partnerApplication.update({
+    where: { id: application.id },
+    data: {
+      status: 'APPROVED',
+      partnerId: partner.id,
+      reviewerId: reviewer?.id,
+      reviewedAt: new Date(),
+      reviewNotes: data.reviewNotes,
+    },
+  });
+
+  await logEvent(
+    partner.id,
+    'created',
+    `Provisioned from application ${application.id}`,
+    req,
+    { applicationId: application.id },
+  );
+
+  if (data.emailCredentials && mintedKey) {
+    void sendApprovalEmail({
+      to: { email: application.contactEmail, name: application.contactName },
+      partnerName,
+      apiKey: mintedKey.rawKey,
+      signingSecret: mintedKey.rawSigningSecret,
+    }).catch(() => undefined);
+  } else if (data.emailCredentials && !mintedKey) {
+    void sendApprovalEmail({
+      to: { email: application.contactEmail, name: application.contactName },
+      partnerName,
+      apiKey: null,
+      signingSecret: null,
+    }).catch(() => undefined);
+  }
+
+  res.json({
+    partner: partnerSummary(partner),
+    apiKey: mintedKey
+      ? {
+          secret: mintedKey.rawKey,
+          signingSecret: mintedKey.rawSigningSecret,
+          prefix: mintedKey.prefix,
+          name: data.initialKeyName,
+          scopes: data.scopes,
+        }
+      : null,
+  });
+});
+
+const rejectSchema = z.object({
+  reviewNotes: z.string().max(2000).optional(),
+  emailRequester: z.boolean().default(true),
+});
+
+router.post('/applications/:id/reject', async (req, res) => {
+  const data = rejectSchema.parse(req.body);
+  const application = await prisma.partnerApplication.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!application) throw new HttpError(404, 'Application not found');
+  if (application.status !== 'PENDING') {
+    throw new HttpError(409, `Application is ${application.status.toLowerCase()}`);
+  }
+  const reviewer = req.session?.sub
+    ? await prisma.user.findUnique({
+        where: { id: req.session.sub },
+        select: { id: true },
+      })
+    : null;
+  await prisma.partnerApplication.update({
+    where: { id: application.id },
+    data: {
+      status: 'REJECTED',
+      reviewerId: reviewer?.id,
+      reviewedAt: new Date(),
+      reviewNotes: data.reviewNotes,
+    },
+  });
+  if (data.emailRequester) {
+    void sendRejectionEmail({
+      to: { email: application.contactEmail, name: application.contactName },
+      partnerName: application.name,
+      notes: data.reviewNotes,
+    }).catch(() => undefined);
+  }
+  res.json({ ok: true });
+});
+
+// Helpers
+
+async function sendApprovalEmail(opts: {
+  to: { email: string; name: string };
+  partnerName: string;
+  apiKey: string | null;
+  signingSecret: string | null;
+}) {
+  const { to, partnerName, apiKey, signingSecret } = opts;
+  const text = apiKey
+    ? `Hi ${to.name},\n\nGood news — your request for API access has been approved for "${partnerName}".\n\nYour credentials (each shown ONCE — store them in your secret manager):\n\n  API key:        ${apiKey}\n  Signing secret: ${signingSecret}\n\nUse the key in either header:\n  Authorization: Bearer ${apiKey}\n  X-Api-Key:     ${apiKey}\n\nSee https://printingcomics.com/developers for endpoints, scopes, and a verification snippet for the optional X-PC-Request-Signature header.\n\n— Printing Comics`
+    : `Hi ${to.name},\n\nGood news — your request for API access for "${partnerName}" has been approved. Your account manager will follow up to mint the API key with the right scopes.\n\n— Printing Comics`;
+  const html = apiKey
+    ? `<p>Hi ${escapeHtml(to.name)},</p><p>Good news — your request for API access has been approved for <strong>${escapeHtml(partnerName)}</strong>.</p><p>Your credentials (each shown <strong>once</strong> — store them in your secret manager):</p><pre style="background:#0f1419;color:#e2e8f0;padding:1rem;border-radius:6px;font-family:monospace;font-size:.85rem">API key:        ${escapeHtml(apiKey)}\nSigning secret: ${escapeHtml(signingSecret ?? '')}</pre><p>Use the key in either header:</p><pre style="background:#f5f5f5;padding:.75rem;border-radius:4px;font-family:monospace;font-size:.85rem">Authorization: Bearer ${escapeHtml(apiKey)}\nX-Api-Key: ${escapeHtml(apiKey)}</pre><p>See <a href="https://printingcomics.com/developers">printingcomics.com/developers</a> for the full reference.</p><p>— Printing Comics</p>`
+    : `<p>Hi ${escapeHtml(to.name)},</p><p>Good news — your request for API access for <strong>${escapeHtml(partnerName)}</strong> has been approved. Your account manager will follow up to mint the API key with the right scopes.</p><p>— Printing Comics</p>`;
+  await sendEmail({
+    to,
+    subject: `Your Printing Comics API access is approved — ${partnerName}`,
+    text,
+    html,
+    tags: ['partner-application', 'approval'],
+  });
+}
+
+async function sendRejectionEmail(opts: {
+  to: { email: string; name: string };
+  partnerName: string;
+  notes?: string;
+}) {
+  const text = `Hi ${opts.to.name},\n\nThanks for your interest in the Printing Comics developer API. Unfortunately we can't approve your request for "${opts.partnerName}" at this time.${opts.notes ? `\n\n${opts.notes}` : ''}\n\nIf you'd like to discuss further, reply to this email.\n\n— Printing Comics`;
+  const html = `<p>Hi ${escapeHtml(opts.to.name)},</p><p>Thanks for your interest in the Printing Comics developer API. Unfortunately we can't approve your request for <strong>${escapeHtml(opts.partnerName)}</strong> at this time.</p>${opts.notes ? `<p style="white-space:pre-wrap;border-left:3px solid #ccc;padding-left:.75rem;color:#444">${escapeHtml(opts.notes)}</p>` : ''}<p>If you'd like to discuss further, reply to this email.</p><p>— Printing Comics</p>`;
+  await sendEmail({
+    to: opts.to,
+    subject: `About your Printing Comics API access request`,
+    text,
+    html,
+    tags: ['partner-application', 'rejection'],
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 export default router;

@@ -42,6 +42,8 @@ interface ApiKey {
   lastUsedAt: string | null;
   createdAt: string;
   notes: string | null;
+  requireRequestSigning: boolean;
+  hasSigningSecret: boolean;
 }
 
 interface Member {
@@ -109,6 +111,7 @@ interface PartnerEvent {
 interface CreatedSecret {
   apiKey: { id: string; name: string; prefix: string; scopes: string[] };
   secret: string;
+  signingSecret: string;
 }
 
 export function AdminPartnerDetail() {
@@ -485,7 +488,14 @@ function ApiKeysTab({
         </button>
       </div>
 
-      {justCreated && <SecretReveal secret={justCreated.secret} apiKey={justCreated.apiKey} onDismiss={() => setJustCreated(null)} />}
+      {justCreated && (
+        <SecretReveal
+          secret={justCreated.secret}
+          signingSecret={justCreated.signingSecret}
+          apiKey={justCreated.apiKey}
+          onDismiss={() => setJustCreated(null)}
+        />
+      )}
 
       {creating && (
         <CreateKeyForm
@@ -507,6 +517,7 @@ function ApiKeysTab({
               <th>Name</th>
               <th>Prefix</th>
               <th>Scopes</th>
+              <th>Signing</th>
               <th>Last used</th>
               <th>Status</th>
               <th></th>
@@ -515,59 +526,154 @@ function ApiKeysTab({
           <tbody>
             {apiKeys.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
                   No API keys yet for this partner.
                 </td>
               </tr>
             )}
             {apiKeys.map((k) => (
-              <tr key={k.id}>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{k.name}</div>
-                  {k.notes && <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>{k.notes}</div>}
-                </td>
-                <td><code>{k.prefix}…</code></td>
-                <td style={{ fontSize: '.8rem' }}>
-                  {k.scopes.map((s) => (
-                    <span key={s} style={chipStyle}>{s}</span>
-                  ))}
-                </td>
-                <td style={{ fontSize: '.85rem', color: 'var(--muted)' }}>
-                  {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'Never'}
-                </td>
-                <td>{k.active ? <span className="badge paid">Active</span> : <span className="badge cancelled">Revoked</span>}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {k.active ? (
-                    <button
-                      className="btn secondary"
-                      style={{ padding: '.3rem .6rem', fontSize: '.85rem', color: '#b91c1c', borderColor: '#b91c1c' }}
-                      onClick={async () => {
-                        if (!confirm(`Revoke "${k.name}"?`)) return;
-                        await api.post(`/admin/partners/${partnerId}/api-keys/${k.id}/revoke`);
-                        onChanged();
-                      }}
-                    >
-                      Revoke
-                    </button>
-                  ) : (
-                    <button
-                      className="btn secondary"
-                      style={{ padding: '.3rem .6rem', fontSize: '.85rem' }}
-                      onClick={async () => {
-                        await api.post(`/admin/partners/${partnerId}/api-keys/${k.id}/restore`);
-                        onChanged();
-                      }}
-                    >
-                      Restore
-                    </button>
-                  )}
-                </td>
-              </tr>
+              <ApiKeyRow key={k.id} partnerId={partnerId} k={k} onChanged={onChanged} />
             ))}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+function ApiKeyRow({
+  partnerId,
+  k,
+  onChanged,
+}: {
+  partnerId: string;
+  k: ApiKey;
+  onChanged: () => void;
+}) {
+  const [revealedSigning, setRevealedSigning] = useState<string | null>(null);
+  return (
+    <tr>
+      <td>
+        <div style={{ fontWeight: 600 }}>{k.name}</div>
+        {k.notes && <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>{k.notes}</div>}
+      </td>
+      <td><code>{k.prefix}…</code></td>
+      <td style={{ fontSize: '.8rem' }}>
+        {k.scopes.map((s) => (
+          <span key={s} style={chipStyle}>{s}</span>
+        ))}
+      </td>
+      <td style={{ fontSize: '.8rem' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+          <input
+            type="checkbox"
+            checked={k.requireRequestSigning}
+            disabled={!k.active}
+            onChange={async (e) => {
+              await api.patch(`/admin/partners/${partnerId}/api-keys/${k.id}`, {
+                requireRequestSigning: e.target.checked,
+              });
+              onChanged();
+            }}
+          />{' '}
+          Required
+        </label>
+        <div>
+          {k.hasSigningSecret ? (
+            <>
+              <button
+                className="btn secondary"
+                style={{ padding: '.2rem .45rem', fontSize: '.75rem', marginRight: 4 }}
+                onClick={async () => {
+                  const r = await api.get<{ signingSecret: string | null }>(
+                    `/admin/partners/${partnerId}/api-keys/${k.id}/signing-secret`,
+                  );
+                  setRevealedSigning(r.signingSecret ?? '(none)');
+                }}
+              >
+                Reveal
+              </button>
+              <button
+                className="btn secondary"
+                style={{ padding: '.2rem .45rem', fontSize: '.75rem', color: '#b91c1c', borderColor: '#b91c1c' }}
+                onClick={async () => {
+                  if (!confirm('Rotate the signing secret? The old secret stops working immediately.')) return;
+                  const r = await api.post<{ signingSecret: string }>(
+                    `/admin/partners/${partnerId}/api-keys/${k.id}/signing-secret/rotate`,
+                  );
+                  setRevealedSigning(r.signingSecret);
+                  onChanged();
+                }}
+              >
+                Rotate
+              </button>
+            </>
+          ) : (
+            <span style={{ color: 'var(--muted)', fontSize: '.75rem' }}>none</span>
+          )}
+        </div>
+        {revealedSigning !== null && (
+          <div
+            style={{
+              marginTop: 4,
+              background: '#0f1419',
+              color: '#e2e8f0',
+              padding: '.4rem .55rem',
+              borderRadius: 4,
+              fontFamily: 'monospace',
+              fontSize: '.75rem',
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+            }}
+          >
+            <code style={{ flex: 1, overflowX: 'auto' }}>{revealedSigning}</code>
+            <button
+              onClick={() => navigator.clipboard.writeText(revealedSigning)}
+              style={{ padding: '.1rem .35rem', fontSize: '.7rem', cursor: 'pointer' }}
+            >
+              Copy
+            </button>
+            <button
+              onClick={() => setRevealedSigning(null)}
+              style={{ padding: '.1rem .35rem', fontSize: '.7rem', cursor: 'pointer' }}
+            >
+              Hide
+            </button>
+          </div>
+        )}
+      </td>
+      <td style={{ fontSize: '.85rem', color: 'var(--muted)' }}>
+        {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'Never'}
+      </td>
+      <td>{k.active ? <span className="badge paid">Active</span> : <span className="badge cancelled">Revoked</span>}</td>
+      <td style={{ textAlign: 'right' }}>
+        {k.active ? (
+          <button
+            className="btn secondary"
+            style={{ padding: '.3rem .6rem', fontSize: '.85rem', color: '#b91c1c', borderColor: '#b91c1c' }}
+            onClick={async () => {
+              if (!confirm(`Revoke "${k.name}"?`)) return;
+              await api.post(`/admin/partners/${partnerId}/api-keys/${k.id}/revoke`);
+              onChanged();
+            }}
+          >
+            Revoke
+          </button>
+        ) : (
+          <button
+            className="btn secondary"
+            style={{ padding: '.3rem .6rem', fontSize: '.85rem' }}
+            onClick={async () => {
+              await api.post(`/admin/partners/${partnerId}/api-keys/${k.id}/restore`);
+              onChanged();
+            }}
+          >
+            Restore
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -686,48 +792,78 @@ function ScopeChecklist({
   );
 }
 
-function SecretReveal({ secret, apiKey, onDismiss }: { secret: string; apiKey: { name: string; prefix: string; scopes: string[] }; onDismiss: () => void }) {
-  const [copied, setCopied] = useState(false);
+function SecretReveal({
+  secret,
+  signingSecret,
+  apiKey,
+  onDismiss,
+}: {
+  secret: string;
+  signingSecret?: string;
+  apiKey: { name: string; prefix: string; scopes: string[] };
+  onDismiss: () => void;
+}) {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copy = (label: string, value: string) => {
+    void navigator.clipboard.writeText(value);
+    setCopiedField(label);
+    setTimeout(() => setCopiedField(null), 1500);
+  };
   return (
     <div className="admin-card" style={{ background: '#fff8db', border: '1px solid #d97706', marginBottom: '1.5rem' }}>
-      <h3 style={{ marginTop: 0, color: '#7a5800' }}>Key created — copy it now</h3>
+      <h3 style={{ marginTop: 0, color: '#7a5800' }}>Key created — copy both secrets now</h3>
       <p style={{ margin: '0 0 .75rem' }}>
-        This is the only time the full secret is displayed. Store it somewhere safe and share it with
-        the integrator over a secure channel.
+        This is the only time the full secrets are displayed. Store them in a secret manager and
+        share with the integrator over a secure channel.
       </p>
+      <SecretBlock label="API key (bearer)" value={secret} copied={copiedField === 'k'} onCopy={() => copy('k', secret)} />
+      {signingSecret && (
+        <SecretBlock
+          label="HMAC signing secret"
+          value={signingSecret}
+          copied={copiedField === 's'}
+          onCopy={() => copy('s', signingSecret)}
+        />
+      )}
+      <p style={{ margin: '.75rem 0 0', fontSize: '.85rem', color: '#7a5800' }}>
+        Key: <strong>{apiKey.name}</strong> · Prefix: <code>{apiKey.prefix}</code> · Scopes:{' '}
+        {apiKey.scopes.join(', ')}
+      </p>
+      <button className="btn secondary" style={{ marginTop: '.75rem' }} onClick={onDismiss}>
+        I've copied them
+      </button>
+    </div>
+  );
+}
+
+function SecretBlock({ label, value, copied, onCopy }: { label: string; value: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <div style={{ marginBottom: '.5rem' }}>
+      <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#7a5800', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+        {label}
+      </div>
       <div
         style={{
           display: 'flex',
           gap: '.5rem',
           background: '#0f1419',
           color: '#e2e8f0',
-          padding: '.75rem',
+          padding: '.6rem .75rem',
           borderRadius: 6,
           fontFamily: 'monospace',
-          fontSize: '.95rem',
+          fontSize: '.85rem',
           alignItems: 'center',
         }}
       >
-        <code style={{ flex: 1, overflowX: 'auto', whiteSpace: 'nowrap' }}>{secret}</code>
+        <code style={{ flex: 1, overflowX: 'auto', whiteSpace: 'nowrap' }}>{value}</code>
         <button
           className="btn"
-          style={{ padding: '.3rem .7rem', fontSize: '.85rem' }}
-          onClick={() => {
-            void navigator.clipboard.writeText(secret);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
+          style={{ padding: '.3rem .7rem', fontSize: '.8rem' }}
+          onClick={onCopy}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <p style={{ margin: '.75rem 0 0', fontSize: '.85rem', color: '#7a5800' }}>
-        Key: <strong>{apiKey.name}</strong> · Prefix: <code>{apiKey.prefix}</code> · Scopes:{' '}
-        {apiKey.scopes.join(', ')}
-      </p>
-      <button className="btn secondary" style={{ marginTop: '.75rem' }} onClick={onDismiss}>
-        I've copied the key
-      </button>
     </div>
   );
 }

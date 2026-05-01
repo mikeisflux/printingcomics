@@ -41,6 +41,12 @@ enum PartnerStatus {
   ARCHIVED
 }
 
+enum PartnerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -58,13 +64,14 @@ model User {
   partner   Partner? @relation("PartnerMembers", fields: [partnerId], references: [id])
   partnerId String?
 
-  addresses       Address[]
-  orders          Order[]
-  carts           Cart[]
-  mediaUploads    MediaFile[]
-  passwordResets  PasswordReset[]
-  apiKeysCreated  ApiKey[]  @relation("ApiKeyCreator")
-  partnersCreated Partner[] @relation("PartnerCreator")
+  addresses              Address[]
+  orders                 Order[]
+  carts                  Cart[]
+  mediaUploads           MediaFile[]
+  passwordResets         PasswordReset[]
+  apiKeysCreated         ApiKey[]             @relation("ApiKeyCreator")
+  partnersCreated        Partner[]            @relation("PartnerCreator")
+  applicationsReviewed   PartnerApplication[] @relation("ApplicationReviewer")
 
   @@index([partnerId])
 }
@@ -368,6 +375,13 @@ model ApiKey {
   partner     Partner?  @relation(fields: [partnerId], references: [id])
   partnerId   String?
 
+  // HMAC signing secret paired with this key. Stored AES-GCM encrypted; the
+  // plaintext is only ever returned at mint time (and can be rotated). The
+  // integrator uses it to sign request bodies with X-PC-Request-Signature
+  // when `requireRequestSigning` is on, the server rejects unsigned writes.
+  signingSecretEncrypted String?
+  requireRequestSigning  Boolean   @default(false)
+
   orders      Order[]
 
   @@index([keyHash])
@@ -413,6 +427,7 @@ model Partner {
   members           User[]                   @relation("PartnerMembers")
   webhookDeliveries PartnerWebhookDelivery[]
   events            PartnerEvent[]
+  applications      PartnerApplication[]
 
   @@index([status])
   @@index([platform])
@@ -458,6 +473,34 @@ model PartnerEvent {
 
   @@index([partnerId])
   @@index([createdAt])
+}
+
+// Inbound self-service requests submitted from /developers. Reviewed by an
+// admin; approval mints a Partner + first API key and emails the requester.
+model PartnerApplication {
+  id                     String                   @id @default(cuid())
+  name                   String                   // partner / project / campaign name
+  contactName            String
+  contactEmail           String
+  platform               String?
+  website                String?
+  scopes                 String[]                 @default([])
+  estimatedMonthlyOrders Int?
+  message                String?
+  status                 PartnerApplicationStatus @default(PENDING)
+  reviewer               User?                    @relation("ApplicationReviewer", fields: [reviewerId], references: [id])
+  reviewerId             String?
+  reviewNotes            String?
+  partner                Partner?                 @relation(fields: [partnerId], references: [id])
+  partnerId              String?
+  ipAddress              String?
+  userAgent              String?
+  createdAt              DateTime                 @default(now())
+  reviewedAt             DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([contactEmail])
 }
 
 // Append-only log of order status / payment / tracking changes. Lets the
