@@ -18,6 +18,7 @@ import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
+import { createPaypalApprovalForOrder } from '../../lib/payments/paypal/approval-for-order.js';
 
 const router = Router();
 
@@ -53,6 +54,22 @@ const itemSchema = z.object({
   files: z.array(itemFileSchema).max(20).optional(),
 });
 
+// A project the partner has on their platform. Either pass `id` (one we
+// previously returned) or `externalProjectId` (theirs) — we upsert by the
+// latter under the calling partner.
+const projectRefSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    externalProjectId: z.string().min(1).max(120).optional(),
+    title: z.string().max(200).optional(),
+    url: z.string().url().optional(),
+    creatorName: z.string().max(120).optional(),
+    creatorEmail: z.string().email().optional(),
+  })
+  .refine((p) => p.id || p.externalProjectId, {
+    message: 'project requires id or externalProjectId',
+  });
+
 const createSchema = z.object({
   externalRef: z.string().min(1).max(120).optional(),
   email: z.string().email(),
@@ -64,11 +81,71 @@ const createSchema = z.object({
   couponCode: z.string().optional(),
   notes: z.string().max(2000).optional(),
   markAsPaid: z.boolean().optional().default(false),
+  // The campaign this print run is for. Optional for backwards-compat with
+  // standalone keys, but partner-attached keys are strongly encouraged to
+  // include it so the order rolls up under the right creator's project.
+  project: projectRefSchema.optional(),
+  // Free-form shorthand: { project: { externalProjectId: 'kickstarter-…' } }.
+  // Or even simpler — just `projectId` as a string, treated as externalProjectId.
+  projectId: z.string().min(1).max(120).optional(),
+  // When true (default) and the order is unpaid, auto-create a PayPal
+  // approval link in the response so the partner can hand it to the creator.
+  // Set false if you'd rather call POST /orders/:id/payment-link explicitly.
+  generatePaymentLink: z.boolean().optional().default(true),
 });
 
 router.post('/', requireApiKey('orders:write'), async (req, res) => {
   const data = createSchema.parse(req.body);
   const apiKeyId = req.apiKey!.id;
+  const partnerId = req.apiKey!.partnerId ?? null;
+
+  // ---- Resolve / upsert the project (if any) -------------------------------
+  // Three input shapes are accepted:
+  //   project: { id }                                — direct lookup
+  //   project: { externalProjectId, title?, ... }    — upsert under partner
+  //   projectId: 'kickstarter-…'                     — shorthand for externalProjectId
+  let projectId: string | null = null;
+  const projectInput = data.project ?? (data.projectId ? { externalProjectId: data.projectId } : null);
+  if (projectInput) {
+    if (!partnerId) {
+      throw new HttpError(
+        400,
+        'A project can only be associated with orders submitted by a partner-attached key.',
+      );
+    }
+    if (projectInput.id) {
+      const existing = await prisma.partnerProject.findFirst({
+        where: { id: projectInput.id, partnerId },
+      });
+      if (!existing) throw new HttpError(404, `Project ${projectInput.id} not found for this partner`);
+      projectId = existing.id;
+    } else if (projectInput.externalProjectId) {
+      const upserted = await prisma.partnerProject.upsert({
+        where: {
+          partnerId_externalProjectId: {
+            partnerId,
+            externalProjectId: projectInput.externalProjectId,
+          },
+        },
+        create: {
+          partnerId,
+          externalProjectId: projectInput.externalProjectId,
+          title: projectInput.title ?? projectInput.externalProjectId,
+          url: projectInput.url,
+          creatorName: projectInput.creatorName,
+          creatorEmail: projectInput.creatorEmail?.toLowerCase(),
+        },
+        update: {
+          // Only fill in fields the partner sent — never blank existing data.
+          title: projectInput.title ?? undefined,
+          url: projectInput.url ?? undefined,
+          creatorName: projectInput.creatorName ?? undefined,
+          creatorEmail: projectInput.creatorEmail?.toLowerCase() ?? undefined,
+        },
+      });
+      projectId = upserted.id;
+    }
+  }
 
   // Idempotency check — same (apiKey, externalRef) returns the prior order.
   if (data.externalRef) {
@@ -225,7 +302,8 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       notes: data.notes,
       source: 'api',
       apiKeyId,
-      partnerId: req.apiKey!.partnerId ?? null,
+      partnerId,
+      projectId,
       externalRef: data.externalRef ?? null,
       items: {
         create: resolved.map((r) => ({
@@ -273,27 +351,76 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     });
   }
 
+  // ---- PayPal approval link (default: auto-mint when not pre-paid) ----
+  let paymentLink:
+    | { provider: 'paypal'; approvalUrl: string; expiresAt: string; amountCents: number }
+    | null = null;
+  if (!data.markAsPaid && data.generatePaymentLink !== false && totalCents > 0) {
+    try {
+      const r = await createPaypalApprovalForOrder({
+        orderId: order.id,
+        description: `Printing Comics order ${order.number}`,
+      });
+      paymentLink = {
+        provider: 'paypal',
+        approvalUrl: r.approveUrl,
+        expiresAt: r.expiresAt.toISOString(),
+        amountCents: r.amountCents,
+      };
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId: order.id,
+          kind: 'payment',
+          message: `Payment approval link generated for partner`,
+          actorName: `api:${req.apiKey!.prefix}`,
+        },
+      });
+    } catch (e: any) {
+      // Failing to mint a PayPal link doesn't kill the order — partner can
+      // retry via POST /orders/:id/payment-link or pay out-of-band.
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId: order.id,
+          kind: 'payment',
+          message: `Payment link generation failed: ${e?.message ?? 'unknown'}`,
+          actorName: `api:${req.apiKey!.prefix}`,
+        },
+      });
+    }
+  }
+
   // Fire-and-forget webhook delivery to the partner. Failures are persisted
   // to PartnerWebhookDelivery so the admin can replay them — they do not
   // fail the order creation.
-  if (req.apiKey!.partnerId) {
+  if (partnerId) {
     void dispatchPartnerWebhook({
-      partnerId: req.apiKey!.partnerId,
+      partnerId,
       event: 'order.created',
       orderId: order.id,
       payload: serializeOrder(order),
     }).catch(() => undefined);
     if (data.markAsPaid) {
       void dispatchPartnerWebhook({
-        partnerId: req.apiKey!.partnerId,
+        partnerId,
         event: 'order.paid',
         orderId: order.id,
         payload: serializeOrder(order),
       }).catch(() => undefined);
+    } else if (paymentLink) {
+      void dispatchPartnerWebhook({
+        partnerId,
+        event: 'order.payment_link_created',
+        orderId: order.id,
+        payload: { ...serializeOrder(order), paymentLink },
+      }).catch(() => undefined);
     }
   }
 
-  res.status(201).json({ order: serializeOrder(order), idempotent: false });
+  res.status(201).json({
+    order: serializeOrder(order),
+    payment: paymentLink ?? (data.markAsPaid ? { provider: 'manual', status: 'paid' } : null),
+    idempotent: false,
+  });
 });
 
 // ---- Read ----
@@ -359,6 +486,194 @@ router.post('/:idOrNumber/cancel', requireApiKey('orders:write'), async (req, re
   res.json({ order: serializeOrder(updated) });
 });
 
+// ---- Payment ----
+
+// Look up the current payment status for an order. Returns:
+//   { status: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded',
+//     amountCents, provider, paidAt, latestApprovalUrl? }
+router.get('/:idOrNumber/payment', requireApiKey('payments:read', 'orders:read'), async (req, res) => {
+  const order = await loadApiOrder(String(req.params.idOrNumber), req.apiKey!.id);
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  const payments = await prisma.payment.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: 'desc' },
+  });
+  const captured = payments.find((p) => p.status === 'CAPTURED');
+  const pending = payments.find((p) => p.status === 'PENDING' && p.provider === 'paypal');
+
+  let status: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded';
+  if (order.paymentStatus === 'CAPTURED') status = 'paid';
+  else if (order.paymentStatus === 'REFUNDED') status = 'refunded';
+  else if (order.paymentStatus === 'FAILED') status = 'failed';
+  else if (pending) status = 'pending';
+  else status = 'unpaid';
+
+  res.json({
+    payment: {
+      status,
+      amountCents: order.totalCents,
+      provider: captured?.provider ?? pending?.provider ?? null,
+      providerRef: captured?.providerRef ?? pending?.providerRef ?? null,
+      paidAt: captured ? captured.createdAt : null,
+      // pending PayPal payments still have a live approveUrl on PayPal's side
+      // — we don't store it, partners must mint a fresh one if their original
+      // expired (PayPal's approval URLs are good for ~3h)
+      hasPendingApproval: !!pending,
+    },
+  });
+});
+
+// (Re-)generate a PayPal approval URL for an unpaid order. Useful when the
+// original link expired or the partner declined to auto-generate at create
+// time (`generatePaymentLink: false`).
+const paymentLinkSchema = z
+  .object({
+    returnUrl: z.string().url().optional(),
+    cancelUrl: z.string().url().optional(),
+  })
+  .partial();
+
+router.post(
+  '/:idOrNumber/payment-link',
+  requireApiKey('payments:write', 'orders:write'),
+  async (req, res) => {
+    const parsed = paymentLinkSchema.safeParse(req.body ?? {});
+    const opts = parsed.success ? parsed.data : {};
+    const order = await loadApiOrder(String(req.params.idOrNumber), req.apiKey!.id);
+    if (!order) throw new HttpError(404, 'Order not found');
+    if (order.paymentStatus === 'CAPTURED') {
+      throw new HttpError(409, 'Order is already paid');
+    }
+    if (order.totalCents <= 0) {
+      throw new HttpError(400, 'Order has zero total — nothing to charge');
+    }
+
+    const r = await createPaypalApprovalForOrder({
+      orderId: order.id,
+      description: `Printing Comics order ${order.number}`,
+      returnUrl: opts.returnUrl,
+      cancelUrl: opts.cancelUrl,
+    });
+
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId: order.id,
+        kind: 'payment',
+        message: 'Fresh PayPal approval link generated',
+        actorName: `api:${req.apiKey!.prefix}`,
+      },
+    });
+
+    if (req.apiKey!.partnerId) {
+      void dispatchPartnerWebhook({
+        partnerId: req.apiKey!.partnerId,
+        event: 'order.payment_link_created',
+        orderId: order.id,
+        payload: {
+          orderId: order.id,
+          number: order.number,
+          paymentLink: {
+            provider: 'paypal',
+            approvalUrl: r.approveUrl,
+            expiresAt: r.expiresAt.toISOString(),
+            amountCents: r.amountCents,
+          },
+        },
+      }).catch(() => undefined);
+    }
+
+    res.status(201).json({
+      payment: {
+        provider: 'paypal',
+        approvalUrl: r.approveUrl,
+        expiresAt: r.expiresAt.toISOString(),
+        amountCents: r.amountCents,
+      },
+    });
+  },
+);
+
+// Mark an order paid out-of-band — e.g. partner already collected funds via
+// their platform's billing and is asserting they paid us via wire/ACH.
+// We DON'T charge anything here; this is just a state assertion. Admin can
+// undo via the admin UI.
+const markPaidSchema = z.object({
+  reference: z.string().max(120).optional(),
+  amountCents: z.number().int().positive().optional(),
+  note: z.string().max(500).optional(),
+});
+
+router.post(
+  '/:idOrNumber/mark-paid',
+  requireApiKey('payments:write', 'orders:write'),
+  async (req, res) => {
+    const data = markPaidSchema.parse(req.body ?? {});
+    const order = await loadApiOrder(String(req.params.idOrNumber), req.apiKey!.id);
+    if (!order) throw new HttpError(404, 'Order not found');
+    if (order.paymentStatus === 'CAPTURED') {
+      return res.json({ payment: { status: 'paid', alreadyPaid: true } });
+    }
+
+    const amount = data.amountCents ?? order.totalCents;
+
+    await prisma.$transaction([
+      prisma.order.update({
+        where: { id: order.id },
+        data: { paymentStatus: 'CAPTURED', status: 'PAID' },
+      }),
+      prisma.payment.create({
+        data: {
+          orderId: order.id,
+          provider: 'manual',
+          providerRef: data.reference ?? null,
+          amountCents: amount,
+          status: 'CAPTURED',
+        },
+      }),
+      prisma.orderStatusEvent.create({
+        data: {
+          orderId: order.id,
+          kind: 'payment',
+          fromStatus: order.paymentStatus,
+          toStatus: 'CAPTURED',
+          message: data.note
+            ? `Marked paid out-of-band (${data.reference ?? 'no ref'}): ${data.note}`
+            : `Marked paid out-of-band${data.reference ? ` (ref: ${data.reference})` : ''}`,
+          actorName: `api:${req.apiKey!.prefix}`,
+        },
+      }),
+    ]);
+
+    if (req.apiKey!.partnerId) {
+      const refreshed = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: {
+          id: true, number: true, status: true, paymentStatus: true,
+          externalRef: true, totalCents: true, projectId: true,
+        },
+      });
+      if (refreshed) {
+        void dispatchPartnerWebhook({
+          partnerId: req.apiKey!.partnerId,
+          event: 'order.paid',
+          orderId: refreshed.id,
+          payload: refreshed,
+        }).catch(() => undefined);
+      }
+    }
+
+    res.json({
+      payment: {
+        status: 'paid',
+        provider: 'manual',
+        amountCents: amount,
+        reference: data.reference ?? null,
+      },
+    });
+  },
+);
+
 // ---- Helpers ----
 
 async function loadApiOrder(idOrNumber: string, apiKeyId: string) {
@@ -376,6 +691,7 @@ function serializeOrder(o: any) {
     id: o.id,
     number: o.number,
     externalRef: o.externalRef,
+    projectId: o.projectId ?? null,
     status: o.status,
     paymentStatus: o.paymentStatus,
     email: o.email,

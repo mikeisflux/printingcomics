@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../db.js';
 import { getPayPalAccessToken, getPayPalConfig } from '../../lib/payments/paypal/config.js';
+import { dispatchPartnerWebhook } from '../../lib/partners.js';
 
 const router = Router();
 
@@ -82,7 +83,7 @@ router.post('/', async (req, res) => {
     case 'PAYMENT.CAPTURE.COMPLETED': {
       // Defensive: the synchronous capture flow already marked PAID. Re-mark
       // only if still PENDING (idempotent CAS).
-      await prisma.order.updateMany({
+      const cas = await prisma.order.updateMany({
         where: { id: payment.orderId, paymentStatus: 'PENDING' },
         data: { paymentStatus: 'CAPTURED', status: 'PAID' },
       });
@@ -97,6 +98,24 @@ router.post('/', async (req, res) => {
           message: `PayPal webhook confirmed capture ${captureId}`,
         },
       });
+      // First-mover wins → fire partner webhook only if WE flipped the order.
+      if (cas.count > 0 && payment.order.partnerId) {
+        const refreshed = await prisma.order.findUnique({
+          where: { id: payment.orderId },
+          select: {
+            id: true, number: true, status: true, paymentStatus: true,
+            externalRef: true, totalCents: true, projectId: true,
+          },
+        });
+        if (refreshed) {
+          void dispatchPartnerWebhook({
+            partnerId: payment.order.partnerId,
+            event: 'order.paid',
+            orderId: refreshed.id,
+            payload: refreshed,
+          }).catch(() => undefined);
+        }
+      }
       break;
     }
     case 'PAYMENT.CAPTURE.DENIED':

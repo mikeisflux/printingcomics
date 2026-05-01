@@ -56,6 +56,14 @@ interface OrderFull {
   user?: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
   apiKey?: { id: string; name: string; prefix: string } | null;
   partner?: { id: string; slug: string; name: string; color?: string | null; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' } | null;
+  project?: {
+    id: string;
+    externalProjectId: string;
+    title: string;
+    creatorName: string | null;
+    creatorEmail: string | null;
+    status: string;
+  } | null;
   source?: string | null;
   externalRef?: string | null;
   createdAt: string;
@@ -163,6 +171,20 @@ export function AdminOrderDetail() {
             {order.externalRef && (
               <>
                 {' · '}externalRef <code>{order.externalRef}</code>
+              </>
+            )}
+            {order.project && (
+              <>
+                {' · '}project{' '}
+                {order.partner ? (
+                  <Link to={`/admin/partners/${order.partner.id}`}>{order.project.title}</Link>
+                ) : (
+                  <span>{order.project.title}</span>
+                )}{' '}
+                <code style={{ fontSize: '.75rem' }}>{order.project.externalProjectId}</code>
+                {order.project.creatorName && (
+                  <span> · creator {order.project.creatorName}</span>
+                )}
               </>
             )}
           </div>

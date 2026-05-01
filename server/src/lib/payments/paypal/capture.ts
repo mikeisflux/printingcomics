@@ -1,6 +1,7 @@
 import { prisma } from '../../../db.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 import { sendOrderConfirmationEmail } from '../../order-emails.js';
+import { dispatchPartnerWebhook } from '../../partners.js';
 
 export interface CaptureResult {
   orderId: string;
@@ -80,6 +81,26 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
       });
       // Fire confirmation email. Failures are logged as events by the lib.
       void sendOrderConfirmationEmail(payment.orderId);
+      // If this order was submitted by a partner, fire order.paid so the
+      // partner's system learns about the capture without polling.
+      if (payment.order.partnerId) {
+        const refreshed = await prisma.order.findUnique({
+          where: { id: payment.orderId },
+          select: {
+            id: true, number: true, status: true, paymentStatus: true,
+            externalRef: true, totalCents: true, projectId: true,
+            shippingMethod: true, trackingNumber: true,
+          },
+        });
+        if (refreshed) {
+          void dispatchPartnerWebhook({
+            partnerId: payment.order.partnerId,
+            event: 'order.paid',
+            orderId: refreshed.id,
+            payload: refreshed,
+          }).catch(() => undefined);
+        }
+      }
     }
   } else {
     await prisma.payment.update({

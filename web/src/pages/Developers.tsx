@@ -53,10 +53,18 @@ export function Developers() {
               <li>Full read access to the catalog (products, variants, configurator options, pricing rules)</li>
               <li>Server-side <strong>price quotes</strong> that match the storefront to the cent</li>
               <li>Live <strong>shipping rates</strong> by destination country</li>
+              <li><strong>Project tracking</strong> — group orders by the campaign / creator that submitted them</li>
               <li><strong>Print file uploads</strong> (covers, interior PDFs, dust jackets, etc.) attached per line item</li>
               <li><strong>Order submission</strong> with idempotency by your platform's reference id</li>
+              <li><strong>Hosted payment</strong> — we auto-generate a PayPal approval URL the creator pays through</li>
               <li>Order status & tracking lookup with outbound webhooks</li>
             </ul>
+            <p>
+              Typical end-to-end flow: a creator on your platform finishes their campaign → your
+              backend POSTs an order to us with a <code>projectId</code> tying it to the campaign
+              → we return a PayPal approval URL → you forward it to the creator → they pay → we
+              print and ship to the creator's address → they fulfill to backers.
+            </p>
           </Section>
 
           <Section id="request-access" title="Request access">
@@ -101,8 +109,12 @@ export function Developers() {
                 <tr><td><code>catalog:read</code></td><td>Read products, variants, options, categories</td></tr>
                 <tr><td><code>pricing:read</code></td><td>Quote prices for a basket</td></tr>
                 <tr><td><code>shipping:read</code></td><td>List shipping rates and zones</td></tr>
+                <tr><td><code>projects:read</code></td><td>List and inspect your projects (creators' campaigns)</td></tr>
+                <tr><td><code>projects:write</code></td><td>Create / upsert / update projects</td></tr>
                 <tr><td><code>orders:read</code></td><td>Look up orders submitted with this key</td></tr>
                 <tr><td><code>orders:write</code></td><td>Create and cancel orders</td></tr>
+                <tr><td><code>payments:read</code></td><td>Look up payment status for an order</td></tr>
+                <tr><td><code>payments:write</code></td><td>Generate payment approval links + mark orders paid out-of-band</td></tr>
                 <tr><td><code>uploads:read</code></td><td>List and inspect print files you've uploaded</td></tr>
                 <tr><td><code>uploads:write</code></td><td>Upload, attach, and delete print files</td></tr>
               </tbody>
@@ -265,24 +277,97 @@ Content-Type: application/json
             <p>List all configured shipping zones with their countries and rates.</p>
           </Section>
 
+          <Section id="projects" title="Projects (creator campaigns)">
+            <p>
+              Each platform has many creators, each running their own campaign. Tag every order
+              with a <strong>project</strong> — the campaign id from your side — so we can group
+              orders, roll up paid revenue per creator, and route status notifications to the
+              right contact.
+            </p>
+            <p>
+              You usually don't have to call <code>POST /projects</code> manually: passing{' '}
+              <code>projectId</code> on an order auto-creates the project under your partner
+              record. Use the dedicated endpoints when you want to pre-register a campaign,
+              update creator contact info, or mark a campaign complete.
+            </p>
+
+            <Endpoint method="GET" path="/projects" scope="projects:read" />
+            <p>
+              List your projects, newest-updated first. Optional filters: <code>?status=active</code>{' '}
+              (or <code>completed</code>, <code>cancelled</code>), <code>?creatorEmail=jane@…</code>,{' '}
+              <code>?limit=200</code>.
+            </p>
+
+            <Endpoint method="POST" path="/projects" scope="projects:write" />
+            <p>
+              Create or upsert a project keyed by <code>(partner, externalProjectId)</code>.
+              Re-posting the same <code>externalProjectId</code> updates the existing row.
+            </p>
+            <Code>{`POST /api/v1/projects
+{
+  "externalProjectId": "kickstarter-acme-issue-1",
+  "title": "Acme Comics #1",
+  "url": "https://www.kickstarter.com/projects/acme/issue-1",
+  "creatorName": "Jane Doe",
+  "creatorEmail": "jane@acmecomics.com",
+  "status": "active",
+  "metadata": {
+    "campaignClosesAt": "2026-06-01T00:00:00Z",
+    "backerCount": 1247
+  }
+}
+# →
+# {
+#   "project": {
+#     "id": "cmproj1abcde...",
+#     "externalProjectId": "kickstarter-acme-issue-1",
+#     "title": "Acme Comics #1",
+#     "creatorName": "Jane Doe",
+#     "creatorEmail": "jane@acmecomics.com",
+#     "status": "active",
+#     ...
+#   }
+# }`}</Code>
+
+            <Endpoint method="GET" path="/projects/:idOrExternalId" scope="projects:read" />
+            <p>
+              Look up by either our id or the <code>externalProjectId</code> you supplied. The
+              response includes a 50-order roll-up plus billed/paid totals so you can wire it
+              straight into a campaign dashboard.
+            </p>
+
+            <Endpoint method="PATCH" path="/projects/:idOrExternalId" scope="projects:write" />
+            <p>
+              Update title, URL, creator info, status (active / completed / cancelled), notes,
+              or free-form metadata.
+            </p>
+          </Section>
+
           <Section id="orders" title="Orders">
             <Endpoint method="POST" path="/orders" scope="orders:write" />
             <p>
-              Submit a print order. The order is created in <code>PENDING</code> status. Pass{' '}
-              <code>markAsPaid: true</code> if your platform has already collected payment (the
-              standard crowdfunding case) — we'll mark the order as paid on our side and queue
-              it for production. Otherwise the order waits to be invoiced.
+              Submit a print order for a creator's campaign. The standard crowdfunding flow:
             </p>
+            <ol>
+              <li>You POST the order with <code>projectId</code> tying it to the campaign and{' '}
+                <code>shippingAddress</code> set to the creator's fulfillment address.</li>
+              <li>We respond with the order details <strong>and a PayPal approval URL</strong> in{' '}
+                <code>payment.approvalUrl</code>.</li>
+              <li>You forward the URL to the creator — they pay PayPal directly, no
+                payment data ever touches your servers.</li>
+              <li>We capture, fire <code>order.paid</code> webhook, and queue the print run.</li>
+            </ol>
             <Code>{`POST /api/v1/orders
 Content-Type: application/json
 Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
 
 {
   "externalRef": "kickstarter-pledge-9182374",
-  "email": "backer@example.com",
-  "customerName": "Pat Backer",
+  "projectId": "kickstarter-acme-issue-1",
+  "email": "jane@acmecomics.com",
+  "customerName": "Jane Doe",
   "shippingAddress": {
-    "firstName": "Pat", "lastName": "Backer",
+    "firstName": "Jane", "lastName": "Doe",
     "line1": "123 Main St",
     "city": "San Francisco", "region": "CA",
     "postalCode": "94110", "country": "US"
@@ -290,20 +375,49 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
   "items": [
     {
       "productSlug": "standard-comic-book",
-      "quantity": 250,
+      "quantity": 1500,
       "options": {
         "interior_pages": 32,
         "interior_color": "Full Color",
         "interior_paper": "80lb Gloss",
         "cover_paper": "100lb Gloss"
-      }
+      },
+      "files": [
+        { "uploadId": "cmf12abcde...", "purpose": "cover" },
+        { "uploadId": "cmf12fghij...", "purpose": "interior" }
+      ]
     }
   ],
   "shippingRateId": "shp_…",
-  "couponCode": "LAUNCH10",
-  "notes": "Fulfill after Kickstarter campaign closes 2026-05-15.",
-  "markAsPaid": true
-}`}</Code>
+  "notes": "Print run for KS campaign closing 2026-05-15."
+}
+# →
+# {
+#   "order": {
+#     "id": "cmord1abcde...",
+#     "number": "PCAPI-LK7Z2X-3491",
+#     "externalRef": "kickstarter-pledge-9182374",
+#     "projectId": "cmproj1abcde...",
+#     "status": "PENDING",
+#     "paymentStatus": "PENDING",
+#     "totalCents": 487500,
+#     "items": [ { ... "files": [ ... ] } ]
+#   },
+#   "payment": {
+#     "provider": "paypal",
+#     "approvalUrl": "https://www.paypal.com/checkoutnow?token=...",
+#     "expiresAt": "2026-05-01T15:00:00.000Z",
+#     "amountCents": 487500
+#   },
+#   "idempotent": false
+# }`}</Code>
+            <p>
+              <strong>Set <code>generatePaymentLink: false</code></strong> if you'd rather mint
+              the approval URL on demand (see <a href="#payments">Payments</a>) — useful when the
+              creator isn't ready to pay yet. <strong>Set <code>markAsPaid: true</code></strong>{' '}
+              when your platform has already collected funds and you'll settle with us via wire
+              or invoice — no PayPal interaction happens, the order is just flagged paid.
+            </p>
             <p>
               Re-sending the request with the same <code>externalRef</code> is safe — you'll get
               the original order back with <code>idempotent: true</code>.
@@ -317,6 +431,138 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
 
             <Endpoint method="POST" path="/orders/:idOrNumber/cancel" scope="orders:write" />
             <p>Cancel an order that hasn't shipped yet. Optional body: <code>{`{ "reason": "Backer refunded" }`}</code>.</p>
+          </Section>
+
+          <Section id="payments" title="Payments">
+            <p>
+              Print runs are paid via <strong>PayPal-hosted checkout</strong>. We never see card
+              data — the creator clicks an approval URL we mint, completes payment on PayPal, and
+              we capture the funds when they return. PayPal supports both PayPal accounts and
+              guest credit-card payments, so the creator doesn't need a PayPal account to pay.
+            </p>
+            <p>
+              Two ways to settle a print order:
+            </p>
+            <ul>
+              <li>
+                <strong>Hosted PayPal checkout</strong> (default) — the order response carries{' '}
+                <code>payment.approvalUrl</code>; forward it to whoever pays. Approval URLs are
+                live for ~3&nbsp;hours; mint a fresh one with{' '}
+                <code>POST /orders/:idOrNumber/payment-link</code> if it expires.
+              </li>
+              <li>
+                <strong>Out-of-band</strong> — your platform already collected funds (the
+                "drop-ship per backer" flow, or you wire / ACH to us). Pass{' '}
+                <code>markAsPaid: true</code> at order create, or call{' '}
+                <code>POST /orders/:idOrNumber/mark-paid</code> later with a reference.
+              </li>
+            </ul>
+
+            <Endpoint method="GET" path="/orders/:idOrNumber/payment" scope="payments:read" />
+            <p>Current payment status for an order:</p>
+            <Code>{`GET /api/v1/orders/PCAPI-LK7Z2X-3491/payment
+# →
+# {
+#   "payment": {
+#     "status": "pending",          // unpaid | pending | paid | failed | refunded
+#     "amountCents": 487500,
+#     "provider": "paypal",         // paypal | manual | null
+#     "providerRef": "8VR58235AB",  // PayPal order id while pending, capture id once paid
+#     "paidAt": null,
+#     "hasPendingApproval": true
+#   }
+# }`}</Code>
+
+            <Endpoint method="POST" path="/orders/:idOrNumber/payment-link" scope="payments:write" />
+            <p>
+              Mint a fresh PayPal approval URL — use this when the original{' '}
+              <code>payment.approvalUrl</code> from order creation has expired or you opted out
+              of auto-generating one. Optional body lets you override the post-payment redirect:
+            </p>
+            <Code>{`POST /api/v1/orders/PCAPI-LK7Z2X-3491/payment-link
+{
+  "returnUrl": "https://your-platform.com/campaigns/issue-1/paid",
+  "cancelUrl": "https://your-platform.com/campaigns/issue-1/payment"
+}
+# →
+# {
+#   "payment": {
+#     "provider": "paypal",
+#     "approvalUrl": "https://www.paypal.com/checkoutnow?token=...",
+#     "expiresAt": "2026-05-01T18:00:00.000Z",
+#     "amountCents": 487500
+#   }
+# }`}</Code>
+            <p>
+              Generating a new link invalidates any prior pending PayPal order on the same
+              Printing Comics order — only the latest URL works. The webhook event{' '}
+              <code>order.payment_link_created</code> fires when a link is minted (auto or manual).
+            </p>
+
+            <Endpoint method="POST" path="/orders/:idOrNumber/mark-paid" scope="payments:write" />
+            <p>
+              Assert the order has been paid out-of-band — wire, ACH, internal billing, etc. We
+              don't charge anything; this just flips the order to <code>PAID</code> /{' '}
+              <code>CAPTURED</code> and fires <code>order.paid</code>. The optional{' '}
+              <code>reference</code> sticks on the Payment row so you can reconcile later.
+            </p>
+            <Code>{`POST /api/v1/orders/PCAPI-LK7Z2X-3491/mark-paid
+{
+  "reference": "wire-2026-04-29-acme",
+  "amountCents": 487500,
+  "note": "Settled via the platform's monthly invoice run"
+}
+# →
+# {
+#   "payment": {
+#     "status": "paid",
+#     "provider": "manual",
+#     "amountCents": 487500,
+#     "reference": "wire-2026-04-29-acme"
+#   }
+# }`}</Code>
+
+            <h3>Payment lifecycle events</h3>
+            <p>
+              Listen for these on your <a href="#webhooks">webhook</a> endpoint:
+            </p>
+            <table className="api-table">
+              <thead><tr><th>Event</th><th>When</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>order.payment_link_created</code></td>
+                  <td>Auto on order create (when not paid) and every <code>POST /payment-link</code></td>
+                </tr>
+                <tr>
+                  <td><code>order.paid</code></td>
+                  <td>PayPal capture completes <em>or</em> you call <code>/mark-paid</code></td>
+                </tr>
+                <tr>
+                  <td><code>order.in_production</code></td>
+                  <td>Admin moves the order to IN_PRODUCTION (we've started the press run)</td>
+                </tr>
+                <tr>
+                  <td><code>order.shipped</code></td>
+                  <td>Carrier label generated; <code>trackingNumber</code> on the payload</td>
+                </tr>
+                <tr>
+                  <td><code>order.delivered</code></td>
+                  <td>Carrier reports delivery</td>
+                </tr>
+                <tr>
+                  <td><code>order.refunded</code></td>
+                  <td>Admin issues a refund</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3>Refunds</h3>
+            <p>
+              Refunds are admin-issued — open a support request with the order number and the
+              amount. We refund through the same PayPal capture so the creator receives the funds
+              back to their original payment method, and fire <code>order.refunded</code> when
+              processed.
+            </p>
           </Section>
 
           <Section id="uploads" title="Uploads (print files)">
@@ -419,7 +665,8 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
               <thead><tr><th>Event</th><th>When</th></tr></thead>
               <tbody>
                 <tr><td><code>order.created</code></td><td>You POST <code>/orders</code> successfully</td></tr>
-                <tr><td><code>order.paid</code></td><td>Order moves to <code>PAID</code> (or you submitted with <code>markAsPaid:true</code>)</td></tr>
+                <tr><td><code>order.payment_link_created</code></td><td>A PayPal approval URL was minted (auto on create, or via <code>POST /payment-link</code>)</td></tr>
+                <tr><td><code>order.paid</code></td><td>PayPal capture completes, or <code>/mark-paid</code> called, or <code>markAsPaid:true</code> at create</td></tr>
                 <tr><td><code>order.in_production</code></td><td>We've handed it off to the press</td></tr>
                 <tr><td><code>order.shipped</code></td><td>Carrier label generated, tracking number attached</td></tr>
                 <tr><td><code>order.delivered</code></td><td>Carrier reports delivery</td></tr>
@@ -457,6 +704,7 @@ function verify(secret, signatureHeader, rawBody) {
                 <tr><td><code>id</code></td><td>string</td><td>Our internal id</td></tr>
                 <tr><td><code>number</code></td><td>string</td><td>Human-readable, e.g. <code>PCAPI-LK7Z2X-3491</code></td></tr>
                 <tr><td><code>externalRef</code></td><td>string?</td><td>The reference you supplied at create time</td></tr>
+                <tr><td><code>projectId</code></td><td>string?</td><td>Our internal project id, set when you submitted with <code>projectId</code></td></tr>
                 <tr><td><code>status</code></td><td>enum</td><td><code>PENDING | PAID | IN_PRODUCTION | SHIPPED | DELIVERED | CANCELLED | REFUNDED</code></td></tr>
                 <tr><td><code>paymentStatus</code></td><td>enum</td><td><code>PENDING | AUTHORIZED | CAPTURED | FAILED | REFUNDED</code></td></tr>
                 <tr><td><code>subtotalCents / shippingCents / taxCents / discountCents / totalCents</code></td><td>integer</td><td>All amounts in USD cents</td></tr>
@@ -573,13 +821,34 @@ async function uploadPrintFile(localPath, purpose) {
 const cover = await uploadPrintFile('./cover.pdf', 'cover');
 const interior = await uploadPrintFile('./interior.pdf', 'interior');
 
-// 4. Submit the order with the campaign pledge id as externalRef
-const { order } = await api('/orders', {
+// 4. Register the campaign as a project so paid revenue rolls up by creator
+//    (optional — passing projectId on the order auto-creates this anyway)
+await api('/projects', {
   method: 'POST',
   body: JSON.stringify({
-    externalRef: 'kickstarter-pledge-9182374',
-    email: 'backer@example.com',
-    shippingAddress: { /* … */ },
+    externalProjectId: 'kickstarter-acme-issue-1',
+    title: 'Acme Comics #1',
+    url: 'https://www.kickstarter.com/projects/acme/issue-1',
+    creatorName: 'Jane Doe',
+    creatorEmail: 'jane@acmecomics.com',
+  }),
+});
+
+// 5. Submit the print order. Ship to the CREATOR (they fulfill to backers).
+//    We default to generating a PayPal approval URL on the response.
+const { order, payment } = await api('/orders', {
+  method: 'POST',
+  body: JSON.stringify({
+    externalRef: 'kickstarter-acme-issue-1-printrun',
+    projectId: 'kickstarter-acme-issue-1',
+    email: 'jane@acmecomics.com',
+    customerName: 'Jane Doe',
+    shippingAddress: {
+      firstName: 'Jane', lastName: 'Doe',
+      line1: '123 Main St',
+      city: 'San Francisco', region: 'CA',
+      postalCode: '94110', country: 'US',
+    },
     items: quote.items.map(i => ({
       productSlug: i.productSlug,
       quantity: i.quantity,
@@ -590,10 +859,24 @@ const { order } = await api('/orders', {
       ],
     })),
     shippingRateId: quote.shippingOptions[0].id,
-    markAsPaid: true,
   }),
 });
-console.log('Submitted', order.number);`}</Code>
+
+// 6. Forward the approval URL to the creator. They pay PayPal directly; we
+//    capture and fire order.paid to your webhook when they return.
+console.log('Submitted', order.number, 'for', formatMoney(order.totalCents));
+console.log('Send to creator:', payment.approvalUrl);
+// expires in ~3 hours; if the creator misses it, mint a fresh one:
+//   await api(\`/orders/\${order.id}/payment-link\`, { method: 'POST' });
+
+// Alternative: if you've already collected funds on your platform's side,
+// skip PayPal entirely:
+//   body: { ..., generatePaymentLink: false, markAsPaid: true }
+// or assert payment after the fact:
+//   await api(\`/orders/\${order.id}/mark-paid\`, {
+//     method: 'POST',
+//     body: JSON.stringify({ reference: 'wire-2026-04-29' }),
+//   });`}</Code>
           </Section>
 
           <Section id="support" title="Support">
@@ -659,7 +942,9 @@ function Sidebar() {
     ['catalog', 'Catalog'],
     ['pricing', 'Pricing'],
     ['shipping', 'Shipping'],
+    ['projects', 'Projects'],
     ['orders', 'Orders'],
+    ['payments', 'Payments'],
     ['uploads', 'Uploads'],
     ['webhooks', 'Webhooks'],
     ['data-model', 'Data model'],

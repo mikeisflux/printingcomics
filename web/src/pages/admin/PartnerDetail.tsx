@@ -11,7 +11,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { StatusBadge } from '../Account';
 
-type Tab = 'overview' | 'api-keys' | 'orders' | 'team' | 'uploads' | 'webhooks' | 'activity';
+type Tab = 'overview' | 'api-keys' | 'projects' | 'orders' | 'team' | 'uploads' | 'webhooks' | 'activity';
 
 interface PartnerSummary {
   id: string;
@@ -202,7 +202,7 @@ export function AdminPartnerDetail() {
             padding: '0 .5rem',
           }}
         >
-          {(['overview', 'api-keys', 'orders', 'team', 'uploads', 'webhooks', 'activity'] as Tab[]).map((t) => (
+          {(['overview', 'api-keys', 'projects', 'orders', 'team', 'uploads', 'webhooks', 'activity'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -225,6 +225,7 @@ export function AdminPartnerDetail() {
 
       {tab === 'overview' && <OverviewTab data={data} onChanged={load} />}
       {tab === 'api-keys' && <ApiKeysTab partnerId={id} apiKeys={data.apiKeys} availableScopes={data.availableScopes} onChanged={load} />}
+      {tab === 'projects' && <ProjectsTab partnerId={id} />}
       {tab === 'orders' && <OrdersTab partnerId={id} />}
       {tab === 'team' && <TeamTab partnerId={id} members={data.members} onChanged={load} />}
       {tab === 'uploads' && <UploadsTab partnerId={id} />}
@@ -1368,6 +1369,383 @@ function DeliveryDetailModal({ partnerId, deliveryId, onClose }: { partnerId: st
         )}
       </div>
     </div>
+  );
+}
+
+// ---- Projects tab --------------------------------------------------------
+
+interface ProjectRow {
+  id: string;
+  externalProjectId: string;
+  title: string;
+  url: string | null;
+  creatorName: string | null;
+  creatorEmail: string | null;
+  status: 'active' | 'completed' | 'cancelled';
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  orderCount: number;
+  paidOrderCount: number;
+  totalCents: number;
+  paidCents: number;
+}
+
+interface ProjectDetailResponse {
+  project: ProjectRow;
+  orders: {
+    id: string;
+    number: string;
+    externalRef: string | null;
+    status: string;
+    paymentStatus: string;
+    totalCents: number;
+    trackingNumber: string | null;
+    shippingMethod: string | null;
+    createdAt: string;
+    apiKey: { id: string; prefix: string; name: string } | null;
+  }[];
+  totals: { totalOrders: number; totalCents: number; paidOrders: number; paidCents: number };
+}
+
+function ProjectsTab({ partnerId }: { partnerId: string }) {
+  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
+  const [opening, setOpening] = useState<string | null>(null);
+
+  const load = () => {
+    void api
+      .get<{ projects: ProjectRow[] }>(`/admin/partners/${partnerId}/projects`)
+      .then((r) => setProjects(r.projects));
+  };
+  useEffect(load, [partnerId]);
+
+  const visible = (projects ?? []).filter((p) => filter === 'all' || p.status === filter);
+
+  return (
+    <div>
+      <p className="muted" style={{ maxWidth: 720, marginTop: 0 }}>
+        Each creator's campaign on this partner is tracked as a project. Submitting an order via{' '}
+        <code>POST /api/v1/orders</code> with a <code>projectId</code> auto-creates the project
+        under this partner. Paid revenue rolls up here so you can see total dollars per
+        campaign at a glance.
+      </p>
+
+      <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap', marginBottom: '.75rem' }}>
+        {(['all', 'active', 'completed', 'cancelled'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              padding: '.35rem .8rem',
+              border: `1px solid ${filter === f ? 'var(--brand)' : 'var(--border)'}`,
+              background: filter === f ? 'var(--brand)' : 'transparent',
+              color: filter === f ? '#fff' : 'var(--ink)',
+              borderRadius: 4,
+              fontSize: '.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      <div className="admin-card" style={{ padding: 0 }}>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>External ID</th>
+              <th>Creator</th>
+              <th>Orders</th>
+              <th>Total billed</th>
+              <th>Paid</th>
+              <th>Status</th>
+              <th>Updated</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {projects === null && (
+              <tr>
+                <td colSpan={9}>Loading…</td>
+              </tr>
+            )}
+            {projects !== null && visible.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                  No projects yet. They appear automatically the first time a partner submits an
+                  order with a <code>projectId</code>.
+                </td>
+              </tr>
+            )}
+            {visible.map((p) => (
+              <tr key={p.id}>
+                <td>
+                  <div style={{ fontWeight: 600 }}>{p.title}</div>
+                  {p.url && (
+                    <a href={p.url} target="_blank" rel="noreferrer" style={{ fontSize: '.75rem' }}>
+                      {p.url}
+                    </a>
+                  )}
+                </td>
+                <td><code style={{ fontSize: '.8rem' }}>{p.externalProjectId}</code></td>
+                <td style={{ fontSize: '.85rem' }}>
+                  {p.creatorName ?? <span className="muted">—</span>}
+                  {p.creatorEmail && (
+                    <div style={{ color: 'var(--muted)' }}>{p.creatorEmail}</div>
+                  )}
+                </td>
+                <td>
+                  {p.orderCount}
+                  {p.paidOrderCount > 0 && (
+                    <span style={{ color: 'var(--muted)', fontSize: '.75rem' }}>
+                      {' '}({p.paidOrderCount} paid)
+                    </span>
+                  )}
+                </td>
+                <td>{formatMoney(p.totalCents)}</td>
+                <td>{formatMoney(p.paidCents)}</td>
+                <td>
+                  {p.status === 'active' && <span className="badge paid">Active</span>}
+                  {p.status === 'completed' && <span className="badge">Completed</span>}
+                  {p.status === 'cancelled' && <span className="badge cancelled">Cancelled</span>}
+                </td>
+                <td style={{ fontSize: '.85rem', color: 'var(--muted)' }}>
+                  {new Date(p.updatedAt).toLocaleDateString()}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  <button
+                    className="btn secondary"
+                    style={{ padding: '.3rem .6rem', fontSize: '.85rem' }}
+                    onClick={() => setOpening(p.id)}
+                  >
+                    Open
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {opening && (
+        <ProjectDetailModal
+          partnerId={partnerId}
+          projectId={opening}
+          onClose={() => setOpening(null)}
+          onChanged={() => {
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProjectDetailModal({
+  partnerId,
+  projectId,
+  onClose,
+  onChanged,
+}: {
+  partnerId: string;
+  projectId: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [data, setData] = useState<ProjectDetailResponse | null>(null);
+  const load = () => {
+    void api
+      .get<ProjectDetailResponse>(`/admin/partners/${partnerId}/projects/${projectId}`)
+      .then(setData);
+  };
+  useEffect(load, [partnerId, projectId]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="admin-card"
+        style={{ maxWidth: 880, width: '94%', maxHeight: '90vh', overflow: 'auto', margin: 0 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="spread" style={{ marginBottom: '.5rem' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>{data?.project.title ?? 'Loading…'}</h3>
+            {data && (
+              <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>
+                <code>{data.project.externalProjectId}</code>
+                {data.project.url && (
+                  <>
+                    {' · '}
+                    <a href={data.project.url} target="_blank" rel="noreferrer">
+                      {data.project.url}
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <button className="btn secondary" onClick={onClose} style={{ padding: '.3rem .6rem' }}>
+            Close
+          </button>
+        </div>
+
+        {!data ? (
+          <div>Loading…</div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', margin: '1rem 0' }}>
+              <Stat label="Orders" value={String(data.totals.totalOrders)} />
+              <Stat label="Paid orders" value={String(data.totals.paidOrders)} />
+              <Stat label="Total billed" value={formatMoney(data.totals.totalCents)} />
+              <Stat label="Paid revenue" value={formatMoney(data.totals.paidCents)} />
+            </div>
+
+            <ProjectEditForm
+              partnerId={partnerId}
+              project={data.project}
+              onSaved={() => {
+                load();
+                onChanged();
+              }}
+            />
+
+            <div className="admin-card" style={{ padding: 0, marginTop: '1rem' }}>
+              <div style={{ padding: '.75rem 1rem' }}>
+                <h4 style={{ margin: 0 }}>Orders ({data.orders.length})</h4>
+              </div>
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Number</th>
+                    <th>External ref</th>
+                    <th>Status</th>
+                    <th>Payment</th>
+                    <th>Total</th>
+                    <th>Tracking</th>
+                    <th>Placed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.orders.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '1rem', color: 'var(--muted)' }}>
+                        No orders for this project yet.
+                      </td>
+                    </tr>
+                  )}
+                  {data.orders.map((o) => (
+                    <tr key={o.id}>
+                      <td>
+                        <Link to={`/admin/orders/${o.id}`}>{o.number}</Link>
+                      </td>
+                      <td style={{ fontSize: '.8rem' }}>{o.externalRef ?? <span className="muted">—</span>}</td>
+                      <td><StatusBadge status={o.status} /></td>
+                      <td><StatusBadge status={o.paymentStatus} /></td>
+                      <td>{formatMoney(o.totalCents)}</td>
+                      <td style={{ fontSize: '.8rem' }}>{o.trackingNumber ?? <span className="muted">—</span>}</td>
+                      <td style={{ fontSize: '.85rem' }}>{new Date(o.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProjectEditForm({
+  partnerId,
+  project,
+  onSaved,
+}: {
+  partnerId: string;
+  project: ProjectRow;
+  onSaved: () => void;
+}) {
+  const [title, setTitle] = useState(project.title);
+  const [creatorName, setCreatorName] = useState(project.creatorName ?? '');
+  const [creatorEmail, setCreatorEmail] = useState(project.creatorEmail ?? '');
+  const [url, setUrl] = useState(project.url ?? '');
+  const [status, setStatus] = useState(project.status);
+  const [notes, setNotes] = useState(project.notes ?? '');
+  const [saving, setSaving] = useState(false);
+  return (
+    <form
+      className="admin-card"
+      style={{ marginTop: '1rem' }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+          await api.patch(`/admin/partners/${partnerId}/projects/${project.id}`, {
+            title,
+            creatorName: creatorName.trim() || null,
+            creatorEmail: creatorEmail.trim() || null,
+            url: url.trim() || null,
+            status,
+            notes: notes.trim() || null,
+          });
+          onSaved();
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <h4 style={{ marginTop: 0 }}>Edit project</h4>
+      <Labelled label="Title">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
+      </Labelled>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
+        <Labelled label="Creator name">
+          <input value={creatorName} onChange={(e) => setCreatorName(e.target.value)} style={inputStyle} />
+        </Labelled>
+        <Labelled label="Creator email">
+          <input
+            type="email"
+            value={creatorEmail}
+            onChange={(e) => setCreatorEmail(e.target.value)}
+            style={inputStyle}
+          />
+        </Labelled>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '.75rem' }}>
+        <Labelled label="URL">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} style={inputStyle} placeholder="https://" />
+        </Labelled>
+        <Labelled label="Status">
+          <select value={status} onChange={(e) => setStatus(e.target.value as ProjectRow['status'])} style={inputStyle}>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </Labelled>
+      </div>
+      <Labelled label="Internal notes">
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ ...inputStyle, fontFamily: 'inherit' }} />
+      </Labelled>
+      <button className="btn" type="submit" disabled={saving} style={{ marginTop: '.5rem' }}>
+        {saving ? 'Saving…' : 'Save project'}
+      </button>
+    </form>
   );
 }
 

@@ -661,6 +661,120 @@ router.post('/:id/webhook-deliveries/:deliveryId/replay', async (req, res) => {
   res.json({ delivery });
 });
 
+// ---- Projects (creators' campaigns under this partner) -----------------
+
+router.get('/:id/projects', async (req, res) => {
+  const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+  if (!partner) throw new HttpError(404, 'Partner not found');
+  const projects = await prisma.partnerProject.findMany({
+    where: { partnerId: partner.id },
+    orderBy: { updatedAt: 'desc' },
+    include: { _count: { select: { orders: true } } },
+  });
+  // Roll-up paid revenue per project in one query.
+  const totals = await prisma.$queryRaw<
+    { project_id: string; total: bigint; paid: bigint; paid_count: bigint; orders: bigint }[]
+  >`
+    SELECT "projectId" AS project_id,
+           COALESCE(SUM("totalCents"), 0)::bigint AS total,
+           COALESCE(SUM("totalCents") FILTER (WHERE "paymentStatus" = 'CAPTURED'), 0)::bigint AS paid,
+           COUNT(*) FILTER (WHERE "paymentStatus" = 'CAPTURED')::bigint AS paid_count,
+           COUNT(*)::bigint AS orders
+    FROM "Order"
+    WHERE "partnerId" = ${partner.id} AND "projectId" IS NOT NULL
+    GROUP BY "projectId"
+  `;
+  const byProject = new Map(totals.map((t) => [t.project_id, t]));
+
+  res.json({
+    projects: projects.map((p) => {
+      const t = byProject.get(p.id);
+      return {
+        id: p.id,
+        externalProjectId: p.externalProjectId,
+        title: p.title,
+        url: p.url,
+        creatorName: p.creatorName,
+        creatorEmail: p.creatorEmail,
+        status: p.status,
+        notes: p.notes,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        orderCount: p._count.orders,
+        paidOrderCount: t ? Number(t.paid_count) : 0,
+        totalCents: t ? Number(t.total) : 0,
+        paidCents: t ? Number(t.paid) : 0,
+      };
+    }),
+  });
+});
+
+router.get('/:id/projects/:projectId', async (req, res) => {
+  const project = await prisma.partnerProject.findFirst({
+    where: { id: req.params.projectId, partnerId: req.params.id },
+  });
+  if (!project) throw new HttpError(404, 'Project not found');
+  const orders = await prisma.order.findMany({
+    where: { projectId: project.id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, number: true, externalRef: true, status: true, paymentStatus: true,
+      totalCents: true, trackingNumber: true, shippingMethod: true, createdAt: true,
+      apiKey: { select: { id: true, prefix: true, name: true } },
+    },
+  });
+  const totals = await prisma.order.aggregate({
+    where: { projectId: project.id },
+    _sum: { totalCents: true },
+    _count: { _all: true },
+  });
+  const paid = await prisma.order.aggregate({
+    where: { projectId: project.id, paymentStatus: 'CAPTURED' },
+    _sum: { totalCents: true },
+    _count: { _all: true },
+  });
+  res.json({
+    project,
+    orders,
+    totals: {
+      totalOrders: totals._count._all,
+      totalCents: Number(totals._sum.totalCents ?? 0),
+      paidOrders: paid._count._all,
+      paidCents: Number(paid._sum.totalCents ?? 0),
+    },
+  });
+});
+
+const adminProjectUpdateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  url: z.string().url().nullable().optional(),
+  creatorName: z.string().max(120).nullable().optional(),
+  creatorEmail: z.string().email().nullable().optional(),
+  status: z.enum(['active', 'completed', 'cancelled']).optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+router.patch('/:id/projects/:projectId', async (req, res) => {
+  const project = await prisma.partnerProject.findFirst({
+    where: { id: req.params.projectId, partnerId: req.params.id },
+  });
+  if (!project) throw new HttpError(404, 'Project not found');
+  const data = adminProjectUpdateSchema.parse(req.body);
+  const updated = await prisma.partnerProject.update({
+    where: { id: project.id },
+    data: {
+      title: data.title ?? undefined,
+      url: data.url === null ? null : data.url ?? undefined,
+      creatorName: data.creatorName === null ? null : data.creatorName ?? undefined,
+      creatorEmail:
+        data.creatorEmail === null ? null : data.creatorEmail?.toLowerCase() ?? undefined,
+      status: data.status ?? undefined,
+      notes: data.notes === null ? null : data.notes ?? undefined,
+    },
+  });
+  res.json({ project: updated });
+});
+
 // ---- Uploads (partner print files) --------------------------------------
 
 router.get('/:id/uploads', async (req, res) => {

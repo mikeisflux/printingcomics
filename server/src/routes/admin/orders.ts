@@ -71,6 +71,7 @@ router.get('/:id', async (req, res) => {
       events: { orderBy: { createdAt: 'desc' }, take: 50 },
       apiKey: { select: { id: true, name: true, prefix: true } },
       partner: { select: { id: true, slug: true, name: true, color: true, status: true } },
+      project: { select: { id: true, externalProjectId: true, title: true, creatorName: true, creatorEmail: true, status: true } },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');

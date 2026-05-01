@@ -72,6 +72,7 @@ model User {
   apiKeysCreated         ApiKey[]             @relation("ApiKeyCreator")
   partnersCreated        Partner[]            @relation("PartnerCreator")
   applicationsReviewed   PartnerApplication[] @relation("ApplicationReviewer")
+  projectsCreated        PartnerProject[]     @relation("ProjectCreator")
 
   @@index([partnerId])
 }
@@ -338,6 +339,11 @@ model Order {
   // partner stay fast even when keys get rotated/revoked.
   partner         Partner?      @relation(fields: [partnerId], references: [id])
   partnerId       String?
+  // Optional link to the campaign this print run is for — required when an
+  // API order specifies a `projectId`. One project can carry multiple orders
+  // (re-prints, expansions, etc.).
+  project         PartnerProject? @relation(fields: [projectId], references: [id])
+  projectId       String?
   externalRef     String?
 
   createdAt       DateTime      @default(now())
@@ -348,6 +354,7 @@ model Order {
   @@index([status])
   @@index([apiKeyId])
   @@index([partnerId])
+  @@index([projectId])
 }
 
 // API keys for third-party integrations (crowdfunding platforms, etc.) to
@@ -430,6 +437,7 @@ model Partner {
   events            PartnerEvent[]
   applications      PartnerApplication[]
   uploads           MediaFile[]
+  projects          PartnerProject[]
 
   @@index([status])
   @@index([platform])
@@ -462,6 +470,42 @@ model PartnerWebhookDelivery {
 
 // Lightweight activity feed: who changed what about a partner. Distinct from
 // webhook deliveries — those are outbound HTTP attempts, this is an in-app log.
+// A creator's project / campaign on a partner platform — e.g. one
+// Kickstarter campaign run by one creator. Partners may have many; each
+// project carries the platform-side id so re-submitting a print order for
+// the same campaign upserts onto the same row.
+model PartnerProject {
+  id                String   @id @default(cuid())
+  partner           Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partnerId         String
+  // The platform's id for this project — Kickstarter project slug,
+  // Indiegogo campaign id, BackerKit shop id, etc. Unique within a partner.
+  externalProjectId String
+  title             String
+  url               String?
+  // Creator running this campaign — free-form so partners don't have to
+  // pre-register users. Optionally linked to a real User account for portal
+  // access (future).
+  creatorName       String?
+  creatorEmail      String?
+  creatorUserId     String?
+  creatorUser       User?    @relation("ProjectCreator", fields: [creatorUserId], references: [id])
+  // "active" | "completed" | "cancelled" — admin-side workflow tag.
+  status            String   @default("active")
+  notes             String?
+  metadata          Json?    // Free-form bag for whatever the partner wants to stash
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orders Order[]
+
+  @@unique([partnerId, externalProjectId])
+  @@index([partnerId])
+  @@index([creatorEmail])
+  @@index([creatorUserId])
+  @@index([status])
+}
+
 model PartnerEvent {
   id        String   @id @default(cuid())
   partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
