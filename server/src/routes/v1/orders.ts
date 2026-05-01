@@ -17,6 +17,7 @@ import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
+import { dispatchPartnerWebhook } from '../../lib/partners.js';
 
 const router = Router();
 
@@ -187,6 +188,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       notes: data.notes,
       source: 'api',
       apiKeyId,
+      partnerId: req.apiKey!.partnerId ?? null,
       externalRef: data.externalRef ?? null,
       items: {
         create: resolved.map((r) => ({
@@ -223,6 +225,26 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
         status: 'CAPTURED',
       },
     });
+  }
+
+  // Fire-and-forget webhook delivery to the partner. Failures are persisted
+  // to PartnerWebhookDelivery so the admin can replay them — they do not
+  // fail the order creation.
+  if (req.apiKey!.partnerId) {
+    void dispatchPartnerWebhook({
+      partnerId: req.apiKey!.partnerId,
+      event: 'order.created',
+      orderId: order.id,
+      payload: serializeOrder(order),
+    }).catch(() => undefined);
+    if (data.markAsPaid) {
+      void dispatchPartnerWebhook({
+        partnerId: req.apiKey!.partnerId,
+        event: 'order.paid',
+        orderId: order.id,
+        payload: serializeOrder(order),
+      }).catch(() => undefined);
+    }
   }
 
   res.status(201).json({ order: serializeOrder(order), idempotent: false });
@@ -278,6 +300,16 @@ router.post('/:idOrNumber/cancel', requireApiKey('orders:write'), async (req, re
     },
     include: { items: true },
   });
+
+  if (req.apiKey!.partnerId) {
+    void dispatchPartnerWebhook({
+      partnerId: req.apiKey!.partnerId,
+      event: 'order.cancelled',
+      orderId: updated.id,
+      payload: serializeOrder(updated),
+    }).catch(() => undefined);
+  }
+
   res.json({ order: serializeOrder(updated) });
 });
 

@@ -4,15 +4,18 @@ import { api, formatMoney } from '../../api/client';
 import { StatusBadge } from '../Account';
 
 interface Dashboard {
-  counts: { orders: number; products: number; users: number; awaitingFulfillment: number; unreadInbox: number };
+  counts: { orders: number; products: number; users: number; awaitingFulfillment: number; unreadInbox: number; activePartners: number };
   revenueLast30Cents: number;
   revenueLast30Count: number;
   revenueLast24hCents: number;
   revenueLast24hCount: number;
+  partnerRevenueLast30Cents: number;
+  partnerRevenueLast30Count: number;
   revenueSeries14d: { day: string; totalCents: number }[];
   topProducts: { productId: string; name: string; slug: string; units: number; revenueCents: number }[];
   topCustomers: { userId: string; email: string; name: string | null; orders: number; spentCents: number }[];
-  recentOrders: { id: string; number: string; email: string; status: string; paymentStatus: string; totalCents: number; createdAt: string }[];
+  topPartners: { partnerId: string; name: string; slug: string; color: string | null; orders: number; revenueCents: number }[];
+  recentOrders: { id: string; number: string; email: string; status: string; paymentStatus: string; totalCents: number; createdAt: string; partner?: { id: string; name: string; color: string | null } | null }[];
   lowStock: { id: string; slug: string; name: string; stock: number }[];
 }
 
@@ -32,6 +35,12 @@ export function AdminDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
         <Stat label="Revenue (30d)" value={formatMoney(data.revenueLast30Cents)} sub={`${data.revenueLast30Count} orders`} />
         <Stat label="Revenue (24h)" value={formatMoney(data.revenueLast24hCents)} sub={`${data.revenueLast24hCount} orders`} />
+        <Stat
+          label="Partner revenue (30d)"
+          value={formatMoney(data.partnerRevenueLast30Cents)}
+          sub={`${data.partnerRevenueLast30Count} via API`}
+        />
+        <Stat label="Active partners" value={String(data.counts.activePartners)} />
         <Stat label="Total orders" value={String(data.counts.orders)} />
         <Stat label="Customers" value={String(data.counts.users)} />
         <Stat label="Active products" value={String(data.counts.products)} />
@@ -86,6 +95,34 @@ export function AdminDashboard() {
                     <td><Link to={`/admin/customers/${c.userId}`}>{c.name || c.email}</Link></td>
                     <td>{c.orders}</td>
                     <td>{formatMoney(c.spentCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="admin-card" style={{ margin: 0 }}>
+          <div className="spread" style={{ marginBottom: '.5rem' }}>
+            <h3 style={{ margin: 0 }}>Top partners (30d)</h3>
+            <Link to="/admin/partners">All partners →</Link>
+          </div>
+          {data.topPartners.length === 0 ? (
+            <p className="muted">No partner orders in the last 30 days.</p>
+          ) : (
+            <table className="admin-table">
+              <thead><tr><th>Partner</th><th>Orders</th><th>Revenue</th></tr></thead>
+              <tbody>
+                {data.topPartners.map((p) => (
+                  <tr key={p.partnerId}>
+                    <td>
+                      <Link to={`/admin/partners/${p.partnerId}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: p.color ?? '#94a3b8' }} />
+                        {p.name}
+                      </Link>
+                    </td>
+                    <td>{p.orders}</td>
+                    <td>{formatMoney(p.revenueCents)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -248,6 +248,45 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
             <p>Cancel an order that hasn't shipped yet. Optional body: <code>{`{ "reason": "Backer refunded" }`}</code>.</p>
           </Section>
 
+          <Section id="webhooks" title="Webhooks">
+            <p>
+              We POST signed JSON payloads to a URL you configure (give it to your account
+              manager — we set it from <code>/admin/partners/:id</code>). The standard events:
+            </p>
+            <table className="api-table">
+              <thead><tr><th>Event</th><th>When</th></tr></thead>
+              <tbody>
+                <tr><td><code>order.created</code></td><td>You POST <code>/orders</code> successfully</td></tr>
+                <tr><td><code>order.paid</code></td><td>Order moves to <code>PAID</code> (or you submitted with <code>markAsPaid:true</code>)</td></tr>
+                <tr><td><code>order.in_production</code></td><td>We've handed it off to the press</td></tr>
+                <tr><td><code>order.shipped</code></td><td>Carrier label generated, tracking number attached</td></tr>
+                <tr><td><code>order.delivered</code></td><td>Carrier reports delivery</td></tr>
+                <tr><td><code>order.cancelled</code></td><td>You or we cancelled the order</td></tr>
+                <tr><td><code>order.refunded</code></td><td>Payment refunded in full or part</td></tr>
+              </tbody>
+            </table>
+            <p>
+              Each request includes an <code>X-PC-Event</code> header naming the event, and an{' '}
+              <code>X-PC-Signature</code> header with a timestamp + HMAC-SHA256 over the body. To
+              verify:
+            </p>
+            <Code>{`// X-PC-Signature: t=1717428100,v1=8a8b…
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function verify(secret, signatureHeader, rawBody) {
+  const parts = Object.fromEntries(signatureHeader.split(',').map(p => p.split('=')));
+  const expected = createHmac('sha256', secret)
+    .update(\`\${parts.t}.\${rawBody}\`)
+    .digest('hex');
+  return timingSafeEqual(Buffer.from(parts.v1), Buffer.from(expected));
+}`}</Code>
+            <p>
+              Replied non-2xx responses are kept in our delivery log and can be replayed manually
+              by our team. Always reply <code>2xx</code> as fast as you can — we time out after 8
+              seconds. Acknowledge first, process asynchronously.
+            </p>
+          </Section>
+
           <Section id="data-model" title="Data model">
             <h3>Order</h3>
             <table className="api-table">
@@ -391,6 +430,7 @@ function Sidebar() {
     ['pricing', 'Pricing'],
     ['shipping', 'Shipping'],
     ['orders', 'Orders'],
+    ['webhooks', 'Webhooks'],
     ['data-model', 'Data model'],
     ['errors', 'Errors'],
     ['quickstart', 'Quickstart (Node)'],

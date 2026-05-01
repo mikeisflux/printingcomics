@@ -14,8 +14,10 @@ router.get('/', async (_req, res) => {
     orderCount,
     productCount,
     userCount,
+    activePartners,
     revenue30,
     revenue24,
+    partnerRevenue30,
     recentOrders,
     lowStock,
     awaitingFulfillment,
@@ -23,10 +25,12 @@ router.get('/', async (_req, res) => {
     recentRevenue,
     topProductRows,
     topCustomerRows,
+    topPartnerRows,
   ] = await Promise.all([
     prisma.order.count(),
     prisma.product.count({ where: { active: true } }),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
+    prisma.partner.count({ where: { status: 'ACTIVE' } }),
     prisma.order.aggregate({
       where: { paymentStatus: 'CAPTURED', createdAt: { gte: since30 } },
       _sum: { totalCents: true },
@@ -37,12 +41,22 @@ router.get('/', async (_req, res) => {
       _sum: { totalCents: true },
       _count: { _all: true },
     }),
+    prisma.order.aggregate({
+      where: {
+        paymentStatus: 'CAPTURED',
+        createdAt: { gte: since30 },
+        partnerId: { not: null },
+      },
+      _sum: { totalCents: true },
+      _count: { _all: true },
+    }),
     prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: {
         id: true, number: true, email: true, status: true,
         paymentStatus: true, totalCents: true, createdAt: true,
+        partner: { select: { id: true, name: true, color: true } },
       },
     }),
     prisma.product.findMany({
@@ -89,6 +103,18 @@ router.get('/', async (_req, res) => {
       ORDER BY spent_cents DESC
       LIMIT 5
     `,
+    // Top partners by 30d paid revenue.
+    prisma.$queryRaw<{ partner_id: string; name: string; slug: string; color: string | null; orders: bigint; revenue_cents: bigint }[]>`
+      SELECT p."id" AS partner_id, p."name", p."slug", p."color",
+             COUNT(o.*)::bigint AS orders,
+             SUM(o."totalCents")::bigint AS revenue_cents
+      FROM "Order" o
+      JOIN "Partner" p ON p."id" = o."partnerId"
+      WHERE o."paymentStatus" = 'CAPTURED' AND o."createdAt" >= ${since30}
+      GROUP BY p."id", p."name", p."slug", p."color"
+      ORDER BY revenue_cents DESC
+      LIMIT 5
+    `,
   ]);
 
   // Densify the revenue series so every day in the window has an entry.
@@ -111,11 +137,14 @@ router.get('/', async (_req, res) => {
       users: userCount,
       awaitingFulfillment,
       unreadInbox,
+      activePartners,
     },
     revenueLast30Cents: Number(revenue30._sum.totalCents ?? 0),
     revenueLast30Count: revenue30._count._all,
     revenueLast24hCents: Number(revenue24._sum.totalCents ?? 0),
     revenueLast24hCount: revenue24._count._all,
+    partnerRevenueLast30Cents: Number(partnerRevenue30._sum.totalCents ?? 0),
+    partnerRevenueLast30Count: partnerRevenue30._count._all,
     revenueSeries14d: series,
     topProducts: topProductRows.map((r) => ({
       productId: r.product_id,
@@ -130,6 +159,14 @@ router.get('/', async (_req, res) => {
       name: r.name,
       orders: Number(r.orders),
       spentCents: Number(r.spent_cents),
+    })),
+    topPartners: topPartnerRows.map((r) => ({
+      partnerId: r.partner_id,
+      name: r.name,
+      slug: r.slug,
+      color: r.color,
+      orders: Number(r.orders),
+      revenueCents: Number(r.revenue_cents),
     })),
     recentOrders,
     lowStock,

@@ -35,6 +35,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PartnerStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -46,12 +52,21 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  addresses      Address[]
-  orders         Order[]
-  carts          Cart[]
-  mediaUploads   MediaFile[]
-  passwordResets PasswordReset[]
-  apiKeysCreated ApiKey[]        @relation("ApiKeyCreator")
+  // When set, this user is a "partner contact" — staff at a crowdfunding
+  // platform / publisher who can be CC'd on order emails and (in future)
+  // log into a partner dashboard. Independent of the Role enum.
+  partner   Partner? @relation("PartnerMembers", fields: [partnerId], references: [id])
+  partnerId String?
+
+  addresses       Address[]
+  orders          Order[]
+  carts           Cart[]
+  mediaUploads    MediaFile[]
+  passwordResets  PasswordReset[]
+  apiKeysCreated  ApiKey[]  @relation("ApiKeyCreator")
+  partnersCreated Partner[] @relation("PartnerCreator")
+
+  @@index([partnerId])
 }
 
 // Single-use password reset tokens. tokenHash is sha256(rawToken) so
@@ -312,6 +327,10 @@ model Order {
   source          String?       // "web" | "api"
   apiKey          ApiKey?       @relation(fields: [apiKeyId], references: [id])
   apiKeyId        String?
+  // Denormalized off the apiKey at create-time so admin queries grouping by
+  // partner stay fast even when keys get rotated/revoked.
+  partner         Partner?      @relation(fields: [partnerId], references: [id])
+  partnerId       String?
   externalRef     String?
 
   createdAt       DateTime      @default(now())
@@ -321,6 +340,7 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([apiKeyId])
+  @@index([partnerId])
 }
 
 // API keys for third-party integrations (crowdfunding platforms, etc.) to
@@ -343,10 +363,101 @@ model ApiKey {
   createdBy   User?     @relation("ApiKeyCreator", fields: [createdById], references: [id])
   revokedAt   DateTime?
 
+  // Optional partner this key belongs to. Pre-existing keys may be unattached;
+  // newly minted keys via /admin/partners/:id/api-keys are always attached.
+  partner     Partner?  @relation(fields: [partnerId], references: [id])
+  partnerId   String?
+
   orders      Order[]
 
   @@index([keyHash])
   @@index([prefix])
+  @@index([partnerId])
+}
+
+// First-class record of a third-party platform that submits print orders
+// (Kickstarter campaigns, Indiegogo, BackerKit, Gamefound, publishers, etc.).
+// A partner groups one or more ApiKeys, owns the orders submitted by them,
+// and configures a webhook + status that gates all API access.
+model Partner {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  name         String
+  // Free-form platform tag — "kickstarter", "indiegogo", "backerkit",
+  // "gamefound", "publisher", "other". Drives icons + filters in the admin UI.
+  platform     String?
+  contactEmail String?
+  contactName  String?
+  website      String?
+  status       PartnerStatus @default(ACTIVE)
+  notes        String?
+  // CSS color tag used to color-code the partner in lists/badges. e.g. "#1e74fc".
+  color        String?
+
+  // Outbound webhook config — we POST signed payloads to webhookUrl on
+  // status changes (paid, in production, shipped, delivered, cancelled).
+  webhookUrl    String?
+  webhookSecret String?
+
+  // Soft caps that the suspend logic + per-partner rate limiter consult.
+  rateLimitPerMinute Int?
+  monthlyOrderCap    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy   User?   @relation("PartnerCreator", fields: [createdById], references: [id])
+  createdById String?
+
+  apiKeys           ApiKey[]
+  orders            Order[]
+  members           User[]                   @relation("PartnerMembers")
+  webhookDeliveries PartnerWebhookDelivery[]
+  events            PartnerEvent[]
+
+  @@index([status])
+  @@index([platform])
+}
+
+// Append-only log of webhook delivery attempts so the admin can audit which
+// events fired, whether they reached the partner, and replay failures.
+model PartnerWebhookDelivery {
+  id           String    @id @default(cuid())
+  partner      Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partnerId    String
+  event        String
+  orderId      String?
+  url          String
+  payload      Json
+  attempts     Int       @default(0)
+  statusCode   Int?
+  responseBody String?
+  error        String?
+  succeeded    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  deliveredAt  DateTime?
+  nextRetryAt  DateTime?
+
+  @@index([partnerId])
+  @@index([event])
+  @@index([createdAt])
+  @@index([succeeded])
+}
+
+// Lightweight activity feed: who changed what about a partner. Distinct from
+// webhook deliveries — those are outbound HTTP attempts, this is an in-app log.
+model PartnerEvent {
+  id        String   @id @default(cuid())
+  partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partnerId String
+  kind      String   // "created" | "updated" | "suspended" | "restored" | "key_minted" | "key_revoked" | "webhook_test" | "member_added" | "member_removed" | "note"
+  message   String?
+  actorId   String?
+  actorName String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([createdAt])
 }
 
 // Append-only log of order status / payment / tracking changes. Lets the

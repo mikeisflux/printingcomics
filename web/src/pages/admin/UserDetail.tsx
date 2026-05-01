@@ -29,6 +29,7 @@ interface UserDetail {
   createdAt: string;
   addresses: Address[];
   orders: { id: string; number: string; status: string; totalCents: number; createdAt: string }[];
+  partner?: { id: string; slug: string; name: string; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED'; color?: string | null } | null;
 }
 
 export function AdminUserDetail() {
@@ -87,7 +88,33 @@ export function AdminUserDetail() {
       </div>
       <div className="spread" style={{ marginBottom: '1rem' }}>
         <h1 style={{ margin: 0 }}>{user.firstName || user.lastName ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : user.email}</h1>
-        <span className="badge">{user.role}</span>
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
+          {user.partner && (
+            <Link
+              to={`/admin/partners/${user.partner.id}`}
+              className="badge"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '.35rem',
+                background: user.partner.color ? `${user.partner.color}1a` : 'var(--bg-alt)',
+                color: 'inherit',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: user.partner.color ?? '#94a3b8',
+                }}
+              />
+              Partner: {user.partner.name}
+            </Link>
+          )}
+          <span className="badge">{user.role}</span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>

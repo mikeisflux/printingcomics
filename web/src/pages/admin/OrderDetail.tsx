@@ -40,6 +40,10 @@ interface OrderFull {
   payments: { id: string; provider: string; providerRef?: string | null; amountCents: number; status: string; createdAt: string }[];
   events: OrderEvent[];
   user?: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
+  apiKey?: { id: string; name: string; prefix: string } | null;
+  partner?: { id: string; slug: string; name: string; color?: string | null; status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' } | null;
+  source?: string | null;
+  externalRef?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -114,6 +118,39 @@ export function AdminOrderDetail() {
           <h1 style={{ margin: 0 }}>Order {order.number}</h1>
           <div className="muted" style={{ fontSize: '.85rem' }}>
             Placed {new Date(order.createdAt).toLocaleString()}
+            {order.partner && (
+              <>
+                {' · '}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: order.partner.color ?? '#94a3b8',
+                    }}
+                  />
+                  via{' '}
+                  <Link to={`/admin/partners/${order.partner.id}`}>{order.partner.name}</Link>
+                  {order.apiKey && (
+                    <span style={{ marginLeft: 4 }}>
+                      (<code>{order.apiKey.prefix}</code>)
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
+            {!order.partner && order.apiKey && (
+              <>
+                {' · '}via API key <code>{order.apiKey.prefix}</code>
+              </>
+            )}
+            {order.externalRef && (
+              <>
+                {' · '}externalRef <code>{order.externalRef}</code>
+              </>
+            )}
           </div>
         </div>
         <div className="row" style={{ gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>

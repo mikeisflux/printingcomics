@@ -12,6 +12,7 @@ import backup from './backup.js';
 import media from './media.js';
 import fulfillment from './fulfillment.js';
 import apiKeys from './api-keys.js';
+import partners from './partners.js';
 import { requireAdmin } from '../../middleware/auth.js';
 
 const router = Router();
@@ -30,5 +31,6 @@ router.use('/backup', backup);
 router.use('/media', media);
 router.use('/fulfillment', fulfillment);
 router.use('/api-keys', apiKeys);
+router.use('/partners', partners);
 
 export default router;

@@ -6,6 +6,7 @@
  * sure the operator copies it before leaving the page.
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 
 interface ApiKeyRow {
@@ -20,6 +21,7 @@ interface ApiKeyRow {
   notes: string | null;
   orderCount: number;
   createdBy: { email: string; firstName: string | null; lastName: string | null } | null;
+  partner: { id: string; slug: string; name: string } | null;
 }
 
 interface ListResponse {
@@ -56,6 +58,7 @@ export function AdminApiKeys() {
           <p className="muted" style={{ margin: 0 }}>
             Mint and revoke keys for crowdfunding platforms and other integrators that submit
             print orders via the public <code>/api/v1</code> endpoints.{' '}
+            <Link to="/admin/partners">Manage partners →</Link>{' · '}
             <a href="/developers" target="_blank" rel="noreferrer">
               Public docs →
             </a>
@@ -89,6 +92,7 @@ export function AdminApiKeys() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Partner</th>
               <th>Prefix</th>
               <th>Scopes</th>
               <th>Orders</th>
@@ -100,7 +104,7 @@ export function AdminApiKeys() {
           <tbody>
             {data?.keys.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--ink-muted)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--ink-muted)' }}>
                   No API keys yet. Click <strong>New API key</strong> to mint one.
                 </td>
               </tr>
@@ -132,6 +136,13 @@ function KeyRow({
           <div style={{ fontWeight: 600 }}>{row.name}</div>
           {row.notes && (
             <div style={{ fontSize: '.8rem', color: 'var(--ink-muted)' }}>{row.notes}</div>
+          )}
+        </td>
+        <td style={{ fontSize: '.85rem' }}>
+          {row.partner ? (
+            <Link to={`/admin/partners/${row.partner.id}`}>{row.partner.name}</Link>
+          ) : (
+            <span className="muted">—</span>
           )}
         </td>
         <td>
@@ -197,7 +208,7 @@ function KeyRow({
       </tr>
       {editing && (
         <tr>
-          <td colSpan={7} style={{ background: 'var(--bg-alt)' }}>
+          <td colSpan={8} style={{ background: 'var(--bg-alt)' }}>
             <EditKeyForm row={row} availableScopes={availableScopes} onSaved={() => { setEditing(false); onChanged(); }} />
           </td>
         </tr>

@@ -8,25 +8,35 @@ import {
   sendShippingNotificationEmail,
   sendOrderCancelledEmail,
 } from '../../lib/order-emails.js';
+import { dispatchPartnerWebhook } from '../../lib/partners.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   const status = req.query.status as string | undefined;
   const q = (req.query.q as string | undefined)?.trim();
+  const partnerFilter = req.query.partner as string | undefined;
   const where: any = {};
   if (status) where.status = status;
   if (q) {
     where.OR = [
       { number: { contains: q, mode: 'insensitive' } },
       { email: { contains: q, mode: 'insensitive' } },
+      { externalRef: { contains: q, mode: 'insensitive' } },
     ];
   }
+  if (partnerFilter === 'any') where.partnerId = { not: null };
+  else if (partnerFilter === 'none') where.partnerId = null;
+  else if (partnerFilter) where.partnerId = partnerFilter;
   const orders = await prisma.order.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     take: 100,
-    include: { items: true, _count: { select: { payments: true } } },
+    include: {
+      items: true,
+      _count: { select: { payments: true } },
+      partner: { select: { id: true, slug: true, name: true, color: true } },
+    },
   });
   res.json({ orders });
 });
@@ -49,6 +59,8 @@ router.get('/:id', async (req, res) => {
       payments: { orderBy: { createdAt: 'desc' } },
       user: { select: { id: true, email: true, firstName: true, lastName: true } },
       events: { orderBy: { createdAt: 'desc' }, take: 50 },
+      apiKey: { select: { id: true, name: true, prefix: true } },
+      partner: { select: { id: true, slug: true, name: true, color: true, status: true } },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
@@ -144,6 +156,38 @@ router.patch('/:id', async (req, res) => {
     }
     if (data.status === 'CANCELLED' && before.status !== 'CANCELLED') {
       void sendOrderCancelledEmail(order.id);
+    }
+  }
+
+  // Forward order status transitions to the partner's webhook (if any).
+  if (statusChanged && before.partnerId) {
+    const eventName: string | null = (() => {
+      switch (data.status) {
+        case 'PAID': return 'order.paid';
+        case 'IN_PRODUCTION': return 'order.in_production';
+        case 'SHIPPED': return 'order.shipped';
+        case 'DELIVERED': return 'order.delivered';
+        case 'CANCELLED': return 'order.cancelled';
+        case 'REFUNDED': return 'order.refunded';
+        default: return null;
+      }
+    })();
+    if (eventName) {
+      void dispatchPartnerWebhook({
+        partnerId: before.partnerId,
+        event: eventName,
+        orderId: order.id,
+        payload: {
+          id: order.id,
+          number: order.number,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          trackingNumber: order.trackingNumber,
+          shippingMethod: order.shippingMethod,
+          totalCents: order.totalCents,
+          externalRef: order.externalRef,
+        },
+      }).catch(() => undefined);
     }
   }
 

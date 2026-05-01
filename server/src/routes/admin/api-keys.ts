@@ -19,6 +19,7 @@ router.get('/', async (_req, res) => {
     include: {
       _count: { select: { orders: true } },
       createdBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+      partner: { select: { id: true, slug: true, name: true } },
     },
   });
   res.json({
@@ -35,6 +36,7 @@ router.get('/', async (_req, res) => {
       notes: k.notes,
       orderCount: k._count.orders,
       createdBy: k.createdBy,
+      partner: k.partner,
     })),
   });
 });

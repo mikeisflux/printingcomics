@@ -7,21 +7,30 @@ const router = Router();
 
 router.get('/', async (req, res) => {
   const q = (req.query.q as string | undefined)?.trim();
+  const partnerFilter = req.query.partner as string | undefined;
+  const where: any = {};
+  if (q) {
+    where.OR = [
+      { email: { contains: q, mode: 'insensitive' } },
+      { firstName: { contains: q, mode: 'insensitive' } },
+      { lastName: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+  if (partnerFilter === 'any') {
+    where.partnerId = { not: null };
+  } else if (partnerFilter === 'none') {
+    where.partnerId = null;
+  } else if (partnerFilter) {
+    where.partnerId = partnerFilter;
+  }
   const users = await prisma.user.findMany({
-    where: q
-      ? {
-          OR: [
-            { email: { contains: q, mode: 'insensitive' } },
-            { firstName: { contains: q, mode: 'insensitive' } },
-            { lastName: { contains: q, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where,
     orderBy: { createdAt: 'desc' },
     take: 100,
     select: {
       id: true, email: true, firstName: true, lastName: true,
       role: true, createdAt: true,
+      partner: { select: { id: true, slug: true, name: true, color: true } },
       _count: { select: { orders: true } },
     },
   });
@@ -38,6 +47,7 @@ router.get('/:id', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         select: { id: true, number: true, status: true, totalCents: true, createdAt: true },
       },
+      partner: { select: { id: true, slug: true, name: true, status: true, color: true } },
     },
   });
   res.json({ user });
