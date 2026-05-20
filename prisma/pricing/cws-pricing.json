@@ -5,61 +5,61 @@
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.091
+          "discountPct": 0.033
         },
         {
           "qty": 5,
-          "discountPct": 0.13
+          "discountPct": 0.065
         },
         {
           "qty": 20,
-          "discountPct": 0.28
+          "discountPct": 0.1
         },
         {
           "qty": 25,
-          "discountPct": 0.357
+          "discountPct": 0.158
         },
         {
           "qty": 50,
-          "discountPct": 0.433
+          "discountPct": 0.178
         },
         {
           "qty": 75,
-          "discountPct": 0.469
+          "discountPct": 0.23
         },
         {
           "qty": 100,
-          "discountPct": 0.541
+          "discountPct": 0.334
         },
         {
           "qty": 250,
-          "discountPct": 0.619
+          "discountPct": 0.448
         },
         {
           "qty": 300,
-          "discountPct": 0.66
+          "discountPct": 0.506
         },
         {
           "qty": 500,
-          "discountPct": 0.688
+          "discountPct": 0.548
         },
         {
           "qty": 750,
-          "discountPct": 0.711
+          "discountPct": 0.581
         },
         {
           "qty": 1000,
-          "discountPct": 0.75
+          "discountPct": 0.638
         }
       ],
       "cover": [
         {
           "label": "Self Cover",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": "Same as Interior Selection"
         },
         {
@@ -96,7 +96,7 @@
       "lamination": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -113,7 +113,7 @@
       "uv": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -130,7 +130,7 @@
       "foil": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -163,7 +163,7 @@
         "grayscale_uncoated": [
           {
             "pages": 8,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 12,
@@ -213,7 +213,7 @@
         "grayscale_semigloss": [
           {
             "pages": 8,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 12,
@@ -263,7 +263,7 @@
         "grayscale_gloss": [
           {
             "pages": 8,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 12,
@@ -313,7 +313,7 @@
         "fullcolor_uncoated": [
           {
             "pages": 8,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 12,
@@ -363,7 +363,7 @@
         "fullcolor_semigloss": [
           {
             "pages": 8,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 12,
@@ -383,7 +383,7 @@
           },
           {
             "pages": 28,
-            "upgradeUSD": 1.0
+            "upgradeUSD": 1
           },
           {
             "pages": 32,
@@ -403,7 +403,7 @@
           },
           {
             "pages": 48,
-            "upgradeUSD": 2.0
+            "upgradeUSD": 2
           },
           {
             "pages": 52,
@@ -413,7 +413,7 @@
         "fullcolor_gloss": [
           {
             "pages": 8,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 12,
@@ -433,7 +433,7 @@
           },
           {
             "pages": 28,
-            "upgradeUSD": 1.0
+            "upgradeUSD": 1
           },
           {
             "pages": 32,
@@ -453,7 +453,7 @@
           },
           {
             "pages": 48,
-            "upgradeUSD": 2.0
+            "upgradeUSD": 2
           },
           {
             "pages": 52,
@@ -463,65 +463,65 @@
       }
     },
     "Standard (6.625x10.25)": {
-      "listPriceUSD": 5.36,
+      "listPriceUSD": 2.47,
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.115
+          "discountPct": 0.027
         },
         {
           "qty": 5,
-          "discountPct": 0.138
+          "discountPct": 0.039
         },
         {
           "qty": 20,
-          "discountPct": 0.339
+          "discountPct": 0.061
         },
         {
           "qty": 25,
-          "discountPct": 0.366
+          "discountPct": 0.075
         },
         {
           "qty": 50,
-          "discountPct": 0.436
+          "discountPct": 0.081
         },
         {
           "qty": 75,
-          "discountPct": 0.467
+          "discountPct": 0.094
         },
         {
           "qty": 100,
-          "discountPct": 0.511
+          "discountPct": 0.107
         },
         {
           "qty": 250,
-          "discountPct": 0.555
+          "discountPct": 0.141
         },
         {
           "qty": 300,
-          "discountPct": 0.569
+          "discountPct": 0.16
         },
         {
           "qty": 500,
-          "discountPct": 0.598
+          "discountPct": 0.169
         },
         {
           "qty": 750,
-          "discountPct": 0.621
+          "discountPct": 0.192
         },
         {
           "qty": 1000,
-          "discountPct": 0.669
+          "discountPct": 0.249
         }
       ],
       "cover": [
         {
           "label": "Self Cover",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": "Same as Interior Selection"
         },
         {
@@ -558,7 +558,7 @@
       "lamination": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -575,7 +575,7 @@
       "uv": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -592,7 +592,7 @@
       "foil": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -905,61 +905,61 @@
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.056
+          "discountPct": 0.015
         },
         {
           "qty": 5,
-          "discountPct": 0.081
+          "discountPct": 0.03
         },
         {
           "qty": 20,
-          "discountPct": 0.215
+          "discountPct": 0.127
         },
         {
           "qty": 25,
-          "discountPct": 0.271
+          "discountPct": 0.14
         },
         {
           "qty": 50,
-          "discountPct": 0.343
+          "discountPct": 0.163
         },
         {
           "qty": 75,
-          "discountPct": 0.372
+          "discountPct": 0.175
         },
         {
           "qty": 100,
-          "discountPct": 0.433
+          "discountPct": 0.188
         },
         {
           "qty": 250,
-          "discountPct": 0.514
+          "discountPct": 0.2
         },
         {
           "qty": 300,
-          "discountPct": 0.554
+          "discountPct": 0.212
         },
         {
           "qty": 500,
-          "discountPct": 0.586
+          "discountPct": 0.232
         },
         {
           "qty": 750,
-          "discountPct": 0.61
+          "discountPct": 0.254
         },
         {
           "qty": 1000,
-          "discountPct": 0.66
+          "discountPct": 0.35
         }
       ],
       "cover": [
         {
           "label": "Self Cover",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": "Same as Interior Selection"
         },
         {
@@ -996,7 +996,7 @@
       "lamination": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -1013,7 +1013,7 @@
       "uv": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -1030,7 +1030,7 @@
       "foil": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -1343,55 +1343,55 @@
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.056
+          "discountPct": 0.015
         },
         {
           "qty": 5,
-          "discountPct": 0.081
+          "discountPct": 0.03
         },
         {
           "qty": 20,
-          "discountPct": 0.215
+          "discountPct": 0.127
         },
         {
           "qty": 25,
-          "discountPct": 0.271
+          "discountPct": 0.14
         },
         {
           "qty": 50,
-          "discountPct": 0.343
+          "discountPct": 0.163
         },
         {
           "qty": 75,
-          "discountPct": 0.372
+          "discountPct": 0.175
         },
         {
           "qty": 100,
-          "discountPct": 0.433
+          "discountPct": 0.188
         },
         {
           "qty": 250,
-          "discountPct": 0.514
+          "discountPct": 0.2
         },
         {
           "qty": 300,
-          "discountPct": 0.554
+          "discountPct": 0.212
         },
         {
           "qty": 500,
-          "discountPct": 0.586
+          "discountPct": 0.232
         },
         {
           "qty": 750,
-          "discountPct": 0.61
+          "discountPct": 0.254
         },
         {
           "qty": 1000,
-          "discountPct": 0.66
+          "discountPct": 0.35
         }
       ],
       "cover": [],
@@ -1414,427 +1414,35 @@
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.033
+          "discountPct": 0.143
         },
         {
           "qty": 5,
-          "discountPct": 0.147
+          "discountPct": 0.211
         },
         {
           "qty": 20,
-          "discountPct": 0.445
-        },
-        {
-          "qty": 25,
-          "discountPct": 0.456
-        },
-        {
-          "qty": 50,
-          "discountPct": 0.526
-        },
-        {
-          "qty": 75,
-          "discountPct": 0.544
-        },
-        {
-          "qty": 100,
-          "discountPct": 0.552
-        },
-        {
-          "qty": 250,
-          "discountPct": 0.586
-        },
-        {
-          "qty": 300,
-          "discountPct": 0.6
-        },
-        {
-          "qty": 500,
-          "discountPct": 0.623
-        },
-        {
-          "qty": 750,
-          "discountPct": 0.652
-        },
-        {
-          "qty": 1000,
-          "discountPct": 0.71
-        }
-      ],
-      "cover": [
-        {
-          "label": "Standard Matte",
-          "priceUSD": 0.51,
-          "sub": "80lb Uncoated Cover"
-        },
-        {
-          "label": "Standard Semi-Gloss",
-          "priceUSD": 0.15,
-          "sub": "80lb Silk Cover"
-        },
-        {
-          "label": "Standard Gloss",
-          "priceUSD": 0.0,
-          "sub": "80lb Coated Cover"
-        },
-        {
-          "label": "Deluxe Gloss",
-          "priceUSD": 0.15,
-          "sub": "100lb Gloss Cover"
-        },
-        {
-          "label": "Holo-Chrome",
-          "priceUSD": 5.0,
-          "sub": "12pt Holo-Chrome Card Stock"
-        }
-      ],
-      "lamination": [
-        {
-          "label": "None",
-          "priceUSD": 0.0,
-          "sub": null
-        },
-        {
-          "label": "Gloss",
-          "priceUSD": 0.71,
-          "sub": null
-        },
-        {
-          "label": "Matte",
-          "priceUSD": 1.15,
-          "sub": null
-        }
-      ],
-      "uv": [
-        {
-          "label": "None",
-          "priceUSD": 0.0,
-          "sub": null
-        },
-        {
-          "label": "UV Coat",
-          "priceUSD": 0.14,
-          "sub": null
-        },
-        {
-          "label": "Spot UV",
-          "priceUSD": 0.77,
-          "sub": null
-        }
-      ],
-      "foil": [
-        {
-          "label": "None",
-          "priceUSD": 0.0,
-          "sub": null
-        },
-        {
-          "label": "Iridescent Silver",
-          "priceUSD": 4.33,
-          "sub": null
-        },
-        {
-          "label": "Gold",
-          "priceUSD": 3.33,
-          "sub": null
-        },
-        {
-          "label": "Copper",
-          "priceUSD": 3.67,
-          "sub": null
-        },
-        {
-          "label": "Red",
-          "priceUSD": 3.14,
-          "sub": null
-        },
-        {
-          "label": "Blue",
-          "priceUSD": 3.67,
-          "sub": null
-        }
-      ],
-      "pages": {
-        "grayscale_uncoated": [
-          {
-            "pages": 30,
-            "upgradeUSD": 0.0
-          },
-          {
-            "pages": 32,
-            "upgradeUSD": 0.0
-          },
-          {
-            "pages": 34,
-            "upgradeUSD": 0.17
-          },
-          {
-            "pages": 36,
-            "upgradeUSD": 0.17
-          },
-          {
-            "pages": 38,
-            "upgradeUSD": 0.34
-          },
-          {
-            "pages": 40,
-            "upgradeUSD": 0.34
-          },
-          {
-            "pages": 42,
-            "upgradeUSD": 0.51
-          }
-        ],
-        "grayscale_semigloss": [
-          {
-            "pages": 30,
-            "upgradeUSD": 0.0
-          },
-          {
-            "pages": 32,
-            "upgradeUSD": 0.0
-          },
-          {
-            "pages": 34,
-            "upgradeUSD": 0.18
-          },
-          {
-            "pages": 36,
-            "upgradeUSD": 0.18
-          },
-          {
-            "pages": 38,
-            "upgradeUSD": 0.36
-          },
-          {
-            "pages": 40,
-            "upgradeUSD": 0.36
-          },
-          {
-            "pages": 42,
-            "upgradeUSD": 0.54
-          }
-        ],
-        "grayscale_gloss": [
-          {
-            "pages": 30,
-            "upgradeUSD": 0.0
-          },
-          {
-            "pages": 32,
-            "upgradeUSD": 0.0
-          },
-          {
-            "pages": 34,
-            "upgradeUSD": 0.18
-          },
-          {
-            "pages": 36,
-            "upgradeUSD": 0.18
-          },
-          {
-            "pages": 38,
-            "upgradeUSD": 0.36
-          },
-          {
-            "pages": 40,
-            "upgradeUSD": 0.36
-          },
-          {
-            "pages": 42,
-            "upgradeUSD": 0.54
-          }
-        ],
-        "fullcolor_uncoated": [
-          {
-            "pages": 56,
-            "upgradeUSD": 1.02
-          },
-          {
-            "pages": 58,
-            "upgradeUSD": 1.19
-          },
-          {
-            "pages": 60,
-            "upgradeUSD": 1.19
-          },
-          {
-            "pages": 62,
-            "upgradeUSD": 1.36
-          },
-          {
-            "pages": 64,
-            "upgradeUSD": 1.36
-          },
-          {
-            "pages": 66,
-            "upgradeUSD": 1.53
-          },
-          {
-            "pages": 68,
-            "upgradeUSD": 1.53
-          },
-          {
-            "pages": 70,
-            "upgradeUSD": 1.7
-          },
-          {
-            "pages": 72,
-            "upgradeUSD": 1.7
-          },
-          {
-            "pages": 74,
-            "upgradeUSD": 1.87
-          },
-          {
-            "pages": 76,
-            "upgradeUSD": 1.87
-          },
-          {
-            "pages": 78,
-            "upgradeUSD": 2.04
-          }
-        ],
-        "fullcolor_semigloss": [
-          {
-            "pages": 56,
-            "upgradeUSD": 1.08
-          },
-          {
-            "pages": 58,
-            "upgradeUSD": 1.26
-          },
-          {
-            "pages": 60,
-            "upgradeUSD": 1.26
-          },
-          {
-            "pages": 62,
-            "upgradeUSD": 1.44
-          },
-          {
-            "pages": 64,
-            "upgradeUSD": 1.44
-          },
-          {
-            "pages": 66,
-            "upgradeUSD": 1.62
-          },
-          {
-            "pages": 68,
-            "upgradeUSD": 1.62
-          },
-          {
-            "pages": 70,
-            "upgradeUSD": 1.8
-          },
-          {
-            "pages": 72,
-            "upgradeUSD": 1.8
-          },
-          {
-            "pages": 74,
-            "upgradeUSD": 1.98
-          },
-          {
-            "pages": 76,
-            "upgradeUSD": 1.98
-          },
-          {
-            "pages": 78,
-            "upgradeUSD": 2.16
-          }
-        ],
-        "fullcolor_gloss": [
-          {
-            "pages": 56,
-            "upgradeUSD": 1.08
-          },
-          {
-            "pages": 58,
-            "upgradeUSD": 1.26
-          },
-          {
-            "pages": 60,
-            "upgradeUSD": 1.26
-          },
-          {
-            "pages": 62,
-            "upgradeUSD": 1.44
-          },
-          {
-            "pages": 64,
-            "upgradeUSD": 1.44
-          },
-          {
-            "pages": 66,
-            "upgradeUSD": 1.62
-          },
-          {
-            "pages": 68,
-            "upgradeUSD": 1.62
-          },
-          {
-            "pages": 70,
-            "upgradeUSD": 1.8
-          },
-          {
-            "pages": 72,
-            "upgradeUSD": 1.8
-          },
-          {
-            "pages": 74,
-            "upgradeUSD": 1.98
-          },
-          {
-            "pages": 76,
-            "upgradeUSD": 1.98
-          },
-          {
-            "pages": 78,
-            "upgradeUSD": 2.16
-          }
-        ]
-      }
-    },
-    "Standard (6.625x10.25)": {
-      "listPriceUSD": 15.0,
-      "qtyTiers": [
-        {
-          "qty": 1,
-          "discountPct": 0.0
-        },
-        {
-          "qty": 2,
-          "discountPct": 0.062
-        },
-        {
-          "qty": 5,
-          "discountPct": 0.118
-        },
-        {
-          "qty": 20,
-          "discountPct": 0.27
-        },
-        {
-          "qty": 25,
-          "discountPct": 0.289
-        },
-        {
-          "qty": 50,
-          "discountPct": 0.363
-        },
-        {
-          "qty": 75,
           "discountPct": 0.393
         },
         {
+          "qty": 25,
+          "discountPct": 0.41
+        },
+        {
+          "qty": 50,
+          "discountPct": 0.44
+        },
+        {
+          "qty": 75,
+          "discountPct": 0.452
+        },
+        {
           "qty": 100,
-          "discountPct": 0.42
+          "discountPct": 0.463
         },
         {
           "qty": 250,
@@ -1870,7 +1478,7 @@
         },
         {
           "label": "Standard Gloss",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": "80lb Coated Cover"
         },
         {
@@ -1880,14 +1488,14 @@
         },
         {
           "label": "Holo-Chrome",
-          "priceUSD": 5.0,
+          "priceUSD": 5,
           "sub": "12pt Holo-Chrome Card Stock"
         }
       ],
       "lamination": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -1904,7 +1512,7 @@
       "uv": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -1921,7 +1529,7 @@
       "foil": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -1954,11 +1562,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -1984,11 +1592,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2014,11 +1622,403 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
+          },
+          {
+            "pages": 34,
+            "upgradeUSD": 0.18
+          },
+          {
+            "pages": 36,
+            "upgradeUSD": 0.18
+          },
+          {
+            "pages": 38,
+            "upgradeUSD": 0.36
+          },
+          {
+            "pages": 40,
+            "upgradeUSD": 0.36
+          },
+          {
+            "pages": 42,
+            "upgradeUSD": 0.54
+          }
+        ],
+        "fullcolor_uncoated": [
+          {
+            "pages": 56,
+            "upgradeUSD": 1.02
+          },
+          {
+            "pages": 58,
+            "upgradeUSD": 1.19
+          },
+          {
+            "pages": 60,
+            "upgradeUSD": 1.19
+          },
+          {
+            "pages": 62,
+            "upgradeUSD": 1.36
+          },
+          {
+            "pages": 64,
+            "upgradeUSD": 1.36
+          },
+          {
+            "pages": 66,
+            "upgradeUSD": 1.53
+          },
+          {
+            "pages": 68,
+            "upgradeUSD": 1.53
+          },
+          {
+            "pages": 70,
+            "upgradeUSD": 1.7
+          },
+          {
+            "pages": 72,
+            "upgradeUSD": 1.7
+          },
+          {
+            "pages": 74,
+            "upgradeUSD": 1.87
+          },
+          {
+            "pages": 76,
+            "upgradeUSD": 1.87
+          },
+          {
+            "pages": 78,
+            "upgradeUSD": 2.04
+          }
+        ],
+        "fullcolor_semigloss": [
+          {
+            "pages": 56,
+            "upgradeUSD": 1.08
+          },
+          {
+            "pages": 58,
+            "upgradeUSD": 1.26
+          },
+          {
+            "pages": 60,
+            "upgradeUSD": 1.26
+          },
+          {
+            "pages": 62,
+            "upgradeUSD": 1.44
+          },
+          {
+            "pages": 64,
+            "upgradeUSD": 1.44
+          },
+          {
+            "pages": 66,
+            "upgradeUSD": 1.62
+          },
+          {
+            "pages": 68,
+            "upgradeUSD": 1.62
+          },
+          {
+            "pages": 70,
+            "upgradeUSD": 1.8
+          },
+          {
+            "pages": 72,
+            "upgradeUSD": 1.8
+          },
+          {
+            "pages": 74,
+            "upgradeUSD": 1.98
+          },
+          {
+            "pages": 76,
+            "upgradeUSD": 1.98
+          },
+          {
+            "pages": 78,
+            "upgradeUSD": 2.16
+          }
+        ],
+        "fullcolor_gloss": [
+          {
+            "pages": 56,
+            "upgradeUSD": 1.08
+          },
+          {
+            "pages": 58,
+            "upgradeUSD": 1.26
+          },
+          {
+            "pages": 60,
+            "upgradeUSD": 1.26
+          },
+          {
+            "pages": 62,
+            "upgradeUSD": 1.44
+          },
+          {
+            "pages": 64,
+            "upgradeUSD": 1.44
+          },
+          {
+            "pages": 66,
+            "upgradeUSD": 1.62
+          },
+          {
+            "pages": 68,
+            "upgradeUSD": 1.62
+          },
+          {
+            "pages": 70,
+            "upgradeUSD": 1.8
+          },
+          {
+            "pages": 72,
+            "upgradeUSD": 1.8
+          },
+          {
+            "pages": 74,
+            "upgradeUSD": 1.98
+          },
+          {
+            "pages": 76,
+            "upgradeUSD": 1.98
+          },
+          {
+            "pages": 78,
+            "upgradeUSD": 2.16
+          }
+        ]
+      }
+    },
+    "Standard (6.625x10.25)": {
+      "listPriceUSD": 15,
+      "qtyTiers": [
+        {
+          "qty": 1,
+          "discountPct": 0
+        },
+        {
+          "qty": 2,
+          "discountPct": 0.016
+        },
+        {
+          "qty": 5,
+          "discountPct": 0.045
+        },
+        {
+          "qty": 20,
+          "discountPct": 0.055
+        },
+        {
+          "qty": 25,
+          "discountPct": 0.085
+        },
+        {
+          "qty": 50,
+          "discountPct": 0.246
+        },
+        {
+          "qty": 75,
+          "discountPct": 0.276
+        },
+        {
+          "qty": 100,
+          "discountPct": 0.295
+        },
+        {
+          "qty": 250,
+          "discountPct": 0.337
+        },
+        {
+          "qty": 300,
+          "discountPct": 0.345
+        },
+        {
+          "qty": 500,
+          "discountPct": 0.358
+        },
+        {
+          "qty": 750,
+          "discountPct": 0.362
+        },
+        {
+          "qty": 1000,
+          "discountPct": 0.383
+        }
+      ],
+      "cover": [
+        {
+          "label": "Standard Matte",
+          "priceUSD": 0.51,
+          "sub": "80lb Uncoated Cover"
+        },
+        {
+          "label": "Standard Semi-Gloss",
+          "priceUSD": 0.15,
+          "sub": "80lb Silk Cover"
+        },
+        {
+          "label": "Standard Gloss",
+          "priceUSD": 0,
+          "sub": "80lb Coated Cover"
+        },
+        {
+          "label": "Deluxe Gloss",
+          "priceUSD": 0.15,
+          "sub": "100lb Gloss Cover"
+        },
+        {
+          "label": "Holo-Chrome",
+          "priceUSD": 5,
+          "sub": "12pt Holo-Chrome Card Stock"
+        }
+      ],
+      "lamination": [
+        {
+          "label": "None",
+          "priceUSD": 0,
+          "sub": null
+        },
+        {
+          "label": "Gloss",
+          "priceUSD": 0.71,
+          "sub": null
+        },
+        {
+          "label": "Matte",
+          "priceUSD": 1.15,
+          "sub": null
+        }
+      ],
+      "uv": [
+        {
+          "label": "None",
+          "priceUSD": 0,
+          "sub": null
+        },
+        {
+          "label": "UV Coat",
+          "priceUSD": 0.14,
+          "sub": null
+        },
+        {
+          "label": "Spot UV",
+          "priceUSD": 0.77,
+          "sub": null
+        }
+      ],
+      "foil": [
+        {
+          "label": "None",
+          "priceUSD": 0,
+          "sub": null
+        },
+        {
+          "label": "Iridescent Silver",
+          "priceUSD": 4.33,
+          "sub": null
+        },
+        {
+          "label": "Gold",
+          "priceUSD": 3.33,
+          "sub": null
+        },
+        {
+          "label": "Copper",
+          "priceUSD": 3.67,
+          "sub": null
+        },
+        {
+          "label": "Red",
+          "priceUSD": 3.14,
+          "sub": null
+        },
+        {
+          "label": "Blue",
+          "priceUSD": 3.67,
+          "sub": null
+        }
+      ],
+      "pages": {
+        "grayscale_uncoated": [
+          {
+            "pages": 30,
+            "upgradeUSD": 0
+          },
+          {
+            "pages": 32,
+            "upgradeUSD": 0
+          },
+          {
+            "pages": 34,
+            "upgradeUSD": 0.17
+          },
+          {
+            "pages": 36,
+            "upgradeUSD": 0.17
+          },
+          {
+            "pages": 38,
+            "upgradeUSD": 0.34
+          },
+          {
+            "pages": 40,
+            "upgradeUSD": 0.34
+          },
+          {
+            "pages": 42,
+            "upgradeUSD": 0.51
+          }
+        ],
+        "grayscale_semigloss": [
+          {
+            "pages": 30,
+            "upgradeUSD": 0
+          },
+          {
+            "pages": 32,
+            "upgradeUSD": 0
+          },
+          {
+            "pages": 34,
+            "upgradeUSD": 0.18
+          },
+          {
+            "pages": 36,
+            "upgradeUSD": 0.18
+          },
+          {
+            "pages": 38,
+            "upgradeUSD": 0.36
+          },
+          {
+            "pages": 40,
+            "upgradeUSD": 0.36
+          },
+          {
+            "pages": 42,
+            "upgradeUSD": 0.54
+          }
+        ],
+        "grayscale_gloss": [
+          {
+            "pages": 30,
+            "upgradeUSD": 0
+          },
+          {
+            "pages": 32,
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2198,55 +2198,55 @@
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.062
+          "discountPct": 0.016
         },
         {
           "qty": 5,
-          "discountPct": 0.118
+          "discountPct": 0.045
         },
         {
           "qty": 20,
-          "discountPct": 0.27
+          "discountPct": 0.055
         },
         {
           "qty": 25,
-          "discountPct": 0.289
+          "discountPct": 0.085
         },
         {
           "qty": 50,
-          "discountPct": 0.361
+          "discountPct": 0.246
         },
         {
           "qty": 75,
-          "discountPct": 0.393
+          "discountPct": 0.276
         },
         {
           "qty": 100,
-          "discountPct": 0.419
+          "discountPct": 0.295
         },
         {
           "qty": 250,
-          "discountPct": 0.477
+          "discountPct": 0.337
         },
         {
           "qty": 300,
-          "discountPct": 0.5
+          "discountPct": 0.345
         },
         {
           "qty": 500,
-          "discountPct": 0.532
+          "discountPct": 0.358
         },
         {
           "qty": 750,
-          "discountPct": 0.575
+          "discountPct": 0.362
         },
         {
           "qty": 1000,
-          "discountPct": 0.649
+          "discountPct": 0.383
         }
       ],
       "cover": [
@@ -2262,7 +2262,7 @@
         },
         {
           "label": "Standard Gloss",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": "80lb Coated Cover"
         },
         {
@@ -2272,14 +2272,14 @@
         },
         {
           "label": "Holo-Chrome",
-          "priceUSD": 5.0,
+          "priceUSD": 5,
           "sub": "12pt Holo-Chrome Card Stock"
         }
       ],
       "lamination": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -2296,7 +2296,7 @@
       "uv": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -2313,7 +2313,7 @@
       "foil": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -2346,11 +2346,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2376,11 +2376,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2406,11 +2406,11 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2590,61 +2590,61 @@
       "qtyTiers": [
         {
           "qty": 1,
-          "discountPct": 0.0
+          "discountPct": 0
         },
         {
           "qty": 2,
-          "discountPct": 0.062
+          "discountPct": 0.016
         },
         {
           "qty": 5,
-          "discountPct": 0.118
+          "discountPct": 0.045
         },
         {
           "qty": 20,
-          "discountPct": 0.27
+          "discountPct": 0.055
         },
         {
           "qty": 25,
-          "discountPct": 0.289
+          "discountPct": 0.085
         },
         {
           "qty": 50,
-          "discountPct": 0.361
+          "discountPct": 0.246
         },
         {
           "qty": 75,
-          "discountPct": 0.393
+          "discountPct": 0.276
         },
         {
           "qty": 100,
-          "discountPct": 0.419
+          "discountPct": 0.295
         },
         {
           "qty": 250,
-          "discountPct": 0.477
+          "discountPct": 0.337
         },
         {
           "qty": 300,
-          "discountPct": 0.5
+          "discountPct": 0.345
         },
         {
           "qty": 500,
-          "discountPct": 0.532
+          "discountPct": 0.358
         },
         {
           "qty": 750,
-          "discountPct": 0.575
+          "discountPct": 0.362
         },
         {
           "qty": 1000,
-          "discountPct": 0.649
+          "discountPct": 0.383
         }
       ],
       "cover": [
         {
           "label": "Self Cover",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": "Same as Interior Selection"
         },
         {
@@ -2681,7 +2681,7 @@
       "lamination": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -2698,7 +2698,7 @@
       "uv": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -2715,7 +2715,7 @@
       "foil": [
         {
           "label": "None",
-          "priceUSD": 0.0,
+          "priceUSD": 0,
           "sub": null
         },
         {
@@ -2748,11 +2748,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2778,11 +2778,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2808,11 +2808,11 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
