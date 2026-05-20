@@ -43,40 +43,44 @@ this across monthly volume to get an overhead cost per book.
 > it shows is profit *before* shared overhead.
 
 - ✅ **Q1. Printer lease** — $1,900/mo
-- ❓ **Q2. Does the $0.045 click rate include toner, parts, and service/
-  maintenance?** (Usual for a lease CPC — confirm so we don't double-count toner.)
+- ✅ **Q2. Click rate includes toner + parts + service.** No separate toner
+  line — the $0.045/click is all-in on consumables and press maintenance.
 - ✅ **Q3. Facility rent / mortgage** — $0 allocated (absorbed by other business)
 - ✅ **Q4. Utilities** — $0 allocated (absorbed by other business)
-- ❓ **Q5. Other printing equipment** — leases or loan payments for binder,
-  stitcher, guillotine/cutter, laminator, folder, etc. — $____ /mo (list each).
-  *Only count machines the printing operation pays for itself; skip anything
-  the other business covers.*
+- ✅ **Q5. Other printing equipment** — $0. No additional equipment financed.
 - ✅ **Q6. Software & licensing** — $0 allocated (absorbed by other business)
 - ✅ **Q7. Insurance** — $0 allocated (absorbed by other business)
 - ✅ **Q8. Other fixed costs** — $0 allocated (absorbed by other business)
 
-**Section 1 printing-specific fixed total so far: $1,900/mo + Q5.**
+**Section 1 printing-specific fixed total: $1,900/mo (printer lease only).**
 
-## Section 2 — Labor
+## Section 2 — Labor — ✅ owner-operated, not booked
 
-- ❓ **Q9. Production headcount** — how many people run production, and are
-  they hourly or salaried?
-- ❓ **Q10. Total monthly production payroll** — $____ /mo (or hourly rate ×
-  hours). Include your own time if you work the floor.
-- ❓ **Q11. Prepress time per job** — file check, imposition, proofing:
-  ____ minutes on an average job.
-- ❓ **Q12. Run + finishing labor per job** — loading press, stitching,
-  trimming, packing: ____ minutes on an average job.
+- ✅ **Q9. Headcount** — owner runs all production solo; no employees.
+- ✅ **Q10. Monthly payroll** — **$0 booked.** Owner's time is not charged
+  into the cost model.
+- ✅ **Q11/Q12. Labor time per job** — not tracked; not booked.
+
+> ⚠️ Flagged once, then dropped: with labor at $0 the model can't tell a
+> fiddly 1-copy job from an easy 1,000-copy run. Fine while you're the sole
+> operator — just don't let it tempt you into underpricing tiny jobs. If you
+> ever hire, we revisit this.
+
+**Section 2 booked labor: $0.**
 
 ## Section 3 — Press / clicks
 
 - ✅ **Q13. Click rate** — $0.045
-- ✅ **Q14. Tabloid duplex** — 4 clicks
-- ❓ **Q15. Interior imposition** — how many finished comic pages come off one
-  11×17 sheet? (I'm assuming **4 pages/sheet** for a folded saddle-stitch
-  book — confirm or correct.)
-- ❓ **Q16. Cover printing** — printed on the same press? Is a cover 1 tabloid
-  sheet (4 clicks)? Any different click count for heavy stock?
+- ✅ **Q14. Tabloid duplex** — 4 clicks ($0.18/sheet)
+- ✅ **Q15. Imposition** — **4 finished pages per 11×17 sheet**, for *both*
+  saddle-stitch comics and perfect-bound graphic novels.
+- ✅ **Q16. Cover** — printed on the same press, same 4-click duplex
+  ($0.18/sheet), regardless of stock weight.
+
+**Click math (locked):**
+- Interior sheets = `ceil(interiorPages / 4)`
+- Cover = 1 sheet
+- Clicks cost = `(interiorSheets + 1) × $0.18`
 
 ## Section 4 — Paper / substrate cost — ✅ from supplier invoice
 
@@ -144,17 +148,27 @@ Per-book or per-job cost of everything after the press.
   (shipping postage is quoted live via EasyPost, so we don't model it here —
   just the packaging materials.)
 
-## Section 7 — Volume & utilization
+## Section 7 — Volume & break-even
 
-This is how we spread the fixed overhead (Sections 1 + 2) across books.
+- ✅ **Q29 / Q30 / Q31 / Q32** — **business hasn't opened yet; no volume
+  history.** Nothing to allocate the lease against.
 
-- ❓ **Q29. Books per month** — total finished units in an average month: ____
-- ❓ **Q30. Jobs/orders per month** — distinct print jobs in an average month:
-  ____
-- ❓ **Q31. Production days/hours per month** the press actually runs: ____
-- ❓ **Q32. Allocate overhead on current or target volume?** — if we're
-  growing, do we price off today's volume (safer) or a target volume
-  (cheaper, riskier)?
+Because there's no volume yet, we do **not** bake the $1,900 lease into the
+per-book price (dividing by an unknown volume would be a guess). Instead:
+
+- **Per-book price** is built purely on **marginal cost** — clicks + paper +
+  finishing + consumables — plus the target margin.
+- **The $1,900/mo lease is a break-even hurdle** covered by total margin:
+
+  ```
+  booksToCoverLease (per month) = $1,900 ÷ grossMarginDollarsPerBook
+  ```
+
+  Example: if an average book earns $4 of margin over marginal cost, you need
+  **475 books/month** to cover the lease; everything past that is profit.
+
+Once you've been open a few months with real numbers, we can fold the lease
+in as a true per-book overhead if you want fully-loaded pricing.
 
 ## Section 8 — Waste & spoilage
 
@@ -175,29 +189,37 @@ This is how we spread the fixed overhead (Sections 1 + 2) across books.
 
 ---
 
-## 🔢 Cost model (auto-derived once inputs are in)
+## 🔢 Cost model
 
-Per-book cost will be built as:
+Labor = $0 (owner-operated). The lease is handled separately as a monthly
+break-even hurdle (Section 7), not a per-book cost. So per-book **marginal
+cost** is:
 
 ```
-overheadPerBook   = (Section1 + Section2 fixed) / Q29 booksPerMonth
-clicksPerBook     = ceil(interiorPages / Q15) sheets + 1 cover sheet,  × $0.18
-paperPerBook      = interiorSheets × interiorStock$  +  1 × coverStock$
-finishingPerBook  = stitch/bind + trim + lamination + uv + foil + fold
-consumables       = Q27 + (Q28 / books-per-order)
-laborPerBook      = (Q11 + Q12 minutes) × laborRate / booksPerJob
-wasteFactor       = 1 + Q34%   (plus Q33 makeready amortized over the run)
+clicksPerBook   = (ceil(interiorPages / 4) + 1 cover) × $0.18
+paperPerBook    = interiorSheets × interiorStock$  +  1 × coverStock$
+finishingPerBook= saddle-stitch / perfect-bind + trim + lamination + uv
+                  (per-unit materials only — labor is free)
+consumables     = Q27 per-book + (Q28 packaging ÷ books-per-order)
+wasteFactor     = 1 + Q34%   (+ Q33 makeready amortized over the run)
 
-trueCostPerBook   = (overhead + clicks + paper + finishing + consumables
-                     + labor) × wasteFactor
+marginalCost    = (clicks + paper + finishing + consumables) × wasteFactor
 
-floorPrice        = trueCostPerBook / (1 − marginFloor%)
-targetPrice       = trueCostPerBook / (1 − targetMargin%)
+floorPrice      = marginalCost                          ← never sell below
+targetPrice     = marginalCost ÷ (1 − targetMargin%)
 ```
 
-Then for each competitor price point: if `competitorPrice > floorPrice`, we can
-undercut and still profit; the worksheet will flag any point where we **can't**
-safely beat them so you can decide.
+Then the lease check:
+
+```
+marginPerBook       = sellingPrice − marginalCost
+booksToCoverLease   = $1,900 ÷ marginPerBook       (per month)
+```
+
+For each competitor price point: if it sits **above** `floorPrice` we can
+undercut and still make money — the worksheet flags any point where we
+can't, so you decide whether to match, skip, or take the loss as a
+loss-leader.
 
 ---
 
@@ -212,12 +234,13 @@ safely beat them so you can decide.
 | Interior paper | 8 | 8 × $0.0504 (Blazer Gloss Text 80lb) | $0.40 |
 | Cover paper | 1 | 1 × $0.0962 (Blazer Gloss Cover 80lb) | $0.10 |
 | Bindery (stitch + trim) | — | ❓Q20 + ❓Q22 | ❓ |
-| Labor | — | ❓Q11+Q12 ÷ booksPerJob | ❓ |
-| Overhead | — | ❓(S1+S2) ÷ ❓Q29 | ❓ |
+| Consumables / packaging | — | ❓Q27 + ❓Q28 | ❓ |
+| Labor | — | owner-operated | $0 |
+| Overhead | — | lease handled as break-even, not per-book | $0 |
 | **Clicks + paper subtotal** | | | **$2.12** |
 
-Clicks + paper are now locked. Bindery, labor, and overhead unlock as the
-remaining questions get answered.
+Clicks + paper are locked at **$2.12** marginal. Only bindery/finishing +
+consumables remain before this 32-page comic has a complete marginal cost.
 
 ---
 
@@ -232,3 +255,8 @@ remaining questions get answered.
   at $1.968/sheet (Q18); noted Legion invoice was tax-exempt (Q19b partial).
 - _Overhead_ — Q3/Q4/Q6/Q7/Q8 = $0 allocated (absorbed by owner's other
   business). Printing-specific fixed = $1,900/mo lease + Q5 equipment.
+- _Labor & volume_ — Q2 (click rate is all-in), Q5 ($0 extra equipment),
+  Q9–Q12 (owner-operated, $0 booked labor), Q15/Q16 (4 pp/sheet both product
+  types, cover same press), Q29–Q32 (pre-launch, no volume). Model
+  restructured: per-book price = marginal cost only; $1,900 lease is a
+  monthly break-even hurdle, not a per-unit cost.
