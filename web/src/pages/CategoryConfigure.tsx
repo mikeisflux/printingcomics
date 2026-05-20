@@ -61,6 +61,39 @@ function keyOf(opt: ProductOption): string {
   return opt.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
+/**
+ * For one option, the list-price delta of each value vs. that option's
+ * cheapest value — used to show "($0.19)" next to each choice.
+ *
+ * Display only: runs the existing pricing engine with each candidate value
+ * substituted into the current selections. Numeric value labels (page
+ * counts) are coerced to numbers so the per-page formula fires. Does not
+ * change any stored pricing.
+ */
+function optionPriceDeltas(
+  cfg: PricingConfig,
+  opt: ProductOption,
+  selections: Record<string, string | number | boolean>,
+): Map<string, number> {
+  const key = keyOf(opt);
+  const base: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(selections)) {
+    if (typeof v === 'number') base[k] = v;
+    else if (typeof v === 'string' && v) base[k] = /^\d+$/.test(v) ? Number(v) : v;
+  }
+  const rows = opt.values.map((val) => {
+    const candidate: string | number = /^\d+$/.test(val.label) ? Number(val.label) : val.label;
+    const list = computePricing(cfg, {
+      quantity: 1,
+      options: { ...base, [key]: candidate },
+    }).combinedListCents;
+    return { label: val.label, list };
+  });
+  if (rows.length === 0) return new Map();
+  const min = Math.min(...rows.map((r) => r.list));
+  return new Map(rows.map((r) => [r.label, Math.round(r.list - min)]));
+}
+
 // Parse a product name like "Comic Book — Standard (6.625" × 10.25")" → { width, height }
 function parseDimensions(name: string): { widthIn: number; heightIn: number } | null {
   const m = name.match(/(\d+(?:\.\d+)?)["”]?\s*[×x]\s*(\d+(?:\.\d+)?)["”]?/);
@@ -506,7 +539,16 @@ export function CategoryConfigure() {
             <ConfigSection key={sec.name} title={sec.name} defaultOpen>
               {sec.opts.map((opt) => (
                 <div key={opt.id} style={{ marginBottom: '1.25rem' }}>
-                  <OptionField opt={opt} value={selections[keyOf(opt)]} onChange={(v) => setSel(keyOf(opt), v)} />
+                  <OptionField
+                    opt={opt}
+                    value={selections[keyOf(opt)]}
+                    onChange={(v) => setSel(keyOf(opt), v)}
+                    deltas={
+                      product.pricingConfig
+                        ? optionPriceDeltas(product.pricingConfig, opt, selections)
+                        : undefined
+                    }
+                  />
                 </div>
               ))}
             </ConfigSection>
@@ -548,7 +590,12 @@ function ConfigSection({ title, subtitle, defaultOpen, children }: { title: stri
   );
 }
 
-function OptionField({ opt, value, onChange }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string | number | boolean) => void }) {
+function OptionField({ opt, value, onChange, deltas }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string | number | boolean) => void; deltas?: Map<string, number> }) {
+  // Price shown next to a value: the list-price delta vs. the cheapest choice.
+  const priceTag = (valueLabel: string): string => {
+    const d = deltas?.get(valueLabel) ?? 0;
+    return d > 0 ? ` (${formatMoney(d)})` : '';
+  };
   const label = (
     <div style={{ marginBottom: '.5rem' }}>
       <strong>{opt.name}</strong>
@@ -584,9 +631,9 @@ function OptionField({ opt, value, onChange }: { opt: ProductOption; value: stri
                   {v.imageUrl && <img src={v.imageUrl} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, marginBottom: '.25rem' }} />}
                   <div>{v.label}</div>
                   {v.subLabel && <div style={{ fontSize: '.7rem', opacity: .8 }}>{v.subLabel}</div>}
-                  {v.priceModifierCents !== 0 && (
+                  {(deltas?.get(v.label) ?? 0) > 0 && (
                     <div style={{ fontSize: '.7rem', marginTop: '.2rem', opacity: .9 }}>
-                      {v.priceModifierCents > 0 ? '+' : ''}{formatMoney(v.priceModifierCents)}
+                      ({formatMoney(deltas!.get(v.label)!)})
                     </div>
                   )}
                 </button>
@@ -600,7 +647,13 @@ function OptionField({ opt, value, onChange }: { opt: ProductOption; value: stri
         <div>
           {label}
           <select value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
-            {opt.values.map((v) => <option key={v.id} value={v.label}>{v.label}</option>)}
+            {opt.values.map((v) => {
+              // For bare-number values (page counts) repeat the option name so
+              // the row reads like "12 Interior Pages ($0.19)".
+              const numeric = /^\d+$/.test(v.label);
+              const text = `${v.label}${numeric ? ` ${opt.name}` : ''}${priceTag(v.label)}`;
+              return <option key={v.id} value={v.label}>{text}</option>;
+            })}
           </select>
         </div>
       );
@@ -612,7 +665,11 @@ function OptionField({ opt, value, onChange }: { opt: ProductOption; value: stri
             {opt.values.map((v) => (
               <label key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
                 <input type="radio" name={opt.id} checked={value === v.label} onChange={() => onChange(v.label)} style={{ width: 'auto' }} />
-                <span>{v.label}{v.subLabel && <span className="muted" style={{ fontSize: '.85rem' }}> — {v.subLabel}</span>}</span>
+                <span>
+                  {v.label}
+                  {v.subLabel && <span className="muted" style={{ fontSize: '.85rem' }}> — {v.subLabel}</span>}
+                  {priceTag(v.label) && <span className="muted" style={{ fontSize: '.85rem' }}>{priceTag(v.label)}</span>}
+                </span>
               </label>
             ))}
           </div>
