@@ -1,7 +1,7 @@
 {
   "comic": {
     "A5 (5.8x8.3)": {
-      "listPriceUSD": 4.07,
+      "listPriceUSD": 2.48,
       "qtyTiers": [
         {
           "qty": 1,
@@ -624,6 +624,10 @@
       "pages": {
         "grayscale_uncoated": [
           {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
+          {
             "pages": 12,
             "upgradeUSD": 0.17
           },
@@ -669,6 +673,10 @@
           }
         ],
         "grayscale_semigloss": [
+          {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
           {
             "pages": 12,
             "upgradeUSD": 0.18
@@ -716,6 +724,10 @@
         ],
         "grayscale_gloss": [
           {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
+          {
             "pages": 12,
             "upgradeUSD": 0.18
           },
@@ -761,6 +773,10 @@
           }
         ],
         "fullcolor_uncoated": [
+          {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
           {
             "pages": 12,
             "upgradeUSD": 0.26
@@ -808,6 +824,10 @@
         ],
         "fullcolor_semigloss": [
           {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
+          {
             "pages": 12,
             "upgradeUSD": 0.28
           },
@@ -853,6 +873,10 @@
           }
         ],
         "fullcolor_gloss": [
+          {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
           {
             "pages": 12,
             "upgradeUSD": 0.28
@@ -901,7 +925,7 @@
       }
     },
     "Magazine (8x10.5)": {
-      "listPriceUSD": 5.59,
+      "listPriceUSD": 2.92,
       "qtyTiers": [
         {
           "qty": 1,
@@ -1062,6 +1086,10 @@
       "pages": {
         "grayscale_uncoated": [
           {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
+          {
             "pages": 12,
             "upgradeUSD": 0.17
           },
@@ -1107,6 +1135,10 @@
           }
         ],
         "grayscale_semigloss": [
+          {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
           {
             "pages": 12,
             "upgradeUSD": 0.18
@@ -1154,6 +1186,10 @@
         ],
         "grayscale_gloss": [
           {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
+          {
             "pages": 12,
             "upgradeUSD": 0.18
           },
@@ -1199,6 +1235,10 @@
           }
         ],
         "fullcolor_uncoated": [
+          {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
           {
             "pages": 12,
             "upgradeUSD": 0.26
@@ -1246,6 +1286,10 @@
         ],
         "fullcolor_semigloss": [
           {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
+          {
             "pages": 12,
             "upgradeUSD": 0.28
           },
@@ -1291,6 +1335,10 @@
           }
         ],
         "fullcolor_gloss": [
+          {
+            "pages": 8,
+            "upgradeUSD": 0
+          },
           {
             "pages": 12,
             "upgradeUSD": 0.28
@@ -1339,7 +1387,7 @@
       }
     },
     "Letter (8.5x11)": {
-      "listPriceUSD": 5.59,
+      "listPriceUSD": 2.92,
       "qtyTiers": [
         {
           "qty": 1,
