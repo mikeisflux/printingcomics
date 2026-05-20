@@ -41,6 +41,7 @@ export function AdminLayout() {
           <NavLink to="/admin/partners">Partners</NavLink>
           <NavLink to="/admin/api-keys">API Keys</NavLink>
           <NavLink to="/admin/settings">Settings</NavLink>
+          <NavLink to="/admin/sitediscounts">Site Discounts</NavLink>
         </nav>
         <div style={{ marginTop: 'auto', padding: '1rem 1.5rem', borderTop: '1px solid #333' }}>
           <div style={{ fontSize: '.8rem', color: '#aaa' }}>{user.email}</div>

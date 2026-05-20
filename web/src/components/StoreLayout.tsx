@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/auth';
 import { useCart } from '../store/cart';
@@ -58,6 +58,7 @@ export function StoreLayout() {
             <Link to="/contact">Contact</Link>
           </nav>
           <div className="actions">
+            <ShareMenu />
             <SearchBox />
             {user ? (
               <>
@@ -152,6 +153,110 @@ export function StoreLayout() {
         </div>
       </footer>
     </>
+  );
+}
+
+function ShareMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const url = encodeURIComponent('https://printingcomics.com');
+  const text = encodeURIComponent('Check out Printing Comics — custom comic & graphic novel printing!');
+
+  const targets = [
+    { label: 'X / Twitter', icon: '𝕏', href: `https://x.com/intent/tweet?url=${url}&text=${text}` },
+    { label: 'Facebook', icon: 'f', href: `https://www.facebook.com/sharer/sharer.php?u=${url}` },
+    { label: 'Reddit', icon: 'r/', href: `https://www.reddit.com/submit?url=${url}&title=${text}` },
+    { label: 'LinkedIn', icon: 'in', href: `https://www.linkedin.com/sharing/share-offsite/?url=${url}` },
+    { label: 'Bluesky', icon: '☁', href: `https://bsky.app/intent/compose?text=${text}%20https%3A%2F%2Fprintingcomics.com` },
+    { label: 'Threads', icon: '@', href: `https://www.threads.net/intent/post?text=${text}%20https%3A%2F%2Fprintingcomics.com` },
+  ];
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Share this site"
+        style={{
+          background: 'transparent',
+          border: '1px solid var(--border)',
+          borderRadius: 6,
+          padding: '.35rem .65rem',
+          fontSize: '.85rem',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '.3rem',
+          color: 'var(--ink)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        ↗ Share
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '2.2rem',
+            right: 0,
+            background: '#fff',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow)',
+            minWidth: 180,
+            padding: '.4rem 0',
+            zIndex: 40,
+          }}
+        >
+          {targets.map((t) => (
+            <a
+              key={t.label}
+              href={t.href}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setOpen(false)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '.75rem',
+                padding: '.5rem 1rem',
+                color: 'var(--ink)',
+                textDecoration: 'none',
+                fontSize: '.9rem',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-alt)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  background: 'var(--bg-alt)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '.75rem',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {t.icon}
+              </span>
+              {t.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

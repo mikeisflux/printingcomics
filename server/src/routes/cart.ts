@@ -5,6 +5,7 @@ import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { priceForQuantity, type VolumeTier } from '../lib/money.js';
 import { computePricing, type PricingConfig } from '../lib/pricing.js';
+import { getSetting } from '../lib/settings.js';
 import { isProd } from '../config.js';
 
 const router = Router();
@@ -105,7 +106,8 @@ router.post('/items', async (req, res) => {
       const n = Number(v);
       optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
     }
-    const breakdown = computePricing(cfg, { quantity: data.quantity, options: optionInputs });
+    const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
+    const breakdown = computePricing(cfg, { quantity: data.quantity, options: optionInputs, siteDiscountBps });
     unitPriceCents = breakdown.unitCents;
   } else {
     unitPriceCents = priceForQuantity(unitPriceCents, data.quantity, product.volumeTiers as VolumeTier[] | null);
@@ -149,7 +151,8 @@ router.patch('/items/:id', async (req, res) => {
       const n = Number(v);
       optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
     }
-    unitPriceCents = computePricing(cfg, { quantity, options: optionInputs }).unitCents;
+    const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
+    unitPriceCents = computePricing(cfg, { quantity, options: optionInputs, siteDiscountBps }).unitCents;
   } else {
     unitPriceCents = priceForQuantity(baseCents, quantity, item.product.volumeTiers as VolumeTier[] | null);
   }

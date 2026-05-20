@@ -17,6 +17,7 @@ import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
+import { getSetting } from '../../lib/settings.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { createPaypalApprovalForOrder } from '../../lib/payments/paypal/approval-for-order.js';
 
@@ -206,7 +207,8 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       }
     }
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
-      unitPriceCents = computePricing(cfg, { quantity: line.quantity, options: optionInputs }).unitCents;
+      const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
+      unitPriceCents = computePricing(cfg, { quantity: line.quantity, options: optionInputs, siteDiscountBps }).unitCents;
     } else {
       unitPriceCents = priceForQuantity(unitPriceCents, line.quantity, product.volumeTiers as VolumeTier[] | null);
     }

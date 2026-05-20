@@ -26,6 +26,7 @@ export interface PricingConfig {
 export interface PricingInputs {
   quantity: number;
   options: Record<string, string | number>;
+  siteDiscountBps?: number;
 }
 export interface PricingBreakdown {
   baseCents: number;
@@ -33,6 +34,7 @@ export interface PricingBreakdown {
   pagesCents: number;
   combinedListCents: number;
   discountBps: number;
+  siteDiscountBps: number;
   unitCents: number;
   totalCents: number;
 }
@@ -67,10 +69,13 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
   let discountBps = 0;
   for (const t of sortedTiers) if (inputs.quantity >= t.qty) discountBps = t.discountBps;
 
-  const unitCents = Math.round(combinedListCents * (1 - discountBps / 10000));
+  const siteDiscountBps = inputs.siteDiscountBps ?? 0;
+  const unitCents = Math.round(
+    combinedListCents * (1 - discountBps / 10000) * (1 - siteDiscountBps / 10000),
+  );
   const totalCents = unitCents * inputs.quantity;
 
-  return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, unitCents, totalCents };
+  return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
 }
 
 export function formatMoney(cents: number): string {

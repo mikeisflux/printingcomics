@@ -51,6 +51,7 @@ import { AdminFulfillment } from './pages/admin/Fulfillment';
 import { AdminApiKeys } from './pages/admin/ApiKeys';
 import { AdminPartners } from './pages/admin/Partners';
 import { AdminPartnerDetail } from './pages/admin/PartnerDetail';
+import { AdminSiteDiscounts } from './pages/admin/SiteDiscounts';
 
 export const router = createBrowserRouter([
   {
@@ -118,6 +119,7 @@ export const router = createBrowserRouter([
       { path: 'partners', element: <AdminPartners /> },
       { path: 'partners/:id', element: <AdminPartnerDetail /> },
       { path: 'settings', element: <AdminSettings /> },
+      { path: 'sitediscounts', element: <AdminSiteDiscounts /> },
     ],
   },
   { path: '*', element: <StoreLayout />, children: [{ index: true, element: <NotFound /> }] },

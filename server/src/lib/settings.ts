@@ -77,6 +77,9 @@ export const SETTING_KEYS = {
     defaultMetaDescription: 'seo.defaultMetaDescription',
     robotsPolicy: 'seo.robotsPolicy', // "index" | "noindex"
   },
+  pricing: {
+    siteDiscountBps: 'pricing.siteDiscountBps', // 0 = off; 1000 = 10% off everything
+  },
 };
 
 function envFallback(key: string): unknown {

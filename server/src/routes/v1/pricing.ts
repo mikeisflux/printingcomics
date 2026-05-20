@@ -14,6 +14,7 @@ import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
+import { getSetting } from '../../lib/settings.js';
 
 const router = Router();
 
@@ -41,6 +42,7 @@ const quoteSchema = z.object({
 
 router.post('/quote', async (req, res) => {
   const data = quoteSchema.parse(req.body);
+  const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
 
   const lines: Array<{
     productSlug: string;
@@ -88,7 +90,7 @@ router.post('/quote', async (req, res) => {
 
     let breakdown: any = undefined;
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
-      const b = computePricing(cfg, { quantity: line.quantity, options: optionInputs });
+      const b = computePricing(cfg, { quantity: line.quantity, options: optionInputs, siteDiscountBps });
       unitPriceCents = b.unitCents;
       breakdown = b;
     } else {

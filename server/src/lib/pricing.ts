@@ -57,6 +57,8 @@ export interface PricingInputs {
   quantity: number;
   /** User's selections: option key → value label (or number for pages). */
   options: Record<string, string | number>;
+  /** Site-wide override discount in basis points (0–9999). Applied after qty discount. */
+  siteDiscountBps?: number;
 }
 
 export interface PricingBreakdown {
@@ -65,6 +67,7 @@ export interface PricingBreakdown {
   pagesCents: number;
   combinedListCents: number;
   discountBps: number;
+  siteDiscountBps: number;
   unitCents: number;
   totalCents: number;
 }
@@ -102,8 +105,11 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
     if (inputs.quantity >= t.qty) discountBps = t.discountBps;
   }
 
-  const unitCents = Math.round(combinedListCents * (1 - discountBps / 10000));
+  const siteDiscountBps = inputs.siteDiscountBps ?? 0;
+  const unitCents = Math.round(
+    combinedListCents * (1 - discountBps / 10000) * (1 - siteDiscountBps / 10000),
+  );
   const totalCents = unitCents * inputs.quantity;
 
-  return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, unitCents, totalCents };
+  return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
 }
