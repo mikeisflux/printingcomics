@@ -215,8 +215,11 @@ export function CategoryConfigure() {
     if (!product?.pricingConfig) return null;
     const opts: Record<string, string | number> = {};
     for (const [k, v] of Object.entries(selections)) {
-      if (typeof v === 'string' && v) opts[k] = v;
-      else if (typeof v === 'number') opts[k] = v;
+      // Coerce numeric value labels (page counts) to numbers so the per-page
+      // pricing formula fires — matches the server-side cart (cart.ts) and
+      // the v1 orders API. Without this the running total skips page upgrades.
+      if (typeof v === 'number') opts[k] = v;
+      else if (typeof v === 'string' && v) opts[k] = /^\d+$/.test(v) ? Number(v) : v;
     }
     return computePricing(product.pricingConfig, { quantity: qty, options: opts });
   }, [product, selections, qty]);
