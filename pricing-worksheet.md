@@ -127,23 +127,26 @@ invoice also carried ~7% sales tax and a $6 delivery charge (see Q19b/Q19c).
 
 Per-book or per-job cost of everything after the press.
 
-- ❓ **Q20. Saddle stitch** — cost to fold + staple one booklet (staples +
-  labor, or machine-rated cost). $____ /book
-- ❓ **Q21. Perfect binding** (graphic novels) — glue + labor per book.
-  $____ /book
-- ❓ **Q22. Trimming / cutting** — three-knife trim or guillotine. $____ /book
-  or $____ /job
-- ❓ **Q23. Lamination** — gloss film and matte film, material + labor.
+- ✅ **Q20. Saddle stitch** — **$0 additional.** Inline finisher on the press;
+  fold + staple happen inside the machine on the same job run. Covered by the
+  click rate (Q2 is all-in on consumables + maintenance).
+- ✅ **Q21. Perfect binding** (graphic novels) — **$0 additional.** Inline
+  perfect-binding unit on the press; glue is a press consumable covered by Q2.
+- ✅ **Q22. Trimming / cutting** — **$0 additional.** Inline three-knife trim;
+  no separate guillotine step or per-book charge.
+- ❓ **Q23. Lamination** — gloss film and matte film, material cost per cover.
   $____ per cover (gloss) / $____ per cover (matte)
 - ❓ **Q24. UV coating** — UV coat vs. spot UV. $____ / $____ per cover
 - ❓ **Q25. Foil stamping** — per cover by foil color, plus any one-time die/
   setup cost per job. $____ /cover + $____ die
-- ❓ **Q26. Folding** — if separate from saddle stitch. $____ /book
+- ✅ **Q26. Folding** — $0; handled inline with saddle stitch (Q20).
+
+**Section 5 booked finishing: $0. All binding and trimming inline on press.**
 
 ## Section 6 — Consumables & packaging
 
-- ❓ **Q27. Per-book consumables** not already counted — staples, glue,
-  shrink-wrap. $____ /book
+- ✅ **Q27. Per-book consumables** — **$0 additional.** Staples, glue, and all
+  press consumables are covered by the Q2 all-in click rate.
 - ❓ **Q28. Packaging per order** — box/mailer + filler. $____ /order
   (shipping postage is quoted live via EasyPost, so we don't model it here —
   just the packaging materials.)
@@ -260,3 +263,7 @@ consumables remain before this 32-page comic has a complete marginal cost.
   types, cover same press), Q29–Q32 (pre-launch, no volume). Model
   restructured: per-book price = marginal cost only; $1,900 lease is a
   monthly break-even hurdle, not a per-unit cost.
+- _Inline finisher_ — Q20 (saddle stitch), Q21 (perfect binding), Q22
+  (trimming), Q26 (folding), Q27 (staples/glue consumables) all resolved at
+  $0: finisher is built into the press and all consumables are covered by the
+  Q2 all-in click rate. Marginal cost floor = clicks + paper only.
