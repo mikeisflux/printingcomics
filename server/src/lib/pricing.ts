@@ -27,11 +27,19 @@ export interface ModifierDef {
   values: Record<string, number>; // label → cents per book
 }
 
+export interface PageTier {
+  pages: number;
+  /** Exact per-book upgrade cost for this page count, in cents. */
+  cents: number;
+}
+
 export interface PagesPricing {
-  /** Number of pages that carries no extra charge. */
-  baseline: number;
-  /** Cents added per +4 pages beyond baseline, keyed by "color:paper". */
-  perFourPagesCents: Record<string, number>;
+  /**
+   * Exact per-book page-upgrade cost for each selectable page count, keyed
+   * by "color:paper". Values are lifted verbatim from the discount-log
+   * spreadsheet — never recomputed, because its page columns are not linear.
+   */
+  tiers: Record<string, PageTier[]>;
   /** Which options to look at to resolve the color:paper key. */
   colorKey?: string;
   paperKey?: string;
@@ -80,9 +88,8 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
     const color = inputs.options[config.pages.colorKey ?? 'interior_color'];
     if (typeof pagesSelected === 'number' && typeof paper === 'string' && typeof color === 'string') {
       const key = `${color.toLowerCase().replace(/\s+/g, '')}:${paper.toLowerCase().replace(/[\s-]+/g, '')}`;
-      const perFour = config.pages.perFourPagesCents[key] ?? 0;
-      const extraBlocks = Math.max(0, Math.ceil((pagesSelected - config.pages.baseline) / 4));
-      pagesCents = extraBlocks * perFour;
+      const tier = config.pages.tiers?.[key]?.find((t) => t.pages === pagesSelected);
+      pagesCents = tier?.cents ?? 0;
     }
   }
 

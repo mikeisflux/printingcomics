@@ -45,11 +45,11 @@ function cents(usd: number | null | undefined): number {
   return Math.round(usd * 100);
 }
 
-// Derive per-four-pages rate from the pages table: second row's upgrade is
-// the step cost from 8→12 pages (+4 pages block).
-function perFourFromPages(rows: PageRow[]): number {
-  if (rows.length < 2) return 0;
-  return cents(rows[1]!.upgradeUSD);
+// Carry the spreadsheet's page table through verbatim as exact per-page-count
+// upgrade tiers. The discount log's page columns are not linear, so the
+// prices must be looked up — not recomputed from a per-4-pages rate.
+function pageTiers(rows: PageRow[]): { pages: number; cents: number }[] {
+  return rows.map((r) => ({ pages: r.pages, cents: cents(r.upgradeUSD) }));
 }
 
 interface BuildArgs {
@@ -110,13 +110,13 @@ function buildPricingConfig(size: SizeData, productType: 'comic' | 'graphic_nove
     modifiers.push({ key: 'foil', values: m });
   }
 
-  const perFour = {
-    'grayscale:uncoated':   perFourFromPages(size.pages.grayscale_uncoated),
-    'grayscale:semigloss':  perFourFromPages(size.pages.grayscale_semigloss),
-    'grayscale:gloss':      perFourFromPages(size.pages.grayscale_gloss),
-    'fullcolor:uncoated':   perFourFromPages(size.pages.fullcolor_uncoated),
-    'fullcolor:semigloss':  perFourFromPages(size.pages.fullcolor_semigloss),
-    'fullcolor:gloss':      perFourFromPages(size.pages.fullcolor_gloss),
+  const tiers = {
+    'grayscale:uncoated':   pageTiers(size.pages.grayscale_uncoated),
+    'grayscale:semigloss':  pageTiers(size.pages.grayscale_semigloss),
+    'grayscale:gloss':      pageTiers(size.pages.grayscale_gloss),
+    'fullcolor:uncoated':   pageTiers(size.pages.fullcolor_uncoated),
+    'fullcolor:semigloss':  pageTiers(size.pages.fullcolor_semigloss),
+    'fullcolor:gloss':      pageTiers(size.pages.fullcolor_gloss),
   };
 
   // Page count options come from the first non-empty pages list.
@@ -133,8 +133,7 @@ function buildPricingConfig(size: SizeData, productType: 'comic' | 'graphic_nove
       qtyTiers,
       modifiers,
       pages: {
-        baseline: pageCounts[0] ?? 8,
-        perFourPagesCents: perFour,
+        tiers,
         colorKey: 'interior_color',
         paperKey: 'interior_paper',
         pagesKey: 'interior_pages',

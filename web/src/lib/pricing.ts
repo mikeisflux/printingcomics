@@ -5,9 +5,14 @@
 
 export interface QtyTier { qty: number; discountBps: number; }
 export interface ModifierDef { key: string; values: Record<string, number>; }
+export interface PageTier {
+  pages: number;
+  cents: number;
+}
 export interface PagesPricing {
-  baseline: number;
-  perFourPagesCents: Record<string, number>;
+  /** Exact per-book page-upgrade cost per page count, keyed by "color:paper".
+   *  Lifted verbatim from the discount-log spreadsheet — never recomputed. */
+  tiers: Record<string, PageTier[]>;
   colorKey?: string;
   paperKey?: string;
   pagesKey?: string;
@@ -51,9 +56,8 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
     const color = inputs.options[config.pages.colorKey ?? 'interior_color'];
     if (typeof pagesSelected === 'number' && typeof paper === 'string' && typeof color === 'string') {
       const key = `${color.toLowerCase().replace(/\s+/g, '')}:${paper.toLowerCase().replace(/[\s-]+/g, '')}`;
-      const perFour = config.pages.perFourPagesCents[key] ?? 0;
-      const extraBlocks = Math.max(0, Math.ceil((pagesSelected - config.pages.baseline) / 4));
-      pagesCents = extraBlocks * perFour;
+      const tier = config.pages.tiers?.[key]?.find((t) => t.pages === pagesSelected);
+      pagesCents = tier?.cents ?? 0;
     }
   }
 
