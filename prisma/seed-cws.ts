@@ -4,8 +4,10 @@
  *
  * Run with:  npx tsx prisma/seed-cws.ts
  *
- * Deletes any existing products with slugs that start with `comic-` or
- * `graphic-novel-`, then re-creates them. Safe to run repeatedly.
+ * Idempotent. Products with slugs starting `comic-` / `graphic-novel-`
+ * are re-seeded in place: the Product row (and its id) is kept so any
+ * CartItem / OrderItem rows pointing at it stay valid. Only the child
+ * options/categories and the pricingConfig are rebuilt. Safe to re-run.
  */
 
 import 'dotenv/config';
@@ -150,12 +152,6 @@ function buildPricingConfig(size: SizeData, productType: 'comic' | 'graphic_nove
 async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string) {
   const p = buildPricingConfig(size, args.productType);
 
-  // Wipe existing product + children.
-  const existing = await prisma.product.findUnique({ where: { slug: args.slug } });
-  if (existing) {
-    await prisma.product.delete({ where: { id: existing.id } });
-  }
-
   const pagesSubLabelFor = (label: string) => {
     // rough sub-labels matching CWS
     const m: Record<string, string> = {
@@ -166,8 +162,12 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
     return m[label] ?? null;
   };
 
-  await prisma.product.create({
-    data: {
+  const existing = await prisma.product.findUnique({
+    where: { slug: args.slug },
+    select: { id: true },
+  });
+
+  const data = {
       slug: args.slug,
       name: args.name,
       shortDescription: args.shortDescription,
@@ -390,8 +390,20 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
           },
         ],
       },
-    },
-  });
+  };
+
+  if (existing) {
+    // Re-seed in place. The Product row is kept (same id) so CartItem /
+    // OrderItem foreign keys — which have no ON DELETE rule — stay valid.
+    // Child options + categories cascade-delete, then get rebuilt.
+    await prisma.$transaction(async (tx) => {
+      await tx.productOption.deleteMany({ where: { productId: existing.id } });
+      await tx.productCategory.deleteMany({ where: { productId: existing.id } });
+      await tx.product.update({ where: { id: existing.id }, data });
+    }, { timeout: 30000 });
+  } else {
+    await prisma.product.create({ data });
+  }
 
   // silence unused helper
   void pagesSubLabelFor;
@@ -399,16 +411,6 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
 
 async function main() {
   const categoryIds = await ensureCategories();
-
-  // Delete existing CWS-style products to allow re-run.
-  await prisma.product.deleteMany({
-    where: {
-      OR: [
-        { slug: { startsWith: 'comic-' } },
-        { slug: { startsWith: 'graphic-novel-' } },
-      ],
-    },
-  });
 
   const sizes: { key: string; slugSegment: string; name: string }[] = [
     { key: 'A5 (5.8x8.3)',           slugSegment: 'a5',       name: 'A5 (5.8" × 8.3")' },

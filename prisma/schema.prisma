@@ -153,8 +153,8 @@ model Product {
   faq             Json?
   // Structured pricing rules the storefront + server both use to compute
   // unit price from configurator selections. Shape: { baseCents,
-  // qtyTiers[], modifiers[], pages: { baseline, perFourPagesCents{} } }.
-  // See server/src/lib/pricing.ts.
+  // qtyTiers[], modifiers[], pages: { tiers{}, colorKey, paperKey,
+  // pagesKey } }. See server/src/lib/pricing.ts.
   pricingConfig   Json?
   seoTitle        String?
   seoDescription  String?
