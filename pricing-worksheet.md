@@ -33,18 +33,29 @@ Derived from the above:
 Everything we pay every month whether we print 1 book or 10,000. We divide
 this across monthly volume to get an overhead cost per book.
 
+> **Owner's note:** rent, utilities, software, insurance, and general
+> fixed costs are absorbed by the owner's *other* business and are **not
+> allocated** to the printing operation. The cost model below is therefore a
+> **printing-specific / marginal cost floor** — it covers the printer lease,
+> any printing-only equipment, labor, materials, and finishing. It does NOT
+> claim to be a fully-loaded P&L. That's the right basis for a price fight
+> (we know the true floor we can't go below), but keep in mind the "profit"
+> it shows is profit *before* shared overhead.
+
 - ✅ **Q1. Printer lease** — $1,900/mo
 - ❓ **Q2. Does the $0.045 click rate include toner, parts, and service/
   maintenance?** (Usual for a lease CPC — confirm so we don't double-count toner.)
-- ❓ **Q3. Facility rent / mortgage** — $____ /mo
-- ❓ **Q4. Utilities** (electric, water, gas, internet) — $____ /mo
-- ❓ **Q5. Other equipment** — leases or loan payments for binder, stitcher,
-  guillotine/cutter, laminator, folder, etc. — $____ /mo (list each)
-- ❓ **Q6. Software & licensing** (RIP, imposition, design, this storefront's
-  hosting) — $____ /mo
-- ❓ **Q7. Insurance** (business, equipment, liability) — $____ /mo
-- ❓ **Q8. Anything else fixed** (loan payments, subscriptions, accountant,
-  cleaning, waste removal) — $____ /mo
+- ✅ **Q3. Facility rent / mortgage** — $0 allocated (absorbed by other business)
+- ✅ **Q4. Utilities** — $0 allocated (absorbed by other business)
+- ❓ **Q5. Other printing equipment** — leases or loan payments for binder,
+  stitcher, guillotine/cutter, laminator, folder, etc. — $____ /mo (list each).
+  *Only count machines the printing operation pays for itself; skip anything
+  the other business covers.*
+- ✅ **Q6. Software & licensing** — $0 allocated (absorbed by other business)
+- ✅ **Q7. Insurance** — $0 allocated (absorbed by other business)
+- ✅ **Q8. Other fixed costs** — $0 allocated (absorbed by other business)
+
+**Section 1 printing-specific fixed total so far: $1,900/mo + Q5.**
 
 ## Section 2 — Labor
 
@@ -85,19 +96,28 @@ invoice also carried ~7% sales tax and a $6 delivery charge (see Q19b/Q19c).
 
 - ✅ **Q18. Cover stock**
 
-  | Stock | Size | $/1,000 sh | $/sheet |
-  |-------|------|-----------|---------|
-  | Blazer Digital Gloss Cover 80lb | 17×11 | $96.20 | **$0.0962** |
-  | Blazer Digital Gloss Cover 100lb | 18×12 | $137.65 | **$0.1377** |
-  | Cougar Digital Smooth Cover 100lb — *sketch cover* | 17×11 | $139.25 | **$0.1393** |
+  | Stock | Size | List | $/sheet |
+  |-------|------|------|---------|
+  | Blazer Digital Gloss Cover 80lb | 17×11 | $96.20 /M | **$0.0962** |
+  | Blazer Digital Gloss Cover 100lb | 18×12 | $137.65 /M | **$0.1377** |
+  | Cougar Digital Smooth Cover 100lb — *sketch cover* | 17×11 | $139.25 /M | **$0.1393** |
+  | Mirri Digital Rainbow 220gsm 11pt C2S — *foil / metallic specialty cover* | 19×13 | $1.968 /sheet | **$1.968** |
 
-- ✅ **Q19. Buying format** — pre-cut tabloid sheets (11×17, 17×11, 18×12),
+  ⚠️ The Mirri foil stock is **~14× a standard cover sheet**. Foil / holo-chrome
+  cover options must carry that cost explicitly — a flat cover upcharge would
+  bleed money on every foil cover sold.
+
+- ✅ **Q19. Buying format** — pre-cut sheets (11×17, 17×11, 18×12, 19×13),
   bought by the carton.
-- ❓ **Q19b. Sales tax** — is paper normally tax-exempt for you under a
-  resale / manufacturing certificate? The sample invoice was taxed ~7%. If
-  it's *not* exempt I add ~7% to every per-sheet cost above.
-- ❓ **Q19c. Delivery** — roughly how many sheets per delivery, so I can
-  amortize the $6 delivery charge across them? (tiny, but tidy.)
+- 🟡 **Q19b. Sales tax** — *partially answered.* The Legion Paper invoice
+  carried **$0 sales tax** (resale-exempt); the earlier Blazer/Cougar invoice
+  was taxed ~7%. Confirm: is paper consistently bought tax-exempt under a
+  resale certificate? If yes I model all paper pre-tax (as listed above).
+- ❓ **Q19c. Freight** — paper delivery runs $6–$23 per order (varies by
+  carrier). Roughly what's an average freight cost per paper order, and how
+  many sheets per order, so I can amortize it? (minor, but tidy.)
+- ❓ **Q19d.** Which configurator options print on the Mirri foil stock —
+  the "Holo-Chrome" cover, the foil cover options, or both?
 
 ## Section 5 — Bindery & finishing
 
@@ -208,3 +228,7 @@ remaining questions get answered.
 - _Paper invoice_ — Section 4 answered (Q17–Q19): interior text $0.0504/sh;
   cover stocks $0.0962 / $0.1377 / $0.1393 per sheet. Worked example clicks +
   paper subtotal now $2.12 for a 32-page standard comic.
+- _Foil paper invoice_ — added Mirri Digital Rainbow specialty cover stock
+  at $1.968/sheet (Q18); noted Legion invoice was tax-exempt (Q19b partial).
+- _Overhead_ — Q3/Q4/Q6/Q7/Q8 = $0 allocated (absorbed by owner's other
+  business). Printing-specific fixed = $1,900/mo lease + Q5 equipment.
