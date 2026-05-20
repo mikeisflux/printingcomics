@@ -62,22 +62,35 @@ function keyOf(opt: ProductOption): string {
 }
 
 /**
- * For one option, the list-price delta of each value vs. that option's
- * cheapest value — used to show "($0.19)" next to each choice.
+ * For one option, the upgrade price to show next to each value — e.g.
+ * "($0.19)". Display only; never changes stored pricing.
  *
- * Display only: runs the existing pricing engine with each candidate value
- * substituted into the current selections. Numeric value labels (page
- * counts) are coerced to numbers so the per-page formula fires. Does not
- * change any stored pricing.
+ * Two cases:
+ *  - Flat-modifier options (cover, lamination, UV, foil) carry the upcharge
+ *    directly on each value → show it as the absolute add-on price.
+ *  - Formula-driven options (page count, paper, color) have no flat
+ *    modifier; run the pricing engine with each candidate value substituted
+ *    and show the list-price delta vs. the cheapest choice. Numeric value
+ *    labels (page counts) are coerced to numbers so the per-page formula
+ *    fires.
  */
 function optionPriceDeltas(
   cfg: PricingConfig,
   opt: ProductOption,
   selections: Record<string, string | number | boolean>,
+  visibleKeys?: Set<string>,
 ): Map<string, number> {
+  // Flat-modifier options: the upgrade price lives on the value itself.
+  if (opt.values.some((v) => v.priceModifierCents !== 0)) {
+    return new Map(opt.values.map((v) => [v.label, v.priceModifierCents]));
+  }
+
+  // Formula-driven options: probe the pricing engine per candidate value.
   const key = keyOf(opt);
   const base: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(selections)) {
+    if (k === key) continue;
+    if (visibleKeys && !visibleKeys.has(k)) continue; // ignore hidden options
     if (typeof v === 'number') base[k] = v;
     else if (typeof v === 'string' && v) base[k] = /^\d+$/.test(v) ? Number(v) : v;
   }
@@ -201,6 +214,13 @@ export function CategoryConfigure() {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [product, selections]);
 
+  // Keys of options the user can currently see. Dependent options (e.g.
+  // Lamination/UV/Foil under "Embellishments") get default-seeded but stay
+  // hidden until their parent is picked — so price, summary, and cart must
+  // ignore any selection whose option isn't visible, or the customer is
+  // charged for upgrades they never chose.
+  const visibleKeys = useMemo(() => new Set(visibleOptions.map(keyOf)), [visibleOptions]);
+
   const sections = useMemo(() => {
     const map = new Map<string, ProductOption[]>();
     for (const o of visibleOptions) {
@@ -215,6 +235,9 @@ export function CategoryConfigure() {
     if (!product?.pricingConfig) return null;
     const opts: Record<string, string | number> = {};
     for (const [k, v] of Object.entries(selections)) {
+      // Ignore hidden dependent options — they're seeded with defaults but
+      // don't apply unless their parent embellishment is selected.
+      if (!visibleKeys.has(k)) continue;
       // Coerce numeric value labels (page counts) to numbers so the per-page
       // pricing formula fires — matches the server-side cart (cart.ts) and
       // the v1 orders API. Without this the running total skips page upgrades.
@@ -222,7 +245,7 @@ export function CategoryConfigure() {
       else if (typeof v === 'string' && v) opts[k] = /^\d+$/.test(v) ? Number(v) : v;
     }
     return computePricing(product.pricingConfig, { quantity: qty, options: opts });
-  }, [product, selections, qty]);
+  }, [product, selections, qty, visibleKeys]);
 
   // Animate price reveal — interpolates over ~400ms whenever the target changes.
   useEffect(() => {
@@ -320,6 +343,8 @@ export function CategoryConfigure() {
     try {
       const optionsForCart: Record<string, string> = {};
       for (const [k, v] of Object.entries(selections)) {
+        // Don't send hidden dependent options — the cart would price them in.
+        if (!visibleKeys.has(k)) continue;
         optionsForCart[k] = String(v);
       }
       await add({ productId: product.id, quantity: qty, options: optionsForCart });
@@ -453,7 +478,7 @@ export function CategoryConfigure() {
                 Order summary
               </div>
               <div style={{ marginTop: '.5rem', fontSize: '.95rem', lineHeight: 1.7 }}>
-                {Object.entries(selections).filter(([_, v]) => v !== '' && v !== false && v !== undefined).slice(0, 8).map(([k, v]) => (
+                {Object.entries(selections).filter(([k, v]) => visibleKeys.has(k) && v !== '' && v !== false && v !== undefined).slice(0, 8).map(([k, v]) => (
                   <div key={k} className="spread" style={{ fontSize: '.85rem' }}>
                     <span className="muted" style={{ textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}</span>
                     <span>{String(v)}</span>
@@ -548,7 +573,7 @@ export function CategoryConfigure() {
                     onChange={(v) => setSel(keyOf(opt), v)}
                     deltas={
                       product.pricingConfig
-                        ? optionPriceDeltas(product.pricingConfig, opt, selections)
+                        ? optionPriceDeltas(product.pricingConfig, opt, selections, visibleKeys)
                         : undefined
                     }
                   />
