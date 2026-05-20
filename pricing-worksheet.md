@@ -67,24 +67,37 @@ this across monthly volume to get an overhead cost per book.
 - ❓ **Q16. Cover printing** — printed on the same press? Is a cover 1 tabloid
   sheet (4 clicks)? Any different click count for heavy stock?
 
-## Section 4 — Paper / substrate cost
+## Section 4 — Paper / substrate cost — ✅ from supplier invoice
 
-I need a cost **per 11×17 (or 12×18) sheet** for every stock we offer. If you
-buy parent sheets and cut them down, give me the parent size + price + how
-many tabloid sheets you get per parent and I'll do the math.
+Costs taken from the most recent paper purchase order. Price UM `MS` = per
+**1,000 sheets**; converted to per-sheet below. Prices are **pre-tax** — the
+invoice also carried ~7% sales tax and a $6 delivery charge (see Q19b/Q19c).
 
-- ❓ **Q17. Interior stocks** — list each option and cost/sheet:
-  - 60lb uncoated = $____ /sheet
-  - 70lb / 80lb uncoated = $____ /sheet
-  - 80lb gloss / silk = $____ /sheet
-  - (add any others)
-- ❓ **Q18. Cover stocks** — list each option and cost/sheet:
-  - 80lb coated/uncoated cover = $____ /sheet
-  - 100lb gloss cover = $____ /sheet
-  - 12pt card stock = $____ /sheet
-  - Holo-chrome / specialty = $____ /sheet
-- ❓ **Q19. Buying format** — do you buy pre-cut 11×17/12×18, or parent sheets
-  you cut down? If parent: size, $/parent, sheets/parent.
+- ✅ **Q17. Interior (text) stock**
+
+  | Stock | Size | $/1,000 sh | $/sheet |
+  |-------|------|-----------|---------|
+  | Blazer Digital Gloss Text 80lb | 11×17 | $50.40 | **$0.0504** |
+
+  Per you, no other paper type costs more than the Cougar sketch cover
+  ($0.1393/sheet). Until exact numbers land I'll treat any *unspecified*
+  interior stock as ≤ that ceiling.
+
+- ✅ **Q18. Cover stock**
+
+  | Stock | Size | $/1,000 sh | $/sheet |
+  |-------|------|-----------|---------|
+  | Blazer Digital Gloss Cover 80lb | 17×11 | $96.20 | **$0.0962** |
+  | Blazer Digital Gloss Cover 100lb | 18×12 | $137.65 | **$0.1377** |
+  | Cougar Digital Smooth Cover 100lb — *sketch cover* | 17×11 | $139.25 | **$0.1393** |
+
+- ✅ **Q19. Buying format** — pre-cut tabloid sheets (11×17, 17×11, 18×12),
+  bought by the carton.
+- ❓ **Q19b. Sales tax** — is paper normally tax-exempt for you under a
+  resale / manufacturing certificate? The sample invoice was taxed ~7%. If
+  it's *not* exempt I add ~7% to every per-sheet cost above.
+- ❓ **Q19c. Delivery** — roughly how many sheets per delivery, so I can
+  amortize the $6 delivery charge across them? (tiny, but tidy.)
 
 ## Section 5 — Bindery & finishing
 
@@ -176,15 +189,15 @@ safely beat them so you can decide.
 |-----------|--------|------|------|
 | Interior clicks | 8 | 32pp ÷ 4 = 8 sheets × $0.18 | $1.44 |
 | Cover clicks | 1 | 1 × $0.18 | $0.18 |
-| Interior paper | 8 | 8 × ❓Q17 | ❓ |
-| Cover paper | 1 | 1 × ❓Q18 | ❓ |
+| Interior paper | 8 | 8 × $0.0504 (Blazer Gloss Text 80lb) | $0.40 |
+| Cover paper | 1 | 1 × $0.0962 (Blazer Gloss Cover 80lb) | $0.10 |
 | Bindery (stitch + trim) | — | ❓Q20 + ❓Q22 | ❓ |
 | Labor | — | ❓Q11+Q12 ÷ booksPerJob | ❓ |
 | Overhead | — | ❓(S1+S2) ÷ ❓Q29 | ❓ |
-| **Clicks subtotal** | | | **$1.62** |
+| **Clicks + paper subtotal** | | | **$2.12** |
 
-Clicks are the only line we can fill today. Everything else unlocks as the
-questions get answered.
+Clicks + paper are now locked. Bindery, labor, and overhead unlock as the
+remaining questions get answered.
 
 ---
 
@@ -192,3 +205,6 @@ questions get answered.
 
 - _Created_ — captured printer lease ($1,900/mo), click rate ($0.045),
   tabloid duplex = 4 clicks.
+- _Paper invoice_ — Section 4 answered (Q17–Q19): interior text $0.0504/sh;
+  cover stocks $0.0962 / $0.1377 / $0.1393 per sheet. Worked example clicks +
+  paper subtotal now $2.12 for a 32-page standard comic.
