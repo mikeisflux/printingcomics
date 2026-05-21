@@ -4,6 +4,7 @@ import confetti from 'canvas-confetti';
 import { api } from '../api/client';
 import { useCart } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
+import { useSiteDiscount } from '../lib/useSiteDiscount';
 import '../styles/configurator.css';
 
 // 3D book preview lives behind a lazy import — its R3F deps add ~250KB and
@@ -79,10 +80,15 @@ function optionPriceDeltas(
   opt: ProductOption,
   selections: Record<string, string | number | boolean>,
   visibleKeys?: Set<string>,
+  siteDiscountBps = 0,
 ): Map<string, number> {
+  // A site-wide sale scales every upgrade price down by the same factor as
+  // the running total, so the "($0.19)" tags stay consistent with the total.
+  const factor = 1 - siteDiscountBps / 10000;
+
   // Flat-modifier options: the upgrade price lives on the value itself.
   if (opt.values.some((v) => v.priceModifierCents !== 0)) {
-    return new Map(opt.values.map((v) => [v.label, v.priceModifierCents]));
+    return new Map(opt.values.map((v) => [v.label, Math.round(v.priceModifierCents * factor)]));
   }
 
   // Formula-driven options: probe the pricing engine per candidate value.
@@ -104,7 +110,7 @@ function optionPriceDeltas(
   });
   if (rows.length === 0) return new Map();
   const min = Math.min(...rows.map((r) => r.list));
-  return new Map(rows.map((r) => [r.label, Math.round(r.list - min)]));
+  return new Map(rows.map((r) => [r.label, Math.round((r.list - min) * factor)]));
 }
 
 // Parse a product name like "Comic Book — Standard (6.625" × 10.25")" → { width, height }
@@ -138,6 +144,7 @@ export function CategoryConfigure() {
   const [qty, setQty] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const siteDiscountBps = useSiteDiscount();
 
   // AI-describe state
   const [aiOpen, setAiOpen] = useState(false);
@@ -244,8 +251,8 @@ export function CategoryConfigure() {
       if (typeof v === 'number') opts[k] = v;
       else if (typeof v === 'string' && v) opts[k] = /^\d+$/.test(v) ? Number(v) : v;
     }
-    return computePricing(product.pricingConfig, { quantity: qty, options: opts });
-  }, [product, selections, qty, visibleKeys]);
+    return computePricing(product.pricingConfig, { quantity: qty, options: opts, siteDiscountBps });
+  }, [product, selections, qty, visibleKeys, siteDiscountBps]);
 
   // Animate price reveal — interpolates over ~400ms whenever the target changes.
   useEffect(() => {
@@ -554,7 +561,7 @@ export function CategoryConfigure() {
                       </div>
                     )}
                     <div style={{ fontSize: '.8rem', marginTop: '.5rem', opacity: .9 }}>
-                      from {formatMoney(p.priceCents)}
+                      from {formatMoney(Math.round(p.priceCents * (1 - siteDiscountBps / 10000)))}
                     </div>
                   </button>
                 );
@@ -573,7 +580,7 @@ export function CategoryConfigure() {
                     onChange={(v) => setSel(keyOf(opt), v)}
                     deltas={
                       product.pricingConfig
-                        ? optionPriceDeltas(product.pricingConfig, opt, selections, visibleKeys)
+                        ? optionPriceDeltas(product.pricingConfig, opt, selections, visibleKeys, siteDiscountBps)
                         : undefined
                     }
                   />

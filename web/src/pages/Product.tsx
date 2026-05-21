@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useCart } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
+import { useSiteDiscount } from '../lib/useSiteDiscount';
 
 type OptionType = 'TILES' | 'RADIO' | 'SELECT' | 'TOGGLE' | 'TEXT' | 'NUMBER' | 'UPLOAD' | 'CONFIRM';
 
@@ -62,6 +63,7 @@ export function Product() {
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const siteDiscountBps = useSiteDiscount();
 
   useEffect(() => {
     if (!slug) return;
@@ -133,8 +135,8 @@ export function Product() {
       if (typeof v === 'string' && v !== '') options[k] = v;
       else if (typeof v === 'number') options[k] = v;
     }
-    return computePricing(product.pricingConfig, { quantity: qty, options });
-  }, [product, selections, qty]);
+    return computePricing(product.pricingConfig, { quantity: qty, options, siteDiscountBps });
+  }, [product, selections, qty, siteDiscountBps]);
 
   if (!product) return <div className="container" style={{ padding: '2rem 0' }}>Loading…</div>;
 
@@ -328,7 +330,13 @@ export function Product() {
               {breakdown.discountBps > 0 && (
                 <div className="spread" style={{ color: '#1e6b32' }}>
                   <span>Volume discount ({(breakdown.discountBps / 100).toFixed(1)}%)</span>
-                  <span>−{formatMoney(breakdown.combinedListCents - breakdown.unitCents)}</span>
+                  <span>−{formatMoney(Math.round(breakdown.combinedListCents * breakdown.discountBps / 10000))}</span>
+                </div>
+              )}
+              {breakdown.siteDiscountBps > 0 && (
+                <div className="spread" style={{ color: '#1e6b32' }}>
+                  <span>Site discount ({(breakdown.siteDiscountBps / 100).toFixed(1)}%)</span>
+                  <span>−{formatMoney(breakdown.combinedListCents - breakdown.unitCents - Math.round(breakdown.combinedListCents * breakdown.discountBps / 10000))}</span>
                 </div>
               )}
               <div className="spread" style={{ borderTop: '1px solid var(--border)', paddingTop: '.5rem', marginTop: '.5rem' }}>
