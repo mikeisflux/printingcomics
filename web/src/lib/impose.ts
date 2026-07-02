@@ -114,8 +114,9 @@ export function computeNUpGrid(opts: NUpOptions): NUpGrid {
   const fixed = !!(opts.cellWIn && opts.cellHIn);
   if (fixed) {
     const cellW=opts.cellWIn!*PT, cellH=opts.cellHIn!*PT;
-    const cols=Math.max(1, Math.floor((shW-2*mPt+gxPt)/(cellW+gxPt)));
-    const rows=Math.max(1, Math.floor((shH-2*mPt+gyPt)/(cellH+gyPt)));
+    // +1e-6 so an exact edge fit (e.g. 3 cards = 11.000") isn't lost to float error.
+    const cols=Math.max(1, Math.floor((shW-2*mPt+gxPt)/(cellW+gxPt)+1e-6));
+    const rows=Math.max(1, Math.floor((shH-2*mPt+gyPt)/(cellH+gyPt)+1e-6));
     const blockW=cols*cellW+(cols-1)*gxPt, blockH=rows*cellH+(rows-1)*gyPt;
     return { cols, rows, cellWPt:cellW, cellHPt:cellH, leftGapPt:(shW-blockW)/2, topGapPt:(shH-blockH)/2, gxPt, gyPt };
   }

@@ -409,10 +409,10 @@ const TOOLS: ToolDef[] = [
   },
   {
     id: 'trading', name: 'Trading Cards', category: 'Cards & Labels', engine: 'nup', badge: '★',
-    desc: 'Standard 2.5×3.5″ trading cards — 9-up on letter with bleed marks.',
-    tags: ['2.5×3.5″', '9-up', 'bleed marks'],
-    defaultNup: { cellWIn: 2.5, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    note: 'Design each card at 2.5×3.5″ (add ⅛″ bleed for full-bleed art). Drop a multi-page PDF for a mixed sheet, or use "Same design repeated".',
+    desc: 'Standard 2.5×3.5″ trading cards — 9-up on letter with cut marks.',
+    tags: ['2.5×3.5″', '9-up', 'cut marks'],
+    defaultNup: { cellWIn: 2.5, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.125, gutterIn: 0.125 },
+    note: 'Design each card at 2.5×3.5″. Drop a multi-page PDF for a mixed sheet, or pick "Same design repeated". For full-bleed art switch the sheet to 12×18″ (SRA3/tabloid+) so the ⅛″ bleed has room.',
     Thumb: cardThumb(3, 3, '★'),
   },
   {
@@ -426,7 +426,7 @@ const TOOLS: ToolDef[] = [
     id: 'labels', name: 'Labels (Avery 5160)', category: 'Cards & Labels', engine: 'nup',
     desc: '30-up 2.625×1″ address labels matched to the Avery 5160 die.',
     tags: ['30-up', 'Avery 5160', 'die-cut'],
-    defaultNup: { cellWIn: 2.625, cellHIn: 1, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.5, gutterIn: 0.125, gutterYIn: 0, addMarks: false },
+    defaultNup: { cellWIn: 2.625, cellHIn: 1, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.1875, gutterIn: 0.125, gutterYIn: 0, addMarks: false },
     note: 'Sized to the Avery 5160 sheet (3 across × 10 down). Turn off crop marks — the label stock is pre-die-cut.',
     Thumb: gridThumb(3, 10),
   },
@@ -453,10 +453,10 @@ const TOOLS: ToolDef[] = [
   },
   {
     id: 'flyer', name: 'Flyers', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Two letter-size flyers per tabloid sheet — sequential or repeated.',
-    tags: ['2-up', 'letter → tabloid'],
-    defaultNup: { cellWIn: 8.5, cellHIn: 11, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.25 },
-    Thumb: cardThumb(2, 1),
+    desc: 'Half-page 5.5×8.5″ flyers ganged 4-up on a 12×18″ sheet with cut marks.',
+    tags: ['5.5×8.5″', '4-up', 'cut marks'],
+    defaultNup: { cellWIn: 5.5, cellHIn: 8.5, sheetWIn: 12, sheetHIn: 18, marginIn: 0.25, gutterIn: 0.25 },
+    Thumb: cardThumb(2, 2),
   },
   {
     id: 'namebadge', name: 'Name Badges', category: 'Cards & Labels', engine: 'nup',
@@ -467,10 +467,10 @@ const TOOLS: ToolDef[] = [
   },
   {
     id: 'envelope', name: 'Envelopes', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Lay out #10 (9.5×4.125″) envelope artwork two-up on letter.',
+    desc: 'Lay out #10 (9.5×4.125″) envelope artwork, auto-packed onto a tabloid sheet.',
     tags: ['#10', 'auto-fit', 'mailer'],
-    defaultNup: { cellWIn: 9.5, cellHIn: 4.125, sheetWIn: 11, sheetHIn: 8.5, marginIn: 0.25, gutterIn: 0.25 },
-    Thumb: cardThumb(1, 2),
+    defaultNup: { cellWIn: 9.5, cellHIn: 4.125, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 },
+    Thumb: cardThumb(1, 3),
   },
 
   // ── Folding ──
