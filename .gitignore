@@ -13,6 +13,3 @@ siteold/db_tables/wp_options.sql
 
 # Generated Prisma client (recreated on every install via postinstall)
 server/src/generated/
-
-# npm workspace lockfile — not tracked upstream
-package-lock.json
