@@ -5,12 +5,12 @@ import {
   mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
-  makeDieline, downloadPdf, downloadMultiple,
+  makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
 } from '../../lib/impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions,
-  HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions,
+  HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
-  | 'bleed' | 'preflight' | 'dieline';
+  | 'bleed' | 'preflight' | 'dieline' | 'datamerge';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -619,9 +619,10 @@ const TOOLS: ToolDef[] = [
 
   // ── Tickets & data ──
   {
-    id: 'tickets', name: 'Variable Data Printing', preset: 'Event Tickets (numbered)', category: 'Tickets & data', engine: 'tickets',
+    id: 'tickets', name: 'Variable Data Printing', preset: 'Event Tickets (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
     desc: 'Serialize tickets, vouchers, badges and labels.',
-    tags: ['Sequential number per ticket', 'sequential numbering', 'n-up imposed'], Thumb: TicketThumb,
+    tags: ['CSV → one cell per row', 'sequential numbering', 'n-up imposed'],
+    defaultNup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: TicketThumb,
   },
   {
     id: 'raffle', name: 'Raffle Tickets', preset: 'Raffle Tickets (numbered)', category: 'Tickets & data', engine: 'tickets',
@@ -630,16 +631,16 @@ const TOOLS: ToolDef[] = [
     defaultTicket: { cols: 1, rows: 5, sheetWIn: 8.5, sheetHIn: 11, prefix: 'No. ', pad: 5 }, Thumb: TicketThumb,
   },
   {
-    id: 'coupons', name: 'Coupons', preset: 'Gift Vouchers (coded)', category: 'Tickets & data', engine: 'tickets',
+    id: 'coupons', name: 'Coupons', preset: 'Gift Vouchers (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
     desc: 'Serialized coupons & vouchers.',
-    tags: ['Unique code per voucher', 'name merge', 'n-up imposed'],
-    defaultTicket: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11, prefix: 'CODE-', pad: 6 }, Thumb: TicketThumb,
+    tags: ['Unique code per voucher', 'name merge from CSV', 'n-up imposed'],
+    defaultNup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: TicketThumb,
   },
   {
-    id: 'namebadge', name: 'Name Badges', preset: 'Conference Badges', category: 'Tickets & data', engine: 'nup',
+    id: 'namebadge', name: 'Name Badges', preset: 'Conference Badges (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
     desc: 'Personalized event badges.',
-    tags: ['Name badge inserts', 'spreadsheet merge', 'n-up imposed'],
-    defaultNup: { cellWIn: 3.375, cellHIn: 2.33, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.5, gutterIn: 0.125, gutterYIn: 0.1 }, Thumb: cardThumb(2, 4),
+    tags: ['Name + company from CSV', 'spreadsheet merge', 'n-up imposed'],
+    defaultNup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: cardThumb(2, 4),
   },
 
   // ── Marks & prepress ──
@@ -1296,6 +1297,78 @@ function DielineTool({ tool }: { tool: ToolDef }) {
   );
 }
 
+const SAMPLE_CSV = `Name,Company,Code
+Ada Lovelace,Analytical Ltd,VIP-0001
+Grace Hopper,US Navy,VIP-0002
+Alan Turing,Bletchley Park,VIP-0003
+Katherine Johnson,NASA,VIP-0004`;
+
+// CSV data-merge tool — no template PDF; each row becomes an imposed cell.
+function DataMergeTool({ tool }: { tool: ToolDef }) {
+  const [csv, setCsv] = useState(SAMPLE_CSV);
+  const [opts, setOpts] = useState<DataMergeOptions>({
+    cols: tool.defaultNup?.cols ?? 2, rows: tool.defaultNup?.rows ?? 4,
+    sheetWIn: tool.defaultNup?.sheetWIn ?? 8.5, sheetHIn: tool.defaultNup?.sheetHIn ?? 11,
+    marginIn: 0.35, gutterIn: 0.15, fontSizePt: 11, showBorder: true,
+    autoNumber: true, startNumber: 1, numberPrefix: 'No. ', numberPad: 4,
+    addMarks: true, markLenIn: 0.2, markOffIn: 0.1,
+  });
+  const [status, setStatus] = useState<Status>('idle');
+  const [errMsg, setErrMsg] = useState('');
+  const [info, setInfo] = useState('');
+  const set = <K extends keyof DataMergeOptions>(k: K, v: DataMergeOptions[K]) => setOpts(o => ({ ...o, [k]: v }));
+  const recordCount = Math.max(0, csv.trim().split('\n').filter(l => l.trim()).length - 1);
+  const loadCsv = useCallback((files: File[]) => { const f = files[0]; if (f) f.text().then(setCsv); }, []);
+
+  const gen = async () => {
+    setStatus('processing'); setErrMsg('');
+    try {
+      const res = await imposeDataMerge(csv, opts);
+      downloadPdf(res.pdf, `${tool.id}-merge.pdf`);
+      setInfo(`${res.records} records · ${res.columns.join(' · ')}`);
+      setStatus('done'); setTimeout(() => setStatus('idle'), 4000);
+    } catch (e) { setStatus('error'); setErrMsg(e instanceof Error ? e.message : 'Merge failed'); }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: '1.25rem' }}>
+      <NoteBanner text="Paste or drop a CSV — the first row is the header; each following row becomes one imposed cell (first column bold). Turn on Auto number for tickets/vouchers. Everything stays in your browser." />
+      <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
+        <h4 style={{ margin: '0 0 .5rem' }}>CSV data <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '.8rem' }}>· {recordCount} record{recordCount !== 1 ? 's' : ''}</span></h4>
+        <textarea value={csv} onChange={e => setCsv(e.target.value)} rows={7}
+          style={{ ...iStyle, fontFamily: 'ui-monospace, monospace', fontSize: '.82rem', resize: 'vertical' }} />
+        <div style={{ marginTop: '.5rem' }}><FileDrop onFile={loadCsv} label="…or drop a .csv file" /></div>
+      </div>
+      <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
+        <h4 style={{ margin: '0 0 .75rem' }}>Layout</h4>
+        <Grid>
+          <SheetPicker opts={opts} set={set} />
+          <Field label="Columns"><input type="number" min={1} max={10} step={1} value={opts.cols} onChange={e => set('cols', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Rows"><input type="number" min={1} max={20} step={1} value={opts.rows} onChange={e => set('rows', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Margin (in)"><input type="number" min={0} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Gutter (in)"><input type="number" min={0} max={1} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Number prefix"><input type="text" value={opts.numberPrefix} onChange={e => set('numberPrefix', e.target.value)} style={iStyle} /></Field>
+          <Field label="Options">
+            <Row>
+              <input type="checkbox" checked={opts.autoNumber} onChange={e => set('autoNumber', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Number</span>
+              <input type="checkbox" checked={opts.showBorder} onChange={e => set('showBorder', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Border</span>
+              <input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Marks</span>
+            </Row>
+          </Field>
+        </Grid>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <button className="btn" onClick={gen} disabled={status === 'processing' || recordCount < 1} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
+          {status === 'processing' ? 'Merging…' : status === 'done' ? '✓ Downloaded' : `Merge ${recordCount} record${recordCount !== 1 ? 's' : ''} & download`}
+        </button>
+        {status === 'done' && info && <span style={{ color: 'var(--muted)', fontSize: '.82rem' }}>{info}</span>}
+      </div>
+      {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg}</div>}
+    </div>
+  );
+}
+
 function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) {
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -1426,6 +1499,8 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
 
       {tool.engine === 'dieline' ? (
         <DielineTool tool={tool} />
+      ) : tool.engine === 'datamerge' ? (
+        <DataMergeTool tool={tool} />
       ) : tool.engine === 'merge' ? (
         <div style={{ display: 'grid', gap: '1.25rem' }}>
           {mergeFiles.length === 0 ? (

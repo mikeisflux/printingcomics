@@ -751,6 +751,91 @@ export async function makeDieline(opts: DielineOptions): Promise<Uint8Array> {
   return doc.save();
 }
 
+// ── CSV data-merge (variable data) ──────────────────────────────────────────
+// Parse a CSV and impose one personalized cell per record — names, codes,
+// vouchers, badges — n-up across sheets, with an optional running number.
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (ch !== '\r') field += ch;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+export interface DataMergeOptions {
+  cols: number;
+  rows: number;
+  sheetWIn: number;
+  sheetHIn: number;
+  marginIn: number;
+  gutterIn: number;
+  fontSizePt: number;
+  showBorder: boolean;
+  autoNumber: boolean;
+  startNumber: number;
+  numberPrefix: string;
+  numberPad: number;
+  addMarks: boolean;
+  markLenIn: number;
+  markOffIn: number;
+}
+
+export interface DataMergeResult { pdf: Uint8Array; records: number; columns: string[]; }
+
+export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): Promise<DataMergeResult> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const table = parseCSV(csvText);
+  if (table.length < 2) throw new Error('CSV needs a header row and at least one record.');
+  const headers = table[0]!.map(h => h.trim());
+  const records = table.slice(1);
+  const shW = opts.sheetWIn * PT, shH = opts.sheetHIn * PT, mPt = opts.marginIn * PT, gPt = opts.gutterIn * PT;
+  const cols = Math.max(1, opts.cols), rows = Math.max(1, opts.rows);
+  const cellW = (shW - 2 * mPt - gPt * (cols - 1)) / cols;
+  const cellH = (shH - 2 * mPt - gPt * (rows - 1)) / rows;
+  const perSheet = cols * rows;
+  const numSheets = Math.max(1, Math.ceil(records.length / perSheet));
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const off = opts.markOffIn * PT, len = opts.markLenIn * PT;
+  let idx = 0;
+  for (let si = 0; si < numSheets; si++) {
+    const pg = doc.addPage([shW, shH]);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      if (idx >= records.length) continue;
+      const rec = records[idx]!; const num = opts.startNumber + idx; idx++;
+      const x = mPt + c * (cellW + gPt), y = shH - mPt - cellH - r * (cellH + gPt);
+      if (opts.showBorder) pg.drawRectangle({ x, y, width: cellW, height: cellH, borderColor: rgb(0.8, 0.8, 0.82), borderWidth: 0.5 });
+      let ty = y + cellH - opts.fontSizePt - 8;
+      for (let f = 0; f < headers.length && f < 6; f++) {
+        const val = (rec[f] ?? '').trim();
+        if (!val) continue;
+        const size = f === 0 ? opts.fontSizePt + 2 : opts.fontSizePt;
+        pg.drawText(val.length > 34 ? val.slice(0, 33) + '…' : val, { x: x + 8, y: ty, font: f === 0 ? bold : font, size, color: rgb(0.1, 0.1, 0.1) });
+        ty -= size + 4;
+        if (ty < y + 14) break;
+      }
+      if (opts.autoNumber) {
+        const label = `${opts.numberPrefix}${String(num).padStart(opts.numberPad, '0')}`;
+        const tw = font.widthOfTextAtSize(label, opts.fontSizePt);
+        pg.drawText(label, { x: x + cellW - tw - 8, y: y + 8, font, size: opts.fontSizePt, color: rgb(0.42, 0.42, 0.45) });
+      }
+      if (opts.addMarks) drawCropMarks(pg, rgb, x, y, cellW, cellH, off, len);
+    }
+  }
+  return { pdf: await doc.save(), records: records.length, columns: headers };
+}
+
 // ── Zine (4 panels per side, 2 sides = 8-page booklet from 2 sheets) ────────
 // Same as saddle stitch; the "zine" label and preset distinguish the use case.
 
