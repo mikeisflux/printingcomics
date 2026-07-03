@@ -110,5 +110,75 @@ export declare function imposeTiledPoster(bytes: Uint8Array, opts: {
     markLenIn: number;
     markOffIn: number;
 }): Promise<Uint8Array>;
+export declare function generateBleed(bytes: Uint8Array, opts: {
+    bleedIn: number;
+}): Promise<Uint8Array>;
+export interface HeaderFooterOptions {
+    header: string;
+    footer: string;
+    fontSizePt: number;
+    marginPt: number;
+    align: 'left' | 'center' | 'right';
+}
+export declare function addHeaderFooter(bytes: Uint8Array, opts: HeaderFooterOptions): Promise<Uint8Array>;
+export interface WatermarkOptions {
+    text: string;
+    opacity: number;
+    angleDeg: number;
+    fontSizePt: number;
+}
+export declare function addTextWatermark(bytes: Uint8Array, opts: WatermarkOptions): Promise<Uint8Array>;
+export interface JobSlugOptions {
+    text: string;
+    position: 'top' | 'bottom';
+    fontSizePt: number;
+}
+export declare function addJobSlug(bytes: Uint8Array, opts: JobSlugOptions): Promise<Uint8Array>;
+export interface CollatingOptions {
+    edge: 'left' | 'right';
+}
+export declare function addCollatingMarks(bytes: Uint8Array, opts: CollatingOptions): Promise<Uint8Array>;
+export interface PreflightReport {
+    pages: number;
+    uniformSize: boolean;
+    widthIn: number;
+    heightIn: number;
+    warnings: string[];
+}
+export declare function preflight(bytes: Uint8Array): Promise<PreflightReport>;
+export interface DielineOptions {
+    kind: 'ste' | 'folder';
+    widthIn: number;
+    heightIn: number;
+    depthIn: number;
+    glueIn: number;
+    marginIn: number;
+}
+export declare function makeDieline(opts: DielineOptions): Promise<Uint8Array>;
+export interface DataMergeOptions {
+    cols: number;
+    rows: number;
+    sheetWIn: number;
+    sheetHIn: number;
+    marginIn: number;
+    gutterIn: number;
+    fontSizePt: number;
+    showBorder: boolean;
+    autoNumber: boolean;
+    startNumber: number;
+    numberPrefix: string;
+    numberPad: number;
+    addMarks: boolean;
+    markLenIn: number;
+    markOffIn: number;
+    qrColumn: string;
+    qrSizePt: number;
+}
+export interface DataMergeResult {
+    pdf: Uint8Array;
+    records: number;
+    columns: string[];
+}
+export declare function imposeDataMerge(csvText: string, opts: DataMergeOptions): Promise<DataMergeResult>;
 export declare function downloadPdf(bytes: Uint8Array, filename: string): void;
 export declare function downloadMultiple(files: Uint8Array[], baseName: string): void;

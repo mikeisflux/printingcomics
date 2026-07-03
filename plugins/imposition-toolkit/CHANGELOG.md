@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.0
+
+Major expansion to match a full pdfpress-style gallery.
+
+**Engine — 8 new functions (26 total)**
+- `generateBleed` — fabricate bleed by overflowing the trim (records TrimBox)
+- `addHeaderFooter` — running header/footer text bands
+- `addTextWatermark` — diagonal proof/draft stamp
+- `addJobSlug` — job-info strip along an edge
+- `addCollatingMarks` — stepped spine staircase for signature gathering
+- `preflight` — non-destructive size/uniformity report
+- `makeDieline` — real box-net generator (straight-tuck carton + presentation
+  folder): cut (solid) / crease (dashed) / glue lines from W×H×D
+- `imposeDataMerge` — CSV → one imposed cell per record, optional running
+  number and a **scannable QR** per row (via `qrcode-generator`)
+
+**UI (`Impose.tsx`)**
+- Rebuilt as a single-page gallery: hero, "how to make this" strip, filter
+  chips, and stacked sections — **60 tools across 8 categories + 6 chained
+  workflows + a custom-pipeline builder**.
+- Every card in the "READY TO USE / HOW TO MAKE THIS" format.
+- **Dark theme by default** (light/dark toggle) via CSS custom properties.
+- Richer white "paper-sheet" thumbnails.
+- New tool workspaces: dieline generator (no source file) and CSV data-merge.
+
+**Dependencies**
+- `qrcode-generator` added as an **optional** peer (only loaded when a
+  data-merge uses QR).
+
 ## 1.0.0
 
 Initial extraction from the Printing Comics storefront as a standalone,

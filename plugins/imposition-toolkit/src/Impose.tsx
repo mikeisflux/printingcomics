@@ -1,14 +1,16 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type { DragEvent, ChangeEvent } from 'react';
 import {
   getPdfInfo, imposeBooklet, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
-  downloadPdf, downloadMultiple,
+  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
+  makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
 } from './impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions,
+  HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -17,11 +19,22 @@ const SHEET_PRESETS = [
   { label: 'Letter (8.5×11")', w: 8.5, h: 11 },
   { label: 'Letter L (11×8.5")', w: 11, h: 8.5 },
   { label: 'Legal (8.5×14")', w: 8.5, h: 14 },
-  { label: 'Tabloid (11×17")', w: 11, h: 17 },
+  { label: 'Ledger / Tabloid (11×17")', w: 11, h: 17 },
   { label: 'Tabloid L (17×11")', w: 17, h: 11 },
   { label: 'Tabloid+ (12×18")', w: 12, h: 18 },
   { label: 'Super-B (13×19")', w: 13, h: 19 },
-  { label: 'SRA3 (12.6×17.7")', w: 12.6, h: 17.7 },
+  { label: 'Super-B L (19×13")', w: 19, h: 13 },
+  { label: 'A6 (105×148 mm)', w: 4.13, h: 5.83 },
+  { label: 'A5 (148×210 mm)', w: 5.83, h: 8.27 },
+  { label: 'A4 (210×297 mm)', w: 8.27, h: 11.69 },
+  { label: 'A4 L (297×210 mm)', w: 11.69, h: 8.27 },
+  { label: 'A3 (297×420 mm)', w: 11.69, h: 16.54 },
+  { label: 'SRA4 (225×320 mm)', w: 8.86, h: 12.6 },
+  { label: 'SRA3 (320×450 mm)', w: 12.6, h: 17.72 },
+  { label: 'B4 JIS (257×364 mm)', w: 10.12, h: 14.33 },
+  { label: 'Executive (7.25×10.5")', w: 7.25, h: 10.5 },
+  { label: 'Half-Letter (5.5×8.5")', w: 5.5, h: 8.5 },
+  { label: 'Album (12×12")', w: 12, h: 12 },
 ];
 
 // Local mirrors of the inline engine option shapes.
@@ -37,9 +50,10 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
-  | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop';
+  | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
+  | 'bleed' | 'preflight' | 'dieline' | 'datamerge';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
-type TopTab = 'tools' | 'calculators';
+type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
 
 interface LoadedFile { name: string; bytes: Uint8Array; info: PdfPageInfo; }
@@ -53,35 +67,51 @@ interface ToolDef {
   category: string;
   engine: ToolEngine;
   badge?: string;
+  preset?: string;       // "Loads the ready-to-use {preset}" line on the card
   Thumb: () => React.ReactElement;
   defaultNup?: Partial<NUpOptions>;
   defaultBooklet?: Partial<BookletOptions>;
+  defaultPoster?: Partial<PosterOptions>;
+  defaultTicket?: Partial<TicketOptions>;
   fitSource?: boolean;   // derive fixed cell size from the loaded page (Optimal Fit)
   panelGuide?: string[];
   note?: string;
+  dielineKind?: 'ste' | 'folder';
 }
 
 // ── Reusable thumbnails ───────────────────────────────────────────────────────
 
+// A white "paper sheet" backdrop (with a soft shadow) that most thumbnails sit
+// on, so they read as floating paper on the dark gallery cards.
+function Sheet({ children }: { children?: React.ReactNode }) {
+  return (
+    <>
+      <rect x={19} y={14} width={168} height={128} rx={6} fill="rgba(0,0,0,0.30)" />
+      <rect x={16} y={10} width={168} height={128} rx={6} fill="#ffffff" stroke="#e2e8f0" />
+      {children}
+    </>
+  );
+}
+
 function gridThumb(cols: number, rows: number, o: { numbered?: boolean; accent?: string } = {}) {
   return function GridThumb() {
-    const W = 200, H = 148, pad = 12, gap = 5;
-    const cw = (W - pad * 2 - gap * (cols - 1)) / cols;
-    const ch = (H - pad * 2 - gap * (rows - 1)) / rows;
+    const sx = 16, sy = 10, sw = 168, sh = 128, pad = 11, gap = 5;
+    const cw = (sw - pad * 2 - gap * (cols - 1)) / cols;
+    const ch = (sh - pad * 2 - gap * (rows - 1)) / rows;
     const cells: React.ReactElement[] = [];
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      const x = pad + c * (cw + gap), y = pad + r * (ch + gap);
+      const x = sx + pad + c * (cw + gap), y = sy + pad + r * (ch + gap);
       cells.push(
         <g key={`${r}-${c}`}>
-          <rect x={x} y={y} width={cw} height={ch} rx={1} fill="#f1f5f9" stroke={o.accent ?? '#94a3b8'} />
+          <rect x={x} y={y} width={cw} height={ch} rx={1.5} fill="#f8fafc" stroke={o.accent ?? '#cbd5e1'} />
           {o.numbered && (
-            <text x={x + cw / 2} y={y + ch / 2 + 5} textAnchor="middle" fill="#64748b"
-              fontSize={Math.min(16, ch * 0.42)} fontWeight={600}>{r * cols + c + 1}</text>
+            <text x={x + cw / 2} y={y + ch / 2 + 4} textAnchor="middle" fill="#94a3b8"
+              fontSize={Math.min(15, ch * 0.42)} fontWeight={600}>{r * cols + c + 1}</text>
           )}
         </g>
       );
     }
-    return <svg viewBox="0 0 200 148" width="100%" height="100%">{cells}</svg>;
+    return <svg viewBox="0 0 200 148" width="100%" height="100%"><Sheet>{cells}</Sheet></svg>;
   };
 }
 
@@ -119,23 +149,24 @@ const BookletThumb = () => (
 );
 
 const cardThumb = (cols: number, rows: number, badge?: string) => function CardThumb() {
-  const W = 200, H = 148, pad = 14, gap = 8;
-  const cw = (W - pad * 2 - gap * (cols - 1)) / cols;
-  const ch = (H - pad * 2 - gap * (rows - 1)) / rows;
+  const sx = 16, sy = 10, sw = 168, sh = 128, pad = 11, gap = 7;
+  const cw = (sw - pad * 2 - gap * (cols - 1)) / cols;
+  const ch = (sh - pad * 2 - gap * (rows - 1)) / rows;
   const cells: React.ReactElement[] = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const x = pad + c * (cw + gap), y = pad + r * (ch + gap);
+    const x = sx + pad + c * (cw + gap), y = sy + pad + r * (ch + gap);
     cells.push(
       <g key={`${r}-${c}`}>
-        <rect x={x} y={y} width={cw} height={ch} rx={3} fill="#eef2ff" stroke="#818cf8" />
-        <rect x={x + 4} y={y + 4} width={cw - 8} height={ch * 0.42} rx={2} fill="#c7d2fe" />
+        <rect x={x} y={y} width={cw} height={ch} rx={3} fill="#f5f3ff" stroke="#c4b5fd" />
+        <rect x={x + 5} y={y + 5} width={Math.max(6, cw * 0.55)} height={4} rx={2} fill="#a78bfa" />
+        {ch > 22 && <rect x={x + 5} y={y + 12} width={Math.max(6, cw * 0.78)} height={3} rx={1.5} fill="#ddd6fe" />}
       </g>
     );
   }
   return (
     <svg viewBox="0 0 200 148" width="100%" height="100%">
-      {cells}
-      {badge && <text x="184" y="24" textAnchor="middle" fontSize="20">{badge}</text>}
+      <Sheet>{cells}</Sheet>
+      {badge && <text x={sx + sw - 12} y={sy + 20} textAnchor="middle" fontSize="18">{badge}</text>}
     </svg>
   );
 };
@@ -294,283 +325,387 @@ const TicketThumb = () => (
 // ── Tool catalog ─────────────────────────────────────────────────────────────
 
 const TOOLS: ToolDef[] = [
-  // ── Booklets & Books ──
+  // ── Imposition & layout ──
   {
-    id: 'comic', name: 'Comic Book', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Saddle-stitch 2-up for standard US comic format with creep + bleed marks.',
-    tags: ['2-up', 'saddle-stitch', 'creep', '⅛″ bleed'],
-    defaultBooklet: { marginIn: 0.5, gutterIn: 0, creepIn: 0.125 },
-    Thumb: ComicThumb,
+    id: 'standardsizes', name: 'Standard Sizes', preset: 'Standard Sizes grid', category: 'Imposition & layout', engine: 'nup',
+    desc: '19 presets: Letter, A4, SRA3 and more.',
+    tags: ['Any sheet — presets or custom', 'auto-fit n-up grid', 'crop + center marks'],
+    defaultNup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: gridThumb(2, 2, { numbered: true }),
   },
   {
-    id: 'booklet', name: 'Booklet', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Generic 2-up saddle-stitch on any press sheet. Auto-detects page size.',
-    tags: ['2-up', 'auto-size', 'LTR / RTL'],
-    Thumb: BookletThumb,
+    id: 'cutstack', name: 'Cut & Stack', preset: 'Cut & Stack', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Sequential numbers across cut stacks.',
+    tags: ['Cut-and-stack (shingled)', 'guillotine-ready stacks', 'sequential per stack'],
+    defaultNup: { cols: 2, rows: 3, sheetWIn: 11, sheetHIn: 17, cutStack: true },
+    note: 'Print all sheets, guillotine into piles by cell position, then stack the piles — pages fall into sequence.',
+    Thumb: gridThumb(2, 3, { numbered: true, accent: '#818cf8' }),
   },
   {
-    id: 'magazine', name: 'Saddle-Stitch Magazine', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Full-size magazine imposition with wider margins for trim and grip.',
-    tags: ['saddle-stitch', 'wide margin', 'creep'],
-    defaultBooklet: { marginIn: 0.6, creepIn: 0.09 },
-    Thumb: BookletThumb,
+    id: 'expertgrid', name: 'Expert Grid', preset: 'Custom impose grid', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Full control over rows, gutters and margins.',
+    tags: ['Per-cell rows · gutters · margins', 'independent creep + gutters', 'manual grid'],
+    defaultNup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17 }, Thumb: gridThumb(2, 2),
   },
   {
-    id: 'perfectbound', name: 'Perfect-Bound Book', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Gather 2-up folios into signatures for a square, glued spine.',
-    tags: ['folios', 'signatures', 'no creep'],
-    defaultBooklet: { creepIn: 0, marginIn: 0.5 },
-    note: 'Perfect binding gathers folded sheets (folios). Print, fold, then stack signatures in order before gluing the spine — do not nest them like saddle stitch.',
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'zine', name: 'Zine', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Small self-published booklet — great for 8- to 16-page mini-comics.',
-    tags: ['mini', '8–16 pp', 'saddle-stitch'],
-    defaultBooklet: { marginIn: 0.35, creepIn: 0.06 },
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'program', name: 'Event Program', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Folded program for shows, weddings and services — 2-up saddle-stitch.',
-    tags: ['saddle-stitch', 'folded', 'events'],
-    defaultBooklet: { marginIn: 0.5 },
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'catalog', name: 'Catalog', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Product catalog imposition with creep for thicker page counts.',
-    tags: ['saddle-stitch', 'creep', 'retail'],
-    defaultBooklet: { marginIn: 0.5, creepIn: 0.15 },
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'greeting', name: 'Greeting Card', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Half-fold greeting card — a 4-page booklet from one folded sheet.',
-    tags: ['half-fold', '4-page', 'card'],
-    defaultBooklet: { marginIn: 0.25, creepIn: 0, addMarks: true },
-    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back). Prints one folded sheet.',
-    Thumb: BookletThumb,
-  },
-
-  // ── Imposition & Layout ──
-  {
-    id: 'nup', name: 'N-Up Grid', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Place multiple pages on a press sheet — sequential order, any rows × cols.',
-    tags: ['custom grid', 'gutters', 'crop marks'],
-    defaultNup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17 },
-    Thumb: gridThumb(2, 2, { numbered: true }),
-  },
-  {
-    id: 'steprepeat', name: 'Step & Repeat', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'One design tiled across the whole sheet — covers, stickers, cards.',
-    tags: ['identical copies', 'shared marks'],
-    defaultNup: { cols: 3, rows: 3, sheetWIn: 11, sheetHIn: 17, repeatFirst: true },
-    Thumb: gridThumb(3, 3),
-  },
-  {
-    id: 'cutstack', name: 'Cut & Stack', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Order pages so cut piles stack into sequence — fastest way to collate.',
-    tags: ['cut & stack', 'collation', 'high volume'],
-    defaultNup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17, cutStack: true },
-    note: 'Print all sheets, guillotine-cut the stack into piles by cell position, then set the piles on top of each other in order — pages fall into sequence.',
-    Thumb: gridThumb(2, 2, { numbered: true, accent: '#818cf8' }),
-  },
-  {
-    id: 'contact', name: 'Index / Contact Sheet', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Thumbnail every page of a PDF onto proof sheets for quick review.',
-    tags: ['thumbnails', 'proof', 'sequential'],
-    defaultNup: { cols: 4, rows: 5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.3, gutterIn: 0.1, addMarks: false },
+    id: 'optimalfit', name: 'Optimal Fit', preset: 'Auto-fit grid', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Pack the most pages per sheet.',
+    tags: ['Auto-scale n-up grid', 'fill the sheet edge-to-edge', 'more copies per sheet'],
+    defaultNup: { sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125, repeatFirst: true }, fitSource: true,
+    note: 'The page is placed at its native size and packed edge-to-edge. Drop a page that already includes bleed.',
     Thumb: gridThumb(4, 5),
   },
   {
-    id: 'optimalfit', name: 'Optimal Fit', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Auto-pack as many copies of your page as fit the sheet at true size.',
-    tags: ['auto n-up', 'best yield', 'true size'],
-    defaultNup: { sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125, repeatFirst: true },
-    fitSource: true,
-    note: 'The page is placed at its native size and packed edge-to-edge. Drop a page that already includes bleed.',
-    Thumb: gridThumb(3, 4),
+    id: 'gangsheet', name: 'Gang Sheet', preset: 'Gang sheet', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Many jobs on one press sheet.',
+    tags: ['Many jobs / one sheet', 'work-and-turn or sheetwise', 'shared gutters + marks'],
+    defaultNup: { cols: 3, rows: 3, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.2 },
+    note: 'Each page of the dropped PDF is ganged onto the sheet. For different jobs, merge them into one PDF first (Page & PDF tools → Merge).',
+    Thumb: gridThumb(3, 3),
   },
   {
-    id: 'poster', name: 'Tiled Poster', category: 'Imposition & Layout', engine: 'poster',
-    desc: 'Blow one page up across several sheets to tile into a large poster.',
-    tags: ['enlarge', 'tile', 'overlap'],
-    Thumb: PosterThumb,
+    id: 'contact', name: 'Index Print', preset: 'Photo contact sheet (8-up)', category: 'Imposition & layout', engine: 'nup',
+    desc: 'A contact sheet of every page.',
+    tags: ['8-up contact sheet', 'thumbnail grid', 'filename captions'],
+    defaultNup: { cols: 4, rows: 5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.3, gutterIn: 0.1, addMarks: false },
+    Thumb: gridThumb(4, 3, { numbered: true }),
+  },
+  {
+    id: 'photo', name: 'Photo Prints', preset: 'Full-bleed photo cards (4×6)', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Many photos ganged on one sheet.',
+    tags: ['2-up 4×6 in', 'Letter sheet', '⅛ in bleed', 'step-and-repeat'],
+    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(3, 3),
+  },
+  {
+    id: 'flyer', name: 'Flyers', preset: '2-sided A5 flyer', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Multiple flyers up per sheet.',
+    tags: ['2-up A5 · Letter sheet', 'double-sided', 'auto turn'],
+    defaultNup: { cellWIn: 5.5, cellHIn: 8.5, sheetWIn: 12, sheetHIn: 18, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(2, 2),
   },
 
-  // ── Cards & Labels ──
+  // ── Booklets & books ──
   {
-    id: 'business', name: 'Business Cards', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Standard 3.5×2″ cards, auto-packed with crop marks in the gutters.',
-    tags: ['3.5×2″', 'auto-fit', 'crop marks'],
-    defaultNup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(2, 4),
+    id: 'nupbook', name: 'N-up Book', preset: 'N-up book', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Booklet pages, imposed automatically.',
+    tags: ['4 / 8 / 16-up in binding order', 'perfect or nested', 'creep compensation'],
+    defaultBooklet: { marginIn: 0.5, creepIn: 0.125 }, Thumb: gridThumb(2, 2, { numbered: true }),
   },
   {
-    id: 'trading', name: 'Trading Cards', category: 'Cards & Labels', engine: 'nup', badge: '★',
-    desc: 'Standard 2.5×3.5″ trading cards — 9-up on letter with cut marks.',
-    tags: ['2.5×3.5″', '9-up', 'cut marks'],
+    id: 'booklet', name: 'Booklet', preset: 'Booklet', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Saddle-stitch & perfect-bound spreads.',
+    tags: ['Saddle-stitch printer spreads', 'auto page shuffle', 'creep + duplex'], Thumb: BookletThumb,
+  },
+  {
+    id: 'magazine', name: 'Saddle-Stitch Magazine', preset: 'Saddle-Stitch A4 Magazine', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Stapled magazines & booklets.',
+    tags: ['2-up A4 on A3', 'saddle-stitch booklet', 'CMYK color bar'],
+    defaultBooklet: { marginIn: 0.6, creepIn: 0.09 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'perfectbound', name: 'Perfect-Bound Book', preset: 'Perfect Bound Trade Paperback (4-up)', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Squared-spine books & catalogs.',
+    tags: ['4-up A5', 'perfect binding', '14.4 pt spine gutter', 'duplex'],
+    defaultBooklet: { creepIn: 0, marginIn: 0.5 },
+    note: 'Perfect binding gathers folded signatures; stack them in order before gluing the spine.', Thumb: BookletThumb,
+  },
+  {
+    id: 'zine', name: 'Zine', preset: 'One-Sheet 8-Page Zine', category: 'Booklets & books', engine: 'booklet',
+    desc: '8-page zine from a single sheet.',
+    tags: ['8 panels / one sheet', 'single fold-and-cut', 'auto-rotated panels'],
+    defaultBooklet: { marginIn: 0.35, creepIn: 0.06 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'program', name: 'Event Program', preset: 'Playbill / Theater Program', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Folded, stapled event programs.',
+    tags: ['2-up A5 on A4', 'saddle-stitch', 'trim-ready (no marks)'],
+    defaultBooklet: { marginIn: 0.5 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'catalog', name: 'Catalog', preset: 'Digest Magazine (5.5×8.5")', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Perfect-bound product catalogs.',
+    tags: ['4-up nested digest 5.5×8.5 in', 'Tabloid sheet', 'inward creep', 'duplex'],
+    defaultBooklet: { marginIn: 0.5, creepIn: 0.15 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'comic', name: 'Comic / Manga', preset: 'US Comic Book (6.625×10.25")', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Left- or right-to-left bound comic booklets.',
+    tags: ['2-up 6.625×10.25 in', 'Tabloid sheet', 'saddle-stitch', '⅛ in bleed'],
+    defaultBooklet: { marginIn: 0.5, gutterIn: 0, creepIn: 0.125 }, Thumb: ComicThumb,
+  },
+  {
+    id: 'notebook', name: 'Notebook', preset: 'A5 Pocket Book', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Lined notebooks & journals.',
+    tags: ['2-up A5 on A4', 'saddle-stitch', '⅛ in bleed'],
+    defaultBooklet: { marginIn: 0.4, creepIn: 0.08 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'flipbook', name: 'Flip Book', preset: 'Frame grid', category: 'Booklets & books', engine: 'nup',
+    desc: 'Frames imposed many-up to print and bind.',
+    tags: ['12-up frame grid', 'sequential cut order', 'cut marks + bleed'],
+    defaultNup: { cols: 4, rows: 3, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.1, cutStack: true },
+    Thumb: gridThumb(4, 3, { numbered: true }),
+  },
+
+  // ── Cards & labels ──
+  {
+    id: 'business', name: 'Business Cards', preset: '10-Up Business Cards', category: 'Cards & labels', engine: 'nup',
+    desc: 'Gang multiple cards per sheet.',
+    tags: ['10-up (2×5)', '3.5×2 in', 'Letter sheet', '⅛ in bleed', 'crop in gutters', 'duplex'],
+    defaultNup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 4),
+  },
+  {
+    id: 'trading', name: 'Trading Cards', preset: '9-Up Trading Cards', category: 'Cards & labels', engine: 'nup', badge: '★',
+    desc: 'Standard 2.5×3.5" trading cards, 9-up on letter.',
+    tags: ['9-up (3×3)', '2.5×3.5 in', 'Letter sheet', 'cut marks'],
     defaultNup: { cellWIn: 2.5, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.125, gutterIn: 0.125 },
-    note: 'Design each card at 2.5×3.5″. Drop a multi-page PDF for a mixed sheet, or pick "Same design repeated". For full-bleed art switch the sheet to 12×18″ (SRA3/tabloid+) so the ⅛″ bleed has room.',
-    Thumb: cardThumb(3, 3, '★'),
+    note: 'Design each card at 2.5×3.5". For full-bleed art switch the sheet to 12×18".', Thumb: cardThumb(3, 3, '★'),
   },
   {
-    id: 'postcard', name: 'Postcards', category: 'Cards & Labels', engine: 'nup',
-    desc: '4×6″ postcards packed onto large sheets with trim marks.',
-    tags: ['4×6″', 'auto-fit', 'mailer'],
-    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(2, 3),
+    id: 'stickers', name: 'Stickers', preset: 'Kiss-cut sticker sheet', category: 'Cards & labels', engine: 'nup',
+    desc: 'Die-cut sticker sheets, ganged up.',
+    tags: ['Nest on sheet or roll', 'shape detection', 'kiss-cut / contour die lines'],
+    defaultNup: { cols: 3, rows: 3, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.2, repeatFirst: true }, Thumb: gridThumb(3, 3),
   },
   {
-    id: 'labels', name: 'Labels (Avery 5160)', category: 'Cards & Labels', engine: 'nup',
-    desc: '30-up 2.625×1″ address labels matched to the Avery 5160 die.',
-    tags: ['30-up', 'Avery 5160', 'die-cut'],
+    id: 'steprepeat', name: 'Step & Repeat', preset: 'Step & Repeat grid', category: 'Cards & labels', engine: 'nup',
+    desc: 'One design, repeated across the sheet.',
+    tags: ['Step-and-repeat n-up', 'identical copies', 'shared gutters + crop marks'],
+    defaultNup: { cols: 3, rows: 3, sheetWIn: 11, sheetHIn: 17, repeatFirst: true }, Thumb: gridThumb(3, 3),
+  },
+  {
+    id: 'calendar', name: 'Calendar', preset: 'Desk Calendar (Tent Style)', category: 'Cards & labels', engine: 'booklet',
+    desc: 'Build print-ready calendar layouts.',
+    tags: ['Half-sheet calendar pages', 'Letter landscape', 'spine gutter', 'outward creep'],
+    defaultBooklet: { marginIn: 0.5, creepIn: 0.1 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'postcard', name: 'Postcards', preset: 'Full-Bleed Postcards (4-up + Bleed)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Gang postcards with cut gaps.',
+    tags: ['4-up 4×6 in', 'Tabloid sheet', '⅛ in bleed', 'crop + center marks', 'duplex'],
+    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 3),
+  },
+  {
+    id: 'labels', name: 'Labels', preset: 'Mailing Labels (Avery 5160 style)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Die-cut label sheets & rolls.',
+    tags: ['30-up (Avery 5160)', '1×2.625 in', 'Letter sheet', 'trim-ready'],
     defaultNup: { cellWIn: 2.625, cellHIn: 1, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.1875, gutterIn: 0.125, gutterYIn: 0, addMarks: false },
-    note: 'Sized to the Avery 5160 sheet (3 across × 10 down). Turn off crop marks — the label stock is pre-die-cut.',
-    Thumb: gridThumb(3, 10),
+    note: 'Sized to the Avery 5160 die (3 across × 10 down). Marks off — the stock is pre-die-cut.', Thumb: gridThumb(3, 10),
   },
   {
-    id: 'bookmark', name: 'Bookmarks', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Tall 2×6″ bookmarks packed several-up with cut marks.',
-    tags: ['2×6″', 'auto-fit', 'cut marks'],
-    defaultNup: { cellWIn: 2, cellHIn: 6, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(4, 1),
+    id: 'bookmark', name: 'Bookmarks', preset: 'Bookmarks (6-up)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Step-and-repeat bookmark strips.',
+    tags: ['6-up (3×2)', '2×6 in', 'Letter sheet', 'crop in gutters', 'duplex'],
+    defaultNup: { cellWIn: 2, cellHIn: 6, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(4, 1),
   },
   {
-    id: 'hangtag', name: 'Hang Tags', category: 'Cards & Labels', engine: 'nup',
-    desc: '2×3.5″ product hang tags, auto-packed with trim marks.',
-    tags: ['2×3.5″', 'retail', 'auto-fit'],
-    defaultNup: { cellWIn: 2, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(3, 3),
+    id: 'hangtag', name: 'Hang Tags', preset: 'Hang Tags 8-Up (2.5×4")', category: 'Cards & labels', engine: 'nup',
+    desc: 'Product tags, ganged & punched.',
+    tags: ['8-up (2×4)', '2.5×4 in', 'Tabloid sheet', '⅛ in bleed', 'die-cut contour'],
+    defaultNup: { cellWIn: 2, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(3, 3),
   },
   {
-    id: 'photo', name: 'Photo Prints', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Gang 4×6″ photos (or set any size) onto a sheet with cut marks.',
-    tags: ['4×6″', 'gang-up', 'cut marks'],
-    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(1, 2),
+    id: 'coasters', name: 'Coasters', preset: 'Square Coasters (4-up)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Round & square drink coasters.',
+    tags: ['4-up 3.5 in', 'Tabloid sheet', 'contour die-cut', 'nested fill'],
+    defaultNup: { cellWIn: 3.5, cellHIn: 3.5, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(2, 2),
   },
   {
-    id: 'flyer', name: 'Flyers', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Half-page 5.5×8.5″ flyers ganged 4-up on a 12×18″ sheet with cut marks.',
-    tags: ['5.5×8.5″', '4-up', 'cut marks'],
-    defaultNup: { cellWIn: 5.5, cellHIn: 8.5, sheetWIn: 12, sheetHIn: 18, marginIn: 0.25, gutterIn: 0.25 },
-    Thumb: cardThumb(2, 2),
+    id: 'letterhead', name: 'Letterhead', preset: 'Letterhead Gang Run', category: 'Cards & labels', engine: 'nup',
+    desc: 'Branded business letterheads.',
+    tags: ['Gang multiple clients', 'Tabloid sheet', 'CMYK color bar', 'cut marks per job'],
+    defaultNup: { cellWIn: 8.5, cellHIn: 11, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(2, 1),
   },
   {
-    id: 'namebadge', name: 'Name Badges', category: 'Cards & Labels', engine: 'nup',
-    desc: '8-up 3.375×2.33″ badge inserts, matched to standard clip holders.',
-    tags: ['8-up', 'inserts', 'events'],
-    defaultNup: { cellWIn: 3.375, cellHIn: 2.33, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.5, gutterIn: 0.125, gutterYIn: 0.1 },
-    Thumb: cardThumb(2, 4),
+    id: 'complimentslip', name: 'Compliment Slips', preset: 'Compliment Slips (DL 3-up)', category: 'Cards & labels', engine: 'nup',
+    desc: 'DL slips ganged 3-up.',
+    tags: ['DL 3-up (1×3)', '210×99 mm', 'SRA4 oversize', '⅛ in bleed', 'crop in gutters'],
+    defaultNup: { cellWIn: 8.27, cellHIn: 3.9, sheetWIn: 8.86, sheetHIn: 12.6, marginIn: 0.25, gutterIn: 0.1 }, Thumb: cardThumb(1, 3),
   },
   {
-    id: 'envelope', name: 'Envelopes', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Lay out #10 (9.5×4.125″) envelope artwork, auto-packed onto a tabloid sheet.',
-    tags: ['#10', 'auto-fit', 'mailer'],
-    defaultNup: { cellWIn: 9.5, cellHIn: 4.125, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 },
-    Thumb: cardThumb(1, 3),
+    id: 'ncrpads', name: 'NCR Pads', preset: 'NCR Form (3-Part Carbon)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Carbonless multi-part forms.',
+    tags: ['3-part carbonless', 'white / pink / yellow', 'Letter sheet', 'collated set'],
+    defaultNup: { cellWIn: 8.5, cellHIn: 11, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.25 },
+    note: 'Print one set per colour stock (white / pink / yellow), then collate into pads.', Thumb: cardThumb(2, 1),
+  },
+  {
+    id: 'envelope', name: 'Envelopes', preset: 'Envelope Flats 4-Up (#10)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Printed envelope flats.',
+    tags: ['4-up #10 flats', '9.5×4.125 in', 'Letter sheet', 'crop marks'],
+    defaultNup: { cellWIn: 9.5, cellHIn: 4.125, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(1, 3),
   },
 
   // ── Folding ──
   {
-    id: 'trifold', name: 'Trifold Brochure', category: 'Folding', engine: 'nup',
-    desc: 'Three panels per side on a landscape sheet — classic letter-fold brochure.',
-    tags: ['3 panels', 'letter-fold', '6 pages'],
+    id: 'trifold', name: 'Trifold Brochure', preset: 'Tri-Fold Brochure 2-Up', category: 'Folding', engine: 'nup',
+    desc: 'Roll-fold & gate-fold leaflets.',
+    tags: ['Tri-fold brochure', 'front + back flats (duplex)', '⅛ in bleed', 'crop + center marks'],
     defaultNup: { cols: 3, rows: 1, sheetWIn: 11, sheetHIn: 8.5, marginIn: 0.25, gutterIn: 0 },
     panelGuide: ['Sheet 1 = outside (back cover · front cover · fold-in flap)', 'Sheet 2 = inside spread (left · middle · right)'],
-    note: 'Supply 6 pages in panel order (outside L→R, then inside L→R). The fold-in panel should be ~1⁄16″ narrower in your artwork.',
-    Thumb: foldThumb(3),
+    note: 'Supply 6 pages in panel order (outside L→R, then inside L→R).', Thumb: foldThumb(3),
   },
   {
-    id: 'wedding', name: 'Wedding Invitation', category: 'Folding', engine: 'nup',
-    desc: 'Quarter-fold invitation — four panels on a single portrait sheet.',
-    tags: ['quarter-fold', '4 panels', 'invite'],
-    defaultNup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0 },
-    panelGuide: ['Top-left · Top-right', 'Bottom-left · Bottom-right'],
-    note: 'Supply 4 panels in reading order. Fold in half twice. Add a second 4-page file for a double-sided invite.',
-    Thumb: gridThumb(2, 2),
+    id: 'zfold', name: 'Folded Brochure', preset: 'Z-Fold Accordion (6-Panel, Tabloid)', category: 'Folding', engine: 'nup',
+    desc: 'Roll-fold, Z-fold & gate-fold.',
+    tags: ['Z-fold accordion, 6 panels', 'Tabloid sheet', 'crop marks', 'duplex'],
+    defaultNup: { cols: 4, rows: 1, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0 },
+    note: 'Supply panels in accordion order; folds alternate direction.', Thumb: foldThumb(4),
   },
   {
-    id: 'menu', name: 'Menu / Bi-fold', category: 'Folding', engine: 'booklet',
-    desc: 'Single-fold menu — 4 pages on one folded sheet, 2-up saddle layout.',
-    tags: ['bi-fold', '4-page', 'menu'],
+    id: 'greeting', name: 'Greeting Card', preset: 'Greeting Card (A5 Fold)', category: 'Folding', engine: 'booklet',
+    desc: 'Folded cards with full bleed.',
+    tags: ['2-up A5 single fold', 'Letter landscape', 'single saddle', 'trim-ready'],
+    defaultBooklet: { marginIn: 0.25, creepIn: 0, addMarks: true },
+    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back).', Thumb: foldThumb(2),
+  },
+  {
+    id: 'menu', name: 'Menu', preset: 'Bi-Fold Restaurant Menu', category: 'Folding', engine: 'booklet',
+    desc: 'Folded & bi-fold menus.',
+    tags: ['Bi-fold, 4-panel menu', 'Tabloid sheet', '⅛ in bleed', 'crop + center marks', 'duplex'],
     defaultBooklet: { marginIn: 0.4, creepIn: 0, addMarks: true },
-    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back).',
-    Thumb: foldThumb(2),
+    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back).', Thumb: foldThumb(2),
+  },
+  {
+    id: 'wedding', name: 'Wedding Invitation', preset: '2-Up Invitation Cards (5×7")', category: 'Folding', engine: 'nup',
+    desc: 'Folded invites & suites.',
+    tags: ['2-up 5×7 in', 'Letter sheet', '⅛ in bleed', 'crop in gutters', 'duplex'],
+    defaultNup: { cellWIn: 5, cellHIn: 7, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 2),
+  },
+  {
+    id: 'presfolder', name: 'Presentation Folder', preset: 'Presentation Folder Dieline (A4 Pocket)', category: 'Folding', engine: 'dieline', dielineKind: 'folder',
+    desc: 'Die-cut folders with pockets.',
+    tags: ['back + front panels', 'fold-up pockets', 'glue tabs', 'cut + crease dieline'],
+    note: 'Generates the folder dieline (cut + crease lines) from your dimensions — no source file needed.', Thumb: cardThumb(1, 1),
   },
 
-  // ── Tickets & Data ──
+  // ── Large & specialty ──
   {
-    id: 'tickets', name: 'Numbered Tickets', category: 'Tickets & Data', engine: 'tickets',
-    desc: 'Repeat one ticket design and stamp a running number on every copy.',
-    tags: ['sequential #', 'raffle', 'stubs'],
-    Thumb: TicketThumb,
+    id: 'poster', name: 'Tiled Poster', preset: 'Tiled Poster (A4 tiles to A0)', category: 'Large & specialty', engine: 'poster',
+    desc: 'Big posters from small sheets.',
+    tags: ['A0 across 8 A4 tiles', '4×2 grid', 'crop + center marks'],
+    defaultPoster: { tilesAcross: 4, tilesDown: 2, sheetWIn: 8.27, sheetHIn: 11.69, overlapIn: 0.5 }, Thumb: PosterThumb,
+  },
+  {
+    id: 'banner', name: 'Banner', preset: 'Banner Tiles 4-Up (24×36" panels)', category: 'Large & specialty', engine: 'poster',
+    desc: 'Wide banners tiled across sheets.',
+    tags: ['96×36 in banner', '4×1 tiles of 24×36', 'wide-format'],
+    defaultPoster: { tilesAcross: 4, tilesDown: 1, sheetWIn: 24, sheetHIn: 36, overlapIn: 0.5 }, Thumb: PosterThumb,
+  },
+  {
+    id: 'featherflag', name: 'Feather Flags', preset: 'Feather Flag (Soft Signage)', category: 'Large & specialty', engine: 'nup',
+    desc: 'Feather & teardrop flag signage.',
+    tags: ['700×2300 mm medium flag', 'single panel · dye-sub', 'edge-to-edge, no marks'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 27.5, sheetHIn: 90.5, marginIn: 0, gutterIn: 0, addMarks: false },
+    note: 'Scales your artwork to the flag size, 1-up, full-bleed.', Thumb: cardThumb(1, 1),
+  },
+  {
+    id: 'rollerbanner', name: 'Roller Banner', preset: 'Retractable Banner (33×80")', category: 'Large & specialty', engine: 'nup',
+    desc: 'Retractable pull-up banner stands.',
+    tags: ['33×80 in pull-up', 'single portrait panel', 'scale to stand size'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 33, sheetHIn: 80, marginIn: 0, gutterIn: 0, addMarks: false },
+    note: 'Scales your artwork to the stand size, 1-up.', Thumb: cardThumb(1, 1),
+  },
+  {
+    id: 'packaging', name: 'Packaging Dieline', preset: 'Folding Carton Dieline', category: 'Large & specialty', engine: 'dieline', dielineKind: 'ste',
+    desc: 'Boxes, cartons & custom shapes.',
+    tags: ['Folding-carton dieline', 'tuck + dust flaps', 'fold + glue panels', 'cut + crease lines'],
+    note: 'Generates a folding-carton box net (cut + crease + glue) from your Width × Height × Depth — no source file needed.', Thumb: cardThumb(1, 1),
+  },
+  {
+    id: 'boxcarton', name: 'Box / Carton', preset: 'Folding Carton — Straight Tuck End', category: 'Large & specialty', engine: 'dieline', dielineKind: 'ste',
+    desc: 'Folding-carton dielines.',
+    tags: ['Straight-tuck carton dieline', 'tuck + glue flaps', 'W × H × D', 'cut + crease lines'],
+    note: 'Generates a straight-tuck-end carton net (cut + crease + glue) from your dimensions.', Thumb: cardThumb(1, 1),
   },
 
-  // ── Marks & Prepress ──
+  // ── Tickets & data ──
   {
-    id: 'cropmarks', name: 'Crop Marks', category: 'Marks & Prepress', engine: 'cropmarks',
-    desc: 'Add trim marks and a bleed offset to any PDF without rearranging pages.',
-    tags: ['marks only', 'bleed offset', 'per-page'],
-    Thumb: MarksThumb,
+    id: 'tickets', name: 'Variable Data Printing', preset: 'Event Tickets (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
+    desc: 'Serialize tickets, vouchers, badges and labels.',
+    tags: ['CSV → one cell per row', 'sequential numbering', 'scannable QR per row'],
+    defaultNup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: TicketThumb,
   },
   {
-    id: 'colorbar', name: 'Color Bar', category: 'Marks & Prepress', engine: 'colorbar',
-    desc: 'Append a CMYK/registration color strip for press density control.',
-    tags: ['CMYK strip', 'density', 'press control'],
-    Thumb: ColorBarThumb,
+    id: 'raffle', name: 'Raffle Tickets', preset: 'Raffle Tickets (numbered)', category: 'Tickets & data', engine: 'tickets',
+    desc: 'Numbered, cut-and-stack tickets.',
+    tags: ['Numbered per stub', 'sequential raffle #', 'perforated n-up'],
+    defaultTicket: { cols: 1, rows: 5, sheetWIn: 8.5, sheetHIn: 11, prefix: 'No. ', pad: 5 }, Thumb: TicketThumb,
   },
   {
-    id: 'pagenumbers', name: 'Page Numbering', category: 'Marks & Prepress', engine: 'pagenumbers',
-    desc: 'Stamp folio page numbers with a prefix/suffix in any corner.',
-    tags: ['folios', 'prefix/suffix', 'any corner'],
-    Thumb: PageNumThumb,
+    id: 'coupons', name: 'Coupons', preset: 'Gift Vouchers (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
+    desc: 'Serialized coupons & vouchers.',
+    tags: ['Unique code per voucher', 'name merge from CSV', 'QR per voucher'],
+    defaultNup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: TicketThumb,
+  },
+  {
+    id: 'namebadge', name: 'Name Badges', preset: 'Conference Badges (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
+    desc: 'Personalized event badges.',
+    tags: ['Name + company from CSV', 'spreadsheet merge', 'n-up imposed'],
+    defaultNup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: cardThumb(2, 4),
   },
 
-  // ── Page & PDF Tools ──
+  // ── Marks & prepress ──
   {
-    id: 'merge', name: 'Merge PDFs', category: 'Page & PDF Tools', engine: 'merge',
+    id: 'bleedmarks', name: 'Bleed & Crop Marks', preset: 'BleedMaker', category: 'Marks & prepress', engine: 'bleed',
+    desc: 'Print edge-to-edge with confidence.',
+    tags: ['Add bleed to artwork', 'scale or mirror-extend', 'set bleed amount'], Thumb: CropToolThumb,
+  },
+  {
+    id: 'cropmarks', name: 'Cutter Marks', preset: 'Cutter Marks', category: 'Marks & prepress', engine: 'cropmarks',
+    desc: 'Registration & cutter guides on every tile.',
+    tags: ['Crop + registration marks', 'die-cut paths (Thru / Kiss-cut)', 'key marks'], Thumb: MarksThumb,
+  },
+  {
+    id: 'colorbar', name: 'Color Bar & Header', preset: 'Color Bar', category: 'Marks & prepress', engine: 'colorbar',
+    desc: 'Running headers, footers and control strips.',
+    tags: ['CMYK + spot color bar', 'registration crosshairs', 'slug header'],
+    note: 'Adds the CMYK/registration control strip. For running headers/footers, chain the Header/Footer step in a workflow.', Thumb: ColorBarThumb,
+  },
+  {
+    id: 'pagenumbers', name: 'Page Numbering & Bates', preset: 'Page Numbering', category: 'Marks & prepress', engine: 'pagenumbers',
+    desc: 'Sequential & Bates stamps on every page.',
+    tags: ['Page numbers / Bates', 'tokens [page] / [count]', 'any margin + rotation'], Thumb: PageNumThumb,
+  },
+  {
+    id: 'preflight', name: 'Preflight Inspector', preset: 'Preflight Inspector', category: 'Marks & prepress', engine: 'preflight',
+    desc: 'Catch print problems before output.',
+    tags: ['Page boxes + fonts', 'DPI, color + hairlines', 'issue rail + marked proof'], Thumb: PageNumThumb,
+  },
+
+  // ── Page & PDF tools ──
+  {
+    id: 'merge', name: 'Merge PDFs', preset: 'Merge', category: 'Page & PDF tools', engine: 'merge',
     desc: 'Combine multiple PDF files into one document in any order.',
-    tags: ['multiple files', 'set order'],
-    Thumb: MergeThumb,
+    tags: ['multiple files', 'set order'], Thumb: MergeThumb,
   },
   {
-    id: 'split', name: 'Split PDF', category: 'Page & PDF Tools', engine: 'split',
+    id: 'split', name: 'Split PDF', preset: 'Split', category: 'Page & PDF tools', engine: 'split',
     desc: 'Break a PDF into separate files by page ranges (e.g. 1-3, 4-6, 7).',
-    tags: ['page ranges', 'multi-output'],
-    Thumb: SplitThumb,
+    tags: ['page ranges', 'multi-output'], Thumb: SplitThumb,
   },
   {
-    id: 'rotate', name: 'Rotate', category: 'Page & PDF Tools', engine: 'rotate',
+    id: 'rotate', name: 'Rotate', preset: 'Rotate', category: 'Page & PDF tools', engine: 'rotate',
     desc: 'Rotate all pages in a PDF by 90°, 180°, or 270°.',
-    tags: ['all pages', '90 / 180 / 270°'],
-    Thumb: RotateThumb,
+    tags: ['all pages', '90 / 180 / 270°'], Thumb: RotateThumb,
   },
   {
-    id: 'flip', name: 'Flip / Mirror', category: 'Page & PDF Tools', engine: 'flip',
+    id: 'flip', name: 'Flip / Mirror', preset: 'Flip', category: 'Page & PDF tools', engine: 'flip',
     desc: 'Mirror every page horizontally or vertically — handy for transfers.',
-    tags: ['mirror', 'H / V', 'transfers'],
-    Thumb: FlipThumb,
+    tags: ['mirror', 'H / V', 'transfers'], Thumb: FlipThumb,
   },
   {
-    id: 'overlay', name: 'Overlay / Watermark', category: 'Page & PDF Tools', engine: 'overlay',
+    id: 'overlay', name: 'Overlay / Watermark', preset: 'Overlay', category: 'Page & PDF tools', engine: 'overlay',
     desc: 'Stamp a second PDF over every page — watermark, logo or background.',
-    tags: ['watermark', 'opacity', 'tile / fill'],
-    Thumb: OverlayThumb,
+    tags: ['watermark', 'opacity', 'tile / fill'], Thumb: OverlayThumb,
   },
   {
-    id: 'shuffle', name: 'Shuffle Pages', category: 'Page & PDF Tools', engine: 'shuffle',
+    id: 'shuffle', name: 'Shuffle Pages', preset: 'Shuffle', category: 'Page & PDF tools', engine: 'shuffle',
     desc: 'Reorder, duplicate or drop pages with a simple order list.',
-    tags: ['reorder', 'custom order'],
-    Thumb: ShuffleThumb,
+    tags: ['reorder', 'custom order'], Thumb: ShuffleThumb,
   },
   {
-    id: 'crop', name: 'Crop', category: 'Page & PDF Tools', engine: 'crop',
+    id: 'crop', name: 'Crop', preset: 'Crop', category: 'Page & PDF tools', engine: 'crop',
     desc: 'Trim margins off every page by setting a crop inset per edge.',
-    tags: ['trim edges', 'crop box'],
-    Thumb: CropToolThumb,
+    tags: ['trim edges', 'crop box'], Thumb: CropToolThumb,
   },
 ];
 
@@ -612,7 +747,7 @@ function Grid({ children }: { children: React.ReactNode }) {
 
 function NoteBanner({ text }: { text: string }) {
   return (
-    <div style={{ padding: '.7rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: '.82rem', color: '#92400e', lineHeight: 1.5 }}>
+    <div style={{ padding: '.7rem 1rem', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderLeft: '3px solid #f59e0b', borderRadius: 8, fontSize: '.82rem', color: 'var(--ink)', lineHeight: 1.5 }}>
       {text}
     </div>
   );
@@ -646,16 +781,17 @@ function SheetPicker<T extends { sheetWIn: number; sheetHIn: number }>({ opts, s
 
 // ── File drop zone ────────────────────────────────────────────────────────────
 
-function FileDrop({ onFile, multiple = false, label = 'Drop a PDF here, or click to select' }: {
-  onFile: (files: File[]) => void; multiple?: boolean; label?: string;
+function FileDrop({ onFile, multiple = false, label = 'Drop a PDF here, or click to select', accept = 'application/pdf,.pdf', sublabel = 'PDF only — processed locally, never uploaded', match }: {
+  onFile: (files: File[]) => void; multiple?: boolean; label?: string; accept?: string; sublabel?: string; match?: (f: File) => boolean;
 }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isPdf = (f: File) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
   const handle = useCallback((files: FileList | null) => {
     if (!files) return;
-    const pdfs = Array.from(files).filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
-    if (pdfs.length) onFile(pdfs);
-  }, [onFile]);
+    const ok = Array.from(files).filter(match ?? isPdf);
+    if (ok.length) onFile(ok);
+  }, [onFile, match]);
   const onDrop = (e: DragEvent) => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files); };
   return (
     <div
@@ -666,15 +802,13 @@ function FileDrop({ onFile, multiple = false, label = 'Drop a PDF here, or click
       style={{
         border: `2px dashed ${drag ? 'var(--brand)' : 'var(--border)'}`,
         borderRadius: 10, padding: '2rem 1.5rem', textAlign: 'center', cursor: 'pointer',
-        background: drag ? '#fff8f8' : 'var(--bg-alt)', transition: 'all .15s',
+        background: 'var(--bg-alt)', transition: 'all .15s',
       }}
     >
       <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>📄</div>
       <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{label}</div>
-      <div style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: '.25rem' }}>
-        PDF only — processed locally, never uploaded
-      </div>
-      <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple={multiple} style={{ display: 'none' }}
+      <div style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: '.25rem' }}>{sublabel}</div>
+      <input ref={inputRef} type="file" accept={accept} multiple={multiple} style={{ display: 'none' }}
         onChange={(e: ChangeEvent<HTMLInputElement>) => handle(e.target.files)} />
     </div>
   );
@@ -1120,6 +1254,132 @@ function MergeFileList({ files, onAdd, onRemove, onMove }: {
 
 // ── Tool workspace ────────────────────────────────────────────────────────────
 
+// Dieline generator tool — needs no source file; draws a box net from dims.
+function DielineTool({ tool }: { tool: ToolDef }) {
+  const [opts, setOpts] = useState<DielineOptions>({
+    kind: tool.dielineKind ?? 'ste', widthIn: 3, heightIn: 5, depthIn: 1.5, glueIn: 0.5, marginIn: 0.5,
+  });
+  const [status, setStatus] = useState<Status>('idle');
+  const set = (k: keyof DielineOptions, v: number) => setOpts(o => ({ ...o, [k]: v }));
+  const gen = async () => {
+    setStatus('processing');
+    try {
+      downloadPdf(await makeDieline(opts), `${tool.id}-dieline.pdf`);
+      setStatus('done'); setTimeout(() => setStatus('idle'), 3000);
+    } catch { setStatus('error'); }
+  };
+  return (
+    <div style={{ display: 'grid', gap: '1.25rem' }}>
+      <NoteBanner text={opts.kind === 'folder'
+        ? 'Generates a presentation-folder dieline: back + front panels, fold-up pockets and glue tabs.'
+        : 'Generates a folding-carton dieline: front / side / back / side panels with tuck flaps, dust flaps and a glue seam.'} />
+      <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
+        <h4 style={{ margin: '0 0 .75rem' }}>Box dimensions (inches)</h4>
+        <Grid>
+          <Field label="Width (front)"><input type="number" min={0.5} max={40} step={0.125} value={opts.widthIn} onChange={e => set('widthIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Height"><input type="number" min={0.5} max={40} step={0.125} value={opts.heightIn} onChange={e => set('heightIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label={opts.kind === 'folder' ? 'Spine / tab depth' : 'Depth (side)'}><input type="number" min={0.25} max={20} step={0.125} value={opts.depthIn} onChange={e => set('depthIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Glue flap"><input type="number" min={0.25} max={2} step={0.0625} value={opts.glueIn} onChange={e => set('glueIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Sheet margin"><input type="number" min={0.1} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+        </Grid>
+        <div style={{ marginTop: '.75rem', fontSize: '.78rem', color: 'var(--muted)' }}>
+          Solid red = cut / trim · dashed blue = fold / crease. Print at 100%, cut the solid lines, score the dashed, fold and glue.
+        </div>
+      </div>
+      <div>
+        <button className="btn" onClick={gen} disabled={status === 'processing'} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
+          {status === 'processing' ? 'Generating…' : status === 'done' ? '✓ Downloaded' : 'Generate dieline & download'}
+        </button>
+      </div>
+      {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>Could not generate the dieline.</div>}
+    </div>
+  );
+}
+
+const SAMPLE_CSV = `Name,Company,Code
+Ada Lovelace,Analytical Ltd,VIP-0001
+Grace Hopper,US Navy,VIP-0002
+Alan Turing,Bletchley Park,VIP-0003
+Katherine Johnson,NASA,VIP-0004`;
+
+// CSV data-merge tool — no template PDF; each row becomes an imposed cell.
+function DataMergeTool({ tool }: { tool: ToolDef }) {
+  const [csv, setCsv] = useState(SAMPLE_CSV);
+  const [opts, setOpts] = useState<DataMergeOptions>({
+    cols: tool.defaultNup?.cols ?? 2, rows: tool.defaultNup?.rows ?? 4,
+    sheetWIn: tool.defaultNup?.sheetWIn ?? 8.5, sheetHIn: tool.defaultNup?.sheetHIn ?? 11,
+    marginIn: 0.35, gutterIn: 0.15, fontSizePt: 11, showBorder: true,
+    autoNumber: true, startNumber: 1, numberPrefix: 'No. ', numberPad: 4,
+    addMarks: true, markLenIn: 0.2, markOffIn: 0.1, qrColumn: '', qrSizePt: 70,
+  });
+  const [status, setStatus] = useState<Status>('idle');
+  const [errMsg, setErrMsg] = useState('');
+  const [info, setInfo] = useState('');
+  const set = <K extends keyof DataMergeOptions>(k: K, v: DataMergeOptions[K]) => setOpts(o => ({ ...o, [k]: v }));
+  const recordCount = Math.max(0, csv.trim().split('\n').filter(l => l.trim()).length - 1);
+  const headers = useMemo(() => (csv.split('\n')[0] ?? '').split(',').map(h => h.trim()).filter(Boolean), [csv]);
+  const loadCsv = useCallback((files: File[]) => { const f = files[0]; if (f) f.text().then(setCsv); }, []);
+
+  const gen = async () => {
+    setStatus('processing'); setErrMsg('');
+    try {
+      const res = await imposeDataMerge(csv, opts);
+      downloadPdf(res.pdf, `${tool.id}-merge.pdf`);
+      setInfo(`${res.records} records · ${res.columns.join(' · ')}`);
+      setStatus('done'); setTimeout(() => setStatus('idle'), 4000);
+    } catch (e) { setStatus('error'); setErrMsg(e instanceof Error ? e.message : 'Merge failed'); }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: '1.25rem' }}>
+      <NoteBanner text="Paste or drop a CSV — the first row is the header; each following row becomes one imposed cell (first column bold). Add a running number and/or a scannable QR from any column. Everything stays in your browser." />
+      <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
+        <h4 style={{ margin: '0 0 .5rem' }}>CSV data <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '.8rem' }}>· {recordCount} record{recordCount !== 1 ? 's' : ''}</span></h4>
+        <textarea value={csv} onChange={e => setCsv(e.target.value)} rows={7}
+          style={{ ...iStyle, fontFamily: 'ui-monospace, monospace', fontSize: '.82rem', resize: 'vertical' }} />
+        <div style={{ marginTop: '.5rem' }}>
+          <FileDrop onFile={loadCsv} label="…or drop a .csv file"
+            accept=".csv,text/csv,text/plain" sublabel="CSV only — processed locally, never uploaded"
+            match={f => /\.csv$/i.test(f.name) || f.type.includes('csv') || f.type === 'text/plain'} />
+        </div>
+      </div>
+      <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
+        <h4 style={{ margin: '0 0 .75rem' }}>Layout</h4>
+        <Grid>
+          <SheetPicker opts={opts} set={set} />
+          <Field label="Columns"><input type="number" min={1} max={10} step={1} value={opts.cols} onChange={e => set('cols', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Rows"><input type="number" min={1} max={20} step={1} value={opts.rows} onChange={e => set('rows', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Margin (in)"><input type="number" min={0} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Gutter (in)"><input type="number" min={0} max={1} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Number prefix"><input type="text" value={opts.numberPrefix} onChange={e => set('numberPrefix', e.target.value)} style={iStyle} /></Field>
+          <Field label="QR code from column" note="Encodes each row's value as a scannable QR">
+            <select value={opts.qrColumn} onChange={e => set('qrColumn', e.target.value)} style={iStyle}>
+              <option value="">— none —</option>
+              {headers.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </Field>
+          {opts.qrColumn && <Field label="QR size (pt)"><input type="number" min={28} max={200} step={2} value={opts.qrSizePt} onChange={e => set('qrSizePt', +e.target.value)} style={iStyle} /></Field>}
+          <Field label="Options">
+            <Row>
+              <input type="checkbox" checked={opts.autoNumber} onChange={e => set('autoNumber', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Number</span>
+              <input type="checkbox" checked={opts.showBorder} onChange={e => set('showBorder', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Border</span>
+              <input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Marks</span>
+            </Row>
+          </Field>
+        </Grid>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <button className="btn" onClick={gen} disabled={status === 'processing' || recordCount < 1} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
+          {status === 'processing' ? 'Merging…' : status === 'done' ? '✓ Downloaded' : `Merge ${recordCount} record${recordCount !== 1 ? 's' : ''} & download`}
+        </button>
+        {status === 'done' && info && <span style={{ color: 'var(--muted)', fontSize: '.82rem' }}>{info}</span>}
+      </div>
+      {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg}</div>}
+    </div>
+  );
+}
+
 function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) {
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -1130,11 +1390,12 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
   // Per-engine settings state (initialised from the tool's presets)
   const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet });
   const [nupOpts, setNupOpts] = useState<NUpOptions>({ ...DEFAULT_NUP, ...tool.defaultNup });
-  const [posterOpts, setPosterOpts] = useState<PosterOptions>(DEFAULT_POSTER);
+  const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster });
   const [cropOpts, setCropOpts] = useState<CropMarksOptions>(DEFAULT_CROP);
+  const [bleedOpts, setBleedOpts] = useState<{ bleedIn: number }>({ bleedIn: 0.125 });
   const [colorBarOpts, setColorBarOpts] = useState<ColorBarOptions>(DEFAULT_COLORBAR);
   const [pageNumOpts, setPageNumOpts] = useState<PageNumberOptions>(DEFAULT_PAGENUM);
-  const [ticketOpts, setTicketOpts] = useState<TicketOptions>(DEFAULT_TICKET);
+  const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket });
   const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
   const [flipDir, setFlipDir] = useState<'h' | 'v'>('h');
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
@@ -1191,6 +1452,8 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
           outName = `${base}-${nupOpts.repeatFirst ? 'repeat' : `${tool.id}`}.pdf`; break;
         case 'poster': out = await imposeTiledPoster(file.bytes, posterOpts); outName = `${base}-poster.pdf`; break;
         case 'cropmarks': out = await addCropMarksOnly(file.bytes, cropOpts); outName = `${base}-marks.pdf`; break;
+        case 'bleed': out = await generateBleed(file.bytes, bleedOpts); outName = `${base}-bleed.pdf`; break;
+        case 'preflight': setStatus('idle'); return; // inspection only — no output
         case 'colorbar': out = await addColorBar(file.bytes, colorBarOpts); outName = `${base}-colorbar.pdf`; break;
         case 'pagenumbers': out = await addPageNumbers(file.bytes, pageNumOpts); outName = `${base}-numbered.pdf`; break;
         case 'tickets': out = await imposeTickets(file.bytes, ticketOpts); outName = `${base}-tickets.pdf`; break;
@@ -1245,7 +1508,11 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
         </div>
       </div>
 
-      {tool.engine === 'merge' ? (
+      {tool.engine === 'dieline' ? (
+        <DielineTool tool={tool} />
+      ) : tool.engine === 'datamerge' ? (
+        <DataMergeTool tool={tool} />
+      ) : tool.engine === 'merge' ? (
         <div style={{ display: 'grid', gap: '1.25rem' }}>
           {mergeFiles.length === 0 ? (
             <FileDrop onFile={addMergeFiles} multiple label="Drop PDFs here to merge (drop multiple at once)" />
@@ -1275,11 +1542,13 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
               <FileBar file={file} onClear={clearFile} />
 
               <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
-                <h4 style={{ margin: '0 0 .75rem' }}>Settings</h4>
+                <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'preflight' ? 'Preflight report' : 'Settings'}</h4>
                 {tool.engine === 'booklet' && <BookletSettings opts={bookletOpts} onChange={setBookletOpts} />}
                 {tool.engine === 'nup' && <NUpSettings opts={nupOpts} onChange={setNupOpts} cardMode={cardMode} />}
                 {tool.engine === 'poster' && <PosterSettings opts={posterOpts} onChange={setPosterOpts} />}
                 {tool.engine === 'cropmarks' && <CropSettings opts={cropOpts} onChange={setCropOpts} />}
+                {tool.engine === 'bleed' && <BleedSettings opts={bleedOpts} onChange={setBleedOpts} />}
+                {tool.engine === 'preflight' && <PreflightPanel file={file} />}
                 {tool.engine === 'colorbar' && <ColorBarSettings opts={colorBarOpts} onChange={setColorBarOpts} />}
                 {tool.engine === 'pagenumbers' && <PageNumberSettings opts={pageNumOpts} onChange={setPageNumOpts} />}
                 {tool.engine === 'tickets' && <TicketSettings opts={ticketOpts} onChange={setTicketOpts} />}
@@ -1315,12 +1584,14 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
               {tool.engine === 'booklet' && <BookletPreview pageCount={file.info.count} opts={bookletOpts} />}
               {tool.engine === 'nup' && <NUpPreview opts={nupOpts} pageCount={file.info.count} />}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <button className="btn" onClick={process} disabled={isBusy} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
-                  {status === 'processing' ? 'Processing…' : status === 'done' ? '✓ Downloaded' : processLabel}
-                </button>
-                {status === 'done' && <button className="btn secondary" onClick={process}>Download again</button>}
-              </div>
+              {tool.engine !== 'preflight' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <button className="btn" onClick={process} disabled={isBusy} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
+                    {status === 'processing' ? 'Processing…' : status === 'done' ? '✓ Downloaded' : processLabel}
+                  </button>
+                  {status === 'done' && <button className="btn secondary" onClick={process}>Download again</button>}
+                </div>
+              )}
 
               {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg || 'Processing failed. Try again.'}</div>}
             </>
@@ -1336,16 +1607,439 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
 
 // ── Tool gallery ──────────────────────────────────────────────────────────────
 
-const CATEGORY_ORDER = [
-  'Booklets & Books', 'Imposition & Layout', 'Cards & Labels',
-  'Folding', 'Tickets & Data', 'Marks & Prepress', 'Page & PDF Tools',
+// ── Chained-workflow step settings ────────────────────────────────────────────
+
+const VIOLET = '#7c3aed';
+
+// Gallery theme palettes, applied as CSS custom properties on the page shell so
+// every child (and the .btn/.admin-card classes) adapts. Default is dark, to
+// match the reference gallery.
+const THEMES: Record<'light' | 'dark', React.CSSProperties> = {
+  light: { '--bg': '#ffffff', '--bg-alt': '#f7f5f2', '--ink': '#1a1a1a', '--muted': '#5a5a5a', '--border': '#e6e3df', '--accent-soft': '#f3f0ff' } as React.CSSProperties,
+  dark: { '--bg': '#0b0b12', '--bg-alt': '#15151f', '--ink': '#f3f4f6', '--muted': '#9ca3af', '--border': '#2a2a37', '--accent-soft': 'rgba(139,92,246,0.18)' } as React.CSSProperties,
+};
+
+const DEFAULT_HEADERFOOTER: HeaderFooterOptions = { header: 'Document Title', footer: '', fontSizePt: 10, marginPt: 24, align: 'center' };
+const DEFAULT_WATERMARK: WatermarkOptions = { text: 'PROOF', opacity: 0.22, angleDeg: 45, fontSizePt: 96 };
+const DEFAULT_JOBSLUG: JobSlugOptions = { text: 'Job name · client · date', position: 'bottom', fontSizePt: 9 };
+
+function BleedSettings({ opts, onChange }: { opts: { bleedIn: number }; onChange: (o: { bleedIn: number }) => void }) {
+  return (
+    <Grid>
+      <Field label="Bleed per edge (in)" note="Content is scaled to overflow the trim">
+        <input type="number" min={0.0625} max={0.5} step={0.0625} value={opts.bleedIn} onChange={e => onChange({ bleedIn: +e.target.value })} style={iStyle} />
+      </Field>
+    </Grid>
+  );
+}
+
+function HeaderFooterSettings({ opts, onChange }: { opts: HeaderFooterOptions; onChange: (o: HeaderFooterOptions) => void }) {
+  const set = <K extends keyof HeaderFooterOptions>(k: K, v: HeaderFooterOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Header text" note="Leave blank to skip"><input type="text" value={opts.header} onChange={e => set('header', e.target.value)} style={iStyle} /></Field>
+      <Field label="Footer text" note="Leave blank to skip"><input type="text" value={opts.footer} onChange={e => set('footer', e.target.value)} style={iStyle} /></Field>
+      <Field label="Alignment">
+        <select value={opts.align} onChange={e => set('align', e.target.value as HeaderFooterOptions['align'])} style={iStyle}>
+          <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+        </select>
+      </Field>
+      <Field label="Font size (pt)"><input type="number" min={6} max={36} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge margin (pt)"><input type="number" min={6} max={96} step={1} value={opts.marginPt} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function WatermarkSettings({ opts, onChange }: { opts: WatermarkOptions; onChange: (o: WatermarkOptions) => void }) {
+  const set = <K extends keyof WatermarkOptions>(k: K, v: WatermarkOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Watermark text"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
+      <Field label={`Opacity: ${Math.round(opts.opacity * 100)}%`}><input type="range" min={5} max={80} step={5} value={opts.opacity * 100} onChange={e => set('opacity', +e.target.value / 100)} style={{ width: '100%', marginTop: '.5rem' }} /></Field>
+      <Field label="Angle (°)"><input type="number" min={-90} max={90} step={5} value={opts.angleDeg} onChange={e => set('angleDeg', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Font size (pt)"><input type="number" min={24} max={200} step={4} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function JobSlugSettings({ opts, onChange }: { opts: JobSlugOptions; onChange: (o: JobSlugOptions) => void }) {
+  const set = <K extends keyof JobSlugOptions>(k: K, v: JobSlugOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Slug text" note="Job name, client, date, etc."><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
+      <Field label="Position">
+        <select value={opts.position} onChange={e => set('position', e.target.value as JobSlugOptions['position'])} style={iStyle}>
+          <option value="bottom">Bottom strip</option><option value="top">Top strip</option>
+        </select>
+      </Field>
+      <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function CollatingSettings({ opts, onChange }: { opts: { edge: 'left' | 'right' }; onChange: (o: { edge: 'left' | 'right' }) => void }) {
+  return (
+    <Grid>
+      <Field label="Spine edge" note="Where the staircase of marks sits">
+        <select value={opts.edge} onChange={e => onChange({ edge: e.target.value as 'left' | 'right' })} style={iStyle}>
+          <option value="right">Right edge</option><option value="left">Left edge</option>
+        </select>
+      </Field>
+    </Grid>
+  );
+}
+
+function PreflightPanel({ file }: { file: LoadedFile }) {
+  const [rpt, setRpt] = useState<PreflightReport | null>(null);
+  useEffect(() => { let live = true; preflight(file.bytes).then(r => { if (live) setRpt(r); }); return () => { live = false; }; }, [file]);
+  if (!rpt) return <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Checking…</div>;
+  return (
+    <div style={{ display: 'grid', gap: '.5rem' }}>
+      <div style={{ fontSize: '.85rem' }}>
+        {rpt.pages} page{rpt.pages !== 1 ? 's' : ''} · {rpt.widthIn}″ × {rpt.heightIn}″ · {rpt.uniformSize ? 'uniform size ✓' : 'mixed sizes'}
+      </div>
+      {rpt.warnings.length > 0
+        ? rpt.warnings.map((w, i) => <NoteBanner key={i} text={`⚠ ${w}`} />)
+        : <div style={{ fontSize: '.82rem', color: '#166534' }}>No issues found — ready to impose.</div>}
+      <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>Preflight only inspects; it passes the file through unchanged.</div>
+    </div>
+  );
+}
+
+// ── Pipeline model + runner ───────────────────────────────────────────────────
+
+type StepKind = 'preflight' | 'booklet' | 'nup' | 'bleed' | 'colorbar' | 'cropmarks'
+  | 'pagenumbers' | 'headerfooter' | 'watermark' | 'jobslug' | 'collating';
+
+interface PipelineStep { kind: StepKind; label: string; opts: any; } // eslint-disable-line @typescript-eslint/no-explicit-any
+
+const STEP_LABELS: Record<StepKind, string> = {
+  preflight: 'Preflight', booklet: 'Impose booklet', nup: 'Impose / gang up', bleed: 'Generate bleed',
+  colorbar: 'Add color bar', cropmarks: 'Add marks', pagenumbers: 'Add page numbers',
+  headerfooter: 'Add header / footer', watermark: 'Add watermark', jobslug: 'Add job info', collating: 'Add collating marks',
+};
+
+const STEP_KINDS: StepKind[] = ['preflight', 'booklet', 'nup', 'bleed', 'colorbar', 'cropmarks', 'pagenumbers', 'headerfooter', 'watermark', 'jobslug', 'collating'];
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const stepDefaults: Record<StepKind, () => any> = {
+  preflight: () => ({}),
+  booklet: () => ({ ...DEFAULT_BOOKLET }),
+  nup: () => ({ ...DEFAULT_NUP }),
+  bleed: () => ({ bleedIn: 0.125 }),
+  colorbar: () => ({ ...DEFAULT_COLORBAR }),
+  cropmarks: () => ({ ...DEFAULT_CROP }),
+  pagenumbers: () => ({ ...DEFAULT_PAGENUM }),
+  headerfooter: () => ({ ...DEFAULT_HEADERFOOTER }),
+  watermark: () => ({ ...DEFAULT_WATERMARK }),
+  jobslug: () => ({ ...DEFAULT_JOBSLUG }),
+  collating: () => ({ edge: 'right' }),
+};
+
+async function runStep(bytes: Uint8Array, step: PipelineStep): Promise<Uint8Array> {
+  switch (step.kind) {
+    case 'preflight': return bytes;
+    case 'booklet': return imposeBooklet(bytes, step.opts);
+    case 'nup': return imposeNUp(bytes, step.opts);
+    case 'bleed': return generateBleed(bytes, step.opts);
+    case 'colorbar': return addColorBar(bytes, step.opts);
+    case 'cropmarks': return addCropMarksOnly(bytes, step.opts);
+    case 'pagenumbers': return addPageNumbers(bytes, step.opts);
+    case 'headerfooter': return addHeaderFooter(bytes, step.opts);
+    case 'watermark': return addTextWatermark(bytes, step.opts);
+    case 'jobslug': return addJobSlug(bytes, step.opts);
+    case 'collating': return addCollatingMarks(bytes, step.opts);
+    default: return bytes;
+  }
+}
+
+function StepSettings({ step, onChange, file }: { step: PipelineStep; onChange: (s: PipelineStep) => void; file: LoadedFile }) {
+  const upd = (o: any) => onChange({ ...step, opts: o }); // eslint-disable-line @typescript-eslint/no-explicit-any
+  switch (step.kind) {
+    case 'preflight': return <PreflightPanel file={file} />;
+    case 'booklet': return <BookletSettings opts={step.opts} onChange={upd} />;
+    case 'nup': return <NUpSettings opts={step.opts} onChange={upd} cardMode={!!step.opts.cellWIn} />;
+    case 'bleed': return <BleedSettings opts={step.opts} onChange={upd} />;
+    case 'colorbar': return <ColorBarSettings opts={step.opts} onChange={upd} />;
+    case 'cropmarks': return <CropSettings opts={step.opts} onChange={upd} />;
+    case 'pagenumbers': return <PageNumberSettings opts={step.opts} onChange={upd} />;
+    case 'headerfooter': return <HeaderFooterSettings opts={step.opts} onChange={upd} />;
+    case 'watermark': return <WatermarkSettings opts={step.opts} onChange={upd} />;
+    case 'jobslug': return <JobSlugSettings opts={step.opts} onChange={upd} />;
+    case 'collating': return <CollatingSettings opts={step.opts} onChange={upd} />;
+    default: return null;
+  }
+}
+
+// ── Chained-workflow catalog ──────────────────────────────────────────────────
+
+interface WFStep { kind: StepKind; label: string; opts?: any; } // eslint-disable-line @typescript-eslint/no-explicit-any
+interface WorkflowDef { id: string; name: string; desc: string; Thumb: () => React.ReactElement; steps: WFStep[]; }
+
+const WORKFLOWS: WorkflowDef[] = [
+  {
+    id: 'newsletter', name: 'Newsletter + page numbers', desc: 'Booklet, then a header/footer panel and marks.',
+    Thumb: BookletThumb,
+    steps: [
+      { kind: 'booklet', label: 'Impose booklet' },
+      { kind: 'headerfooter', label: 'Add header / footer', opts: { header: 'The Newsletter', footer: 'Page', align: 'center' } },
+      { kind: 'cropmarks', label: 'Add marks' },
+    ],
+  },
+  {
+    id: 'clientproof', name: 'Branded client proof', desc: 'Watermark, header/footer and a reference bar.',
+    Thumb: OverlayThumb,
+    steps: [
+      { kind: 'watermark', label: 'Add proof watermark', opts: { text: 'PROOF' } },
+      { kind: 'headerfooter', label: 'Add header / footer', opts: { header: 'CLIENT PROOF — NOT FOR PRODUCTION', footer: '', align: 'center' } },
+      { kind: 'colorbar', label: 'Add reference bar' },
+    ],
+  },
+  {
+    id: 'bizcards', name: 'Business cards with bleed', desc: 'Add bleed, impose, then cut marks.',
+    Thumb: cardThumb(2, 3),
+    steps: [
+      { kind: 'bleed', label: 'Generate bleeds', opts: { bleedIn: 0.125 } },
+      { kind: 'nup', label: 'Impose cards', opts: { cellWIn: 3.75, cellHIn: 2.25, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 } },
+      { kind: 'cropmarks', label: 'Add cut marks', opts: { bleedIn: 0.125 } },
+    ],
+  },
+  {
+    id: 'magazine', name: 'Magazine production', desc: 'Preflight, signatures, color bars and marks.',
+    Thumb: gridThumb(2, 2),
+    steps: [
+      { kind: 'preflight', label: 'Preflight' },
+      { kind: 'booklet', label: 'Impose signatures' },
+      { kind: 'colorbar', label: 'Add color bars' },
+      { kind: 'cropmarks', label: 'Add marks' },
+    ],
+  },
+  {
+    id: 'perfectbound', name: 'Perfect-bound with color bar', desc: 'Signatures, color bars, collating and trim marks.',
+    Thumb: ColorBarThumb,
+    steps: [
+      { kind: 'booklet', label: 'Impose signatures', opts: { creepIn: 0 } },
+      { kind: 'colorbar', label: 'Add color bars' },
+      { kind: 'collating', label: 'Add collating marks', opts: { edge: 'right' } },
+      { kind: 'cropmarks', label: 'Add trim marks' },
+    ],
+  },
+  {
+    id: 'gangrun', name: 'Gang run, full marks', desc: 'Gang items with a color bar, marks and job slug.',
+    Thumb: gridThumb(3, 2),
+    steps: [
+      { kind: 'nup', label: 'Gang items' },
+      { kind: 'colorbar', label: 'Add color bar' },
+      { kind: 'cropmarks', label: 'Add all marks' },
+      { kind: 'jobslug', label: 'Add job info' },
+    ],
+  },
 ];
 
-function ToolGallery({ query, onSelect }: { query: string; onSelect: (id: string) => void }) {
+function buildSteps(wf: WorkflowDef): PipelineStep[] {
+  return wf.steps.map(s => ({ kind: s.kind, label: s.label, opts: { ...stepDefaults[s.kind](), ...(s.opts || {}) } }));
+}
+
+// ── Chained-workflow gallery ──────────────────────────────────────────────────
+
+function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg)',
+        boxShadow: hover ? '0 4px 16px rgba(0,0,0,.08)' : 'none', transition: 'all .15s',
+      }}
+    >
+      <div style={{ height: 130, background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', padding: '1rem', overflow: 'hidden' }}>
+        <wf.Thumb />
+      </div>
+      <div style={{ padding: '.85rem 1rem 1rem' }}>
+        <span style={{ display: 'inline-block', padding: '.12rem .5rem', borderRadius: 4, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.66rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
+          {wf.steps.length}-STEP CHAIN
+        </span>
+        <div style={{ fontWeight: 700, marginBottom: '.2rem' }}>{wf.name}</div>
+        <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.75rem', lineHeight: 1.4 }}>{wf.desc}</div>
+        <div style={{ fontSize: '.62rem', fontWeight: 800, letterSpacing: '.08em', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '.4rem' }}>How to make this</div>
+        <ol style={{ listStyle: 'none', margin: '0 0 1rem', padding: 0, display: 'grid', gap: '.3rem' }}>
+          {wf.steps.map((s, i) => (
+            <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.82rem' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 9, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.68rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+              {s.label}
+            </li>
+          ))}
+        </ol>
+        <button onClick={onSelect} style={{ width: '100%', padding: '.6rem', border: 'none', borderRadius: 8, background: VIOLET, color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '.9rem' }}>
+          Make this →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowChains({ onSelect }: { onSelect: (id: string) => void }) {
+  return (
+    <section>
+      <SectionHeading title="Chained workflows" count={WORKFLOWS.length} />
+      <p style={{ color: 'var(--muted)', margin: '-0.5rem 0 1.5rem', maxWidth: 680, fontSize: '.9rem', lineHeight: 1.5 }}>
+        Real multi-step recipes that show how operations stack — impose, then add a header/footer, a color
+        bar or cutter marks. Click “Make this” to load the whole chain into the pipeline, ready to configure.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
+        {WORKFLOWS.map(wf => <WorkflowCard key={wf.id} wf={wf} onSelect={() => onSelect(wf.id)} />)}
+      </div>
+    </section>
+  );
+}
+
+function WorkflowBuilderSection({ onSelect }: { onSelect: (id: string) => void }) {
+  return (
+    <section>
+      <SectionHeading title="Workflow" />
+      <p style={{ color: 'var(--muted)', margin: '-0.5rem 0 1rem', maxWidth: 680, fontSize: '.9rem', lineHeight: 1.5 }}>
+        Build your own pipeline — start empty and add any operations in the order you want. Each step feeds
+        the next, then exports one print-ready PDF.
+      </p>
+      <button
+        onClick={() => onSelect('__custom__')}
+        style={{ padding: '.65rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: 'transparent', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
+      >
+        + New custom workflow
+      </button>
+    </section>
+  );
+}
+
+// ── Pipeline workspace ────────────────────────────────────────────────────────
+
+function PipelineWorkspace({ workflow, onBack }: { workflow: WorkflowDef | null; onBack: () => void }) {
+  const [file, setFile] = useState<LoadedFile | null>(null);
+  const [steps, setSteps] = useState<PipelineStep[]>(() => (workflow ? buildSteps(workflow) : []));
+  const [status, setStatus] = useState<Status>('idle');
+  const [errMsg, setErrMsg] = useState('');
+  const [progress, setProgress] = useState('');
+  const [addKind, setAddKind] = useState<StepKind>('cropmarks');
+
+  const loadFile = useCallback(async (f: File) => {
+    setStatus('loading'); setErrMsg('');
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const info = await getPdfInfo(bytes);
+      setFile({ name: f.name, bytes, info });
+      setStatus('idle');
+    } catch {
+      setStatus('error'); setErrMsg('Could not read PDF. Make sure it is a valid, unencrypted PDF.');
+    }
+  }, []);
+
+  const updateStep = (i: number, s: PipelineStep) => setSteps(prev => prev.map((p, j) => (j === i ? s : p)));
+  const removeStep = (i: number) => setSteps(prev => prev.filter((_, j) => j !== i));
+  const moveStep = (i: number, dir: -1 | 1) => setSteps(prev => {
+    const a = [...prev]; const j = i + dir; if (j < 0 || j >= a.length) return a;
+    const tmp = a[j]!; a[j] = a[i]!; a[i] = tmp; return a;
+  });
+  const addStep = () => setSteps(prev => [...prev, { kind: addKind, label: STEP_LABELS[addKind], opts: stepDefaults[addKind]() }]);
+
+  const run = async () => {
+    if (!file || !steps.length) return;
+    setStatus('processing'); setErrMsg('');
+    try {
+      let cur = file.bytes;
+      for (let i = 0; i < steps.length; i++) {
+        setProgress(`Step ${i + 1}/${steps.length}: ${steps[i]!.label}…`);
+        cur = await runStep(cur, steps[i]!);
+      }
+      const base = file.name.replace(/\.pdf$/i, '');
+      downloadPdf(cur, `${base}-${workflow ? workflow.id : 'workflow'}.pdf`);
+      setStatus('done'); setProgress(''); setTimeout(() => setStatus('idle'), 3000);
+    } catch (e) {
+      setStatus('error'); setProgress(''); setErrMsg(e instanceof Error ? e.message : 'Pipeline failed');
+    }
+  };
+
+  const isBusy = status === 'loading' || status === 'processing';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+        <button className="btn secondary" onClick={onBack} style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>← Back</button>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.3rem' }}>{workflow ? workflow.name : 'Custom workflow'}</h2>
+          <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>
+            {workflow ? workflow.desc : 'Add operations in order — each step feeds the next.'}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gap: '1.25rem' }}>
+        {!file ? (
+          <FileDrop onFile={fs => { if (fs[0]) loadFile(fs[0]); }} />
+        ) : (
+          <>
+            <FileBar file={file} onClear={() => { setFile(null); setStatus('idle'); setErrMsg(''); }} />
+
+            {steps.map((step, i) => (
+              <div key={i} className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem', borderLeft: `4px solid ${VIOLET}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.75rem' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 11, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.75rem', fontWeight: 800 }}>{i + 1}</span>
+                  <h4 style={{ margin: 0, flex: 1 }}>{step.label} <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '.78rem' }}>· {STEP_LABELS[step.kind]}</span></h4>
+                  <button title="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)} style={{ border: 'none', background: 'none', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--muted)', fontSize: '1rem', opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                  <button title="Move down" disabled={i === steps.length - 1} onClick={() => moveStep(i, 1)} style={{ border: 'none', background: 'none', cursor: i === steps.length - 1 ? 'default' : 'pointer', color: 'var(--muted)', fontSize: '1rem', opacity: i === steps.length - 1 ? 0.3 : 1 }}>↓</button>
+                  <button title="Remove step" onClick={() => removeStep(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1.1rem' }}>×</button>
+                </div>
+                <StepSettings step={step} onChange={s => updateStep(i, s)} file={file} />
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+              <select value={addKind} onChange={e => setAddKind(e.target.value as StepKind)} style={{ ...iStyle, maxWidth: 220 }}>
+                {STEP_KINDS.map(k => <option key={k} value={k}>{STEP_LABELS[k]}</option>)}
+              </select>
+              <button className="btn secondary" onClick={addStep}>+ Add step</button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <button onClick={run} disabled={isBusy || !steps.length}
+                style={{ fontSize: '1rem', padding: '.65rem 1.5rem', border: 'none', borderRadius: 8, background: steps.length ? VIOLET : 'var(--border)', color: '#fff', fontWeight: 600, cursor: isBusy || !steps.length ? 'default' : 'pointer' }}>
+                {status === 'processing' ? (progress || 'Running…') : status === 'done' ? '✓ Downloaded' : `Run ${steps.length} step${steps.length !== 1 ? 's' : ''} & download`}
+              </button>
+              {!steps.length && <span style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Add at least one step.</span>}
+            </div>
+
+            {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg || 'Pipeline failed. Try again.'}</div>}
+          </>
+        )}
+        {status === 'loading' && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Reading PDF…</div>}
+        {status === 'error' && !file && <div style={{ color: '#dc2626', fontSize: '.85rem', marginTop: '-0.5rem' }}>{errMsg}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Tool gallery ──────────────────────────────────────────────────────────────
+
+const CATEGORY_ORDER = [
+  'Imposition & layout', 'Booklets & books', 'Cards & labels',
+  'Folding', 'Large & specialty', 'Tickets & data', 'Marks & prepress', 'Page & PDF tools',
+];
+
+// Section heading used across the one-page gallery (tools + workflows).
+function SectionHeading({ title, count }: { title: string; count?: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '.6rem', margin: '0 0 1.25rem', paddingBottom: '.6rem', borderBottom: '1px solid var(--border)' }}>
+      <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--ink)' }}>{title}</h3>
+      {count != null && <span style={{ color: 'var(--muted)', fontSize: '.85rem', fontWeight: 600 }}>{count}</span>}
+    </div>
+  );
+}
+
+function ToolGallery({ query, filter, onSelect }: { query: string; filter: string | null; onSelect: (id: string) => void }) {
   const categories = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const match = (t: ToolDef) => !q || t.name.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q)
-      || t.tags.some(tag => tag.toLowerCase().includes(q)) || t.category.toLowerCase().includes(q);
+    const match = (t: ToolDef) => (!q || t.name.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q)
+      || t.tags.some(tag => tag.toLowerCase().includes(q)) || t.category.toLowerCase().includes(q))
+      && (!filter || t.category === filter);
     const map = new Map<string, ToolDef[]>();
     for (const t of TOOLS) {
       if (!match(t)) continue;
@@ -1353,25 +2047,59 @@ function ToolGallery({ query, onSelect }: { query: string; onSelect: (id: string
       map.get(t.category)!.push(t);
     }
     return CATEGORY_ORDER.filter(c => map.has(c)).map(c => [c, map.get(c)!] as const);
-  }, [query]);
+  }, [query, filter]);
 
   if (!categories.length) {
-    return <div style={{ color: 'var(--muted)', padding: '2rem 0' }}>No tools match “{query}”.</div>;
+    return <div style={{ color: 'var(--muted)', padding: '2rem 0' }}>No tools match {query ? `“${query}”` : 'this filter'}.</div>;
   }
 
   return (
-    <div style={{ display: 'grid', gap: '2rem' }}>
+    <div style={{ display: 'grid', gap: '2.75rem' }}>
       {categories.map(([cat, tools]) => (
-        <div key={cat}>
-          <h3 style={{ margin: '0 0 .75rem', fontSize: '1rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
-            {cat} <span style={{ color: 'var(--border)', fontWeight: 400 }}>· {tools.length}</span>
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px,1fr))', gap: '.75rem' }}>
+        <section key={cat}>
+          <SectionHeading title={cat} count={tools.length} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
             {tools.map(t => <ToolCard key={t.id} tool={t} onSelect={() => onSelect(t.id)} />)}
           </div>
-        </div>
+        </section>
       ))}
     </div>
+  );
+}
+
+// Generic "how to make this" steps shown on every ready-to-use tool card.
+function toolHowTo(tool: ToolDef): string[] {
+  return [
+    'Drop or select your PDF',
+    `Loads ${tool.preset ?? tool.name}, pre-configured`,
+    'Adjust the sheet, bleed, gutters & marks if needed',
+    'Preview, then export a print-ready PDF',
+  ];
+}
+
+function ReadyBadge() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', padding: '.12rem .5rem', borderRadius: 4, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.62rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
+      <span style={{ fontSize: '.7rem', lineHeight: 1 }}>•</span> READY TO USE
+    </span>
+  );
+}
+
+function HowToList({ steps }: { steps: string[] }) {
+  return (
+    <>
+      <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.08em', color: 'var(--muted)', textTransform: 'uppercase', margin: '.25rem 0 .4rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}>
+        <span style={{ color: VIOLET }}>✓</span> How to make this
+      </div>
+      <ol style={{ listStyle: 'none', margin: '0 0 1rem', padding: 0, display: 'grid', gap: '.3rem' }}>
+        {steps.map((s, i) => (
+          <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '.5rem', fontSize: '.8rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 8, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.62rem', fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+            {s}
+          </li>
+        ))}
+      </ol>
+    </>
   );
 }
 
@@ -1381,24 +2109,31 @@ function ToolCard({ tool, onSelect }: { tool: ToolDef; onSelect: () => void }) {
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onSelect}
       style={{
-        border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden',
-        background: hover ? 'var(--bg-alt)' : 'var(--bg)', cursor: 'pointer',
-        transition: 'all .15s', boxShadow: hover ? '0 4px 16px rgba(0,0,0,.08)' : 'none',
-        transform: hover ? 'translateY(-1px)' : 'none',
+        border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)', cursor: 'pointer',
+        transition: 'all .15s', boxShadow: hover ? '0 6px 20px rgba(0,0,0,.1)' : 'none',
+        transform: hover ? 'translateY(-2px)' : 'none',
       }}
     >
-      <div style={{ height: 140, background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', padding: '1rem', overflow: 'hidden' }}>
+      <div style={{ height: 150, background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', padding: '1.25rem', overflow: 'hidden' }}>
         <tool.Thumb />
       </div>
-      <div style={{ padding: '.75rem 1rem 1rem' }}>
-        <div style={{ fontWeight: 700, marginBottom: '.2rem' }}>
+      <div style={{ padding: '.9rem 1.1rem 1.1rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <ReadyBadge />
+        <div style={{ fontWeight: 700, marginBottom: '.2rem', fontSize: '1.02rem' }}>
           {tool.name}{tool.badge && <span style={{ color: '#f59e0b', marginLeft: '.35rem' }}>{tool.badge}</span>}
         </div>
-        <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.5rem', lineHeight: 1.4 }}>{tool.desc}</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.25rem', marginBottom: '.75rem' }}>
+        <div style={{ fontSize: '.82rem', color: 'var(--muted)', marginBottom: '.7rem', lineHeight: 1.4 }}>{tool.desc}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.85rem' }}>
           {tool.tags.map(tag => <Chip key={tag} label={tag} />)}
         </div>
-        <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={onSelect}>Make this →</button>
+        <HowToList steps={toolHowTo(tool)} />
+        <button
+          onClick={onSelect}
+          style={{ marginTop: 'auto', width: '100%', padding: '.6rem', border: 'none', borderRadius: 8, background: VIOLET, color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '.9rem' }}
+        >
+          Make this →
+        </button>
       </div>
     </div>
   );
@@ -1719,52 +2454,133 @@ function Calculators() {
 
 // ── Page root ─────────────────────────────────────────────────────────────────
 
+const GALLERY_CHIPS = ['All', 'Chained workflows', ...CATEGORY_ORDER, 'Workflow', 'Calculators'];
+
+const HOW_TO_STEPS: [string, string][] = [
+  ['01', 'Drop or select your PDF'],
+  ['02', 'Pick a layout or tool'],
+  ['03', 'Set the sheet, bleed, gutters & marks — or load a template'],
+  ['04', 'Preview live and export a print-ready PDF'],
+];
+
 export function AdminImpose() {
-  const [topTab, setTopTab] = useState<TopTab>('tools');
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
-  const handleSelect = (id: string) => { setActiveTool(id); setTopTab('tools'); };
+  const handleSelect = (id: string) => setActiveTool(id);
 
-  return (
-    <div style={{ padding: '2rem', maxWidth: 1080 }}>
-      <h1 style={{ marginBottom: '.25rem' }}>Imposition &amp; Pre-Press</h1>
-      <p style={{ color: 'var(--muted)', marginBottom: '1.75rem' }}>
-        {TOOLS.length} real PDF imposition tools — everything runs locally in your browser, files are never uploaded. Plus pre-press calculators.
-      </p>
+  const shell = (node: React.ReactNode) => (
+    <div style={{ ...THEMES[theme], background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh' } as React.CSSProperties}>
+      <div style={{ padding: '2rem 2rem 4rem', maxWidth: 1120, margin: '0 auto' }}>{node}</div>
+    </div>
+  );
 
-      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '2rem' }}>
-        {(['tools', 'calculators'] as TopTab[]).map(t => (
-          <button key={t} onClick={() => { setTopTab(t); if (t !== 'tools') setActiveTool(null); }} style={{
-            padding: '.6rem 1.25rem', border: 'none',
-            borderBottom: topTab === t ? '3px solid var(--brand)' : '3px solid transparent',
-            background: 'none', cursor: 'pointer', fontWeight: topTab === t ? 700 : 400,
-            color: topTab === t ? 'var(--brand)' : 'var(--muted)', fontSize: '1rem', textTransform: 'capitalize',
-          }}>
-            {t === 'tools' ? `Imposition Tools (${TOOLS.length})` : 'Pre-Press Calculators'}
-          </button>
-        ))}
+  // A tool or workflow workspace takes over the whole page.
+  if (activeTool && toolDef) {
+    return shell(<ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} />);
+  }
+  if (activeWorkflow) {
+    return shell(
+      <PipelineWorkspace
+        key={activeWorkflow}
+        workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
+        onBack={() => setActiveWorkflow(null)}
+      />
+    );
+  }
+
+  const searching = query.trim().length > 0;
+  let content: React.ReactNode;
+  if (searching) {
+    content = <ToolGallery query={query} filter={null} onSelect={handleSelect} />;
+  } else if (filter === 'Calculators') {
+    content = <Calculators />;
+  } else if (filter === 'Chained workflows') {
+    content = <WorkflowChains onSelect={setActiveWorkflow} />;
+  } else if (filter === 'Workflow') {
+    content = <WorkflowBuilderSection onSelect={setActiveWorkflow} />;
+  } else if (filter === 'All') {
+    content = (
+      <div style={{ display: 'grid', gap: '2.75rem' }}>
+        <WorkflowChains onSelect={setActiveWorkflow} />
+        <ToolGallery query="" filter={null} onSelect={handleSelect} />
+        <WorkflowBuilderSection onSelect={setActiveWorkflow} />
+      </div>
+    );
+  } else {
+    content = <ToolGallery query="" filter={filter} onSelect={handleSelect} />;
+  }
+
+  return shell(
+    <>
+      {/* Theme toggle */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '.5rem' }}>
+        <button onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+          style={{ padding: '.35rem .8rem', borderRadius: 999, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', fontSize: '.8rem' }}>
+          {theme === 'dark' ? '☀ Light' : '🌙 Dark'}
+        </button>
       </div>
 
-      {topTab === 'tools' ? (
-        activeTool && toolDef ? (
-          <ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} />
-        ) : (
-          <>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <input
-                type="search" value={query} onChange={e => setQuery(e.target.value)}
-                placeholder="Search tools — comic, cards, watermark, fold…"
-                style={{ ...iStyle, maxWidth: 380 }}
-              />
+      {/* Hero */}
+      <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto 2.25rem' }}>
+        <div style={{ color: VIOLET, fontSize: '.7rem', fontWeight: 800, letterSpacing: '.14em', marginBottom: '.75rem' }}>IMPOSITION GALLERY</div>
+        <h1 style={{ fontSize: '2.1rem', margin: '0 0 .75rem', lineHeight: 1.15 }}>See what you can make — and exactly how</h1>
+        <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: '0 0 1.35rem' }}>
+          Browse {TOOLS.length} real imposition and prepress layouts plus {WORKFLOWS.length} chained workflows.
+          Each one shows the result and the exact steps to create it — right in your browser, never uploaded.
+        </p>
+        <button
+          onClick={() => { setFilter('All'); setQuery(''); }}
+          style={{ padding: '.6rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: 'var(--accent-soft)', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
+        >
+          Browse all {TOOLS.length + WORKFLOWS.length} templates →
+        </button>
+      </div>
+
+      {/* How-to strip */}
+      <div className="admin-card" style={{ margin: '0 0 2rem', padding: '1.1rem 1.35rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap', marginBottom: '.9rem' }}>
+          <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.09em', color: VIOLET, textTransform: 'uppercase' }}>How to make this</div>
+          <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>Every template is a ready-made imposition recipe. Pick one, drop your file, and export.</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: '1.25rem' }}>
+          {HOW_TO_STEPS.map(([n, t]) => (
+            <div key={n} style={{ borderLeft: `2px solid ${VIOLET}`, paddingLeft: '.85rem' }}>
+              <div style={{ color: VIOLET, fontWeight: 800, fontSize: '.8rem', marginBottom: '.3rem' }}>{n}</div>
+              <div style={{ fontSize: '.85rem', color: 'var(--ink)', lineHeight: 1.35 }}>{t}</div>
             </div>
-            <ToolGallery query={query} onSelect={handleSelect} />
-          </>
-        )
-      ) : (
-        <Calculators />
-      )}
-    </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem', marginBottom: '1.25rem', justifyContent: 'center' }}>
+        {GALLERY_CHIPS.map(c => {
+          const active = !searching && filter === c;
+          return (
+            <button key={c} onClick={() => { setFilter(c); setQuery(''); }} style={{
+              padding: '.4rem .9rem', borderRadius: 999, cursor: 'pointer', fontSize: '.85rem', fontWeight: active ? 700 : 500,
+              border: `1px solid ${active ? VIOLET : 'var(--border)'}`, background: active ? VIOLET : 'transparent',
+              color: active ? '#fff' : 'var(--muted)', transition: 'all .12s',
+            }}>{c}</button>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div style={{ marginBottom: '2.25rem', display: 'flex', justifyContent: 'center' }}>
+        <input
+          type="search" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder={`Search ${TOOLS.length} tools — comic, cards, watermark, fold…`}
+          style={{ ...iStyle, maxWidth: 440 }}
+        />
+      </div>
+
+      {content}
+    </>
   );
 }

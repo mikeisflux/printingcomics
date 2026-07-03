@@ -241,6 +241,52 @@ interface OverlayOptions {
 
 ---
 
+## New in 1.1 — pipeline ops, dielines & data-merge
+
+### `generateBleed(bytes, { bleedIn }): Promise<Uint8Array>`
+Fabricate a bleed margin by scaling content to overflow the trim; records the
+original trim in the TrimBox.
+
+### `addHeaderFooter(bytes, opts): Promise<Uint8Array>`
+Running header/footer text bands. `{ header, footer, fontSizePt, marginPt, align: 'left'|'center'|'right' }`.
+
+### `addTextWatermark(bytes, opts): Promise<Uint8Array>`
+Diagonal proof/draft stamp. `{ text, opacity, angleDeg, fontSizePt }`.
+
+### `addJobSlug(bytes, opts): Promise<Uint8Array>`
+A thin job-info strip along an edge. `{ text, position: 'top'|'bottom', fontSizePt }`.
+
+### `addCollatingMarks(bytes, { edge: 'left'|'right' }): Promise<Uint8Array>`
+Stepped black spine ticks (a descending staircase) so mis-gathered signatures are obvious.
+
+### `preflight(bytes): Promise<PreflightReport>`
+Non-destructive inspection → `{ pages, uniformSize, widthIn, heightIn, warnings[] }`.
+
+### `makeDieline(opts): Promise<Uint8Array>`
+Generate a real box net — cut (solid) / crease (dashed) / glue lines — from
+dimensions. No source PDF.
+```ts
+interface DielineOptions { kind: 'ste' | 'folder'; widthIn; heightIn; depthIn; glueIn; marginIn; }
+```
+`'ste'` = straight-tuck-end folding carton; `'folder'` = presentation folder
+(panels + fold-up pockets).
+
+### `imposeDataMerge(csvText, opts): Promise<DataMergeResult>`
+Parse a CSV (quoted fields OK) and impose one personalized cell per record —
+first column bold, optional running number, and an optional **scannable QR** per
+row (needs the optional `qrcode-generator` peer). Returns `{ pdf, records, columns }`.
+```ts
+interface DataMergeOptions {
+  cols; rows; sheetWIn; sheetHIn; marginIn; gutterIn; fontSizePt;
+  showBorder; autoNumber; startNumber; numberPrefix; numberPad;
+  addMarks; markLenIn; markOffIn;
+  qrColumn: string;   // header name to encode as QR ('' = none)
+  qrSizePt: number;
+}
+```
+
+---
+
 ## Download helpers (browser only)
 
 These touch `Blob`, `URL`, and `document` — call them only in the browser.

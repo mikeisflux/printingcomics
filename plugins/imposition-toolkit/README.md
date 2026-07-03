@@ -1,17 +1,20 @@
 # Imposition Toolkit
 
-A self-contained, **100% client-side** PDF imposition & pre-press toolkit — 38
-real print-production tools plus 5 planning calculators, extracted from the
-Printing Comics storefront so it can be dropped into any other website.
+A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **60
+print-production tools + 6 chained workflows** plus 5 planning calculators,
+extracted from the Printing Comics storefront so it can be dropped into any
+other website.
 
 Everything runs in the browser using [`pdf-lib`](https://pdflib.js.org). **Files
 never leave the user's machine** — nothing is uploaded, there is no server
 component, and there are no network calls during processing.
 
-- **`src/impose.ts`** — the framework-agnostic engine (18 functions). No React,
-  no app dependencies. This is the reusable core.
-- **`src/Impose.tsx`** — a complete React 19 UI (`<AdminImpose />`): searchable
-  tool gallery, per-tool settings, live previews, download.
+- **`src/impose.ts`** — the framework-agnostic engine (**26 functions**). No
+  React, no app dependencies. This is the reusable core.
+- **`src/Impose.tsx`** — a complete React 19 UI (`<AdminImpose />`): a single-page
+  gallery with a hero, a "how to make this" strip, filter chips, and stacked
+  sections; per-tool settings, live previews, chained-workflow pipelines, and a
+  **dark theme** (light/dark toggle).
 - **`dist/impose.mjs`** — a pre-compiled browser ESM build of the engine for
   plain-JavaScript sites (no bundler/TypeScript required).
 
@@ -21,19 +24,22 @@ component, and there are no network calls during processing.
 
 | Category | Tools |
 |---|---|
-| **Booklets & Books** | Comic Book · Booklet · Saddle-Stitch Magazine · Perfect-Bound Book · Zine · Event Program · Catalog · Greeting Card |
-| **Imposition & Layout** | N-Up Grid · Step & Repeat · Cut & Stack · Index / Contact Sheet · Optimal Fit · Tiled Poster |
-| **Cards & Labels** | Business Cards · **Trading Cards** · Postcards · Labels (Avery 5160) · Bookmarks · Hang Tags · Photo Prints · Flyers · Name Badges · Envelopes |
-| **Folding** | Trifold Brochure · Wedding Invitation · Menu / Bi-fold |
-| **Tickets & Data** | Numbered Tickets |
-| **Marks & Prepress** | Crop Marks · Color Bar · Page Numbering |
-| **Page & PDF Tools** | Merge · Split · Rotate · Flip / Mirror · Overlay / Watermark · Shuffle · Crop |
+| **Chained workflows** | Newsletter+numbers · Branded client proof · Business cards with bleed · Magazine production · Perfect-bound with color bar · Gang run — plus a custom pipeline builder |
+| **Imposition & layout** | Standard Sizes · Cut & Stack · Expert Grid · Optimal Fit · Gang Sheet · Index Print · Photo Prints · Flyers |
+| **Booklets & books** | N-up Book · Booklet · Saddle-Stitch Magazine · Perfect-Bound Book · Zine · Event Program · Catalog · Comic/Manga · Notebook · Flip Book |
+| **Cards & labels** | Business Cards · **Trading Cards** · Stickers · Step & Repeat · Calendar · Postcards · Labels · Bookmarks · Hang Tags · Coasters · Letterhead · Compliment Slips · NCR Pads · Envelopes |
+| **Folding** | Trifold · Folded (Z-fold) · Greeting Card · Menu · Wedding Invitation · Presentation Folder (dieline) |
+| **Large & specialty** | Tiled Poster · Banner · Feather Flags · Roller Banner · Packaging Dieline · Box/Carton |
+| **Tickets & data** | Variable Data (CSV+QR) · Raffle Tickets · Coupons · Name Badges |
+| **Marks & prepress** | Bleed & Crop Marks · Cutter Marks · Color Bar & Header · Page Numbering & Bates · Preflight Inspector |
+| **Page & PDF tools** | Merge · Split · Rotate · Flip/Mirror · Overlay/Watermark · Shuffle · Crop |
 
-Plus pre-press **calculators**: Saddle-Stitch planner, Perfect-Bind spine width,
-N-Up fit, Cost/margin estimator, and a Bleed & Specs reference.
+Highlights new in 1.1: a **real dieline generator** (box net with cut/crease/glue
+from W×H×D), **CSV data-merge** with a **scannable QR** per record, plus bleed,
+header/footer, watermark, job-slug, collating-mark and preflight operations. Plus
+pre-press **calculators** (saddle-stitch, perfect-bind spine, n-up fit, cost, bleed).
 
-See **[`docs/TOOLS.md`](docs/TOOLS.md)** for every tool's engine, preset sizes,
-and expected input.
+See **[`docs/TOOLS.md`](docs/TOOLS.md)** and **[`CHANGELOG.md`](CHANGELOG.md)**.
 
 ---
 
@@ -88,7 +94,7 @@ A complete, runnable single-file demo is in
 | Doc | Contents |
 |---|---|
 | **[docs/API.md](docs/API.md)** | Every engine function — signatures, options, return types, gotchas. |
-| **[docs/TOOLS.md](docs/TOOLS.md)** | The 38-tool catalog: category, engine, preset dimensions, input expected. |
+| **[docs/TOOLS.md](docs/TOOLS.md)** | The tool catalog: category, engine, preset dimensions, input expected. |
 | **[docs/INTEGRATION.md](docs/INTEGRATION.md)** | Embedding into React, Next.js, Vue/vanilla; theming; bundler notes. |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How imposition works: coordinate math, saddle-stitch/creep, n-up, cut-&-stack, card packing, poster tiling, crop marks. |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history. |
@@ -97,7 +103,10 @@ A complete, runnable single-file demo is in
 
 ## Requirements
 
-- **`pdf-lib` ^1.17.1** — the only runtime dependency (peer dependency).
+- **`pdf-lib` ^1.17.1** — the core runtime dependency (peer). Dynamically
+  imported, so it stays out of your initial bundle until a tool runs.
+- **`qrcode-generator` ^1.4.4 || ^2.0.0** — *optional* peer, only loaded when a
+  data-merge uses QR codes. Omit it if you never generate QR.
 - **React ^19** — only for the `<AdminImpose />` component (Option A). The
   engine (Option B) needs no framework.
 - A modern browser (ES2020, dynamic `import()`, `Blob`, `URL.createObjectURL`).
