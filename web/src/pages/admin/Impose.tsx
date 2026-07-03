@@ -1,14 +1,16 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type { DragEvent, ChangeEvent } from 'react';
 import {
   getPdfInfo, imposeBooklet, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
+  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   downloadPdf, downloadMultiple,
 } from '../../lib/impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions,
+  HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -39,7 +41,7 @@ type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
-type TopTab = 'tools' | 'calculators';
+type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
 
 interface LoadedFile { name: string; bytes: Uint8Array; info: PdfPageInfo; }
@@ -1336,6 +1338,399 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
 
 // ── Tool gallery ──────────────────────────────────────────────────────────────
 
+// ── Chained-workflow step settings ────────────────────────────────────────────
+
+const VIOLET = '#7c3aed';
+
+const DEFAULT_HEADERFOOTER: HeaderFooterOptions = { header: 'Document Title', footer: '', fontSizePt: 10, marginPt: 24, align: 'center' };
+const DEFAULT_WATERMARK: WatermarkOptions = { text: 'PROOF', opacity: 0.22, angleDeg: 45, fontSizePt: 96 };
+const DEFAULT_JOBSLUG: JobSlugOptions = { text: 'Job name · client · date', position: 'bottom', fontSizePt: 9 };
+
+function BleedSettings({ opts, onChange }: { opts: { bleedIn: number }; onChange: (o: { bleedIn: number }) => void }) {
+  return (
+    <Grid>
+      <Field label="Bleed per edge (in)" note="Content is scaled to overflow the trim">
+        <input type="number" min={0.0625} max={0.5} step={0.0625} value={opts.bleedIn} onChange={e => onChange({ bleedIn: +e.target.value })} style={iStyle} />
+      </Field>
+    </Grid>
+  );
+}
+
+function HeaderFooterSettings({ opts, onChange }: { opts: HeaderFooterOptions; onChange: (o: HeaderFooterOptions) => void }) {
+  const set = <K extends keyof HeaderFooterOptions>(k: K, v: HeaderFooterOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Header text" note="Leave blank to skip"><input type="text" value={opts.header} onChange={e => set('header', e.target.value)} style={iStyle} /></Field>
+      <Field label="Footer text" note="Leave blank to skip"><input type="text" value={opts.footer} onChange={e => set('footer', e.target.value)} style={iStyle} /></Field>
+      <Field label="Alignment">
+        <select value={opts.align} onChange={e => set('align', e.target.value as HeaderFooterOptions['align'])} style={iStyle}>
+          <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+        </select>
+      </Field>
+      <Field label="Font size (pt)"><input type="number" min={6} max={36} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge margin (pt)"><input type="number" min={6} max={96} step={1} value={opts.marginPt} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function WatermarkSettings({ opts, onChange }: { opts: WatermarkOptions; onChange: (o: WatermarkOptions) => void }) {
+  const set = <K extends keyof WatermarkOptions>(k: K, v: WatermarkOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Watermark text"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
+      <Field label={`Opacity: ${Math.round(opts.opacity * 100)}%`}><input type="range" min={5} max={80} step={5} value={opts.opacity * 100} onChange={e => set('opacity', +e.target.value / 100)} style={{ width: '100%', marginTop: '.5rem' }} /></Field>
+      <Field label="Angle (°)"><input type="number" min={-90} max={90} step={5} value={opts.angleDeg} onChange={e => set('angleDeg', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Font size (pt)"><input type="number" min={24} max={200} step={4} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function JobSlugSettings({ opts, onChange }: { opts: JobSlugOptions; onChange: (o: JobSlugOptions) => void }) {
+  const set = <K extends keyof JobSlugOptions>(k: K, v: JobSlugOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Slug text" note="Job name, client, date, etc."><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
+      <Field label="Position">
+        <select value={opts.position} onChange={e => set('position', e.target.value as JobSlugOptions['position'])} style={iStyle}>
+          <option value="bottom">Bottom strip</option><option value="top">Top strip</option>
+        </select>
+      </Field>
+      <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function CollatingSettings({ opts, onChange }: { opts: { edge: 'left' | 'right' }; onChange: (o: { edge: 'left' | 'right' }) => void }) {
+  return (
+    <Grid>
+      <Field label="Spine edge" note="Where the staircase of marks sits">
+        <select value={opts.edge} onChange={e => onChange({ edge: e.target.value as 'left' | 'right' })} style={iStyle}>
+          <option value="right">Right edge</option><option value="left">Left edge</option>
+        </select>
+      </Field>
+    </Grid>
+  );
+}
+
+function PreflightPanel({ file }: { file: LoadedFile }) {
+  const [rpt, setRpt] = useState<PreflightReport | null>(null);
+  useEffect(() => { let live = true; preflight(file.bytes).then(r => { if (live) setRpt(r); }); return () => { live = false; }; }, [file]);
+  if (!rpt) return <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Checking…</div>;
+  return (
+    <div style={{ display: 'grid', gap: '.5rem' }}>
+      <div style={{ fontSize: '.85rem' }}>
+        {rpt.pages} page{rpt.pages !== 1 ? 's' : ''} · {rpt.widthIn}″ × {rpt.heightIn}″ · {rpt.uniformSize ? 'uniform size ✓' : 'mixed sizes'}
+      </div>
+      {rpt.warnings.length > 0
+        ? rpt.warnings.map((w, i) => <NoteBanner key={i} text={`⚠ ${w}`} />)
+        : <div style={{ fontSize: '.82rem', color: '#166534' }}>No issues found — ready to impose.</div>}
+      <div style={{ fontSize: '.75rem', color: 'var(--muted)' }}>Preflight only inspects; it passes the file through unchanged.</div>
+    </div>
+  );
+}
+
+// ── Pipeline model + runner ───────────────────────────────────────────────────
+
+type StepKind = 'preflight' | 'booklet' | 'nup' | 'bleed' | 'colorbar' | 'cropmarks'
+  | 'pagenumbers' | 'headerfooter' | 'watermark' | 'jobslug' | 'collating';
+
+interface PipelineStep { kind: StepKind; label: string; opts: any; } // eslint-disable-line @typescript-eslint/no-explicit-any
+
+const STEP_LABELS: Record<StepKind, string> = {
+  preflight: 'Preflight', booklet: 'Impose booklet', nup: 'Impose / gang up', bleed: 'Generate bleed',
+  colorbar: 'Add color bar', cropmarks: 'Add marks', pagenumbers: 'Add page numbers',
+  headerfooter: 'Add header / footer', watermark: 'Add watermark', jobslug: 'Add job info', collating: 'Add collating marks',
+};
+
+const STEP_KINDS: StepKind[] = ['preflight', 'booklet', 'nup', 'bleed', 'colorbar', 'cropmarks', 'pagenumbers', 'headerfooter', 'watermark', 'jobslug', 'collating'];
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const stepDefaults: Record<StepKind, () => any> = {
+  preflight: () => ({}),
+  booklet: () => ({ ...DEFAULT_BOOKLET }),
+  nup: () => ({ ...DEFAULT_NUP }),
+  bleed: () => ({ bleedIn: 0.125 }),
+  colorbar: () => ({ ...DEFAULT_COLORBAR }),
+  cropmarks: () => ({ ...DEFAULT_CROP }),
+  pagenumbers: () => ({ ...DEFAULT_PAGENUM }),
+  headerfooter: () => ({ ...DEFAULT_HEADERFOOTER }),
+  watermark: () => ({ ...DEFAULT_WATERMARK }),
+  jobslug: () => ({ ...DEFAULT_JOBSLUG }),
+  collating: () => ({ edge: 'right' }),
+};
+
+async function runStep(bytes: Uint8Array, step: PipelineStep): Promise<Uint8Array> {
+  switch (step.kind) {
+    case 'preflight': return bytes;
+    case 'booklet': return imposeBooklet(bytes, step.opts);
+    case 'nup': return imposeNUp(bytes, step.opts);
+    case 'bleed': return generateBleed(bytes, step.opts);
+    case 'colorbar': return addColorBar(bytes, step.opts);
+    case 'cropmarks': return addCropMarksOnly(bytes, step.opts);
+    case 'pagenumbers': return addPageNumbers(bytes, step.opts);
+    case 'headerfooter': return addHeaderFooter(bytes, step.opts);
+    case 'watermark': return addTextWatermark(bytes, step.opts);
+    case 'jobslug': return addJobSlug(bytes, step.opts);
+    case 'collating': return addCollatingMarks(bytes, step.opts);
+    default: return bytes;
+  }
+}
+
+function StepSettings({ step, onChange, file }: { step: PipelineStep; onChange: (s: PipelineStep) => void; file: LoadedFile }) {
+  const upd = (o: any) => onChange({ ...step, opts: o }); // eslint-disable-line @typescript-eslint/no-explicit-any
+  switch (step.kind) {
+    case 'preflight': return <PreflightPanel file={file} />;
+    case 'booklet': return <BookletSettings opts={step.opts} onChange={upd} />;
+    case 'nup': return <NUpSettings opts={step.opts} onChange={upd} cardMode={!!step.opts.cellWIn} />;
+    case 'bleed': return <BleedSettings opts={step.opts} onChange={upd} />;
+    case 'colorbar': return <ColorBarSettings opts={step.opts} onChange={upd} />;
+    case 'cropmarks': return <CropSettings opts={step.opts} onChange={upd} />;
+    case 'pagenumbers': return <PageNumberSettings opts={step.opts} onChange={upd} />;
+    case 'headerfooter': return <HeaderFooterSettings opts={step.opts} onChange={upd} />;
+    case 'watermark': return <WatermarkSettings opts={step.opts} onChange={upd} />;
+    case 'jobslug': return <JobSlugSettings opts={step.opts} onChange={upd} />;
+    case 'collating': return <CollatingSettings opts={step.opts} onChange={upd} />;
+    default: return null;
+  }
+}
+
+// ── Chained-workflow catalog ──────────────────────────────────────────────────
+
+interface WFStep { kind: StepKind; label: string; opts?: any; } // eslint-disable-line @typescript-eslint/no-explicit-any
+interface WorkflowDef { id: string; name: string; desc: string; Thumb: () => React.ReactElement; steps: WFStep[]; }
+
+const WORKFLOWS: WorkflowDef[] = [
+  {
+    id: 'newsletter', name: 'Newsletter + page numbers', desc: 'Booklet, then a header/footer panel and marks.',
+    Thumb: BookletThumb,
+    steps: [
+      { kind: 'booklet', label: 'Impose booklet' },
+      { kind: 'headerfooter', label: 'Add header / footer', opts: { header: 'The Newsletter', footer: 'Page', align: 'center' } },
+      { kind: 'cropmarks', label: 'Add marks' },
+    ],
+  },
+  {
+    id: 'clientproof', name: 'Branded client proof', desc: 'Watermark, header/footer and a reference bar.',
+    Thumb: OverlayThumb,
+    steps: [
+      { kind: 'watermark', label: 'Add proof watermark', opts: { text: 'PROOF' } },
+      { kind: 'headerfooter', label: 'Add header / footer', opts: { header: 'CLIENT PROOF — NOT FOR PRODUCTION', footer: '', align: 'center' } },
+      { kind: 'colorbar', label: 'Add reference bar' },
+    ],
+  },
+  {
+    id: 'bizcards', name: 'Business cards with bleed', desc: 'Add bleed, impose, then cut marks.',
+    Thumb: cardThumb(2, 3),
+    steps: [
+      { kind: 'bleed', label: 'Generate bleeds', opts: { bleedIn: 0.125 } },
+      { kind: 'nup', label: 'Impose cards', opts: { cellWIn: 3.75, cellHIn: 2.25, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 } },
+      { kind: 'cropmarks', label: 'Add cut marks', opts: { bleedIn: 0.125 } },
+    ],
+  },
+  {
+    id: 'magazine', name: 'Magazine production', desc: 'Preflight, signatures, color bars and marks.',
+    Thumb: gridThumb(2, 2),
+    steps: [
+      { kind: 'preflight', label: 'Preflight' },
+      { kind: 'booklet', label: 'Impose signatures' },
+      { kind: 'colorbar', label: 'Add color bars' },
+      { kind: 'cropmarks', label: 'Add marks' },
+    ],
+  },
+  {
+    id: 'perfectbound', name: 'Perfect-bound with color bar', desc: 'Signatures, color bars, collating and trim marks.',
+    Thumb: ColorBarThumb,
+    steps: [
+      { kind: 'booklet', label: 'Impose signatures', opts: { creepIn: 0 } },
+      { kind: 'colorbar', label: 'Add color bars' },
+      { kind: 'collating', label: 'Add collating marks', opts: { edge: 'right' } },
+      { kind: 'cropmarks', label: 'Add trim marks' },
+    ],
+  },
+  {
+    id: 'gangrun', name: 'Gang run, full marks', desc: 'Gang items with a color bar, marks and job slug.',
+    Thumb: gridThumb(3, 2),
+    steps: [
+      { kind: 'nup', label: 'Gang items' },
+      { kind: 'colorbar', label: 'Add color bar' },
+      { kind: 'cropmarks', label: 'Add all marks' },
+      { kind: 'jobslug', label: 'Add job info' },
+    ],
+  },
+];
+
+function buildSteps(wf: WorkflowDef): PipelineStep[] {
+  return wf.steps.map(s => ({ kind: s.kind, label: s.label, opts: { ...stepDefaults[s.kind](), ...(s.opts || {}) } }));
+}
+
+// ── Chained-workflow gallery ──────────────────────────────────────────────────
+
+function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg)',
+        boxShadow: hover ? '0 4px 16px rgba(0,0,0,.08)' : 'none', transition: 'all .15s',
+      }}
+    >
+      <div style={{ height: 130, background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', padding: '1rem', overflow: 'hidden' }}>
+        <wf.Thumb />
+      </div>
+      <div style={{ padding: '.85rem 1rem 1rem' }}>
+        <span style={{ display: 'inline-block', padding: '.12rem .5rem', borderRadius: 4, background: '#f3f0ff', color: VIOLET, fontSize: '.66rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
+          {wf.steps.length}-STEP CHAIN
+        </span>
+        <div style={{ fontWeight: 700, marginBottom: '.2rem' }}>{wf.name}</div>
+        <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.75rem', lineHeight: 1.4 }}>{wf.desc}</div>
+        <div style={{ fontSize: '.62rem', fontWeight: 800, letterSpacing: '.08em', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '.4rem' }}>How to make this</div>
+        <ol style={{ listStyle: 'none', margin: '0 0 1rem', padding: 0, display: 'grid', gap: '.3rem' }}>
+          {wf.steps.map((s, i) => (
+            <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.82rem' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 9, background: '#f3f0ff', color: VIOLET, fontSize: '.68rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+              {s.label}
+            </li>
+          ))}
+        </ol>
+        <button onClick={onSelect} style={{ width: '100%', padding: '.6rem', border: 'none', borderRadius: 8, background: VIOLET, color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '.9rem' }}>
+          Make this →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowsView({ onSelect }: { onSelect: (id: string) => void }) {
+  return (
+    <div>
+      <h3 style={{ margin: '0 0 .35rem', fontSize: '1.15rem' }}>Chained workflows</h3>
+      <p style={{ color: 'var(--muted)', margin: '0 0 1.5rem', maxWidth: 640, fontSize: '.9rem', lineHeight: 1.5 }}>
+        Real multi-step recipes that show how operations stack — impose, then add a header/footer, a color
+        bar or cutter marks. Click “Make this” to load the whole chain into the pipeline, ready to configure.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: '1rem' }}>
+        {WORKFLOWS.map(wf => <WorkflowCard key={wf.id} wf={wf} onSelect={() => onSelect(wf.id)} />)}
+      </div>
+      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border)' }}>
+        <h3 style={{ margin: '0 0 .35rem', fontSize: '1.05rem' }}>Build your own</h3>
+        <p style={{ color: 'var(--muted)', margin: '0 0 1rem', fontSize: '.88rem' }}>
+          Start from an empty pipeline and add any operations in the order you want — each step feeds the next.
+        </p>
+        <button className="btn secondary" onClick={() => onSelect('__custom__')}>+ New custom workflow</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Pipeline workspace ────────────────────────────────────────────────────────
+
+function PipelineWorkspace({ workflow, onBack }: { workflow: WorkflowDef | null; onBack: () => void }) {
+  const [file, setFile] = useState<LoadedFile | null>(null);
+  const [steps, setSteps] = useState<PipelineStep[]>(() => (workflow ? buildSteps(workflow) : []));
+  const [status, setStatus] = useState<Status>('idle');
+  const [errMsg, setErrMsg] = useState('');
+  const [progress, setProgress] = useState('');
+  const [addKind, setAddKind] = useState<StepKind>('cropmarks');
+
+  const loadFile = useCallback(async (f: File) => {
+    setStatus('loading'); setErrMsg('');
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const info = await getPdfInfo(bytes);
+      setFile({ name: f.name, bytes, info });
+      setStatus('idle');
+    } catch {
+      setStatus('error'); setErrMsg('Could not read PDF. Make sure it is a valid, unencrypted PDF.');
+    }
+  }, []);
+
+  const updateStep = (i: number, s: PipelineStep) => setSteps(prev => prev.map((p, j) => (j === i ? s : p)));
+  const removeStep = (i: number) => setSteps(prev => prev.filter((_, j) => j !== i));
+  const moveStep = (i: number, dir: -1 | 1) => setSteps(prev => {
+    const a = [...prev]; const j = i + dir; if (j < 0 || j >= a.length) return a;
+    const tmp = a[j]!; a[j] = a[i]!; a[i] = tmp; return a;
+  });
+  const addStep = () => setSteps(prev => [...prev, { kind: addKind, label: STEP_LABELS[addKind], opts: stepDefaults[addKind]() }]);
+
+  const run = async () => {
+    if (!file || !steps.length) return;
+    setStatus('processing'); setErrMsg('');
+    try {
+      let cur = file.bytes;
+      for (let i = 0; i < steps.length; i++) {
+        setProgress(`Step ${i + 1}/${steps.length}: ${steps[i]!.label}…`);
+        cur = await runStep(cur, steps[i]!);
+      }
+      const base = file.name.replace(/\.pdf$/i, '');
+      downloadPdf(cur, `${base}-${workflow ? workflow.id : 'workflow'}.pdf`);
+      setStatus('done'); setProgress(''); setTimeout(() => setStatus('idle'), 3000);
+    } catch (e) {
+      setStatus('error'); setProgress(''); setErrMsg(e instanceof Error ? e.message : 'Pipeline failed');
+    }
+  };
+
+  const isBusy = status === 'loading' || status === 'processing';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+        <button className="btn secondary" onClick={onBack} style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>← Back</button>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.3rem' }}>{workflow ? workflow.name : 'Custom workflow'}</h2>
+          <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>
+            {workflow ? workflow.desc : 'Add operations in order — each step feeds the next.'}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gap: '1.25rem' }}>
+        {!file ? (
+          <FileDrop onFile={fs => { if (fs[0]) loadFile(fs[0]); }} />
+        ) : (
+          <>
+            <FileBar file={file} onClear={() => { setFile(null); setStatus('idle'); setErrMsg(''); }} />
+
+            {steps.map((step, i) => (
+              <div key={i} className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem', borderLeft: `4px solid ${VIOLET}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.75rem' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 11, background: '#f3f0ff', color: VIOLET, fontSize: '.75rem', fontWeight: 800 }}>{i + 1}</span>
+                  <h4 style={{ margin: 0, flex: 1 }}>{step.label} <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '.78rem' }}>· {STEP_LABELS[step.kind]}</span></h4>
+                  <button title="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)} style={{ border: 'none', background: 'none', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--muted)', fontSize: '1rem', opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                  <button title="Move down" disabled={i === steps.length - 1} onClick={() => moveStep(i, 1)} style={{ border: 'none', background: 'none', cursor: i === steps.length - 1 ? 'default' : 'pointer', color: 'var(--muted)', fontSize: '1rem', opacity: i === steps.length - 1 ? 0.3 : 1 }}>↓</button>
+                  <button title="Remove step" onClick={() => removeStep(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1.1rem' }}>×</button>
+                </div>
+                <StepSettings step={step} onChange={s => updateStep(i, s)} file={file} />
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+              <select value={addKind} onChange={e => setAddKind(e.target.value as StepKind)} style={{ ...iStyle, maxWidth: 220 }}>
+                {STEP_KINDS.map(k => <option key={k} value={k}>{STEP_LABELS[k]}</option>)}
+              </select>
+              <button className="btn secondary" onClick={addStep}>+ Add step</button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <button onClick={run} disabled={isBusy || !steps.length}
+                style={{ fontSize: '1rem', padding: '.65rem 1.5rem', border: 'none', borderRadius: 8, background: steps.length ? VIOLET : 'var(--border)', color: '#fff', fontWeight: 600, cursor: isBusy || !steps.length ? 'default' : 'pointer' }}>
+                {status === 'processing' ? (progress || 'Running…') : status === 'done' ? '✓ Downloaded' : `Run ${steps.length} step${steps.length !== 1 ? 's' : ''} & download`}
+              </button>
+              {!steps.length && <span style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Add at least one step.</span>}
+            </div>
+
+            {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg || 'Pipeline failed. Try again.'}</div>}
+          </>
+        )}
+        {status === 'loading' && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Reading PDF…</div>}
+        {status === 'error' && !file && <div style={{ color: '#dc2626', fontSize: '.85rem', marginTop: '-0.5rem' }}>{errMsg}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Tool gallery ──────────────────────────────────────────────────────────────
+
 const CATEGORY_ORDER = [
   'Booklets & Books', 'Imposition & Layout', 'Cards & Labels',
   'Folding', 'Tickets & Data', 'Marks & Prepress', 'Page & PDF Tools',
@@ -1722,27 +2117,34 @@ function Calculators() {
 export function AdminImpose() {
   const [topTab, setTopTab] = useState<TopTab>('tools');
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
   const handleSelect = (id: string) => { setActiveTool(id); setTopTab('tools'); };
 
+  const TAB_LABEL: Record<TopTab, string> = {
+    tools: `Imposition Tools (${TOOLS.length})`,
+    workflows: `Chained Workflows (${WORKFLOWS.length})`,
+    calculators: 'Pre-Press Calculators',
+  };
+
   return (
     <div style={{ padding: '2rem', maxWidth: 1080 }}>
       <h1 style={{ marginBottom: '.25rem' }}>Imposition &amp; Pre-Press</h1>
       <p style={{ color: 'var(--muted)', marginBottom: '1.75rem' }}>
-        {TOOLS.length} real PDF imposition tools — everything runs locally in your browser, files are never uploaded. Plus pre-press calculators.
+        {TOOLS.length} PDF imposition tools and {WORKFLOWS.length} chained workflows — everything runs locally in your browser, files are never uploaded. Plus pre-press calculators.
       </p>
 
-      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '2rem' }}>
-        {(['tools', 'calculators'] as TopTab[]).map(t => (
-          <button key={t} onClick={() => { setTopTab(t); if (t !== 'tools') setActiveTool(null); }} style={{
+      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '2rem', flexWrap: 'wrap' }}>
+        {(['tools', 'workflows', 'calculators'] as TopTab[]).map(t => (
+          <button key={t} onClick={() => { setTopTab(t); setActiveTool(null); setActiveWorkflow(null); }} style={{
             padding: '.6rem 1.25rem', border: 'none',
             borderBottom: topTab === t ? '3px solid var(--brand)' : '3px solid transparent',
             background: 'none', cursor: 'pointer', fontWeight: topTab === t ? 700 : 400,
-            color: topTab === t ? 'var(--brand)' : 'var(--muted)', fontSize: '1rem', textTransform: 'capitalize',
+            color: topTab === t ? 'var(--brand)' : 'var(--muted)', fontSize: '1rem',
           }}>
-            {t === 'tools' ? `Imposition Tools (${TOOLS.length})` : 'Pre-Press Calculators'}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
@@ -1761,6 +2163,16 @@ export function AdminImpose() {
             </div>
             <ToolGallery query={query} onSelect={handleSelect} />
           </>
+        )
+      ) : topTab === 'workflows' ? (
+        activeWorkflow ? (
+          <PipelineWorkspace
+            key={activeWorkflow}
+            workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
+            onBack={() => setActiveWorkflow(null)}
+          />
+        ) : (
+          <WorkflowsView onSelect={setActiveWorkflow} />
         )
       ) : (
         <Calculators />
