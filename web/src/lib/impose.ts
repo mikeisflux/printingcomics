@@ -481,6 +481,166 @@ export async function imposeTiledPoster(bytes: Uint8Array, opts: {
   return outDoc.save();
 }
 
+// ── Generate Bleed ──────────────────────────────────────────────────────────
+// Fabricate a bleed margin on artwork that has none by scaling the content to
+// overflow the trim on every edge. Ideal for full-bleed art (photos, colour
+// backgrounds); the original trim is recorded in the TrimBox so downstream
+// marks can find it.
+
+export async function generateBleed(bytes: Uint8Array, opts: { bleedIn: number }): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(srcPages);
+  const b = opts.bleedIn * PT;
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = srcPages[i]!.getSize();
+    const pg = outDoc.addPage([w + 2 * b, h + 2 * b]);
+    pg.drawPage(embeds[i]!, { x: 0, y: 0, width: w + 2 * b, height: h + 2 * b });
+    pg.setTrimBox(b, b, w, h);
+  }
+  return outDoc.save();
+}
+
+// ── Header / Footer ─────────────────────────────────────────────────────────
+
+export interface HeaderFooterOptions {
+  header: string;
+  footer: string;
+  fontSizePt: number;
+  marginPt: number;
+  align: 'left' | 'center' | 'right';
+}
+
+export async function addHeaderFooter(bytes: Uint8Array, opts: HeaderFooterOptions): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const bands: [string, number][] = [[opts.header, h - opts.marginPt], [opts.footer, opts.marginPt]];
+    for (const [text, y] of bands) {
+      if (!text) continue;
+      const tw = font.widthOfTextAtSize(text, opts.fontSizePt);
+      const x = opts.align === 'right' ? w - opts.marginPt - tw : opts.align === 'left' ? opts.marginPt : (w - tw) / 2;
+      pg.drawText(text, { x, y, font, size: opts.fontSizePt, color: rgb(0.1, 0.1, 0.1) });
+    }
+  }
+  return doc.save();
+}
+
+// ── Text Watermark (proof stamp) ────────────────────────────────────────────
+
+export interface WatermarkOptions {
+  text: string;
+  opacity: number;
+  angleDeg: number;
+  fontSizePt: number;
+}
+
+export async function addTextWatermark(bytes: Uint8Array, opts: WatermarkOptions): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  const rad = (opts.angleDeg * Math.PI) / 180;
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const tw = font.widthOfTextAtSize(opts.text || 'PROOF', opts.fontSizePt);
+    // Position the baseline so the text's midpoint lands at the page centre.
+    const x = w / 2 - (tw / 2) * Math.cos(rad);
+    const y = h / 2 - (tw / 2) * Math.sin(rad);
+    pg.drawText(opts.text || 'PROOF', {
+      x, y, font, size: opts.fontSizePt,
+      color: rgb(0.5, 0.5, 0.5), opacity: opts.opacity, rotate: degrees(opts.angleDeg),
+    });
+  }
+  return doc.save();
+}
+
+// ── Job Slug (job-info strip) ───────────────────────────────────────────────
+// Adds a thin strip along one edge stamped with job metadata (name, date, etc.).
+
+export interface JobSlugOptions {
+  text: string;
+  position: 'top' | 'bottom';
+  fontSizePt: number;
+}
+
+export async function addJobSlug(bytes: Uint8Array, opts: JobSlugOptions): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(srcPages);
+  const font = await outDoc.embedFont(StandardFonts.Helvetica);
+  const strip = opts.fontSizePt + 8;
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = srcPages[i]!.getSize();
+    const pg = outDoc.addPage([w, h + strip]);
+    const contentY = opts.position === 'bottom' ? strip : 0;
+    pg.drawPage(embeds[i]!, { x: 0, y: contentY, width: w, height: h });
+    const ty = opts.position === 'bottom' ? (strip - opts.fontSizePt) / 2 + 1 : h + (strip - opts.fontSizePt) / 2 + 1;
+    pg.drawText(opts.text || 'Job', { x: 6, y: ty, font, size: opts.fontSizePt, color: rgb(0.25, 0.25, 0.25) });
+  }
+  return outDoc.save();
+}
+
+// ── Collating (spine) Marks ─────────────────────────────────────────────────
+// Stepped black ticks down the spine edge, one per sheet, forming a descending
+// staircase so mis-gathered signatures are obvious at a glance.
+
+export interface CollatingOptions { edge: 'left' | 'right'; }
+
+export async function addCollatingMarks(bytes: Uint8Array, opts: CollatingOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const markW = 9, markH = 14;
+  for (let i = 0; i < n; i++) {
+    const pg = pages[i]!;
+    const { width: w, height: h } = pg.getSize();
+    const step = n > 1 ? (h - 40 - markH) / (n - 1) : 0;
+    const y = h - 20 - markH - i * step;
+    const x = opts.edge === 'right' ? w - markW : 0;
+    pg.drawRectangle({ x, y, width: markW, height: markH, color: rgb(0, 0, 0) });
+  }
+  return doc.save();
+}
+
+// ── Preflight (inspection, non-destructive) ─────────────────────────────────
+
+export interface PreflightReport {
+  pages: number;
+  uniformSize: boolean;
+  widthIn: number;
+  heightIn: number;
+  warnings: string[];
+}
+
+export async function preflight(bytes: Uint8Array): Promise<PreflightReport> {
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const warnings: string[] = [];
+  if (!pages.length) warnings.push('Document has no pages.');
+  const first = pages[0]?.getSize() ?? { width: 0, height: 0 };
+  const uniformSize = pages.every(p => {
+    const s = p.getSize();
+    return Math.abs(s.width - first.width) < 1 && Math.abs(s.height - first.height) < 1;
+  });
+  if (!uniformSize) warnings.push('Pages are not all the same size — imposition may misalign.');
+  if (first.width / PT < 1 || first.height / PT < 1) warnings.push('Page size looks unusually small.');
+  return {
+    pages: pages.length,
+    uniformSize,
+    widthIn: Math.round((first.width / PT) * 1000) / 1000,
+    heightIn: Math.round((first.height / PT) * 1000) / 1000,
+    warnings,
+  };
+}
+
 // ── Zine (4 panels per side, 2 sides = 8-page booklet from 2 sheets) ────────
 // Same as saddle stitch; the "zine" label and preset distinguish the use case.
 
