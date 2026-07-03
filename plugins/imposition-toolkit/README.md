@@ -96,6 +96,7 @@ A complete, runnable single-file demo is in
 | **[docs/API.md](docs/API.md)** | Every engine function — signatures, options, return types, gotchas. |
 | **[docs/TOOLS.md](docs/TOOLS.md)** | The tool catalog: category, engine, preset dimensions, input expected. |
 | **[docs/INTEGRATION.md](docs/INTEGRATION.md)** | Embedding into React, Next.js, Vue/vanilla; theming; bundler notes. |
+| **[docs/VERSIONS.md](docs/VERSIONS.md)** | **Exact versions to use** on the target site — Node, pdf-lib, qrcode-generator, React, TypeScript, Vite, browser targets. |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How imposition works: coordinate math, saddle-stitch/creep, n-up, cut-&-stack, card packing, poster tiling, crop marks. |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history. |
 
