@@ -80,25 +80,37 @@ interface ToolDef {
 
 // ── Reusable thumbnails ───────────────────────────────────────────────────────
 
+// A white "paper sheet" backdrop (with a soft shadow) that most thumbnails sit
+// on, so they read as floating paper on the dark gallery cards.
+function Sheet({ children }: { children?: React.ReactNode }) {
+  return (
+    <>
+      <rect x={19} y={14} width={168} height={128} rx={6} fill="rgba(0,0,0,0.30)" />
+      <rect x={16} y={10} width={168} height={128} rx={6} fill="#ffffff" stroke="#e2e8f0" />
+      {children}
+    </>
+  );
+}
+
 function gridThumb(cols: number, rows: number, o: { numbered?: boolean; accent?: string } = {}) {
   return function GridThumb() {
-    const W = 200, H = 148, pad = 12, gap = 5;
-    const cw = (W - pad * 2 - gap * (cols - 1)) / cols;
-    const ch = (H - pad * 2 - gap * (rows - 1)) / rows;
+    const sx = 16, sy = 10, sw = 168, sh = 128, pad = 11, gap = 5;
+    const cw = (sw - pad * 2 - gap * (cols - 1)) / cols;
+    const ch = (sh - pad * 2 - gap * (rows - 1)) / rows;
     const cells: React.ReactElement[] = [];
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      const x = pad + c * (cw + gap), y = pad + r * (ch + gap);
+      const x = sx + pad + c * (cw + gap), y = sy + pad + r * (ch + gap);
       cells.push(
         <g key={`${r}-${c}`}>
-          <rect x={x} y={y} width={cw} height={ch} rx={1} fill="#f1f5f9" stroke={o.accent ?? '#94a3b8'} />
+          <rect x={x} y={y} width={cw} height={ch} rx={1.5} fill="#f8fafc" stroke={o.accent ?? '#cbd5e1'} />
           {o.numbered && (
-            <text x={x + cw / 2} y={y + ch / 2 + 5} textAnchor="middle" fill="#64748b"
-              fontSize={Math.min(16, ch * 0.42)} fontWeight={600}>{r * cols + c + 1}</text>
+            <text x={x + cw / 2} y={y + ch / 2 + 4} textAnchor="middle" fill="#94a3b8"
+              fontSize={Math.min(15, ch * 0.42)} fontWeight={600}>{r * cols + c + 1}</text>
           )}
         </g>
       );
     }
-    return <svg viewBox="0 0 200 148" width="100%" height="100%">{cells}</svg>;
+    return <svg viewBox="0 0 200 148" width="100%" height="100%"><Sheet>{cells}</Sheet></svg>;
   };
 }
 
@@ -136,23 +148,24 @@ const BookletThumb = () => (
 );
 
 const cardThumb = (cols: number, rows: number, badge?: string) => function CardThumb() {
-  const W = 200, H = 148, pad = 14, gap = 8;
-  const cw = (W - pad * 2 - gap * (cols - 1)) / cols;
-  const ch = (H - pad * 2 - gap * (rows - 1)) / rows;
+  const sx = 16, sy = 10, sw = 168, sh = 128, pad = 11, gap = 7;
+  const cw = (sw - pad * 2 - gap * (cols - 1)) / cols;
+  const ch = (sh - pad * 2 - gap * (rows - 1)) / rows;
   const cells: React.ReactElement[] = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const x = pad + c * (cw + gap), y = pad + r * (ch + gap);
+    const x = sx + pad + c * (cw + gap), y = sy + pad + r * (ch + gap);
     cells.push(
       <g key={`${r}-${c}`}>
-        <rect x={x} y={y} width={cw} height={ch} rx={3} fill="#eef2ff" stroke="#818cf8" />
-        <rect x={x + 4} y={y + 4} width={cw - 8} height={ch * 0.42} rx={2} fill="#c7d2fe" />
+        <rect x={x} y={y} width={cw} height={ch} rx={3} fill="#f5f3ff" stroke="#c4b5fd" />
+        <rect x={x + 5} y={y + 5} width={Math.max(6, cw * 0.55)} height={4} rx={2} fill="#a78bfa" />
+        {ch > 22 && <rect x={x + 5} y={y + 12} width={Math.max(6, cw * 0.78)} height={3} rx={1.5} fill="#ddd6fe" />}
       </g>
     );
   }
   return (
     <svg viewBox="0 0 200 148" width="100%" height="100%">
-      {cells}
-      {badge && <text x="184" y="24" textAnchor="middle" fontSize="20">{badge}</text>}
+      <Sheet>{cells}</Sheet>
+      {badge && <text x={sx + sw - 12} y={sy + 20} textAnchor="middle" fontSize="18">{badge}</text>}
     </svg>
   );
 };
@@ -1470,6 +1483,14 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
 
 const VIOLET = '#7c3aed';
 
+// Gallery theme palettes, applied as CSS custom properties on the page shell so
+// every child (and the .btn/.admin-card classes) adapts. Default is dark, to
+// match the reference gallery.
+const THEMES: Record<'light' | 'dark', React.CSSProperties> = {
+  light: { '--bg': '#ffffff', '--bg-alt': '#f7f5f2', '--ink': '#1a1a1a', '--muted': '#5a5a5a', '--border': '#e6e3df', '--accent-soft': '#f3f0ff' } as React.CSSProperties,
+  dark: { '--bg': '#0b0b12', '--bg-alt': '#15151f', '--ink': '#f3f4f6', '--muted': '#9ca3af', '--border': '#2a2a37', '--accent-soft': 'rgba(139,92,246,0.18)' } as React.CSSProperties,
+};
+
 const DEFAULT_HEADERFOOTER: HeaderFooterOptions = { header: 'Document Title', footer: '', fontSizePt: 10, marginPt: 24, align: 'center' };
 const DEFAULT_WATERMARK: WatermarkOptions = { text: 'PROOF', opacity: 0.22, angleDeg: 45, fontSizePt: 96 };
 const DEFAULT_JOBSLUG: JobSlugOptions = { text: 'Job name · client · date', position: 'bottom', fontSizePt: 9 };
@@ -1707,7 +1728,7 @@ function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void 
         <wf.Thumb />
       </div>
       <div style={{ padding: '.85rem 1rem 1rem' }}>
-        <span style={{ display: 'inline-block', padding: '.12rem .5rem', borderRadius: 4, background: '#f3f0ff', color: VIOLET, fontSize: '.66rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
+        <span style={{ display: 'inline-block', padding: '.12rem .5rem', borderRadius: 4, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.66rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
           {wf.steps.length}-STEP CHAIN
         </span>
         <div style={{ fontWeight: 700, marginBottom: '.2rem' }}>{wf.name}</div>
@@ -1716,7 +1737,7 @@ function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void 
         <ol style={{ listStyle: 'none', margin: '0 0 1rem', padding: 0, display: 'grid', gap: '.3rem' }}>
           {wf.steps.map((s, i) => (
             <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.82rem' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 9, background: '#f3f0ff', color: VIOLET, fontSize: '.68rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 9, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.68rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
               {s.label}
             </li>
           ))}
@@ -1833,7 +1854,7 @@ function PipelineWorkspace({ workflow, onBack }: { workflow: WorkflowDef | null;
             {steps.map((step, i) => (
               <div key={i} className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem', borderLeft: `4px solid ${VIOLET}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginBottom: '.75rem' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 11, background: '#f3f0ff', color: VIOLET, fontSize: '.75rem', fontWeight: 800 }}>{i + 1}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 11, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.75rem', fontWeight: 800 }}>{i + 1}</span>
                   <h4 style={{ margin: 0, flex: 1 }}>{step.label} <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '.78rem' }}>· {STEP_LABELS[step.kind]}</span></h4>
                   <button title="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)} style={{ border: 'none', background: 'none', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--muted)', fontSize: '1rem', opacity: i === 0 ? 0.3 : 1 }}>↑</button>
                   <button title="Move down" disabled={i === steps.length - 1} onClick={() => moveStep(i, 1)} style={{ border: 'none', background: 'none', cursor: i === steps.length - 1 ? 'default' : 'pointer', color: 'var(--muted)', fontSize: '1rem', opacity: i === steps.length - 1 ? 0.3 : 1 }}>↓</button>
@@ -1930,7 +1951,7 @@ function toolHowTo(tool: ToolDef): string[] {
 
 function ReadyBadge() {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', padding: '.12rem .5rem', borderRadius: 4, background: '#f3f0ff', color: VIOLET, fontSize: '.62rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', padding: '.12rem .5rem', borderRadius: 4, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.62rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
       <span style={{ fontSize: '.7rem', lineHeight: 1 }}>•</span> READY TO USE
     </span>
   );
@@ -1945,7 +1966,7 @@ function HowToList({ steps }: { steps: string[] }) {
       <ol style={{ listStyle: 'none', margin: '0 0 1rem', padding: 0, display: 'grid', gap: '.3rem' }}>
         {steps.map((s, i) => (
           <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '.5rem', fontSize: '.8rem', color: 'var(--muted)', lineHeight: 1.35 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 8, background: '#f3f0ff', color: VIOLET, fontSize: '.62rem', fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 8, background: 'var(--accent-soft)', color: VIOLET, fontSize: '.62rem', fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
             {s}
           </li>
         ))}
@@ -2319,23 +2340,28 @@ export function AdminImpose() {
   const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
   const handleSelect = (id: string) => setActiveTool(id);
 
+  const shell = (node: React.ReactNode) => (
+    <div style={{ ...THEMES[theme], background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh' } as React.CSSProperties}>
+      <div style={{ padding: '2rem 2rem 4rem', maxWidth: 1120, margin: '0 auto' }}>{node}</div>
+    </div>
+  );
+
   // A tool or workflow workspace takes over the whole page.
   if (activeTool && toolDef) {
-    return <div style={{ padding: '2rem', maxWidth: 1120, margin: '0 auto' }}><ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} /></div>;
+    return shell(<ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} />);
   }
   if (activeWorkflow) {
-    return (
-      <div style={{ padding: '2rem', maxWidth: 1120, margin: '0 auto' }}>
-        <PipelineWorkspace
-          key={activeWorkflow}
-          workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
-          onBack={() => setActiveWorkflow(null)}
-        />
-      </div>
+    return shell(
+      <PipelineWorkspace
+        key={activeWorkflow}
+        workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
+        onBack={() => setActiveWorkflow(null)}
+      />
     );
   }
 
@@ -2361,8 +2387,16 @@ export function AdminImpose() {
     content = <ToolGallery query="" filter={filter} onSelect={handleSelect} />;
   }
 
-  return (
-    <div style={{ padding: '2rem 2rem 4rem', maxWidth: 1120, margin: '0 auto' }}>
+  return shell(
+    <>
+      {/* Theme toggle */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '.5rem' }}>
+        <button onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+          style={{ padding: '.35rem .8rem', borderRadius: 999, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', fontSize: '.8rem' }}>
+          {theme === 'dark' ? '☀ Light' : '🌙 Dark'}
+        </button>
+      </div>
+
       {/* Hero */}
       <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto 2.25rem' }}>
         <div style={{ color: VIOLET, fontSize: '.7rem', fontWeight: 800, letterSpacing: '.14em', marginBottom: '.75rem' }}>IMPOSITION GALLERY</div>
@@ -2373,7 +2407,7 @@ export function AdminImpose() {
         </p>
         <button
           onClick={() => { setFilter('All'); setQuery(''); }}
-          style={{ padding: '.6rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: '#f3f0ff', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
+          style={{ padding: '.6rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: 'var(--accent-soft)', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
         >
           Browse all {TOOLS.length + WORKFLOWS.length} templates →
         </button>
@@ -2419,6 +2453,6 @@ export function AdminImpose() {
       </div>
 
       {content}
-    </div>
+    </>
   );
 }
