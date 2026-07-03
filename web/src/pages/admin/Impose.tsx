@@ -19,11 +19,22 @@ const SHEET_PRESETS = [
   { label: 'Letter (8.5×11")', w: 8.5, h: 11 },
   { label: 'Letter L (11×8.5")', w: 11, h: 8.5 },
   { label: 'Legal (8.5×14")', w: 8.5, h: 14 },
-  { label: 'Tabloid (11×17")', w: 11, h: 17 },
+  { label: 'Ledger / Tabloid (11×17")', w: 11, h: 17 },
   { label: 'Tabloid L (17×11")', w: 17, h: 11 },
   { label: 'Tabloid+ (12×18")', w: 12, h: 18 },
   { label: 'Super-B (13×19")', w: 13, h: 19 },
-  { label: 'SRA3 (12.6×17.7")', w: 12.6, h: 17.7 },
+  { label: 'Super-B L (19×13")', w: 19, h: 13 },
+  { label: 'A6 (105×148 mm)', w: 4.13, h: 5.83 },
+  { label: 'A5 (148×210 mm)', w: 5.83, h: 8.27 },
+  { label: 'A4 (210×297 mm)', w: 8.27, h: 11.69 },
+  { label: 'A4 L (297×210 mm)', w: 11.69, h: 8.27 },
+  { label: 'A3 (297×420 mm)', w: 11.69, h: 16.54 },
+  { label: 'SRA4 (225×320 mm)', w: 8.86, h: 12.6 },
+  { label: 'SRA3 (320×450 mm)', w: 12.6, h: 17.72 },
+  { label: 'B4 JIS (257×364 mm)', w: 10.12, h: 14.33 },
+  { label: 'Executive (7.25×10.5")', w: 7.25, h: 10.5 },
+  { label: 'Half-Letter (5.5×8.5")', w: 5.5, h: 8.5 },
+  { label: 'Album (12×12")', w: 12, h: 12 },
 ];
 
 // Local mirrors of the inline engine option shapes.
@@ -55,9 +66,12 @@ interface ToolDef {
   category: string;
   engine: ToolEngine;
   badge?: string;
+  preset?: string;       // "Loads the ready-to-use {preset}" line on the card
   Thumb: () => React.ReactElement;
   defaultNup?: Partial<NUpOptions>;
   defaultBooklet?: Partial<BookletOptions>;
+  defaultPoster?: Partial<PosterOptions>;
+  defaultTicket?: Partial<TicketOptions>;
   fitSource?: boolean;   // derive fixed cell size from the loaded page (Optimal Fit)
   panelGuide?: string[];
   note?: string;
@@ -296,283 +310,378 @@ const TicketThumb = () => (
 // ── Tool catalog ─────────────────────────────────────────────────────────────
 
 const TOOLS: ToolDef[] = [
-  // ── Booklets & Books ──
+  // ── Imposition & layout ──
   {
-    id: 'comic', name: 'Comic Book', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Saddle-stitch 2-up for standard US comic format with creep + bleed marks.',
-    tags: ['2-up', 'saddle-stitch', 'creep', '⅛″ bleed'],
-    defaultBooklet: { marginIn: 0.5, gutterIn: 0, creepIn: 0.125 },
-    Thumb: ComicThumb,
+    id: 'standardsizes', name: 'Standard Sizes', preset: 'Standard Sizes grid', category: 'Imposition & layout', engine: 'nup',
+    desc: '19 presets: Letter, A4, SRA3 and more.',
+    tags: ['Any sheet — presets or custom', 'auto-fit n-up grid', 'crop + center marks'],
+    defaultNup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: gridThumb(2, 2, { numbered: true }),
   },
   {
-    id: 'booklet', name: 'Booklet', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Generic 2-up saddle-stitch on any press sheet. Auto-detects page size.',
-    tags: ['2-up', 'auto-size', 'LTR / RTL'],
-    Thumb: BookletThumb,
+    id: 'cutstack', name: 'Cut & Stack', preset: 'Cut & Stack', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Sequential numbers across cut stacks.',
+    tags: ['Cut-and-stack (shingled)', 'guillotine-ready stacks', 'sequential per stack'],
+    defaultNup: { cols: 2, rows: 3, sheetWIn: 11, sheetHIn: 17, cutStack: true },
+    note: 'Print all sheets, guillotine into piles by cell position, then stack the piles — pages fall into sequence.',
+    Thumb: gridThumb(2, 3, { numbered: true, accent: '#818cf8' }),
   },
   {
-    id: 'magazine', name: 'Saddle-Stitch Magazine', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Full-size magazine imposition with wider margins for trim and grip.',
-    tags: ['saddle-stitch', 'wide margin', 'creep'],
-    defaultBooklet: { marginIn: 0.6, creepIn: 0.09 },
-    Thumb: BookletThumb,
+    id: 'expertgrid', name: 'Expert Grid', preset: 'Custom impose grid', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Full control over rows, gutters and margins.',
+    tags: ['Per-cell rows · gutters · margins', 'independent creep + gutters', 'manual grid'],
+    defaultNup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17 }, Thumb: gridThumb(2, 2),
   },
   {
-    id: 'perfectbound', name: 'Perfect-Bound Book', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Gather 2-up folios into signatures for a square, glued spine.',
-    tags: ['folios', 'signatures', 'no creep'],
-    defaultBooklet: { creepIn: 0, marginIn: 0.5 },
-    note: 'Perfect binding gathers folded sheets (folios). Print, fold, then stack signatures in order before gluing the spine — do not nest them like saddle stitch.',
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'zine', name: 'Zine', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Small self-published booklet — great for 8- to 16-page mini-comics.',
-    tags: ['mini', '8–16 pp', 'saddle-stitch'],
-    defaultBooklet: { marginIn: 0.35, creepIn: 0.06 },
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'program', name: 'Event Program', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Folded program for shows, weddings and services — 2-up saddle-stitch.',
-    tags: ['saddle-stitch', 'folded', 'events'],
-    defaultBooklet: { marginIn: 0.5 },
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'catalog', name: 'Catalog', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Product catalog imposition with creep for thicker page counts.',
-    tags: ['saddle-stitch', 'creep', 'retail'],
-    defaultBooklet: { marginIn: 0.5, creepIn: 0.15 },
-    Thumb: BookletThumb,
-  },
-  {
-    id: 'greeting', name: 'Greeting Card', category: 'Booklets & Books', engine: 'booklet',
-    desc: 'Half-fold greeting card — a 4-page booklet from one folded sheet.',
-    tags: ['half-fold', '4-page', 'card'],
-    defaultBooklet: { marginIn: 0.25, creepIn: 0, addMarks: true },
-    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back). Prints one folded sheet.',
-    Thumb: BookletThumb,
-  },
-
-  // ── Imposition & Layout ──
-  {
-    id: 'nup', name: 'N-Up Grid', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Place multiple pages on a press sheet — sequential order, any rows × cols.',
-    tags: ['custom grid', 'gutters', 'crop marks'],
-    defaultNup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17 },
-    Thumb: gridThumb(2, 2, { numbered: true }),
-  },
-  {
-    id: 'steprepeat', name: 'Step & Repeat', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'One design tiled across the whole sheet — covers, stickers, cards.',
-    tags: ['identical copies', 'shared marks'],
-    defaultNup: { cols: 3, rows: 3, sheetWIn: 11, sheetHIn: 17, repeatFirst: true },
-    Thumb: gridThumb(3, 3),
-  },
-  {
-    id: 'cutstack', name: 'Cut & Stack', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Order pages so cut piles stack into sequence — fastest way to collate.',
-    tags: ['cut & stack', 'collation', 'high volume'],
-    defaultNup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17, cutStack: true },
-    note: 'Print all sheets, guillotine-cut the stack into piles by cell position, then set the piles on top of each other in order — pages fall into sequence.',
-    Thumb: gridThumb(2, 2, { numbered: true, accent: '#818cf8' }),
-  },
-  {
-    id: 'contact', name: 'Index / Contact Sheet', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Thumbnail every page of a PDF onto proof sheets for quick review.',
-    tags: ['thumbnails', 'proof', 'sequential'],
-    defaultNup: { cols: 4, rows: 5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.3, gutterIn: 0.1, addMarks: false },
+    id: 'optimalfit', name: 'Optimal Fit', preset: 'Auto-fit grid', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Pack the most pages per sheet.',
+    tags: ['Auto-scale n-up grid', 'fill the sheet edge-to-edge', 'more copies per sheet'],
+    defaultNup: { sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125, repeatFirst: true }, fitSource: true,
+    note: 'The page is placed at its native size and packed edge-to-edge. Drop a page that already includes bleed.',
     Thumb: gridThumb(4, 5),
   },
   {
-    id: 'optimalfit', name: 'Optimal Fit', category: 'Imposition & Layout', engine: 'nup',
-    desc: 'Auto-pack as many copies of your page as fit the sheet at true size.',
-    tags: ['auto n-up', 'best yield', 'true size'],
-    defaultNup: { sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125, repeatFirst: true },
-    fitSource: true,
-    note: 'The page is placed at its native size and packed edge-to-edge. Drop a page that already includes bleed.',
-    Thumb: gridThumb(3, 4),
+    id: 'gangsheet', name: 'Gang Sheet', preset: 'Gang sheet', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Many jobs on one press sheet.',
+    tags: ['Many jobs / one sheet', 'work-and-turn or sheetwise', 'shared gutters + marks'],
+    defaultNup: { cols: 3, rows: 3, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.2 },
+    note: 'Each page of the dropped PDF is ganged onto the sheet. For different jobs, merge them into one PDF first (Page & PDF tools → Merge).',
+    Thumb: gridThumb(3, 3),
   },
   {
-    id: 'poster', name: 'Tiled Poster', category: 'Imposition & Layout', engine: 'poster',
-    desc: 'Blow one page up across several sheets to tile into a large poster.',
-    tags: ['enlarge', 'tile', 'overlap'],
-    Thumb: PosterThumb,
+    id: 'contact', name: 'Index Print', preset: 'Photo contact sheet (8-up)', category: 'Imposition & layout', engine: 'nup',
+    desc: 'A contact sheet of every page.',
+    tags: ['8-up contact sheet', 'thumbnail grid', 'filename captions'],
+    defaultNup: { cols: 4, rows: 5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.3, gutterIn: 0.1, addMarks: false },
+    Thumb: gridThumb(4, 3, { numbered: true }),
+  },
+  {
+    id: 'photo', name: 'Photo Prints', preset: 'Full-bleed photo cards (4×6)', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Many photos ganged on one sheet.',
+    tags: ['2-up 4×6 in', 'Letter sheet', '⅛ in bleed', 'step-and-repeat'],
+    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(3, 3),
+  },
+  {
+    id: 'flyer', name: 'Flyers', preset: '2-sided A5 flyer', category: 'Imposition & layout', engine: 'nup',
+    desc: 'Multiple flyers up per sheet.',
+    tags: ['2-up A5 · Letter sheet', 'double-sided', 'auto turn'],
+    defaultNup: { cellWIn: 5.5, cellHIn: 8.5, sheetWIn: 12, sheetHIn: 18, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(2, 2),
   },
 
-  // ── Cards & Labels ──
+  // ── Booklets & books ──
   {
-    id: 'business', name: 'Business Cards', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Standard 3.5×2″ cards, auto-packed with crop marks in the gutters.',
-    tags: ['3.5×2″', 'auto-fit', 'crop marks'],
-    defaultNup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(2, 4),
+    id: 'nupbook', name: 'N-up Book', preset: 'N-up book', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Booklet pages, imposed automatically.',
+    tags: ['4 / 8 / 16-up in binding order', 'perfect or nested', 'creep compensation'],
+    defaultBooklet: { marginIn: 0.5, creepIn: 0.125 }, Thumb: gridThumb(2, 2, { numbered: true }),
   },
   {
-    id: 'trading', name: 'Trading Cards', category: 'Cards & Labels', engine: 'nup', badge: '★',
-    desc: 'Standard 2.5×3.5″ trading cards — 9-up on letter with cut marks.',
-    tags: ['2.5×3.5″', '9-up', 'cut marks'],
+    id: 'booklet', name: 'Booklet', preset: 'Booklet', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Saddle-stitch & perfect-bound spreads.',
+    tags: ['Saddle-stitch printer spreads', 'auto page shuffle', 'creep + duplex'], Thumb: BookletThumb,
+  },
+  {
+    id: 'magazine', name: 'Saddle-Stitch Magazine', preset: 'Saddle-Stitch A4 Magazine', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Stapled magazines & booklets.',
+    tags: ['2-up A4 on A3', 'saddle-stitch booklet', 'CMYK color bar'],
+    defaultBooklet: { marginIn: 0.6, creepIn: 0.09 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'perfectbound', name: 'Perfect-Bound Book', preset: 'Perfect Bound Trade Paperback (4-up)', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Squared-spine books & catalogs.',
+    tags: ['4-up A5', 'perfect binding', '14.4 pt spine gutter', 'duplex'],
+    defaultBooklet: { creepIn: 0, marginIn: 0.5 },
+    note: 'Perfect binding gathers folded signatures; stack them in order before gluing the spine.', Thumb: BookletThumb,
+  },
+  {
+    id: 'zine', name: 'Zine', preset: 'One-Sheet 8-Page Zine', category: 'Booklets & books', engine: 'booklet',
+    desc: '8-page zine from a single sheet.',
+    tags: ['8 panels / one sheet', 'single fold-and-cut', 'auto-rotated panels'],
+    defaultBooklet: { marginIn: 0.35, creepIn: 0.06 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'program', name: 'Event Program', preset: 'Playbill / Theater Program', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Folded, stapled event programs.',
+    tags: ['2-up A5 on A4', 'saddle-stitch', 'trim-ready (no marks)'],
+    defaultBooklet: { marginIn: 0.5 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'catalog', name: 'Catalog', preset: 'Digest Magazine (5.5×8.5")', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Perfect-bound product catalogs.',
+    tags: ['4-up nested digest 5.5×8.5 in', 'Tabloid sheet', 'inward creep', 'duplex'],
+    defaultBooklet: { marginIn: 0.5, creepIn: 0.15 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'comic', name: 'Comic / Manga', preset: 'US Comic Book (6.625×10.25")', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Left- or right-to-left bound comic booklets.',
+    tags: ['2-up 6.625×10.25 in', 'Tabloid sheet', 'saddle-stitch', '⅛ in bleed'],
+    defaultBooklet: { marginIn: 0.5, gutterIn: 0, creepIn: 0.125 }, Thumb: ComicThumb,
+  },
+  {
+    id: 'notebook', name: 'Notebook', preset: 'A5 Pocket Book', category: 'Booklets & books', engine: 'booklet',
+    desc: 'Lined notebooks & journals.',
+    tags: ['2-up A5 on A4', 'saddle-stitch', '⅛ in bleed'],
+    defaultBooklet: { marginIn: 0.4, creepIn: 0.08 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'flipbook', name: 'Flip Book', preset: 'Frame grid', category: 'Booklets & books', engine: 'nup',
+    desc: 'Frames imposed many-up to print and bind.',
+    tags: ['12-up frame grid', 'sequential cut order', 'cut marks + bleed'],
+    defaultNup: { cols: 4, rows: 3, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.1, cutStack: true },
+    Thumb: gridThumb(4, 3, { numbered: true }),
+  },
+
+  // ── Cards & labels ──
+  {
+    id: 'business', name: 'Business Cards', preset: '10-Up Business Cards', category: 'Cards & labels', engine: 'nup',
+    desc: 'Gang multiple cards per sheet.',
+    tags: ['10-up (2×5)', '3.5×2 in', 'Letter sheet', '⅛ in bleed', 'crop in gutters', 'duplex'],
+    defaultNup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 4),
+  },
+  {
+    id: 'trading', name: 'Trading Cards', preset: '9-Up Trading Cards', category: 'Cards & labels', engine: 'nup', badge: '★',
+    desc: 'Standard 2.5×3.5" trading cards, 9-up on letter.',
+    tags: ['9-up (3×3)', '2.5×3.5 in', 'Letter sheet', 'cut marks'],
     defaultNup: { cellWIn: 2.5, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.125, gutterIn: 0.125 },
-    note: 'Design each card at 2.5×3.5″. Drop a multi-page PDF for a mixed sheet, or pick "Same design repeated". For full-bleed art switch the sheet to 12×18″ (SRA3/tabloid+) so the ⅛″ bleed has room.',
-    Thumb: cardThumb(3, 3, '★'),
+    note: 'Design each card at 2.5×3.5". For full-bleed art switch the sheet to 12×18".', Thumb: cardThumb(3, 3, '★'),
   },
   {
-    id: 'postcard', name: 'Postcards', category: 'Cards & Labels', engine: 'nup',
-    desc: '4×6″ postcards packed onto large sheets with trim marks.',
-    tags: ['4×6″', 'auto-fit', 'mailer'],
-    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(2, 3),
+    id: 'stickers', name: 'Stickers', preset: 'Kiss-cut sticker sheet', category: 'Cards & labels', engine: 'nup',
+    desc: 'Die-cut sticker sheets, ganged up.',
+    tags: ['Nest on sheet or roll', 'shape detection', 'kiss-cut / contour die lines'],
+    defaultNup: { cols: 3, rows: 3, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.2, repeatFirst: true }, Thumb: gridThumb(3, 3),
   },
   {
-    id: 'labels', name: 'Labels (Avery 5160)', category: 'Cards & Labels', engine: 'nup',
-    desc: '30-up 2.625×1″ address labels matched to the Avery 5160 die.',
-    tags: ['30-up', 'Avery 5160', 'die-cut'],
+    id: 'steprepeat', name: 'Step & Repeat', preset: 'Step & Repeat grid', category: 'Cards & labels', engine: 'nup',
+    desc: 'One design, repeated across the sheet.',
+    tags: ['Step-and-repeat n-up', 'identical copies', 'shared gutters + crop marks'],
+    defaultNup: { cols: 3, rows: 3, sheetWIn: 11, sheetHIn: 17, repeatFirst: true }, Thumb: gridThumb(3, 3),
+  },
+  {
+    id: 'calendar', name: 'Calendar', preset: 'Desk Calendar (Tent Style)', category: 'Cards & labels', engine: 'booklet',
+    desc: 'Build print-ready calendar layouts.',
+    tags: ['Half-sheet calendar pages', 'Letter landscape', 'spine gutter', 'outward creep'],
+    defaultBooklet: { marginIn: 0.5, creepIn: 0.1 }, Thumb: BookletThumb,
+  },
+  {
+    id: 'postcard', name: 'Postcards', preset: 'Full-Bleed Postcards (4-up + Bleed)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Gang postcards with cut gaps.',
+    tags: ['4-up 4×6 in', 'Tabloid sheet', '⅛ in bleed', 'crop + center marks', 'duplex'],
+    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 3),
+  },
+  {
+    id: 'labels', name: 'Labels', preset: 'Mailing Labels (Avery 5160 style)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Die-cut label sheets & rolls.',
+    tags: ['30-up (Avery 5160)', '1×2.625 in', 'Letter sheet', 'trim-ready'],
     defaultNup: { cellWIn: 2.625, cellHIn: 1, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.1875, gutterIn: 0.125, gutterYIn: 0, addMarks: false },
-    note: 'Sized to the Avery 5160 sheet (3 across × 10 down). Turn off crop marks — the label stock is pre-die-cut.',
-    Thumb: gridThumb(3, 10),
+    note: 'Sized to the Avery 5160 die (3 across × 10 down). Marks off — the stock is pre-die-cut.', Thumb: gridThumb(3, 10),
   },
   {
-    id: 'bookmark', name: 'Bookmarks', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Tall 2×6″ bookmarks packed several-up with cut marks.',
-    tags: ['2×6″', 'auto-fit', 'cut marks'],
-    defaultNup: { cellWIn: 2, cellHIn: 6, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(4, 1),
+    id: 'bookmark', name: 'Bookmarks', preset: 'Bookmarks (6-up)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Step-and-repeat bookmark strips.',
+    tags: ['6-up (3×2)', '2×6 in', 'Letter sheet', 'crop in gutters', 'duplex'],
+    defaultNup: { cellWIn: 2, cellHIn: 6, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(4, 1),
   },
   {
-    id: 'hangtag', name: 'Hang Tags', category: 'Cards & Labels', engine: 'nup',
-    desc: '2×3.5″ product hang tags, auto-packed with trim marks.',
-    tags: ['2×3.5″', 'retail', 'auto-fit'],
-    defaultNup: { cellWIn: 2, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(3, 3),
+    id: 'hangtag', name: 'Hang Tags', preset: 'Hang Tags 8-Up (2.5×4")', category: 'Cards & labels', engine: 'nup',
+    desc: 'Product tags, ganged & punched.',
+    tags: ['8-up (2×4)', '2.5×4 in', 'Tabloid sheet', '⅛ in bleed', 'die-cut contour'],
+    defaultNup: { cellWIn: 2, cellHIn: 3.5, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(3, 3),
   },
   {
-    id: 'photo', name: 'Photo Prints', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Gang 4×6″ photos (or set any size) onto a sheet with cut marks.',
-    tags: ['4×6″', 'gang-up', 'cut marks'],
-    defaultNup: { cellWIn: 6, cellHIn: 4, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 },
-    Thumb: cardThumb(1, 2),
+    id: 'coasters', name: 'Coasters', preset: 'Square Coasters (4-up)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Round & square drink coasters.',
+    tags: ['4-up 3.5 in', 'Tabloid sheet', 'contour die-cut', 'nested fill'],
+    defaultNup: { cellWIn: 3.5, cellHIn: 3.5, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(2, 2),
   },
   {
-    id: 'flyer', name: 'Flyers', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Half-page 5.5×8.5″ flyers ganged 4-up on a 12×18″ sheet with cut marks.',
-    tags: ['5.5×8.5″', '4-up', 'cut marks'],
-    defaultNup: { cellWIn: 5.5, cellHIn: 8.5, sheetWIn: 12, sheetHIn: 18, marginIn: 0.25, gutterIn: 0.25 },
-    Thumb: cardThumb(2, 2),
+    id: 'letterhead', name: 'Letterhead', preset: 'Letterhead Gang Run', category: 'Cards & labels', engine: 'nup',
+    desc: 'Branded business letterheads.',
+    tags: ['Gang multiple clients', 'Tabloid sheet', 'CMYK color bar', 'cut marks per job'],
+    defaultNup: { cellWIn: 8.5, cellHIn: 11, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(2, 1),
   },
   {
-    id: 'namebadge', name: 'Name Badges', category: 'Cards & Labels', engine: 'nup',
-    desc: '8-up 3.375×2.33″ badge inserts, matched to standard clip holders.',
-    tags: ['8-up', 'inserts', 'events'],
-    defaultNup: { cellWIn: 3.375, cellHIn: 2.33, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.5, gutterIn: 0.125, gutterYIn: 0.1 },
-    Thumb: cardThumb(2, 4),
+    id: 'complimentslip', name: 'Compliment Slips', preset: 'Compliment Slips (DL 3-up)', category: 'Cards & labels', engine: 'nup',
+    desc: 'DL slips ganged 3-up.',
+    tags: ['DL 3-up (1×3)', '210×99 mm', 'SRA4 oversize', '⅛ in bleed', 'crop in gutters'],
+    defaultNup: { cellWIn: 8.27, cellHIn: 3.9, sheetWIn: 8.86, sheetHIn: 12.6, marginIn: 0.25, gutterIn: 0.1 }, Thumb: cardThumb(1, 3),
   },
   {
-    id: 'envelope', name: 'Envelopes', category: 'Cards & Labels', engine: 'nup',
-    desc: 'Lay out #10 (9.5×4.125″) envelope artwork, auto-packed onto a tabloid sheet.',
-    tags: ['#10', 'auto-fit', 'mailer'],
-    defaultNup: { cellWIn: 9.5, cellHIn: 4.125, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 },
-    Thumb: cardThumb(1, 3),
+    id: 'ncrpads', name: 'NCR Pads', preset: 'NCR Form (3-Part Carbon)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Carbonless multi-part forms.',
+    tags: ['3-part carbonless', 'white / pink / yellow', 'Letter sheet', 'collated set'],
+    defaultNup: { cellWIn: 8.5, cellHIn: 11, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.25 },
+    note: 'Print one set per colour stock (white / pink / yellow), then collate into pads.', Thumb: cardThumb(2, 1),
+  },
+  {
+    id: 'envelope', name: 'Envelopes', preset: 'Envelope Flats 4-Up (#10)', category: 'Cards & labels', engine: 'nup',
+    desc: 'Printed envelope flats.',
+    tags: ['4-up #10 flats', '9.5×4.125 in', 'Letter sheet', 'crop marks'],
+    defaultNup: { cellWIn: 9.5, cellHIn: 4.125, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0.25 }, Thumb: cardThumb(1, 3),
   },
 
   // ── Folding ──
   {
-    id: 'trifold', name: 'Trifold Brochure', category: 'Folding', engine: 'nup',
-    desc: 'Three panels per side on a landscape sheet — classic letter-fold brochure.',
-    tags: ['3 panels', 'letter-fold', '6 pages'],
+    id: 'trifold', name: 'Trifold Brochure', preset: 'Tri-Fold Brochure 2-Up', category: 'Folding', engine: 'nup',
+    desc: 'Roll-fold & gate-fold leaflets.',
+    tags: ['Tri-fold brochure', 'front + back flats (duplex)', '⅛ in bleed', 'crop + center marks'],
     defaultNup: { cols: 3, rows: 1, sheetWIn: 11, sheetHIn: 8.5, marginIn: 0.25, gutterIn: 0 },
     panelGuide: ['Sheet 1 = outside (back cover · front cover · fold-in flap)', 'Sheet 2 = inside spread (left · middle · right)'],
-    note: 'Supply 6 pages in panel order (outside L→R, then inside L→R). The fold-in panel should be ~1⁄16″ narrower in your artwork.',
-    Thumb: foldThumb(3),
+    note: 'Supply 6 pages in panel order (outside L→R, then inside L→R).', Thumb: foldThumb(3),
   },
   {
-    id: 'wedding', name: 'Wedding Invitation', category: 'Folding', engine: 'nup',
-    desc: 'Quarter-fold invitation — four panels on a single portrait sheet.',
-    tags: ['quarter-fold', '4 panels', 'invite'],
-    defaultNup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0 },
-    panelGuide: ['Top-left · Top-right', 'Bottom-left · Bottom-right'],
-    note: 'Supply 4 panels in reading order. Fold in half twice. Add a second 4-page file for a double-sided invite.',
-    Thumb: gridThumb(2, 2),
+    id: 'zfold', name: 'Folded Brochure', preset: 'Z-Fold Accordion (6-Panel, Tabloid)', category: 'Folding', engine: 'nup',
+    desc: 'Roll-fold, Z-fold & gate-fold.',
+    tags: ['Z-fold accordion, 6 panels', 'Tabloid sheet', 'crop marks', 'duplex'],
+    defaultNup: { cols: 4, rows: 1, sheetWIn: 17, sheetHIn: 11, marginIn: 0.25, gutterIn: 0 },
+    note: 'Supply panels in accordion order; folds alternate direction.', Thumb: foldThumb(4),
   },
   {
-    id: 'menu', name: 'Menu / Bi-fold', category: 'Folding', engine: 'booklet',
-    desc: 'Single-fold menu — 4 pages on one folded sheet, 2-up saddle layout.',
-    tags: ['bi-fold', '4-page', 'menu'],
+    id: 'greeting', name: 'Greeting Card', preset: 'Greeting Card (A5 Fold)', category: 'Folding', engine: 'booklet',
+    desc: 'Folded cards with full bleed.',
+    tags: ['2-up A5 single fold', 'Letter landscape', 'single saddle', 'trim-ready'],
+    defaultBooklet: { marginIn: 0.25, creepIn: 0, addMarks: true },
+    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back).', Thumb: foldThumb(2),
+  },
+  {
+    id: 'menu', name: 'Menu', preset: 'Bi-Fold Restaurant Menu', category: 'Folding', engine: 'booklet',
+    desc: 'Folded & bi-fold menus.',
+    tags: ['Bi-fold, 4-panel menu', 'Tabloid sheet', '⅛ in bleed', 'crop + center marks', 'duplex'],
     defaultBooklet: { marginIn: 0.4, creepIn: 0, addMarks: true },
-    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back).',
-    Thumb: foldThumb(2),
+    note: 'Supply a 4-page PDF (front, inside-left, inside-right, back).', Thumb: foldThumb(2),
+  },
+  {
+    id: 'wedding', name: 'Wedding Invitation', preset: '2-Up Invitation Cards (5×7")', category: 'Folding', engine: 'nup',
+    desc: 'Folded invites & suites.',
+    tags: ['2-up 5×7 in', 'Letter sheet', '⅛ in bleed', 'crop in gutters', 'duplex'],
+    defaultNup: { cellWIn: 5, cellHIn: 7, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 2),
+  },
+  {
+    id: 'presfolder', name: 'Presentation Folder', preset: 'Presentation Folder Dieline (A4 Pocket)', category: 'Folding', engine: 'nup',
+    desc: 'Die-cut folders with pockets.',
+    tags: ['A4 folder flat 1-up', '13×19 in sheet', 'Thru-Cut die path', 'pocket + card slots'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 13, sheetHIn: 19, marginIn: 0.5, gutterIn: 0 },
+    note: 'Places the folder artwork flat, 1-up, with crop marks. A true fold/glue dieline generator is a planned enhancement.', Thumb: cardThumb(1, 1),
   },
 
-  // ── Tickets & Data ──
+  // ── Large & specialty ──
   {
-    id: 'tickets', name: 'Numbered Tickets', category: 'Tickets & Data', engine: 'tickets',
-    desc: 'Repeat one ticket design and stamp a running number on every copy.',
-    tags: ['sequential #', 'raffle', 'stubs'],
-    Thumb: TicketThumb,
+    id: 'poster', name: 'Tiled Poster', preset: 'Tiled Poster (A4 tiles to A0)', category: 'Large & specialty', engine: 'poster',
+    desc: 'Big posters from small sheets.',
+    tags: ['A0 across 8 A4 tiles', '4×2 grid', 'crop + center marks'],
+    defaultPoster: { tilesAcross: 4, tilesDown: 2, sheetWIn: 8.27, sheetHIn: 11.69, overlapIn: 0.5 }, Thumb: PosterThumb,
+  },
+  {
+    id: 'banner', name: 'Banner', preset: 'Banner Tiles 4-Up (24×36" panels)', category: 'Large & specialty', engine: 'poster',
+    desc: 'Wide banners tiled across sheets.',
+    tags: ['96×36 in banner', '4×1 tiles of 24×36', 'wide-format'],
+    defaultPoster: { tilesAcross: 4, tilesDown: 1, sheetWIn: 24, sheetHIn: 36, overlapIn: 0.5 }, Thumb: PosterThumb,
+  },
+  {
+    id: 'featherflag', name: 'Feather Flags', preset: 'Feather Flag (Soft Signage)', category: 'Large & specialty', engine: 'nup',
+    desc: 'Feather & teardrop flag signage.',
+    tags: ['700×2300 mm medium flag', 'single panel · dye-sub', 'edge-to-edge, no marks'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 27.5, sheetHIn: 90.5, marginIn: 0, gutterIn: 0, addMarks: false },
+    note: 'Scales your artwork to the flag size, 1-up, full-bleed.', Thumb: cardThumb(1, 1),
+  },
+  {
+    id: 'rollerbanner', name: 'Roller Banner', preset: 'Retractable Banner (33×80")', category: 'Large & specialty', engine: 'nup',
+    desc: 'Retractable pull-up banner stands.',
+    tags: ['33×80 in pull-up', 'single portrait panel', 'scale to stand size'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 33, sheetHIn: 80, marginIn: 0, gutterIn: 0, addMarks: false },
+    note: 'Scales your artwork to the stand size, 1-up.', Thumb: cardThumb(1, 1),
+  },
+  {
+    id: 'packaging', name: 'Packaging Dieline', preset: 'Folding Carton Dieline', category: 'Large & specialty', engine: 'nup',
+    desc: 'Boxes, cartons & custom shapes.',
+    tags: ['Folding-carton dieline', '13×19 in sheet', 'fold + glue panels', 'die-cut + crop marks'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 13, sheetHIn: 19, marginIn: 0.5, gutterIn: 0 },
+    note: 'Places the carton artwork flat, 1-up, with marks. A true box-net dieline generator is a planned enhancement.', Thumb: cardThumb(1, 1),
+  },
+  {
+    id: 'boxcarton', name: 'Box / Carton', preset: 'Folding Carton — Straight Tuck End', category: 'Large & specialty', engine: 'nup',
+    desc: 'Folding-carton dielines.',
+    tags: ['Straight-tuck carton dieline', '13×19 in sheet', 'tuck + glue flaps', 'die-cut contour'],
+    defaultNup: { cols: 1, rows: 1, sheetWIn: 13, sheetHIn: 19, marginIn: 0.5, gutterIn: 0 },
+    note: 'Places carton artwork flat, 1-up, with marks; true dieline generation is planned.', Thumb: cardThumb(1, 1),
   },
 
-  // ── Marks & Prepress ──
+  // ── Tickets & data ──
   {
-    id: 'cropmarks', name: 'Crop Marks', category: 'Marks & Prepress', engine: 'cropmarks',
+    id: 'tickets', name: 'Variable Data Printing', preset: 'Event Tickets (numbered)', category: 'Tickets & data', engine: 'tickets',
+    desc: 'Serialize tickets, vouchers, badges and labels.',
+    tags: ['Sequential number per ticket', 'sequential numbering', 'n-up imposed'], Thumb: TicketThumb,
+  },
+  {
+    id: 'raffle', name: 'Raffle Tickets', preset: 'Raffle Tickets (numbered)', category: 'Tickets & data', engine: 'tickets',
+    desc: 'Numbered, cut-and-stack tickets.',
+    tags: ['Numbered per stub', 'sequential raffle #', 'perforated n-up'],
+    defaultTicket: { cols: 1, rows: 5, sheetWIn: 8.5, sheetHIn: 11, prefix: 'No. ', pad: 5 }, Thumb: TicketThumb,
+  },
+  {
+    id: 'coupons', name: 'Coupons', preset: 'Gift Vouchers (coded)', category: 'Tickets & data', engine: 'tickets',
+    desc: 'Serialized coupons & vouchers.',
+    tags: ['Unique code per voucher', 'name merge', 'n-up imposed'],
+    defaultTicket: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11, prefix: 'CODE-', pad: 6 }, Thumb: TicketThumb,
+  },
+  {
+    id: 'namebadge', name: 'Name Badges', preset: 'Conference Badges', category: 'Tickets & data', engine: 'nup',
+    desc: 'Personalized event badges.',
+    tags: ['Name badge inserts', 'spreadsheet merge', 'n-up imposed'],
+    defaultNup: { cellWIn: 3.375, cellHIn: 2.33, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.5, gutterIn: 0.125, gutterYIn: 0.1 }, Thumb: cardThumb(2, 4),
+  },
+
+  // ── Marks & prepress ──
+  {
+    id: 'cropmarks', name: 'Crop Marks', preset: 'Crop Marks', category: 'Marks & prepress', engine: 'cropmarks',
     desc: 'Add trim marks and a bleed offset to any PDF without rearranging pages.',
-    tags: ['marks only', 'bleed offset', 'per-page'],
-    Thumb: MarksThumb,
+    tags: ['marks only', 'bleed offset', 'per-page'], Thumb: MarksThumb,
   },
   {
-    id: 'colorbar', name: 'Color Bar', category: 'Marks & Prepress', engine: 'colorbar',
-    desc: 'Append a CMYK/registration color strip for press density control.',
-    tags: ['CMYK strip', 'density', 'press control'],
-    Thumb: ColorBarThumb,
+    id: 'colorbar', name: 'Color Bar', preset: 'Color Bar', category: 'Marks & prepress', engine: 'colorbar',
+    desc: 'Append a CMYK / registration color strip for press density control.',
+    tags: ['CMYK strip', 'density', 'press control'], Thumb: ColorBarThumb,
   },
   {
-    id: 'pagenumbers', name: 'Page Numbering', category: 'Marks & Prepress', engine: 'pagenumbers',
+    id: 'pagenumbers', name: 'Page Numbering', preset: 'Page Numbering', category: 'Marks & prepress', engine: 'pagenumbers',
     desc: 'Stamp folio page numbers with a prefix/suffix in any corner.',
-    tags: ['folios', 'prefix/suffix', 'any corner'],
-    Thumb: PageNumThumb,
+    tags: ['folios', 'prefix/suffix', 'any corner'], Thumb: PageNumThumb,
   },
 
-  // ── Page & PDF Tools ──
+  // ── Page & PDF tools ──
   {
-    id: 'merge', name: 'Merge PDFs', category: 'Page & PDF Tools', engine: 'merge',
+    id: 'merge', name: 'Merge PDFs', preset: 'Merge', category: 'Page & PDF tools', engine: 'merge',
     desc: 'Combine multiple PDF files into one document in any order.',
-    tags: ['multiple files', 'set order'],
-    Thumb: MergeThumb,
+    tags: ['multiple files', 'set order'], Thumb: MergeThumb,
   },
   {
-    id: 'split', name: 'Split PDF', category: 'Page & PDF Tools', engine: 'split',
+    id: 'split', name: 'Split PDF', preset: 'Split', category: 'Page & PDF tools', engine: 'split',
     desc: 'Break a PDF into separate files by page ranges (e.g. 1-3, 4-6, 7).',
-    tags: ['page ranges', 'multi-output'],
-    Thumb: SplitThumb,
+    tags: ['page ranges', 'multi-output'], Thumb: SplitThumb,
   },
   {
-    id: 'rotate', name: 'Rotate', category: 'Page & PDF Tools', engine: 'rotate',
+    id: 'rotate', name: 'Rotate', preset: 'Rotate', category: 'Page & PDF tools', engine: 'rotate',
     desc: 'Rotate all pages in a PDF by 90°, 180°, or 270°.',
-    tags: ['all pages', '90 / 180 / 270°'],
-    Thumb: RotateThumb,
+    tags: ['all pages', '90 / 180 / 270°'], Thumb: RotateThumb,
   },
   {
-    id: 'flip', name: 'Flip / Mirror', category: 'Page & PDF Tools', engine: 'flip',
+    id: 'flip', name: 'Flip / Mirror', preset: 'Flip', category: 'Page & PDF tools', engine: 'flip',
     desc: 'Mirror every page horizontally or vertically — handy for transfers.',
-    tags: ['mirror', 'H / V', 'transfers'],
-    Thumb: FlipThumb,
+    tags: ['mirror', 'H / V', 'transfers'], Thumb: FlipThumb,
   },
   {
-    id: 'overlay', name: 'Overlay / Watermark', category: 'Page & PDF Tools', engine: 'overlay',
+    id: 'overlay', name: 'Overlay / Watermark', preset: 'Overlay', category: 'Page & PDF tools', engine: 'overlay',
     desc: 'Stamp a second PDF over every page — watermark, logo or background.',
-    tags: ['watermark', 'opacity', 'tile / fill'],
-    Thumb: OverlayThumb,
+    tags: ['watermark', 'opacity', 'tile / fill'], Thumb: OverlayThumb,
   },
   {
-    id: 'shuffle', name: 'Shuffle Pages', category: 'Page & PDF Tools', engine: 'shuffle',
+    id: 'shuffle', name: 'Shuffle Pages', preset: 'Shuffle', category: 'Page & PDF tools', engine: 'shuffle',
     desc: 'Reorder, duplicate or drop pages with a simple order list.',
-    tags: ['reorder', 'custom order'],
-    Thumb: ShuffleThumb,
+    tags: ['reorder', 'custom order'], Thumb: ShuffleThumb,
   },
   {
-    id: 'crop', name: 'Crop', category: 'Page & PDF Tools', engine: 'crop',
+    id: 'crop', name: 'Crop', preset: 'Crop', category: 'Page & PDF tools', engine: 'crop',
     desc: 'Trim margins off every page by setting a crop inset per edge.',
-    tags: ['trim edges', 'crop box'],
-    Thumb: CropToolThumb,
+    tags: ['trim edges', 'crop box'], Thumb: CropToolThumb,
   },
 ];
 
@@ -1132,11 +1241,11 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
   // Per-engine settings state (initialised from the tool's presets)
   const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet });
   const [nupOpts, setNupOpts] = useState<NUpOptions>({ ...DEFAULT_NUP, ...tool.defaultNup });
-  const [posterOpts, setPosterOpts] = useState<PosterOptions>(DEFAULT_POSTER);
+  const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster });
   const [cropOpts, setCropOpts] = useState<CropMarksOptions>(DEFAULT_CROP);
   const [colorBarOpts, setColorBarOpts] = useState<ColorBarOptions>(DEFAULT_COLORBAR);
   const [pageNumOpts, setPageNumOpts] = useState<PageNumberOptions>(DEFAULT_PAGENUM);
-  const [ticketOpts, setTicketOpts] = useState<TicketOptions>(DEFAULT_TICKET);
+  const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket });
   const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
   const [flipDir, setFlipDir] = useState<'h' | 'v'>('h');
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
@@ -1601,25 +1710,36 @@ function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void 
   );
 }
 
-function WorkflowsView({ onSelect }: { onSelect: (id: string) => void }) {
+function WorkflowChains({ onSelect }: { onSelect: (id: string) => void }) {
   return (
-    <div>
-      <h3 style={{ margin: '0 0 .35rem', fontSize: '1.15rem' }}>Chained workflows</h3>
-      <p style={{ color: 'var(--muted)', margin: '0 0 1.5rem', maxWidth: 640, fontSize: '.9rem', lineHeight: 1.5 }}>
+    <section>
+      <SectionHeading title="Chained workflows" count={WORKFLOWS.length} />
+      <p style={{ color: 'var(--muted)', margin: '-0.5rem 0 1.5rem', maxWidth: 680, fontSize: '.9rem', lineHeight: 1.5 }}>
         Real multi-step recipes that show how operations stack — impose, then add a header/footer, a color
         bar or cutter marks. Click “Make this” to load the whole chain into the pipeline, ready to configure.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
         {WORKFLOWS.map(wf => <WorkflowCard key={wf.id} wf={wf} onSelect={() => onSelect(wf.id)} />)}
       </div>
-      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border)' }}>
-        <h3 style={{ margin: '0 0 .35rem', fontSize: '1.05rem' }}>Build your own</h3>
-        <p style={{ color: 'var(--muted)', margin: '0 0 1rem', fontSize: '.88rem' }}>
-          Start from an empty pipeline and add any operations in the order you want — each step feeds the next.
-        </p>
-        <button className="btn secondary" onClick={() => onSelect('__custom__')}>+ New custom workflow</button>
-      </div>
-    </div>
+    </section>
+  );
+}
+
+function WorkflowBuilderSection({ onSelect }: { onSelect: (id: string) => void }) {
+  return (
+    <section>
+      <SectionHeading title="Workflow" />
+      <p style={{ color: 'var(--muted)', margin: '-0.5rem 0 1rem', maxWidth: 680, fontSize: '.9rem', lineHeight: 1.5 }}>
+        Build your own pipeline — start empty and add any operations in the order you want. Each step feeds
+        the next, then exports one print-ready PDF.
+      </p>
+      <button
+        onClick={() => onSelect('__custom__')}
+        style={{ padding: '.65rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: 'transparent', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
+      >
+        + New custom workflow
+      </button>
+    </section>
   );
 }
 
@@ -1732,15 +1852,26 @@ function PipelineWorkspace({ workflow, onBack }: { workflow: WorkflowDef | null;
 // ── Tool gallery ──────────────────────────────────────────────────────────────
 
 const CATEGORY_ORDER = [
-  'Booklets & Books', 'Imposition & Layout', 'Cards & Labels',
-  'Folding', 'Tickets & Data', 'Marks & Prepress', 'Page & PDF Tools',
+  'Imposition & layout', 'Booklets & books', 'Cards & labels',
+  'Folding', 'Large & specialty', 'Tickets & data', 'Marks & prepress', 'Page & PDF tools',
 ];
 
-function ToolGallery({ query, onSelect }: { query: string; onSelect: (id: string) => void }) {
+// Section heading used across the one-page gallery (tools + workflows).
+function SectionHeading({ title, count }: { title: string; count?: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '.6rem', margin: '0 0 1.25rem', paddingBottom: '.6rem', borderBottom: '1px solid var(--border)' }}>
+      <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--ink)' }}>{title}</h3>
+      {count != null && <span style={{ color: 'var(--muted)', fontSize: '.85rem', fontWeight: 600 }}>{count}</span>}
+    </div>
+  );
+}
+
+function ToolGallery({ query, filter, onSelect }: { query: string; filter: string | null; onSelect: (id: string) => void }) {
   const categories = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const match = (t: ToolDef) => !q || t.name.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q)
-      || t.tags.some(tag => tag.toLowerCase().includes(q)) || t.category.toLowerCase().includes(q);
+    const match = (t: ToolDef) => (!q || t.name.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q)
+      || t.tags.some(tag => tag.toLowerCase().includes(q)) || t.category.toLowerCase().includes(q))
+      && (!filter || t.category === filter);
     const map = new Map<string, ToolDef[]>();
     for (const t of TOOLS) {
       if (!match(t)) continue;
@@ -1748,25 +1879,59 @@ function ToolGallery({ query, onSelect }: { query: string; onSelect: (id: string
       map.get(t.category)!.push(t);
     }
     return CATEGORY_ORDER.filter(c => map.has(c)).map(c => [c, map.get(c)!] as const);
-  }, [query]);
+  }, [query, filter]);
 
   if (!categories.length) {
-    return <div style={{ color: 'var(--muted)', padding: '2rem 0' }}>No tools match “{query}”.</div>;
+    return <div style={{ color: 'var(--muted)', padding: '2rem 0' }}>No tools match {query ? `“${query}”` : 'this filter'}.</div>;
   }
 
   return (
-    <div style={{ display: 'grid', gap: '2rem' }}>
+    <div style={{ display: 'grid', gap: '2.75rem' }}>
       {categories.map(([cat, tools]) => (
-        <div key={cat}>
-          <h3 style={{ margin: '0 0 .75rem', fontSize: '1rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
-            {cat} <span style={{ color: 'var(--border)', fontWeight: 400 }}>· {tools.length}</span>
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px,1fr))', gap: '.75rem' }}>
+        <section key={cat}>
+          <SectionHeading title={cat} count={tools.length} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
             {tools.map(t => <ToolCard key={t.id} tool={t} onSelect={() => onSelect(t.id)} />)}
           </div>
-        </div>
+        </section>
       ))}
     </div>
+  );
+}
+
+// Generic "how to make this" steps shown on every ready-to-use tool card.
+function toolHowTo(tool: ToolDef): string[] {
+  return [
+    'Drop or select your PDF',
+    `Loads ${tool.preset ?? tool.name}, pre-configured`,
+    'Adjust the sheet, bleed, gutters & marks if needed',
+    'Preview, then export a print-ready PDF',
+  ];
+}
+
+function ReadyBadge() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', padding: '.12rem .5rem', borderRadius: 4, background: '#f3f0ff', color: VIOLET, fontSize: '.62rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '.5rem' }}>
+      <span style={{ fontSize: '.7rem', lineHeight: 1 }}>•</span> READY TO USE
+    </span>
+  );
+}
+
+function HowToList({ steps }: { steps: string[] }) {
+  return (
+    <>
+      <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.08em', color: 'var(--muted)', textTransform: 'uppercase', margin: '.25rem 0 .4rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}>
+        <span style={{ color: VIOLET }}>✓</span> How to make this
+      </div>
+      <ol style={{ listStyle: 'none', margin: '0 0 1rem', padding: 0, display: 'grid', gap: '.3rem' }}>
+        {steps.map((s, i) => (
+          <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '.5rem', fontSize: '.8rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 8, background: '#f3f0ff', color: VIOLET, fontSize: '.62rem', fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+            {s}
+          </li>
+        ))}
+      </ol>
+    </>
   );
 }
 
@@ -1776,24 +1941,31 @@ function ToolCard({ tool, onSelect }: { tool: ToolDef; onSelect: () => void }) {
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onSelect}
       style={{
-        border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden',
-        background: hover ? 'var(--bg-alt)' : 'var(--bg)', cursor: 'pointer',
-        transition: 'all .15s', boxShadow: hover ? '0 4px 16px rgba(0,0,0,.08)' : 'none',
-        transform: hover ? 'translateY(-1px)' : 'none',
+        border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg)', cursor: 'pointer',
+        transition: 'all .15s', boxShadow: hover ? '0 6px 20px rgba(0,0,0,.1)' : 'none',
+        transform: hover ? 'translateY(-2px)' : 'none',
       }}
     >
-      <div style={{ height: 140, background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', padding: '1rem', overflow: 'hidden' }}>
+      <div style={{ height: 150, background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', padding: '1.25rem', overflow: 'hidden' }}>
         <tool.Thumb />
       </div>
-      <div style={{ padding: '.75rem 1rem 1rem' }}>
-        <div style={{ fontWeight: 700, marginBottom: '.2rem' }}>
+      <div style={{ padding: '.9rem 1.1rem 1.1rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <ReadyBadge />
+        <div style={{ fontWeight: 700, marginBottom: '.2rem', fontSize: '1.02rem' }}>
           {tool.name}{tool.badge && <span style={{ color: '#f59e0b', marginLeft: '.35rem' }}>{tool.badge}</span>}
         </div>
-        <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.5rem', lineHeight: 1.4 }}>{tool.desc}</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.25rem', marginBottom: '.75rem' }}>
+        <div style={{ fontSize: '.82rem', color: 'var(--muted)', marginBottom: '.7rem', lineHeight: 1.4 }}>{tool.desc}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.85rem' }}>
           {tool.tags.map(tag => <Chip key={tag} label={tag} />)}
         </div>
-        <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={onSelect}>Make this →</button>
+        <HowToList steps={toolHowTo(tool)} />
+        <button
+          onClick={onSelect}
+          style={{ marginTop: 'auto', width: '100%', padding: '.6rem', border: 'none', borderRadius: 8, background: VIOLET, color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '.9rem' }}
+        >
+          Make this →
+        </button>
       </div>
     </div>
   );
@@ -2114,69 +2286,111 @@ function Calculators() {
 
 // ── Page root ─────────────────────────────────────────────────────────────────
 
+const GALLERY_CHIPS = ['All', 'Chained workflows', ...CATEGORY_ORDER, 'Workflow', 'Calculators'];
+
+const HOW_TO_STEPS: [string, string][] = [
+  ['01', 'Drop or select your PDF'],
+  ['02', 'Pick a layout or tool'],
+  ['03', 'Set the sheet, bleed, gutters & marks — or load a template'],
+  ['04', 'Preview live and export a print-ready PDF'],
+];
+
 export function AdminImpose() {
-  const [topTab, setTopTab] = useState<TopTab>('tools');
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
-  const handleSelect = (id: string) => { setActiveTool(id); setTopTab('tools'); };
+  const handleSelect = (id: string) => setActiveTool(id);
 
-  const TAB_LABEL: Record<TopTab, string> = {
-    tools: `Imposition Tools (${TOOLS.length})`,
-    workflows: `Chained Workflows (${WORKFLOWS.length})`,
-    calculators: 'Pre-Press Calculators',
-  };
+  // A tool or workflow workspace takes over the whole page.
+  if (activeTool && toolDef) {
+    return <div style={{ padding: '2rem', maxWidth: 1120, margin: '0 auto' }}><ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} /></div>;
+  }
+  if (activeWorkflow) {
+    return (
+      <div style={{ padding: '2rem', maxWidth: 1120, margin: '0 auto' }}>
+        <PipelineWorkspace
+          key={activeWorkflow}
+          workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
+          onBack={() => setActiveWorkflow(null)}
+        />
+      </div>
+    );
+  }
+
+  const searching = query.trim().length > 0;
+  let content: React.ReactNode;
+  if (searching) {
+    content = <ToolGallery query={query} filter={null} onSelect={handleSelect} />;
+  } else if (filter === 'Calculators') {
+    content = <Calculators />;
+  } else if (filter === 'Chained workflows') {
+    content = <WorkflowChains onSelect={setActiveWorkflow} />;
+  } else if (filter === 'Workflow') {
+    content = <WorkflowBuilderSection onSelect={setActiveWorkflow} />;
+  } else if (filter === 'All') {
+    content = (
+      <div style={{ display: 'grid', gap: '2.75rem' }}>
+        <WorkflowChains onSelect={setActiveWorkflow} />
+        <ToolGallery query="" filter={null} onSelect={handleSelect} />
+        <WorkflowBuilderSection onSelect={setActiveWorkflow} />
+      </div>
+    );
+  } else {
+    content = <ToolGallery query="" filter={filter} onSelect={handleSelect} />;
+  }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 1080 }}>
-      <h1 style={{ marginBottom: '.25rem' }}>Imposition &amp; Pre-Press</h1>
-      <p style={{ color: 'var(--muted)', marginBottom: '1.75rem' }}>
-        {TOOLS.length} PDF imposition tools and {WORKFLOWS.length} chained workflows — everything runs locally in your browser, files are never uploaded. Plus pre-press calculators.
-      </p>
-
-      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '2rem', flexWrap: 'wrap' }}>
-        {(['tools', 'workflows', 'calculators'] as TopTab[]).map(t => (
-          <button key={t} onClick={() => { setTopTab(t); setActiveTool(null); setActiveWorkflow(null); }} style={{
-            padding: '.6rem 1.25rem', border: 'none',
-            borderBottom: topTab === t ? '3px solid var(--brand)' : '3px solid transparent',
-            background: 'none', cursor: 'pointer', fontWeight: topTab === t ? 700 : 400,
-            color: topTab === t ? 'var(--brand)' : 'var(--muted)', fontSize: '1rem',
-          }}>
-            {TAB_LABEL[t]}
-          </button>
-        ))}
+    <div style={{ padding: '2rem 2rem 4rem', maxWidth: 1120, margin: '0 auto' }}>
+      {/* Hero */}
+      <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto 2.25rem' }}>
+        <div style={{ color: VIOLET, fontSize: '.7rem', fontWeight: 800, letterSpacing: '.14em', marginBottom: '.75rem' }}>IMPOSITION GALLERY</div>
+        <h1 style={{ fontSize: '2.1rem', margin: '0 0 .75rem', lineHeight: 1.15 }}>See what you can make — and exactly how</h1>
+        <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: 0 }}>
+          Browse {TOOLS.length} real imposition and prepress layouts plus {WORKFLOWS.length} chained workflows.
+          Each one shows the result and the exact steps to create it — right in your browser, never uploaded.
+        </p>
       </div>
 
-      {topTab === 'tools' ? (
-        activeTool && toolDef ? (
-          <ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} />
-        ) : (
-          <>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <input
-                type="search" value={query} onChange={e => setQuery(e.target.value)}
-                placeholder="Search tools — comic, cards, watermark, fold…"
-                style={{ ...iStyle, maxWidth: 380 }}
-              />
+      {/* How-to strip */}
+      <div className="admin-card" style={{ margin: '0 0 2rem', padding: '1.1rem 1.35rem' }}>
+        <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.09em', color: VIOLET, textTransform: 'uppercase', marginBottom: '.9rem' }}>How to make this</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: '1.25rem' }}>
+          {HOW_TO_STEPS.map(([n, t]) => (
+            <div key={n} style={{ borderLeft: `2px solid ${VIOLET}`, paddingLeft: '.85rem' }}>
+              <div style={{ color: VIOLET, fontWeight: 800, fontSize: '.8rem', marginBottom: '.3rem' }}>{n}</div>
+              <div style={{ fontSize: '.85rem', color: 'var(--ink)', lineHeight: 1.35 }}>{t}</div>
             </div>
-            <ToolGallery query={query} onSelect={handleSelect} />
-          </>
-        )
-      ) : topTab === 'workflows' ? (
-        activeWorkflow ? (
-          <PipelineWorkspace
-            key={activeWorkflow}
-            workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
-            onBack={() => setActiveWorkflow(null)}
-          />
-        ) : (
-          <WorkflowsView onSelect={setActiveWorkflow} />
-        )
-      ) : (
-        <Calculators />
-      )}
+          ))}
+        </div>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem', marginBottom: '1.25rem', justifyContent: 'center' }}>
+        {GALLERY_CHIPS.map(c => {
+          const active = !searching && filter === c;
+          return (
+            <button key={c} onClick={() => { setFilter(c); setQuery(''); }} style={{
+              padding: '.4rem .9rem', borderRadius: 999, cursor: 'pointer', fontSize: '.85rem', fontWeight: active ? 700 : 500,
+              border: `1px solid ${active ? VIOLET : 'var(--border)'}`, background: active ? VIOLET : 'transparent',
+              color: active ? '#fff' : 'var(--muted)', transition: 'all .12s',
+            }}>{c}</button>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div style={{ marginBottom: '2.25rem', display: 'flex', justifyContent: 'center' }}>
+        <input
+          type="search" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder={`Search ${TOOLS.length} tools — comic, cards, watermark, fold…`}
+          style={{ ...iStyle, maxWidth: 440 }}
+        />
+      </div>
+
+      {content}
     </div>
   );
 }
