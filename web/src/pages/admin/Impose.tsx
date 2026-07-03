@@ -50,7 +50,8 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
-  | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop';
+  | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
+  | 'bleed' | 'preflight';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -632,19 +633,30 @@ const TOOLS: ToolDef[] = [
 
   // ── Marks & prepress ──
   {
-    id: 'cropmarks', name: 'Crop Marks', preset: 'Crop Marks', category: 'Marks & prepress', engine: 'cropmarks',
-    desc: 'Add trim marks and a bleed offset to any PDF without rearranging pages.',
-    tags: ['marks only', 'bleed offset', 'per-page'], Thumb: MarksThumb,
+    id: 'bleedmarks', name: 'Bleed & Crop Marks', preset: 'BleedMaker', category: 'Marks & prepress', engine: 'bleed',
+    desc: 'Print edge-to-edge with confidence.',
+    tags: ['Add bleed to artwork', 'scale or mirror-extend', 'set bleed amount'], Thumb: CropToolThumb,
   },
   {
-    id: 'colorbar', name: 'Color Bar', preset: 'Color Bar', category: 'Marks & prepress', engine: 'colorbar',
-    desc: 'Append a CMYK / registration color strip for press density control.',
-    tags: ['CMYK strip', 'density', 'press control'], Thumb: ColorBarThumb,
+    id: 'cropmarks', name: 'Cutter Marks', preset: 'Cutter Marks', category: 'Marks & prepress', engine: 'cropmarks',
+    desc: 'Registration & cutter guides on every tile.',
+    tags: ['Crop + registration marks', 'die-cut paths (Thru / Kiss-cut)', 'key marks'], Thumb: MarksThumb,
   },
   {
-    id: 'pagenumbers', name: 'Page Numbering', preset: 'Page Numbering', category: 'Marks & prepress', engine: 'pagenumbers',
-    desc: 'Stamp folio page numbers with a prefix/suffix in any corner.',
-    tags: ['folios', 'prefix/suffix', 'any corner'], Thumb: PageNumThumb,
+    id: 'colorbar', name: 'Color Bar & Header', preset: 'Color Bar', category: 'Marks & prepress', engine: 'colorbar',
+    desc: 'Running headers, footers and control strips.',
+    tags: ['CMYK + spot color bar', 'registration crosshairs', 'slug header'],
+    note: 'Adds the CMYK/registration control strip. For running headers/footers, chain the Header/Footer step in a workflow.', Thumb: ColorBarThumb,
+  },
+  {
+    id: 'pagenumbers', name: 'Page Numbering & Bates', preset: 'Page Numbering', category: 'Marks & prepress', engine: 'pagenumbers',
+    desc: 'Sequential & Bates stamps on every page.',
+    tags: ['Page numbers / Bates', 'tokens [page] / [count]', 'any margin + rotation'], Thumb: PageNumThumb,
+  },
+  {
+    id: 'preflight', name: 'Preflight Inspector', preset: 'Preflight Inspector', category: 'Marks & prepress', engine: 'preflight',
+    desc: 'Catch print problems before output.',
+    tags: ['Page boxes + fonts', 'DPI, color + hairlines', 'issue rail + marked proof'], Thumb: PageNumThumb,
   },
 
   // ── Page & PDF tools ──
@@ -1243,6 +1255,7 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
   const [nupOpts, setNupOpts] = useState<NUpOptions>({ ...DEFAULT_NUP, ...tool.defaultNup });
   const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster });
   const [cropOpts, setCropOpts] = useState<CropMarksOptions>(DEFAULT_CROP);
+  const [bleedOpts, setBleedOpts] = useState<{ bleedIn: number }>({ bleedIn: 0.125 });
   const [colorBarOpts, setColorBarOpts] = useState<ColorBarOptions>(DEFAULT_COLORBAR);
   const [pageNumOpts, setPageNumOpts] = useState<PageNumberOptions>(DEFAULT_PAGENUM);
   const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket });
@@ -1302,6 +1315,8 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
           outName = `${base}-${nupOpts.repeatFirst ? 'repeat' : `${tool.id}`}.pdf`; break;
         case 'poster': out = await imposeTiledPoster(file.bytes, posterOpts); outName = `${base}-poster.pdf`; break;
         case 'cropmarks': out = await addCropMarksOnly(file.bytes, cropOpts); outName = `${base}-marks.pdf`; break;
+        case 'bleed': out = await generateBleed(file.bytes, bleedOpts); outName = `${base}-bleed.pdf`; break;
+        case 'preflight': setStatus('idle'); return; // inspection only — no output
         case 'colorbar': out = await addColorBar(file.bytes, colorBarOpts); outName = `${base}-colorbar.pdf`; break;
         case 'pagenumbers': out = await addPageNumbers(file.bytes, pageNumOpts); outName = `${base}-numbered.pdf`; break;
         case 'tickets': out = await imposeTickets(file.bytes, ticketOpts); outName = `${base}-tickets.pdf`; break;
@@ -1386,11 +1401,13 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
               <FileBar file={file} onClear={clearFile} />
 
               <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
-                <h4 style={{ margin: '0 0 .75rem' }}>Settings</h4>
+                <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'preflight' ? 'Preflight report' : 'Settings'}</h4>
                 {tool.engine === 'booklet' && <BookletSettings opts={bookletOpts} onChange={setBookletOpts} />}
                 {tool.engine === 'nup' && <NUpSettings opts={nupOpts} onChange={setNupOpts} cardMode={cardMode} />}
                 {tool.engine === 'poster' && <PosterSettings opts={posterOpts} onChange={setPosterOpts} />}
                 {tool.engine === 'cropmarks' && <CropSettings opts={cropOpts} onChange={setCropOpts} />}
+                {tool.engine === 'bleed' && <BleedSettings opts={bleedOpts} onChange={setBleedOpts} />}
+                {tool.engine === 'preflight' && <PreflightPanel file={file} />}
                 {tool.engine === 'colorbar' && <ColorBarSettings opts={colorBarOpts} onChange={setColorBarOpts} />}
                 {tool.engine === 'pagenumbers' && <PageNumberSettings opts={pageNumOpts} onChange={setPageNumOpts} />}
                 {tool.engine === 'tickets' && <TicketSettings opts={ticketOpts} onChange={setTicketOpts} />}
@@ -1426,12 +1443,14 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
               {tool.engine === 'booklet' && <BookletPreview pageCount={file.info.count} opts={bookletOpts} />}
               {tool.engine === 'nup' && <NUpPreview opts={nupOpts} pageCount={file.info.count} />}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <button className="btn" onClick={process} disabled={isBusy} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
-                  {status === 'processing' ? 'Processing…' : status === 'done' ? '✓ Downloaded' : processLabel}
-                </button>
-                {status === 'done' && <button className="btn secondary" onClick={process}>Download again</button>}
-              </div>
+              {tool.engine !== 'preflight' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <button className="btn" onClick={process} disabled={isBusy} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
+                    {status === 'processing' ? 'Processing…' : status === 'done' ? '✓ Downloaded' : processLabel}
+                  </button>
+                  {status === 'done' && <button className="btn secondary" onClick={process}>Download again</button>}
+                </div>
+              )}
 
               {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg || 'Processing failed. Try again.'}</div>}
             </>
@@ -2348,15 +2367,24 @@ export function AdminImpose() {
       <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto 2.25rem' }}>
         <div style={{ color: VIOLET, fontSize: '.7rem', fontWeight: 800, letterSpacing: '.14em', marginBottom: '.75rem' }}>IMPOSITION GALLERY</div>
         <h1 style={{ fontSize: '2.1rem', margin: '0 0 .75rem', lineHeight: 1.15 }}>See what you can make — and exactly how</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: 0 }}>
+        <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: '0 0 1.35rem' }}>
           Browse {TOOLS.length} real imposition and prepress layouts plus {WORKFLOWS.length} chained workflows.
           Each one shows the result and the exact steps to create it — right in your browser, never uploaded.
         </p>
+        <button
+          onClick={() => { setFilter('All'); setQuery(''); }}
+          style={{ padding: '.6rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: '#f3f0ff', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
+        >
+          Browse all {TOOLS.length + WORKFLOWS.length} templates →
+        </button>
       </div>
 
       {/* How-to strip */}
       <div className="admin-card" style={{ margin: '0 0 2rem', padding: '1.1rem 1.35rem' }}>
-        <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.09em', color: VIOLET, textTransform: 'uppercase', marginBottom: '.9rem' }}>How to make this</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap', marginBottom: '.9rem' }}>
+          <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.09em', color: VIOLET, textTransform: 'uppercase' }}>How to make this</div>
+          <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>Every template is a ready-made imposition recipe. Pick one, drop your file, and export.</div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: '1.25rem' }}>
           {HOW_TO_STEPS.map(([n, t]) => (
             <div key={n} style={{ borderLeft: `2px solid ${VIOLET}`, paddingLeft: '.85rem' }}>
