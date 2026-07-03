@@ -641,6 +641,116 @@ export async function preflight(bytes: Uint8Array): Promise<PreflightReport> {
   };
 }
 
+// ── Dieline generator (folding carton + presentation folder) ────────────────
+// Draws a real box net: cut lines (solid), fold/crease lines (dashed), glue
+// tabs and flaps, sized from dimensions. Output is a single flat sheet ready to
+// print, cut and fold. No source PDF required.
+
+export interface DielineOptions {
+  kind: 'ste' | 'folder';   // straight-tuck-end carton | presentation folder
+  widthIn: number;          // front panel width (W)
+  heightIn: number;         // panel height (H)
+  depthIn: number;          // side depth (D)
+  glueIn: number;           // glue-flap width
+  marginIn: number;         // sheet margin around the net
+}
+
+export async function makeDieline(opts: DielineOptions): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import('pdf-lib');
+  const CUT = rgb(0.85, 0.11, 0.14);     // solid = cut / trim
+  const CREASE = rgb(0.15, 0.4, 0.9);    // dashed = fold / crease
+  const GLUE = rgb(0.6, 0.6, 0.62);
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+
+  const W = opts.widthIn * PT, H = opts.heightIn * PT, D = opts.depthIn * PT;
+  const g = opts.glueIn * PT, m = opts.marginIn * PT;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let page: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cut = (x1: number, y1: number, x2: number, y2: number) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 1, color: CUT });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const crease = (x1: number, y1: number, x2: number, y2: number) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.75, color: CREASE, dashArray: [4, 3] });
+  const poly = (pts: [number, number][]) => { for (let i = 0; i < pts.length - 1; i++) cut(pts[i]![0], pts[i]![1], pts[i + 1]![0], pts[i + 1]![1]); };
+
+  function legend(pw: number) {
+    page.drawLine({ start: { x: m, y: 18 }, end: { x: m + 22, y: 18 }, thickness: 1, color: CUT });
+    page.drawText('Cut', { x: m + 28, y: 15, font, size: 8, color: rgb(0.3, 0.3, 0.3) });
+    page.drawLine({ start: { x: m + 70, y: 18 }, end: { x: m + 92, y: 18 }, thickness: 0.75, color: CREASE, dashArray: [4, 3] });
+    page.drawText('Fold / crease', { x: m + 98, y: 15, font, size: 8, color: rgb(0.3, 0.3, 0.3) });
+    page.drawText(`${opts.widthIn}×${opts.heightIn}×${opts.depthIn}"`, { x: pw - m - 70, y: 15, font, size: 8, color: rgb(0.3, 0.3, 0.3) });
+  }
+
+  if (opts.kind === 'ste') {
+    // Straight-tuck-end carton: [glue | front | side | back | side], tuck flaps
+    // on the front (top+bottom), dust flaps on the sides.
+    const tuckH = D * 0.82, dustH = D * 0.72;
+    const netW = g + 2 * W + 2 * D, netH = H + 2 * tuckH;
+    const pw = netW + 2 * m, ph = netH + 2 * m;
+    page = doc.addPage([pw, ph]);
+    const ox = m, oy = m;
+    const yB = oy + tuckH, yT = yB + H;
+    const x0 = ox, x1 = x0 + g, x2 = x1 + W, x3 = x2 + D, x4 = x3 + W, x5 = x4 + D;
+    const ins = Math.min(W, D) * 0.14;
+
+    // Vertical creases between panels
+    for (const x of [x1, x2, x3, x4]) crease(x, yB, x, yT);
+    // Body outer verticals (cut)
+    cut(x0, yB, x0, yT); cut(x5, yB, x5, yT);
+    // Body top & bottom edges: crease under flaps (front, sides), cut elsewhere (glue, back)
+    for (const [xa, xb, isFlap] of [[x0, x1, false], [x1, x2, true], [x2, x3, true], [x3, x4, false], [x4, x5, true]] as [number, number, boolean][]) {
+      (isFlap ? crease : cut)(xa, yT, xb, yT);
+      (isFlap ? crease : cut)(xa, yB, xb, yB);
+    }
+    // Front tuck flaps (top + bottom) — trapezoid
+    poly([[x1, yT], [x1 + ins, yT + tuckH], [x2 - ins, yT + tuckH], [x2, yT]]);
+    poly([[x1, yB], [x1 + ins, yB - tuckH], [x2 - ins, yB - tuckH], [x2, yB]]);
+    // Side dust flaps (top + bottom on both sides)
+    for (const [xa, xb] of [[x2, x3], [x4, x5]] as [number, number][]) {
+      poly([[xa, yT], [xa + ins, yT + dustH], [xb - ins, yT + dustH], [xb, yT]]);
+      poly([[xa, yB], [xa + ins, yB - dustH], [xb - ins, yB - dustH], [xb, yB]]);
+    }
+    // Glue flap (left, tapered) + hatch
+    poly([[x1, yB], [x0 + g * 0.35, yB + g * 0.2], [x0 + g * 0.35, yT - g * 0.2], [x1, yT]]);
+    for (let yy = yB + 6; yy < yT - 6; yy += 7) page.drawLine({ start: { x: x0 + g * 0.4, y: yy }, end: { x: x1 - 3, y: yy + 4 }, thickness: 0.4, color: GLUE });
+    page.drawText('GLUE', { x: x0 + g * 0.42, y: (yB + yT) / 2, font, size: 7, color: GLUE, rotate: degrees(90) });
+    legend(pw);
+  } else {
+    // Presentation folder: back + front panels (spine crease), bottom pocket
+    // flaps that fold up, with side glue tabs.
+    const pocket = H * 0.38, tab = D > 0 ? Math.max(D, 24) : 24;
+    const netW = 2 * W + tab, netH = H + pocket;
+    const pw = netW + 2 * m, ph = netH + 2 * m;
+    page = doc.addPage([pw, ph]);
+    const ox = m, oy = m;
+    const yB = oy + pocket, yT = yB + H;
+    const xL = ox, xM = ox + W, xR = ox + 2 * W, xTab = xR + tab;
+
+    // Outer verticals
+    cut(xL, yB, xL, yT);                 // left edge
+    // Spine crease between back|front
+    crease(xM, yB, xM, yT);
+    // Right side glue tab crease + cut
+    crease(xR, yB, xR, yT);
+    poly([[xR, yB], [xTab, yB + tab * 0.4], [xTab, yT - tab * 0.4], [xR, yT]]);
+    // Top edge (cut across both panels)
+    cut(xL, yT, xR, yT);
+    // Body bottom edge = crease where pockets fold up
+    crease(xL, yB, xR, yB);
+    // Pocket flaps (fold up) below both panels
+    for (const [xa, xb] of [[xL, xM], [xM, xR]] as [number, number][]) {
+      poly([[xa, yB], [xa, yB - pocket], [xb, yB - pocket], [xb, yB]]);
+      // pocket side glue tabs
+      crease(xa, yB - pocket, xa, yB); crease(xb, yB - pocket, xb, yB);
+    }
+    page.drawText('Fold up + glue pockets', { x: xL + 6, y: oy + 4, font, size: 7, color: GLUE });
+    legend(pw);
+  }
+
+  return doc.save();
+}
+
 // ── Zine (4 panels per side, 2 sides = 8-page booklet from 2 sheets) ────────
 // Same as saddle stitch; the "zine" label and preset distinguish the use case.
 

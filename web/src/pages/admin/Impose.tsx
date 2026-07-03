@@ -5,12 +5,12 @@ import {
   mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
-  downloadPdf, downloadMultiple,
+  makeDieline, downloadPdf, downloadMultiple,
 } from '../../lib/impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions,
-  HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport,
+  HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
-  | 'bleed' | 'preflight';
+  | 'bleed' | 'preflight' | 'dieline';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -76,6 +76,7 @@ interface ToolDef {
   fitSource?: boolean;   // derive fixed cell size from the loaded page (Optimal Fit)
   panelGuide?: string[];
   note?: string;
+  dielineKind?: 'ste' | 'folder';
 }
 
 // ── Reusable thumbnails ───────────────────────────────────────────────────────
@@ -570,11 +571,10 @@ const TOOLS: ToolDef[] = [
     defaultNup: { cellWIn: 5, cellHIn: 7, sheetWIn: 13, sheetHIn: 19, marginIn: 0.25, gutterIn: 0.125 }, Thumb: cardThumb(2, 2),
   },
   {
-    id: 'presfolder', name: 'Presentation Folder', preset: 'Presentation Folder Dieline (A4 Pocket)', category: 'Folding', engine: 'nup',
+    id: 'presfolder', name: 'Presentation Folder', preset: 'Presentation Folder Dieline (A4 Pocket)', category: 'Folding', engine: 'dieline', dielineKind: 'folder',
     desc: 'Die-cut folders with pockets.',
-    tags: ['A4 folder flat 1-up', '13×19 in sheet', 'Thru-Cut die path', 'pocket + card slots'],
-    defaultNup: { cols: 1, rows: 1, sheetWIn: 13, sheetHIn: 19, marginIn: 0.5, gutterIn: 0 },
-    note: 'Places the folder artwork flat, 1-up, with crop marks. A true fold/glue dieline generator is a planned enhancement.', Thumb: cardThumb(1, 1),
+    tags: ['back + front panels', 'fold-up pockets', 'glue tabs', 'cut + crease dieline'],
+    note: 'Generates the folder dieline (cut + crease lines) from your dimensions — no source file needed.', Thumb: cardThumb(1, 1),
   },
 
   // ── Large & specialty ──
@@ -605,18 +605,16 @@ const TOOLS: ToolDef[] = [
     note: 'Scales your artwork to the stand size, 1-up.', Thumb: cardThumb(1, 1),
   },
   {
-    id: 'packaging', name: 'Packaging Dieline', preset: 'Folding Carton Dieline', category: 'Large & specialty', engine: 'nup',
+    id: 'packaging', name: 'Packaging Dieline', preset: 'Folding Carton Dieline', category: 'Large & specialty', engine: 'dieline', dielineKind: 'ste',
     desc: 'Boxes, cartons & custom shapes.',
-    tags: ['Folding-carton dieline', '13×19 in sheet', 'fold + glue panels', 'die-cut + crop marks'],
-    defaultNup: { cols: 1, rows: 1, sheetWIn: 13, sheetHIn: 19, marginIn: 0.5, gutterIn: 0 },
-    note: 'Places the carton artwork flat, 1-up, with marks. A true box-net dieline generator is a planned enhancement.', Thumb: cardThumb(1, 1),
+    tags: ['Folding-carton dieline', 'tuck + dust flaps', 'fold + glue panels', 'cut + crease lines'],
+    note: 'Generates a folding-carton box net (cut + crease + glue) from your Width × Height × Depth — no source file needed.', Thumb: cardThumb(1, 1),
   },
   {
-    id: 'boxcarton', name: 'Box / Carton', preset: 'Folding Carton — Straight Tuck End', category: 'Large & specialty', engine: 'nup',
+    id: 'boxcarton', name: 'Box / Carton', preset: 'Folding Carton — Straight Tuck End', category: 'Large & specialty', engine: 'dieline', dielineKind: 'ste',
     desc: 'Folding-carton dielines.',
-    tags: ['Straight-tuck carton dieline', '13×19 in sheet', 'tuck + glue flaps', 'die-cut contour'],
-    defaultNup: { cols: 1, rows: 1, sheetWIn: 13, sheetHIn: 19, marginIn: 0.5, gutterIn: 0 },
-    note: 'Places carton artwork flat, 1-up, with marks; true dieline generation is planned.', Thumb: cardThumb(1, 1),
+    tags: ['Straight-tuck carton dieline', 'tuck + glue flaps', 'W × H × D', 'cut + crease lines'],
+    note: 'Generates a straight-tuck-end carton net (cut + crease + glue) from your dimensions.', Thumb: cardThumb(1, 1),
   },
 
   // ── Tickets & data ──
@@ -1256,6 +1254,48 @@ function MergeFileList({ files, onAdd, onRemove, onMove }: {
 
 // ── Tool workspace ────────────────────────────────────────────────────────────
 
+// Dieline generator tool — needs no source file; draws a box net from dims.
+function DielineTool({ tool }: { tool: ToolDef }) {
+  const [opts, setOpts] = useState<DielineOptions>({
+    kind: tool.dielineKind ?? 'ste', widthIn: 3, heightIn: 5, depthIn: 1.5, glueIn: 0.5, marginIn: 0.5,
+  });
+  const [status, setStatus] = useState<Status>('idle');
+  const set = (k: keyof DielineOptions, v: number) => setOpts(o => ({ ...o, [k]: v }));
+  const gen = async () => {
+    setStatus('processing');
+    try {
+      downloadPdf(await makeDieline(opts), `${tool.id}-dieline.pdf`);
+      setStatus('done'); setTimeout(() => setStatus('idle'), 3000);
+    } catch { setStatus('error'); }
+  };
+  return (
+    <div style={{ display: 'grid', gap: '1.25rem' }}>
+      <NoteBanner text={opts.kind === 'folder'
+        ? 'Generates a presentation-folder dieline: back + front panels, fold-up pockets and glue tabs.'
+        : 'Generates a folding-carton dieline: front / side / back / side panels with tuck flaps, dust flaps and a glue seam.'} />
+      <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
+        <h4 style={{ margin: '0 0 .75rem' }}>Box dimensions (inches)</h4>
+        <Grid>
+          <Field label="Width (front)"><input type="number" min={0.5} max={40} step={0.125} value={opts.widthIn} onChange={e => set('widthIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Height"><input type="number" min={0.5} max={40} step={0.125} value={opts.heightIn} onChange={e => set('heightIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label={opts.kind === 'folder' ? 'Spine / tab depth' : 'Depth (side)'}><input type="number" min={0.25} max={20} step={0.125} value={opts.depthIn} onChange={e => set('depthIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Glue flap"><input type="number" min={0.25} max={2} step={0.0625} value={opts.glueIn} onChange={e => set('glueIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Sheet margin"><input type="number" min={0.1} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+        </Grid>
+        <div style={{ marginTop: '.75rem', fontSize: '.78rem', color: 'var(--muted)' }}>
+          Solid red = cut / trim · dashed blue = fold / crease. Print at 100%, cut the solid lines, score the dashed, fold and glue.
+        </div>
+      </div>
+      <div>
+        <button className="btn" onClick={gen} disabled={status === 'processing'} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
+          {status === 'processing' ? 'Generating…' : status === 'done' ? '✓ Downloaded' : 'Generate dieline & download'}
+        </button>
+      </div>
+      {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>Could not generate the dieline.</div>}
+    </div>
+  );
+}
+
 function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) {
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -1384,7 +1424,9 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
         </div>
       </div>
 
-      {tool.engine === 'merge' ? (
+      {tool.engine === 'dieline' ? (
+        <DielineTool tool={tool} />
+      ) : tool.engine === 'merge' ? (
         <div style={{ display: 'grid', gap: '1.25rem' }}>
           {mergeFiles.length === 0 ? (
             <FileDrop onFile={addMergeFiles} multiple label="Drop PDFs here to merge (drop multiple at once)" />
