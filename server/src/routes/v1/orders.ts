@@ -49,7 +49,7 @@ const itemSchema = z.object({
   productId: z.string().optional(),
   variantId: z.string().optional(),
   quantity: z.number().int().min(1).max(100_000),
-  options: z.record(z.union([z.string(), z.number()])).optional(),
+  options: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   // Print files for this line item — covers, interiors, etc. Each entry
   // references an upload previously POSTed to /api/v1/uploads.
   files: z.array(itemFileSchema).max(20).optional(),

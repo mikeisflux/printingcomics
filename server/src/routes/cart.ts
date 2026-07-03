@@ -72,7 +72,7 @@ const addSchema = z.object({
   productId: z.string(),
   variantId: z.string().optional(),
   quantity: z.number().int().min(1).max(10_000),
-  options: z.record(z.string()).optional(),
+  options: z.record(z.string(), z.string()).optional(),
 });
 
 router.post('/items', async (req, res) => {

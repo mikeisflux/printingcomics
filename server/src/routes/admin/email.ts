@@ -32,7 +32,7 @@ const templateSchema = z.object({
   subject: z.string().min(1),
   html: z.string().min(1),
   text: z.string().optional(),
-  variables: z.record(z.string()).optional(),
+  variables: z.record(z.string(), z.string()).optional(),
 });
 
 router.get('/templates', async (_req, res) => {

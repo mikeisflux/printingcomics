@@ -14,7 +14,7 @@ const requestSchema = z.object({
 
 const responseSchema = z.object({
   productSlug: z.string(),
-  selections: z.record(z.union([z.string(), z.number()])),
+  selections: z.record(z.string(), z.union([z.string(), z.number()])),
   quantity: z.number().int().min(1),
   rationale: z.string(),
 });

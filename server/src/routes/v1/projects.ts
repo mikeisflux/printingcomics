@@ -76,7 +76,7 @@ const createSchema = z.object({
   creatorEmail: z.string().email().optional(),
   status: z.enum(['active', 'completed', 'cancelled']).default('active'),
   notes: z.string().max(2000).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 // Create or upsert by (partnerId, externalProjectId).
@@ -121,7 +121,7 @@ const updateSchema = z.object({
   creatorEmail: z.string().email().nullable().optional(),
   status: z.enum(['active', 'completed', 'cancelled']).optional(),
   notes: z.string().max(2000).nullable().optional(),
-  metadata: z.record(z.unknown()).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 // Look up by our id OR by externalProjectId — partner can reference whichever.

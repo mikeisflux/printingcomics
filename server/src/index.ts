@@ -1,6 +1,5 @@
-import 'express-async-errors';   // monkey-patches Express 4 to forward
-                                  // async rejections to the error handler
-                                  // instead of crashing the process.
+// Express 5 forwards async rejections from handlers/middleware to the error
+// handler natively — no express-async-errors patch needed.
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -64,12 +63,12 @@ app.use(attachSession);
 // Bot blocker — rejects requests from banned IPs.
 app.use(botBlockerGate);
 
-app.use(rateLimit({ windowMs: 60_000, max: 600, standardHeaders: true, legacyHeaders: false }));
+app.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, now: new Date().toISOString() }));
 
 app.use('/api/config', configRoutes);
-app.use('/api/auth', rateLimit({ windowMs: 60_000, max: 20 }), authRoutes);
+app.use('/api/auth', rateLimit({ windowMs: 60_000, limit: 20 }), authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/checkout', checkoutRoutes);
@@ -91,7 +90,7 @@ app.use(
   '/api/v1',
   rateLimit({
     windowMs: 60_000,
-    max: 300,
+    limit: 300,
     standardHeaders: true,
     legacyHeaders: false,
     // Per-key limiting when the key is on the request, falling back to IP.

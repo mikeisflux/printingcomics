@@ -13,9 +13,9 @@ match — the "runtime" below is only your **build/CI** environment.
 | **pdf-lib** | `1.17.1` | `^1.17.1` | The one required runtime dep. Dynamically imported → lazy-loaded, out of your initial bundle. |
 | **qrcode-generator** | `2.0.4` | `^1.4.4 \|\| ^2.0.0` | **Optional** — only loaded when a data-merge uses QR. Omit if you never generate QR. |
 | **react** / **react-dom** | `19.x` | `^19` | Only for the `<AdminImpose />` component. The engine (`impose.ts` / `dist/impose.mjs`) needs no framework. |
-| **TypeScript** | `5.9.x` | `^5.6` | Only if you consume the `.ts`/`.tsx` sources directly. The `dist/` build + `.d.ts` are plain JS. |
-| **Vite** | `6.x` | `^6` | Any modern bundler works (webpack 5, Rollup 4, esbuild ≥0.28). |
-| **@vitejs/plugin-react** | `4.x` | `^4` | Or your bundler's React/JSX transform. |
+| **TypeScript** | `6.x` | `^5.6` | Only if you consume the `.ts`/`.tsx` sources directly. The `dist/` build + `.d.ts` are plain JS. |
+| **Vite** | `8.x` | `^6` | Any modern bundler works (webpack 5, Rollup 4, esbuild ≥0.28). Vite 8 uses the Rolldown bundler. |
+| **@vitejs/plugin-react** | `6.x` | `^4` | Or your bundler's React/JSX transform. |
 | **esbuild** | `0.28.x` | `^0.28` | Only if you rebuild `dist/impose.mjs` yourself (`npm run build`). |
 
 ### Type packages (dev only)
@@ -37,7 +37,7 @@ The engine emits **ES2020** and relies on: dynamic `import()`, `Blob`,
 ```bash
 # React UI + QR:
 npm install pdf-lib qrcode-generator
-npm install -D typescript@^5.9 @types/react@^19 @types/react-dom@^19 @types/qrcode-generator
+npm install -D typescript@^6 @types/react@^19 @types/react-dom@^19 @types/qrcode-generator
 
 # Engine only, no React, no QR:
 npm install pdf-lib
