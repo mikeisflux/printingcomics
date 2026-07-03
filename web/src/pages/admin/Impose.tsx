@@ -621,7 +621,7 @@ const TOOLS: ToolDef[] = [
   {
     id: 'tickets', name: 'Variable Data Printing', preset: 'Event Tickets (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
     desc: 'Serialize tickets, vouchers, badges and labels.',
-    tags: ['CSV → one cell per row', 'sequential numbering', 'n-up imposed'],
+    tags: ['CSV → one cell per row', 'sequential numbering', 'scannable QR per row'],
     defaultNup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: TicketThumb,
   },
   {
@@ -633,7 +633,7 @@ const TOOLS: ToolDef[] = [
   {
     id: 'coupons', name: 'Coupons', preset: 'Gift Vouchers (CSV merge)', category: 'Tickets & data', engine: 'datamerge',
     desc: 'Serialized coupons & vouchers.',
-    tags: ['Unique code per voucher', 'name merge from CSV', 'n-up imposed'],
+    tags: ['Unique code per voucher', 'name merge from CSV', 'QR per voucher'],
     defaultNup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11 }, Thumb: TicketThumb,
   },
   {
@@ -747,7 +747,7 @@ function Grid({ children }: { children: React.ReactNode }) {
 
 function NoteBanner({ text }: { text: string }) {
   return (
-    <div style={{ padding: '.7rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: '.82rem', color: '#92400e', lineHeight: 1.5 }}>
+    <div style={{ padding: '.7rem 1rem', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderLeft: '3px solid #f59e0b', borderRadius: 8, fontSize: '.82rem', color: 'var(--ink)', lineHeight: 1.5 }}>
       {text}
     </div>
   );
@@ -781,16 +781,17 @@ function SheetPicker<T extends { sheetWIn: number; sheetHIn: number }>({ opts, s
 
 // ── File drop zone ────────────────────────────────────────────────────────────
 
-function FileDrop({ onFile, multiple = false, label = 'Drop a PDF here, or click to select' }: {
-  onFile: (files: File[]) => void; multiple?: boolean; label?: string;
+function FileDrop({ onFile, multiple = false, label = 'Drop a PDF here, or click to select', accept = 'application/pdf,.pdf', sublabel = 'PDF only — processed locally, never uploaded', match }: {
+  onFile: (files: File[]) => void; multiple?: boolean; label?: string; accept?: string; sublabel?: string; match?: (f: File) => boolean;
 }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isPdf = (f: File) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
   const handle = useCallback((files: FileList | null) => {
     if (!files) return;
-    const pdfs = Array.from(files).filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
-    if (pdfs.length) onFile(pdfs);
-  }, [onFile]);
+    const ok = Array.from(files).filter(match ?? isPdf);
+    if (ok.length) onFile(ok);
+  }, [onFile, match]);
   const onDrop = (e: DragEvent) => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files); };
   return (
     <div
@@ -801,15 +802,13 @@ function FileDrop({ onFile, multiple = false, label = 'Drop a PDF here, or click
       style={{
         border: `2px dashed ${drag ? 'var(--brand)' : 'var(--border)'}`,
         borderRadius: 10, padding: '2rem 1.5rem', textAlign: 'center', cursor: 'pointer',
-        background: drag ? '#fff8f8' : 'var(--bg-alt)', transition: 'all .15s',
+        background: 'var(--bg-alt)', transition: 'all .15s',
       }}
     >
       <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>📄</div>
       <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{label}</div>
-      <div style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: '.25rem' }}>
-        PDF only — processed locally, never uploaded
-      </div>
-      <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple={multiple} style={{ display: 'none' }}
+      <div style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: '.25rem' }}>{sublabel}</div>
+      <input ref={inputRef} type="file" accept={accept} multiple={multiple} style={{ display: 'none' }}
         onChange={(e: ChangeEvent<HTMLInputElement>) => handle(e.target.files)} />
     </div>
   );
@@ -1311,13 +1310,14 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
     sheetWIn: tool.defaultNup?.sheetWIn ?? 8.5, sheetHIn: tool.defaultNup?.sheetHIn ?? 11,
     marginIn: 0.35, gutterIn: 0.15, fontSizePt: 11, showBorder: true,
     autoNumber: true, startNumber: 1, numberPrefix: 'No. ', numberPad: 4,
-    addMarks: true, markLenIn: 0.2, markOffIn: 0.1,
+    addMarks: true, markLenIn: 0.2, markOffIn: 0.1, qrColumn: '', qrSizePt: 70,
   });
   const [status, setStatus] = useState<Status>('idle');
   const [errMsg, setErrMsg] = useState('');
   const [info, setInfo] = useState('');
   const set = <K extends keyof DataMergeOptions>(k: K, v: DataMergeOptions[K]) => setOpts(o => ({ ...o, [k]: v }));
   const recordCount = Math.max(0, csv.trim().split('\n').filter(l => l.trim()).length - 1);
+  const headers = useMemo(() => (csv.split('\n')[0] ?? '').split(',').map(h => h.trim()).filter(Boolean), [csv]);
   const loadCsv = useCallback((files: File[]) => { const f = files[0]; if (f) f.text().then(setCsv); }, []);
 
   const gen = async () => {
@@ -1332,12 +1332,16 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
 
   return (
     <div style={{ display: 'grid', gap: '1.25rem' }}>
-      <NoteBanner text="Paste or drop a CSV — the first row is the header; each following row becomes one imposed cell (first column bold). Turn on Auto number for tickets/vouchers. Everything stays in your browser." />
+      <NoteBanner text="Paste or drop a CSV — the first row is the header; each following row becomes one imposed cell (first column bold). Add a running number and/or a scannable QR from any column. Everything stays in your browser." />
       <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
         <h4 style={{ margin: '0 0 .5rem' }}>CSV data <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '.8rem' }}>· {recordCount} record{recordCount !== 1 ? 's' : ''}</span></h4>
         <textarea value={csv} onChange={e => setCsv(e.target.value)} rows={7}
           style={{ ...iStyle, fontFamily: 'ui-monospace, monospace', fontSize: '.82rem', resize: 'vertical' }} />
-        <div style={{ marginTop: '.5rem' }}><FileDrop onFile={loadCsv} label="…or drop a .csv file" /></div>
+        <div style={{ marginTop: '.5rem' }}>
+          <FileDrop onFile={loadCsv} label="…or drop a .csv file"
+            accept=".csv,text/csv,text/plain" sublabel="CSV only — processed locally, never uploaded"
+            match={f => /\.csv$/i.test(f.name) || f.type.includes('csv') || f.type === 'text/plain'} />
+        </div>
       </div>
       <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
         <h4 style={{ margin: '0 0 .75rem' }}>Layout</h4>
@@ -1349,6 +1353,13 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
           <Field label="Gutter (in)"><input type="number" min={0} max={1} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
           <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
           <Field label="Number prefix"><input type="text" value={opts.numberPrefix} onChange={e => set('numberPrefix', e.target.value)} style={iStyle} /></Field>
+          <Field label="QR code from column" note="Encodes each row's value as a scannable QR">
+            <select value={opts.qrColumn} onChange={e => set('qrColumn', e.target.value)} style={iStyle}>
+              <option value="">— none —</option>
+              {headers.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </Field>
+          {opts.qrColumn && <Field label="QR size (pt)"><input type="number" min={28} max={200} step={2} value={opts.qrSizePt} onChange={e => set('qrSizePt', +e.target.value)} style={iStyle} /></Field>}
           <Field label="Options">
             <Row>
               <input type="checkbox" checked={opts.autoNumber} onChange={e => set('autoNumber', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Number</span>

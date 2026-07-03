@@ -788,9 +788,29 @@ export interface DataMergeOptions {
   addMarks: boolean;
   markLenIn: number;
   markOffIn: number;
+  qrColumn: string;   // header name to encode as a QR ('' = no QR)
+  qrSizePt: number;
 }
 
 export interface DataMergeResult { pdf: Uint8Array; records: number; columns: string[]; }
+
+// Draw a scannable QR code (via qrcode-generator) at (x,y) with side `size`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function drawQrCode(page: any, rgb: any, qrcode: any, text: string, x: number, y: number, size: number) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text || ' ');
+  qr.make();
+  const n = qr.getModuleCount();
+  const quiet = 2, total = n + quiet * 2, cell = size / total;
+  page.drawRectangle({ x, y, width: size, height: size, color: rgb(1, 1, 1) });
+  const black = rgb(0, 0, 0);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (!qr.isDark(r, c)) continue;
+    const mx = x + (quiet + c) * cell;
+    const my = y + size - (quiet + r + 1) * cell;
+    page.drawRectangle({ x: mx, y: my, width: cell + 0.3, height: cell + 0.3, color: black });
+  }
+}
 
 export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): Promise<DataMergeResult> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
@@ -808,6 +828,10 @@ export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): 
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const off = opts.markOffIn * PT, len = opts.markLenIn * PT;
+  const qrIdx = opts.qrColumn ? headers.indexOf(opts.qrColumn) : -1;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let qrcode: any = null;
+  if (qrIdx >= 0) { const mod = await import('qrcode-generator'); qrcode = (mod as unknown as { default?: unknown }).default ?? mod; }
   let idx = 0;
   for (let si = 0; si < numSheets; si++) {
     const pg = doc.addPage([shW, shH]);
@@ -816,19 +840,23 @@ export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): 
       const rec = records[idx]!; const num = opts.startNumber + idx; idx++;
       const x = mPt + c * (cellW + gPt), y = shH - mPt - cellH - r * (cellH + gPt);
       if (opts.showBorder) pg.drawRectangle({ x, y, width: cellW, height: cellH, borderColor: rgb(0.8, 0.8, 0.82), borderWidth: 0.5 });
+      const qrOn = !!qrcode && qrIdx >= 0;
+      const qrSize = qrOn ? Math.max(28, Math.min(opts.qrSizePt, cellH - 16, cellW * 0.5)) : 0;
+      const maxChars = qrOn ? 20 : 34;
       let ty = y + cellH - opts.fontSizePt - 8;
       for (let f = 0; f < headers.length && f < 6; f++) {
         const val = (rec[f] ?? '').trim();
         if (!val) continue;
         const size = f === 0 ? opts.fontSizePt + 2 : opts.fontSizePt;
-        pg.drawText(val.length > 34 ? val.slice(0, 33) + '…' : val, { x: x + 8, y: ty, font: f === 0 ? bold : font, size, color: rgb(0.1, 0.1, 0.1) });
+        pg.drawText(val.length > maxChars ? val.slice(0, maxChars - 1) + '…' : val, { x: x + 8, y: ty, font: f === 0 ? bold : font, size, color: rgb(0.1, 0.1, 0.1) });
         ty -= size + 4;
         if (ty < y + 14) break;
       }
+      if (qrOn) drawQrCode(pg, rgb, qrcode, (rec[qrIdx] ?? '').trim(), x + cellW - qrSize - 8, y + (cellH - qrSize) / 2, qrSize);
       if (opts.autoNumber) {
         const label = `${opts.numberPrefix}${String(num).padStart(opts.numberPad, '0')}`;
         const tw = font.widthOfTextAtSize(label, opts.fontSizePt);
-        pg.drawText(label, { x: x + cellW - tw - 8, y: y + 8, font, size: opts.fontSizePt, color: rgb(0.42, 0.42, 0.45) });
+        pg.drawText(label, { x: qrOn ? x + 8 : x + cellW - tw - 8, y: y + 8, font, size: opts.fontSizePt, color: rgb(0.42, 0.42, 0.45) });
       }
       if (opts.addMarks) drawCropMarks(pg, rgb, x, y, cellW, cellH, off, len);
     }
