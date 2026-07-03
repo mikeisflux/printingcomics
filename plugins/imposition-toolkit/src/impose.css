@@ -1,0 +1,80 @@
+/*
+ * Imposition Toolkit — standalone stylesheet
+ * ------------------------------------------------------------------
+ * The <AdminImpose /> component styles itself with a small set of CSS
+ * custom properties and three utility classes. In its original app these
+ * came from a global stylesheet; this file provides them so the component
+ * looks right on ANY site with zero extra setup.
+ *
+ * REBRANDING: override the custom properties below anywhere above the
+ * component (e.g. on :root or a wrapper element) to match your brand —
+ * you do not need to edit this file. For example:
+ *
+ *     :root { --brand:#c61a22; --brand-dark:#a21419; --radius:6px; }
+ *
+ * If your site already defines these variables/classes, you can skip
+ * importing this file entirely.
+ */
+
+:root {
+  --brand: #4f46e5;       /* primary action color (buttons, active tabs) */
+  --brand-dark: #4338ca;  /* button hover */
+  --bg: #ffffff;          /* surface / input background */
+  --bg-alt: #f8fafc;      /* subtle panel / thumbnail background */
+  --ink: #0f172a;         /* primary text */
+  --muted: #64748b;       /* secondary text, labels, notes */
+  --border: #e2e8f0;      /* hairlines, input borders */
+  --radius: 8px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .55rem 1.1rem;
+  background: var(--brand);
+  color: #fff;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  text-decoration: none;
+}
+.btn:hover { background: var(--brand-dark); color: #fff; }
+.btn.secondary { background: transparent; color: var(--brand); border-color: var(--brand); }
+.btn.secondary:hover { background: var(--brand); color: #fff; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ── Card panel ───────────────────────────────────────────────────── */
+.admin-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Tables (booklet press-order preview, pricing tables) ─────────── */
+.admin-table { width: 100%; border-collapse: collapse; }
+.admin-table th,
+.admin-table td { padding: .6rem .75rem; border-bottom: 1px solid var(--border); text-align: left; }
+.admin-table th { background: var(--bg-alt); font-weight: 600; font-size: .85rem; }
+
+/*
+ * DARK MODE (optional)
+ * The component's structural colors come from the tokens above, so a dark
+ * theme is mostly a matter of redefining them. A few inline accent colors
+ * (warning banners, page badges) are intentionally light-fixed. To enable,
+ * copy this into your app and drop the comment markers:
+ *
+ * @media (prefers-color-scheme: dark) {
+ *   :root {
+ *     --bg:#0f172a; --bg-alt:#1e293b; --ink:#e2e8f0;
+ *     --muted:#94a3b8; --border:#334155;
+ *   }
+ * }
+ */

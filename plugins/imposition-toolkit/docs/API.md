@@ -1,0 +1,260 @@
+# API Reference — `impose.ts`
+
+The engine is a single ES module exporting 18 functions. Every processing
+function is `async` and returns a `Uint8Array` of PDF bytes (or an array of
+them), except the two download helpers. `pdf-lib` is imported dynamically inside
+each function, so importing the module costs nothing until you actually call a
+tool.
+
+All dimensions are in **inches** unless a name ends in `Pt` (PDF points, 1 in =
+72 pt). PDFs opened with `{ ignoreEncryption: true }`, so most password-free-but-
+flagged files still work.
+
+```ts
+import {
+  getPdfInfo, imposeBooklet, computeNUpGrid, imposeNUp, imposeTickets,
+  addCropMarksOnly, mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf,
+  shufflePages, cropPdf, addPageNumbers, addColorBar, imposeTiledPoster,
+  downloadPdf, downloadMultiple,
+} from './impose';
+```
+
+---
+
+## Inspection
+
+### `getPdfInfo(bytes): Promise<PdfPageInfo>`
+
+Read basic geometry of a PDF (from its first page).
+
+```ts
+interface PdfPageInfo {
+  count: number;      // page count
+  widthPt: number;    // first-page width in points
+  heightPt: number;   // first-page height in points
+  widthIn: number;    // width in inches (3-decimal rounded)
+  heightIn: number;   // height in inches
+}
+```
+
+Throws `"PDF has no pages"` for an empty document.
+
+---
+
+## Booklets
+
+### `imposeBooklet(bytes, opts): Promise<Uint8Array>`
+
+2-up saddle-stitch imposition. Pads the page count up to a multiple of 4, then
+lays out reader spreads in printing order with optional creep compensation and
+crop marks. Output pages are press spreads (`2 × page width + margins` wide),
+ordered Side A / Side B for each sheet — print duplex, short-edge (tumble).
+
+```ts
+interface BookletOptions {
+  rtl: boolean;       // right-to-left binding (manga)
+  marginIn: number;   // blank margin around the spread (room for marks)
+  gutterIn: number;   // extra gap at the spine (usually 0)
+  creepIn: number;    // total outward shift across all sheets (shingling)
+  addMarks: boolean;  // draw crop marks at each page corner
+  markLenIn: number;  // crop-mark length
+  markOffIn: number;  // gap between trim edge and where the mark starts
+}
+```
+
+Used by: Comic Book, Booklet, Magazine, Perfect-Bound, Zine, Program, Catalog,
+Greeting Card, Menu/Bi-fold. See [ARCHITECTURE.md](ARCHITECTURE.md#saddle-stitch)
+for the page-ordering formula.
+
+---
+
+## N-Up / grids / cards
+
+### `computeNUpGrid(opts): NUpGrid`
+
+Pure helper (no PDF I/O) that resolves an `NUpOptions` into a concrete grid.
+Use it to drive a live preview so the UI and the engine agree exactly.
+
+```ts
+interface NUpGrid {
+  cols: number; rows: number;
+  cellWPt: number; cellHPt: number;   // cell size in points
+  leftGapPt: number; topGapPt: number; // offset of the grid block from sheet edge
+  gxPt: number; gyPt: number;          // horizontal / vertical gutter in points
+}
+```
+
+### `imposeNUp(bytes, opts): Promise<Uint8Array>`
+
+Place pages onto press sheets in a grid. Two modes:
+
+- **Grid mode** (default): you specify `cols` × `rows`; each cell is
+  `(sheet − margins − gutters) / count`, filled edge-to-edge.
+- **Fixed-cell mode** (set `cellWIn` + `cellHIn`): each item is placed at a fixed
+  physical size (business cards, trading cards, labels). `cols`/`rows` are
+  **auto-computed** to fit the sheet and the block is **centered**.
+
+```ts
+interface NUpOptions {
+  cols: number;
+  rows: number;
+  sheetWIn: number;
+  sheetHIn: number;
+  marginIn: number;
+  gutterIn: number;      // horizontal gutter (and vertical, unless gutterYIn set)
+  repeatFirst: boolean;  // true = step & repeat (page 1 in every cell)
+  addMarks: boolean;
+  markLenIn: number;
+  markOffIn: number;
+  cellWIn?: number;      // fixed-cell mode: item width  (enables auto grid)
+  cellHIn?: number;      // fixed-cell mode: item height
+  gutterYIn?: number;    // vertical gutter override (e.g. 0 for Avery 5160)
+  cutStack?: boolean;    // cut-and-stack page ordering (see below)
+}
+```
+
+**Page ordering** for cell index `k` (row-major) on sheet `s` of `numSheets`:
+
+| Mode | Source page |
+|---|---|
+| `repeatFirst` | always page 1 |
+| `cutStack` | `k · numSheets + s` |
+| sequential (default) | `s · perSheet + k` |
+
+Used by: N-Up Grid, Step & Repeat, Cut & Stack, Contact Sheet, Optimal Fit, and
+every Cards & Labels / Folding tool. See
+[ARCHITECTURE.md](ARCHITECTURE.md#n-up) for the geometry.
+
+---
+
+## Tickets & data
+
+### `imposeTickets(bytes, opts): Promise<Uint8Array>`
+
+Repeats page 1 of the source across a grid and stamps a **sequential number** on
+each copy — raffle tickets, numbered stubs, wristbands.
+
+```ts
+interface TicketOptions {
+  cols: number; rows: number;
+  sheetWIn: number; sheetHIn: number;
+  marginIn: number; gutterIn: number;
+  startNumber: number;   // first ticket number
+  count: number;         // total tickets (spills onto as many sheets as needed)
+  prefix: string;        // e.g. "No. "
+  pad: number;           // zero-pad width, e.g. 4 → "0001"
+  position: 'bottom-right'|'bottom-left'|'top-right'|'top-left'|'bottom-center'|'top-center';
+  fontSizePt: number;
+  addMarks: boolean; markLenIn: number; markOffIn: number;
+}
+```
+
+---
+
+## Marks & prepress
+
+### `addCropMarksOnly(bytes, opts): Promise<Uint8Array>`
+
+Adds a blank margin around each page and draws trim marks — without rearranging
+pages. `bleedIn` tells it how far inside the page edge the trim line sits.
+
+```ts
+interface CropMarksOptions {
+  bleedIn: number; marginIn: number; markLenIn: number; markOffIn: number;
+}
+```
+
+### `addColorBar(bytes, opts): Promise<Uint8Array>`
+
+Appends a CMYK / registration color strip along one edge; grows each page by
+`heightIn`.
+
+```ts
+addColorBar(bytes, { position: 'bottom' | 'top', heightIn: number })
+```
+
+### `addPageNumbers(bytes, opts): Promise<Uint8Array>`
+
+Stamps folio numbers using the built-in Helvetica font.
+
+```ts
+interface PageNumberOptions {
+  position: 'bottom-center'|'bottom-right'|'bottom-left'|'top-center'|'top-right'|'top-left';
+  startAt: number;  // number printed on page 1
+  prefix: string; suffix: string;
+  fontSizePt: number; marginPt: number;
+}
+```
+
+---
+
+## Large format
+
+### `imposeTiledPoster(bytes, opts): Promise<Uint8Array>`
+
+Scales page 1 up and slices it across a grid of sheets with glue overlap.
+
+```ts
+imposeTiledPoster(bytes, {
+  tilesAcross: number; tilesDown: number;
+  sheetWIn: number; sheetHIn: number;
+  overlapIn: number;                        // shared glue margin between tiles
+  addMarks: boolean; markLenIn: number; markOffIn: number;
+})
+```
+
+---
+
+## Page & PDF utilities
+
+### `mergePdfs(files: Uint8Array[]): Promise<Uint8Array>`
+Concatenate several PDFs into one, in array order.
+
+### `rotatePdf(bytes, angleDeg: 90 | 180 | 270): Promise<Uint8Array>`
+Rotate every page (adds to any existing rotation).
+
+### `flipPdf(bytes, direction: 'h' | 'v'): Promise<Uint8Array>`
+Mirror every page horizontally or vertically (true content mirror, not rotation).
+
+### `splitPdf(bytes, ranges: string): Promise<Uint8Array[]>`
+Split into multiple files by 1-based ranges. `ranges` is comma-separated, each
+part `"a-b"` or `"n"`, e.g. `"1-3, 4-6, 7"`. Returns one `Uint8Array` per range.
+
+### `shufflePages(bytes, orderStr: string): Promise<Uint8Array>`
+Reorder / duplicate / drop pages. `orderStr` is a comma list of 1-based page
+numbers, e.g. `"3,1,2,2"` (page 2 duplicated, others dropped if omitted). Throws
+if no valid numbers.
+
+### `cropPdf(bytes, { top, right, bottom, left }): Promise<Uint8Array>`
+Set each page's CropBox and TrimBox inward by the given inches per edge.
+
+### `overlayPdf(base, stamp, opts): Promise<Uint8Array>`
+Stamp `stamp` (page `i % stampPages` for each base page `i`) over `base`.
+
+```ts
+interface OverlayOptions {
+  opacity: number;                   // 0–1
+  mode: 'center' | 'fill' | 'tile';
+  tileRows?: number; tileCols?: number; // for mode:'tile' (default 2×2)
+}
+```
+
+---
+
+## Download helpers (browser only)
+
+These touch `Blob`, `URL`, and `document` — call them only in the browser.
+
+### `downloadPdf(bytes, filename): void`
+Trigger a browser download of one PDF.
+
+### `downloadMultiple(files, baseName): void`
+Download each file as `${baseName}-part${n}.pdf` (used by Split).
+
+---
+
+## Error handling
+
+Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).
+Wrap calls in `try/catch` and surface `err.message`. Encrypted-but-openable PDFs
+are tolerated; truly password-protected ones will throw on load.
