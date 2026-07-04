@@ -349,6 +349,33 @@ Annotate each page with its trim size (inches + points) on the bottom + left.
 - **`shufflePages(bytes, expr)`** — `expr` is now an expression language: ranges
   (`1-5` / `5-1`), rotation suffixes (`>` `<` `^`), and blank tokens (`B`/`X`/`_`).
 
+## v1.2.7 — nesting
+
+### `nestPdf(bytes, opts: NestOptions): Promise<Uint8Array>`
+Gang mixed-size die-cut artwork (each source page is one shape) onto a sheet or
+continuous roll with the least waste.
+
+```ts
+interface NestOptions {
+  sheetWIn: number; sheetHIn: number;   // media size (sheet); on a roll only width is fixed
+  roll?: boolean;                        // continuous roll → height grows to fit
+  paddingIn: number;                     // gap between items
+  marginIn: number;                      // sheet edge margin
+  allowRotate?: boolean;                 // permit 90° rotation for a tighter pack
+  copies?: number;                       // fixed copy count per design…
+  fillSheet?: boolean;                   // …or pack as many as fit
+  trueShape?: boolean;                   // pack into each other's negative space
+  dpi?: number;                          // true-shape raster resolution (default 36)
+}
+```
+
+Default packing is a **skyline bottom-left** bin-pack over each item's bounding
+box (fast, rectangular). With `trueShape: true` the engine rasterises each
+artwork's alpha outline (via `pdfjs-dist`, an optional peer) into an occupancy
+grid and nests items into each other's concave negative space — best for
+irregular contours. If a rasteriser isn't available (e.g. a non-DOM host), it
+transparently falls back to the skyline pack.
+
 ## Error handling
 
 Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).

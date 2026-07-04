@@ -138,6 +138,42 @@ async function imposeNUpBook(bytes, opts) {
   }
   return outDoc.save();
 }
+async function imposeCalendar(bytes, opts) {
+  const { PDFDocument, rgb, degrees } = await import("pdf-lib");
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = srcDoc.getPages();
+  const N = pages.length;
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(pages);
+  const markStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
+  const off = opts.markOffIn * PT, len = opts.markLenIn * PT;
+  if (!opts.halfSheet) {
+    for (let i = 0; i < N; i++) {
+      const { width: w, height: h } = pages[i].getSize();
+      const pg = outDoc.addPage([w, h]);
+      const isBack = i % 2 === 1;
+      if (opts.rotateBack && isBack) pg.drawPage(embeds[i], { x: w, y: h, width: w, height: h, rotate: degrees(180) });
+      else pg.drawPage(embeds[i], { x: 0, y: 0, width: w, height: h });
+      if (opts.addMarks) drawCropMarks(pg, rgb, 0, 0, w, h, off, len, markStyle);
+    }
+  } else {
+    const { width: w, height: h } = pages[0].getSize();
+    for (let k = 0; k * 2 < Math.max(1, N); k++) {
+      const top = k * 2, bot = k * 2 + 1;
+      const pg = outDoc.addPage([w, 2 * h]);
+      if (top < N) pg.drawPage(embeds[top], { x: 0, y: h, width: w, height: h });
+      if (bot < N) {
+        if (opts.rotateBack) pg.drawPage(embeds[bot], { x: w, y: h, width: w, height: h, rotate: degrees(180) });
+        else pg.drawPage(embeds[bot], { x: 0, y: 0, width: w, height: h });
+      }
+      if (opts.addMarks) {
+        drawCropMarks(pg, rgb, 0, h, w, h, off, len, markStyle);
+        drawCropMarks(pg, rgb, 0, 0, w, h, off, len, markStyle);
+      }
+    }
+  }
+  return outDoc.save();
+}
 function computeNUpGrid(opts) {
   const shW = opts.sheetWIn * PT, shH = opts.sheetHIn * PT, mPt = opts.marginIn * PT;
   const gxPt = opts.gutterIn * PT, gyPt = (opts.gutterYIn ?? opts.gutterIn) * PT;
@@ -694,19 +730,36 @@ async function addColorBar(bytes, opts) {
   const { PDFDocument, rgb } = await import("pdf-lib");
   const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const srcPages = srcDoc.getPages();
+  const sel = parsePageRange(opts.pages ?? "all", srcPages.length);
   const outDoc = await PDFDocument.create();
   const embeds = await outDoc.embedPages(srcPages);
   const barH = opts.heightIn * PT;
+  const swatches = opts.spot ? [...COLOR_BAR_SWATCHES, { r: 0.6, g: 0.1, b: 0.5 }, { r: 0.1, g: 0.5, b: 0.4 }] : COLOR_BAR_SWATCHES;
+  const shape = opts.shape ?? "rect";
+  const vertical = opts.edge === "left" || opts.edge === "right";
   for (let i = 0; i < embeds.length; i++) {
     const { width: pw, height: ph } = srcPages[i].getSize();
-    const pg = outDoc.addPage([pw, ph + barH]);
-    const contentY = opts.position === "bottom" ? barH : 0;
-    pg.drawPage(embeds[i], { x: 0, y: contentY, width: pw, height: ph });
-    const barY = opts.position === "bottom" ? 0 : ph;
-    const sw = pw / COLOR_BAR_SWATCHES.length;
-    for (let j = 0; j < COLOR_BAR_SWATCHES.length; j++) {
-      const s = COLOR_BAR_SWATCHES[j];
-      pg.drawRectangle({ x: j * sw, y: barY, width: sw, height: barH, color: rgb(s.r, s.g, s.b), borderWidth: 0 });
+    if (!sel.has(i + 1)) {
+      const pg2 = outDoc.addPage([pw, ph]);
+      pg2.drawPage(embeds[i], { x: 0, y: 0, width: pw, height: ph });
+      continue;
+    }
+    const nw = vertical ? pw + barH : pw, nh = vertical ? ph : ph + barH;
+    const cx = opts.edge === "left" ? barH : 0, cy = opts.edge === "bottom" ? barH : 0;
+    const pg = outDoc.addPage([nw, nh]);
+    pg.drawPage(embeds[i], { x: cx, y: cy, width: pw, height: ph });
+    const n = swatches.length, along = vertical ? ph : pw, step = along / n;
+    for (let j = 0; j < n; j++) {
+      const s = swatches[j], col = rgb(s.r, s.g, s.b);
+      const bx = opts.edge === "left" ? 0 : opts.edge === "right" ? pw : cx + j * step;
+      const by = opts.edge === "bottom" ? 0 : opts.edge === "top" ? ph : cy + j * step;
+      if (vertical) {
+        if (shape === "circle") pg.drawEllipse({ x: bx + barH / 2, y: by + step / 2, xScale: barH / 2 - 1, yScale: step / 2 - 1, color: col });
+        else pg.drawRectangle({ x: bx, y: by, width: barH, height: shape === "square" ? Math.min(step, barH) : step, color: col, borderWidth: 0 });
+      } else {
+        if (shape === "circle") pg.drawEllipse({ x: bx + step / 2, y: by + barH / 2, xScale: step / 2 - 1, yScale: barH / 2 - 1, color: col });
+        else pg.drawRectangle({ x: bx, y: by, width: shape === "square" ? Math.min(step, barH) : step, height: barH, color: col, borderWidth: 0 });
+      }
     }
   }
   return outDoc.save();
@@ -744,18 +797,28 @@ async function generateBleed(bytes, opts) {
   const { PDFDocument, rgb, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = await import("pdf-lib");
   const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const srcPages = srcDoc.getPages();
+  const sel = parsePageRange(opts.pages ?? "all", srcPages.length);
   const outDoc = await PDFDocument.create();
   const embeds = await outDoc.embedPages(srcPages);
   const b = opts.bleedIn * PT, mode = opts.mode ?? "scale";
   for (let i = 0; i < embeds.length; i++) {
     const { width: w, height: h } = srcPages[i].getSize();
     const emb = embeds[i];
+    if (!sel.has(i + 1)) {
+      const pg2 = outDoc.addPage([w, h]);
+      pg2.drawPage(emb, { x: 0, y: 0, width: w, height: h });
+      continue;
+    }
     const pg = outDoc.addPage([w + 2 * b, h + 2 * b]);
     if (mode === "scale") {
       pg.drawPage(emb, { x: 0, y: 0, width: w + 2 * b, height: h + 2 * b });
     } else if (mode === "solid") {
       const col = opts.color ?? { r: 1, g: 1, b: 1 };
       pg.drawRectangle({ x: 0, y: 0, width: w + 2 * b, height: h + 2 * b, color: rgb(col.r, col.g, col.b) });
+      pg.drawPage(emb, { x: b, y: b, width: w, height: h });
+    } else if (mode === "repeat") {
+      for (const [ox, oy] of [[-w, 0], [w, 0], [0, -h], [0, h], [-w, -h], [w, -h], [-w, h], [w, h]])
+        pg.drawPage(emb, { x: b + ox, y: b + oy, width: w, height: h });
       pg.drawPage(emb, { x: b, y: b, width: w, height: h });
     } else {
       const draw = (mx, my) => {
@@ -787,9 +850,11 @@ function applyTokens(text, ctx) {
   return text.replace(/\[page-number(?::0*(\d+))?\]/g, (_m, pad) => pad ? String(ctx.pageNum).padStart(+pad, "0") : String(ctx.pageNum)).replace(/\[page-count\]/g, String(ctx.pageCount)).replace(/\[sheet-number\]/g, String(ctx.pageNum)).replace(/\[file-name\]/g, ctx.fileName ?? "").replace(/\[timestamp(?::([^\]]+))?\]/g, (_m, f) => fmtDate(now, f || "%Y-%m-%d"));
 }
 async function addHeaderFooter(bytes, opts) {
-  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontName = opts.font === "times" ? StandardFonts.TimesRoman : opts.font === "courier" ? StandardFonts.Courier : StandardFonts.Helvetica;
+  const font = await doc.embedFont(fontName);
+  const rot = opts.rotationDeg ?? 0;
   const pages = doc.getPages(), count = pages.length;
   for (const [i, pg] of pages.entries()) {
     const { width: w, height: h } = pg.getSize();
@@ -800,7 +865,7 @@ async function addHeaderFooter(bytes, opts) {
       const text = applyTokens(raw, { pageNum: i + 1, pageCount: count, fileName: opts.fileName });
       const tw = font.widthOfTextAtSize(text, opts.fontSizePt);
       const x = align === "right" ? w - opts.marginPt - tw : align === "left" ? opts.marginPt : (w - tw) / 2;
-      pg.drawText(text, { x, y, font, size: opts.fontSizePt, color: rgb(0.1, 0.1, 0.1) });
+      pg.drawText(text, { x, y, font, size: opts.fontSizePt, color: rgb(0.1, 0.1, 0.1), ...rot ? { rotate: degrees(rot) } : {} });
     }
   }
   return doc.save();
@@ -1190,12 +1255,17 @@ async function nudgePdf(bytes, opts) {
   const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = await import("pdf-lib");
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = src.getPages();
+  const sel = parsePageRange(opts.pages ?? "all", pages.length);
   const out = await PDFDocument.create();
   const embeds = await out.embedPages(pages);
   const dx = opts.dxIn * PT, dy = opts.dyIn * PT, rad = opts.rotateDeg * Math.PI / 180;
   for (let i = 0; i < embeds.length; i++) {
     const { width: w, height: h } = pages[i].getSize();
     const pg = out.addPage([w, h]);
+    if (!sel.has(i + 1)) {
+      pg.drawPage(embeds[i], { x: 0, y: 0, width: w, height: h });
+      continue;
+    }
     const cos = Math.cos(rad), sin = Math.sin(rad), cx = w / 2, cy = h / 2;
     const a = cos, b = sin, c = -sin, d = cos;
     const e = cx + dx - (a * cx + c * cy), f = cy + dy - (b * cx + d * cy);
@@ -1261,6 +1331,223 @@ async function addDimensions(bytes) {
   }
   return doc.save();
 }
+function skylineFind(sky, w, h, sheetW, sheetH) {
+  let best = null;
+  for (let i = 0; i < sky.length; i++) {
+    const x = sky[i].x;
+    if (x + w > sheetW + 1e-6) continue;
+    let y = 0, covered = 0, j = i;
+    while (j < sky.length && covered < w - 1e-6) {
+      y = Math.max(y, sky[j].y);
+      covered += sky[j].w;
+      j++;
+    }
+    if (covered < w - 1e-6) continue;
+    if (y + h > sheetH + 1e-6) continue;
+    if (!best || y < best.y - 1e-6 || Math.abs(y - best.y) < 1e-6 && x < best.x) best = { x, y };
+  }
+  return best;
+}
+function skylinePlace(sky, x, y, w, h) {
+  const top = y + h;
+  const out = [];
+  for (const s of sky) {
+    const sx0 = s.x, sx1 = s.x + s.w;
+    if (sx1 <= x + 1e-6 || sx0 >= x + w - 1e-6) {
+      out.push(s);
+      continue;
+    }
+    if (sx0 < x - 1e-6) out.push({ x: sx0, y: s.y, w: x - sx0 });
+    if (sx1 > x + w + 1e-6) out.push({ x: x + w, y: s.y, w: sx1 - (x + w) });
+  }
+  out.push({ x, y: top, w });
+  out.sort((a, b) => a.x - b.x);
+  const merged = [];
+  for (const s of out) {
+    const last = merged[merged.length - 1];
+    if (last && Math.abs(last.y - s.y) < 1e-6 && Math.abs(last.x + last.w - s.x) < 1e-6) last.w += s.w;
+    else merged.push({ ...s });
+  }
+  return merged;
+}
+async function rasterizeOccupancy(bytes, pageIndex, cellPt) {
+  try {
+    if (typeof document === "undefined") return null;
+    const pdfjs = await import("pdfjs-dist");
+    try {
+      pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+    } catch {
+    }
+    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const page = await doc.getPage(pageIndex + 1);
+    const scale = 72 / cellPt;
+    const vp = page.getViewport({ scale });
+    const cols = Math.max(1, Math.ceil(vp.width)), rows = Math.max(1, Math.ceil(vp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = cols;
+    canvas.height = rows;
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport: vp, background: "rgba(0,0,0,0)" }).promise;
+    const data = ctx.getImageData(0, 0, cols, rows).data;
+    const grid = [];
+    for (let r = 0; r < rows; r++) {
+      const row = [];
+      for (let c = 0; c < cols; c++) row.push(data[(r * cols + c) * 4 + 3] > 16);
+      grid.push(row);
+    }
+    return grid;
+  } catch {
+    return null;
+  }
+}
+async function nestTrueShape(bytes, srcPages, items, opts) {
+  const cellPt = Math.max(2, 72 / (opts.dpi ?? 36));
+  const occ = [];
+  for (let i = 0; i < srcPages.length; i++) occ[i] = await rasterizeOccupancy(bytes, i, cellPt);
+  if (occ.some((o) => !o)) return null;
+  const pad = Math.round(opts.paddingIn * PT / cellPt);
+  const m = Math.round(opts.marginIn * PT / cellPt);
+  const SW = Math.floor(opts.sheetWIn * PT / cellPt) - 2 * m;
+  const SH = opts.roll ? 1e5 : Math.floor(opts.sheetHIn * PT / cellPt) - 2 * m;
+  const rot90 = (g) => {
+    const R = g.length, C = g[0].length;
+    const o = Array.from({ length: C }, () => new Array(R).fill(false));
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (g[r][c]) o[C - 1 - c][r] = true;
+    return o;
+  };
+  const sheets = [];
+  let grid = new Uint8Array(SW * (opts.roll ? 4e3 : SH));
+  let gridH = opts.roll ? 4e3 : SH;
+  let placed = [];
+  const fits = (shape, px, py) => {
+    const R = shape.length, C = shape[0].length;
+    if (px + C > SW || py + R > gridH) return false;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (shape[r][c]) {
+      const gy = py + r, gx = px + c;
+      if (grid[gy * SW + gx]) return false;
+    }
+    return true;
+  };
+  const stamp = (shape, px, py) => {
+    const R = shape.length, C = shape[0].length;
+    for (let r = -pad; r < R + pad; r++) for (let c = -pad; c < C + pad; c++) {
+      const sr = Math.min(Math.max(r, 0), R - 1), sc = Math.min(Math.max(c, 0), C - 1);
+      if (shape[sr][sc]) {
+        const gy = py + r, gx = px + c;
+        if (gy >= 0 && gy < gridH && gx >= 0 && gx < SW) grid[gy * SW + gx] = 1;
+      }
+    }
+  };
+  const flush = () => {
+    if (placed.length) sheets.push(placed);
+    placed = [];
+    grid = new Uint8Array(SW * gridH);
+  };
+  for (const it of items) {
+    const shapes = [[occ[it.page], false]];
+    if (opts.allowRotate) shapes.push([rot90(occ[it.page]), true]);
+    let done = false;
+    for (let attempt = 0; attempt < 2 && !done; attempt++) {
+      let best = null;
+      for (const [shape, rot] of shapes) {
+        outer: for (let py = 0; py <= gridH - shape.length; py++) for (let px = 0; px <= SW - shape[0].length; px++) {
+          if (fits(shape, px, py)) {
+            if (!best || py < best.y || py === best.y && px < best.x) best = { x: px, y: py, shape, rot };
+            break outer;
+          }
+        }
+      }
+      if (best) {
+        stamp(best.shape, best.x, best.y);
+        const w = best.rot ? it.h : it.w, h = best.rot ? it.w : it.h;
+        placed.push({ page: it.page, x: (m + best.x) * cellPt, y: best.y * cellPt, w, h, rot: best.rot });
+        done = true;
+      } else if (opts.fillSheet) {
+        done = true;
+      } else flush();
+    }
+    if (opts.fillSheet && !done) break;
+  }
+  if (placed.length) sheets.push(placed);
+  return sheets.length ? sheets : null;
+}
+async function nestPdf(bytes, opts) {
+  const { PDFDocument, degrees } = await import("pdf-lib");
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  if (!srcPages.length) throw new Error("Empty PDF");
+  const pad = opts.paddingIn * PT, m = opts.marginIn * PT;
+  const sheetW = opts.sheetWIn * PT - 2 * m;
+  const sheetH = opts.roll ? Infinity : opts.sheetHIn * PT - 2 * m;
+  const base = srcPages.map((p, i) => {
+    const s = p.getSize();
+    return { page: i, w: s.width, h: s.height };
+  });
+  const items = [];
+  if (opts.fillSheet) {
+    const per = 400;
+    for (let c = 0; c < per; c++) for (const b of base) items.push({ ...b });
+  } else {
+    for (let c = 0; c < Math.max(1, opts.copies); c++) for (const b of base) items.push({ ...b });
+  }
+  items.sort((a, b) => b.h - a.h);
+  if (opts.trueShape) {
+    const ts = await nestTrueShape(bytes, srcPages, items, opts);
+    if (ts) return renderNest(await PDFDocument.create(), srcPages, ts, opts, degrees);
+  }
+  const sheets = [];
+  let sky = [{ x: 0, y: 0, w: sheetW }];
+  let placed = [];
+  let maxTop = 0;
+  const newSheet = () => {
+    if (placed.length) sheets.push(placed);
+    placed = [];
+    sky = [{ x: 0, y: 0, w: sheetW }];
+    maxTop = 0;
+  };
+  for (const it of items) {
+    const tryOrient = opts.allowRotate ? [[it.w, it.h, false], [it.h, it.w, true]] : [[it.w, it.h, false]];
+    let done = false;
+    for (let attempt = 0; attempt < 2 && !done; attempt++) {
+      let bestPos = null;
+      for (const [w, h, rot] of tryOrient) {
+        const wp = w + pad, hp = h + pad;
+        const pos = skylineFind(sky, wp, hp, sheetW, sheetH);
+        if (pos && (!bestPos || pos.y < bestPos.y)) bestPos = { x: pos.x, y: pos.y, w: wp, h: hp, rot };
+      }
+      if (bestPos) {
+        placed.push({ page: it.page, x: m + bestPos.x, y: bestPos.y, w: bestPos.w - pad, h: bestPos.h - pad, rot: bestPos.rot });
+        sky = skylinePlace(sky, bestPos.x, bestPos.y, bestPos.w, bestPos.h);
+        maxTop = Math.max(maxTop, bestPos.y + bestPos.h);
+        done = true;
+      } else if (opts.fillSheet) {
+        done = true;
+      } else {
+        newSheet();
+      }
+    }
+    if (opts.fillSheet && !done) break;
+  }
+  if (placed.length) sheets.push(placed);
+  if (!sheets.length) throw new Error("Nothing fit \u2014 increase sheet size or reduce item size.");
+  return renderNest(await PDFDocument.create(), srcPages, sheets, opts, degrees);
+}
+async function renderNest(outDoc, srcPages, sheets, opts, degrees) {
+  const m = opts.marginIn * PT;
+  const embeds = await outDoc.embedPages(srcPages);
+  for (const sheet of sheets) {
+    const usedTop = Math.max(...sheet.map((p) => p.y + p.h));
+    const pageH = opts.roll ? usedTop + 2 * m : opts.sheetHIn * PT;
+    const pg = outDoc.addPage([opts.sheetWIn * PT, pageH]);
+    for (const it of sheet) {
+      const emb = embeds[it.page];
+      const yTop = pageH - m - (it.y + it.h);
+      if (it.rot) pg.drawPage(emb, { x: it.x + it.w, y: yTop, width: it.h, height: it.w, rotate: degrees(90) });
+      else pg.drawPage(emb, { x: it.x, y: yTop, width: it.w, height: it.h });
+    }
+  }
+  return outDoc.save();
+}
 function downloadPdf(bytes, filename) {
   const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
@@ -1298,6 +1585,7 @@ export {
   generateBleed,
   getPdfInfo,
   imposeBooklet,
+  imposeCalendar,
   imposeDataMerge,
   imposeNUp,
   imposeNUpBook,
@@ -1308,6 +1596,7 @@ export {
   makeZip,
   mergePdfs,
   mixPdfs,
+  nestPdf,
   nudgePdf,
   overlayPdf,
   parsePageRange,

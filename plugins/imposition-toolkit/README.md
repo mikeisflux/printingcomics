@@ -1,6 +1,6 @@
 # Imposition Toolkit
 
-A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **73
+A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **75
 print-production tools + 156 ready-made industry templates + 6 chained
 workflows** plus 5 planning calculators, extracted from the Printing Comics
 storefront so it can be dropped into any other website.
@@ -27,7 +27,7 @@ component, and there are no network calls during processing.
 | **Chained workflows** | Newsletter+numbers · Branded client proof · Business cards with bleed · Magazine production · Perfect-bound with color bar · Gang run — plus a custom pipeline builder |
 | **Imposition & layout** | Standard Sizes · Cut & Stack · Expert Grid · Optimal Fit · Gang Sheet · Index Print · Photo Prints · Flyers |
 | **Booklets & books** | N-up Book · Booklet · Saddle-Stitch Magazine · Perfect-Bound Book · Zine · Event Program · Catalog · Comic/Manga · Notebook · Flip Book |
-| **Cards & labels** | Business Cards · **Trading Cards** · Stickers · Step & Repeat · Calendar · Postcards · Labels · Bookmarks · Hang Tags · Coasters · Letterhead · Compliment Slips · NCR Pads · Envelopes |
+| **Cards & labels** | Business Cards · **Trading Cards** · Stickers · **Nesting (true-shape)** · Step & Repeat · Calendar · Postcards · Labels · Bookmarks · Hang Tags · Coasters · Letterhead · Compliment Slips · NCR Pads · Envelopes |
 | **Folding** | Trifold · Folded (Z-fold) · Greeting Card · Menu · Wedding Invitation · Presentation Folder (dieline) |
 | **Large & specialty** | Tiled Poster · Banner · Feather Flags · Roller Banner · Packaging Dieline · Box/Carton |
 | **Tickets & data** | Variable Data (CSV+QR) · Raffle Tickets · Coupons · Name Badges |

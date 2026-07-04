@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.7
+
+- New **Nesting / Stickers** tool: packs mixed-size die-cut artwork onto a
+  sheet or continuous roll with the least waste. Skyline bottom-left
+  bin-packing (fast rectangular) plus an optional **true-shape** mode that
+  rasterises each artwork's alpha outline (pdf.js occupancy grid) and drops
+  items into each other's negative space. 90° auto-rotate, fill-sheet or
+  fixed copy count. New `nestPdf` engine function; true-shape falls back to
+  skyline when a rasteriser isn't available (e.g. non-DOM hosts).
+
 ## 1.2.6
 
 - New **Distortion Comp.** tool (flexo/gravure cylinder pre-shrink) and an

@@ -41,6 +41,16 @@ export interface NUpBookOptions {
     markWeightPt?: number;
 }
 export declare function imposeNUpBook(bytes: Uint8Array, opts: NUpBookOptions): Promise<Uint8Array>;
+export interface CalendarOptions {
+    halfSheet: boolean;
+    rotateBack: boolean;
+    addMarks: boolean;
+    markLenIn: number;
+    markOffIn: number;
+    centerMarks?: boolean;
+    markWeightPt?: number;
+}
+export declare function imposeCalendar(bytes: Uint8Array, opts: CalendarOptions): Promise<Uint8Array>;
 export interface NUpOptions {
     cols: number;
     rows: number;
@@ -164,10 +174,14 @@ export interface PageNumberOptions {
     marginPt: number;
 }
 export declare function addPageNumbers(bytes: Uint8Array, opts: PageNumberOptions): Promise<Uint8Array>;
-export declare function addColorBar(bytes: Uint8Array, opts: {
-    position: 'bottom' | 'top';
+export interface ColorBarOpts {
+    edge: 'bottom' | 'top' | 'left' | 'right';
     heightIn: number;
-}): Promise<Uint8Array>;
+    shape?: 'square' | 'circle' | 'rect';
+    spot?: boolean;
+    pages?: string;
+}
+export declare function addColorBar(bytes: Uint8Array, opts: ColorBarOpts): Promise<Uint8Array>;
 export declare function imposeTiledPoster(bytes: Uint8Array, opts: {
     tilesAcross: number;
     tilesDown: number;
@@ -182,12 +196,13 @@ export declare function imposeTiledPoster(bytes: Uint8Array, opts: {
 }): Promise<Uint8Array>;
 export interface BleedOptions {
     bleedIn: number;
-    mode?: 'scale' | 'solid' | 'mirror';
+    mode?: 'scale' | 'solid' | 'mirror' | 'repeat';
     color?: {
         r: number;
         g: number;
         b: number;
     };
+    pages?: string;
 }
 export declare function generateBleed(bytes: Uint8Array, opts: BleedOptions): Promise<Uint8Array>;
 export interface HeaderFooterOptions {
@@ -198,6 +213,8 @@ export interface HeaderFooterOptions {
     align: 'left' | 'center' | 'right';
     fileName?: string;
     alternate?: boolean;
+    font?: 'helvetica' | 'times' | 'courier';
+    rotationDeg?: 0 | 90 | 180 | 270;
 }
 export declare function addHeaderFooter(bytes: Uint8Array, opts: HeaderFooterOptions): Promise<Uint8Array>;
 export interface WatermarkOptions {
@@ -281,6 +298,7 @@ export interface NudgeOptions {
     dxIn: number;
     dyIn: number;
     rotateDeg: number;
+    pages?: string;
 }
 export declare function nudgePdf(bytes: Uint8Array, opts: NudgeOptions): Promise<Uint8Array>;
 export declare function repairPdf(bytes: Uint8Array): Promise<Uint8Array>;
@@ -299,6 +317,19 @@ export interface QrStampOptions {
 }
 export declare function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Promise<Uint8Array>;
 export declare function addDimensions(bytes: Uint8Array): Promise<Uint8Array>;
+export interface NestOptions {
+    sheetWIn: number;
+    sheetHIn: number;
+    roll: boolean;
+    paddingIn: number;
+    marginIn: number;
+    allowRotate: boolean;
+    copies: number;
+    fillSheet: boolean;
+    trueShape?: boolean;
+    dpi?: number;
+}
+export declare function nestPdf(bytes: Uint8Array, opts: NestOptions): Promise<Uint8Array>;
 export declare function downloadPdf(bytes: Uint8Array, filename: string): void;
 export declare function downloadMultiple(files: Uint8Array[], baseName: string): void;
 export {};

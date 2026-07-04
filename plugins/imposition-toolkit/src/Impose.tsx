@@ -1,19 +1,19 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type { DragEvent, ChangeEvent } from 'react';
 import {
-  getPdfInfo, imposeBooklet, imposeNUpBook, imposeNUp, computeNUpGrid, addCropMarksOnly,
+  getPdfInfo, imposeBooklet, imposeNUpBook, imposeCalendar, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
-  distortPdf, distortFactorFromCylinder,
+  distortPdf, distortFactorFromCylinder, nestPdf,
 } from './impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
-  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ interface PosterOptions {
   overlapIn: number; addMarks: boolean; markLenIn: number; markOffIn: number;
   centerMarks?: boolean; markWeightPt?: number;
 }
-interface ColorBarOptions { position: 'bottom' | 'top'; heightIn: number; }
+interface ColorBarOptions { edge: 'bottom' | 'top' | 'left' | 'right'; heightIn: number; shape?: 'square' | 'circle' | 'rect'; spot?: boolean; pages?: string; }
 interface CropBoxOptions { top: number; right: number; bottom: number; left: number; }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -420,6 +420,20 @@ const TicketThumb = () => (
   </svg>
 );
 
+const NestThumb = () => (
+  <svg viewBox="0 0 200 148" width="100%" height="100%">
+    <Sheet>
+      {/* irregular shapes packed tight to show true-shape nesting */}
+      <circle cx={48} cy={46} r={22} fill="#ecfeff" stroke="#22d3ee" />
+      <polygon points="88,26 118,34 112,66 82,62" fill="#f0fdfa" stroke="#2dd4bf" />
+      <path d="M138 28 l26 6 -6 26 -22 -4 z" fill="#f5f3ff" stroke="#a78bfa" />
+      <polygon points="26,78 54,72 62,102 34,110" fill="#fef2f2" stroke="#fb7185" />
+      <circle cx={92} cy={98} r={20} fill="#fefce8" stroke="#facc15" />
+      <path d="M128 76 l34 4 4 30 -30 6 -10 -22 z" fill="#eff6ff" stroke="#60a5fa" />
+    </Sheet>
+  </svg>
+);
+
 // ── Tool catalog ─────────────────────────────────────────────────────────────
 
 const TOOLS: ToolDef[] = [
@@ -570,7 +584,7 @@ const TOOLS: ToolDef[] = [
     defaultNup: { cols: 3, rows: 3, sheetWIn: 11, sheetHIn: 17, repeatFirst: true }, Thumb: gridThumb(3, 3),
   },
   {
-    id: 'calendar', name: 'Calendar', preset: 'Desk Calendar (Tent Style)', category: 'Cards & labels', engine: 'booklet',
+    id: 'calendar', name: 'Calendar', preset: 'Desk Calendar (Tent Style)', category: 'Cards & labels', engine: 'calendar',
     desc: 'Build print-ready calendar layouts.',
     tags: ['Half-sheet calendar pages', 'Letter landscape', 'spine gutter', 'outward creep'],
     defaultBooklet: { marginIn: 0.5, creepIn: 0.1 }, Thumb: BookletThumb,
@@ -874,6 +888,11 @@ const TOOLS: ToolDef[] = [
     id: 'dimensions', name: 'Dimensions', preset: 'Dimensions', category: 'Marks & prepress', engine: 'dimensions',
     desc: 'Annotate each page with its exact trim size in inches and points — a quick pre-impose check.',
     tags: ['measure', 'trim size', 'inspect'], Thumb: DimThumb,
+  },
+  {
+    id: 'nest', name: 'Nesting / Stickers', preset: 'True-Shape Nesting', category: 'Cards & labels', engine: 'nest',
+    desc: 'Pack many die-cut shapes onto a sheet or roll with the least waste — skyline bin-packing, optional true-shape (contour-aware) mode.',
+    tags: ['sticker gang', 'bin-pack', 'true-shape nest', 'roll or sheet'], Thumb: NestThumb,
   },
 ];
 
@@ -1710,19 +1729,25 @@ function CropSettings({ opts, onChange }: { opts: CropMarksOptions; onChange: (o
 
 // ── Color-bar settings ────────────────────────────────────────────────────────
 
-const DEFAULT_COLORBAR: ColorBarOptions = { position: 'bottom', heightIn: 0.25 };
+const DEFAULT_COLORBAR: ColorBarOptions = { edge: 'bottom', heightIn: 0.25, shape: 'rect', spot: false, pages: 'all' };
 
 function ColorBarSettings({ opts, onChange }: { opts: ColorBarOptions; onChange: (o: ColorBarOptions) => void }) {
   const set = <K extends keyof ColorBarOptions>(k: K, v: ColorBarOptions[K]) => onChange({ ...opts, [k]: v });
   return (
     <Grid>
-      <Field label="Position">
-        <select value={opts.position} onChange={e => set('position', e.target.value as 'bottom' | 'top')} style={iStyle}>
-          <option value="bottom">Bottom of page</option>
-          <option value="top">Top of page</option>
+      <Field label="Edge">
+        <select value={opts.edge} onChange={e => set('edge', e.target.value as ColorBarOptions['edge'])} style={iStyle}>
+          <option value="bottom">Bottom</option><option value="top">Top</option><option value="left">Left</option><option value="right">Right</option>
         </select>
       </Field>
-      <Field label="Bar height (in)"><input type="number" min={0.1} max={1} step={0.0625} value={opts.heightIn} onChange={e => set('heightIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Bar size (in)"><input type="number" min={0.1} max={1} step={0.0625} value={opts.heightIn} onChange={e => set('heightIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Patch shape">
+        <select value={opts.shape ?? 'rect'} onChange={e => set('shape', e.target.value as ColorBarOptions['shape'])} style={iStyle}>
+          <option value="rect">Rectangle</option><option value="square">Square</option><option value="circle">Circle</option>
+        </select>
+      </Field>
+      <Field label="Spot patches"><Row><input type="checkbox" checked={!!opts.spot} onChange={e => set('spot', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add spot / registration patches</span></Row></Field>
+      <Field label="Pages" note="all · 1-5 · odd · last"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
     </Grid>
   );
 }
@@ -1969,6 +1994,7 @@ function NudgeSettings({ opts, onChange }: { opts: NudgeOptions; onChange: (o: N
       <Field label="Shift right (in)" note="Negative = left"><input type="number" min={-2} max={2} step={0.01} value={opts.dxIn} onChange={e => set('dxIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Shift up (in)" note="Negative = down"><input type="number" min={-2} max={2} step={0.01} value={opts.dyIn} onChange={e => set('dyIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Rotate (deg)" note="About page centre"><input type="number" min={-15} max={15} step={0.1} value={opts.rotateDeg} onChange={e => set('rotateDeg', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages" note="all · 1-5 · odd · last"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
     </Grid>
   );
 }
@@ -2045,6 +2071,63 @@ function DistortSettings({ opts, onChange }: { opts: DistortUi; onChange: (o: Di
       </Field>
       <div style={{ gridColumn: '1 / -1', padding: '.5rem .75rem', borderRadius: 8, background: 'var(--accent-soft)', fontSize: '.82rem', color: VIOLET, fontWeight: 700 }}>
         Compensation factor: {pct.toFixed(3)}% <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(artwork pre-shrunk to this on the {opts.direction === 'cross' ? 'width' : opts.direction === 'both' ? 'both axes' : 'height'})</span>
+      </div>
+    </Grid>
+  );
+}
+
+// ── Nesting settings ──────────────────────────────────────────────────────────
+
+const DEFAULT_NEST: NestOptions = { sheetWIn: 8.5, sheetHIn: 11, roll: false, paddingIn: 0.08, marginIn: 0.25, allowRotate: true, copies: 20, fillSheet: true, trueShape: false, dpi: 36 };
+
+function NestSettings({ opts, onChange }: { opts: NestOptions; onChange: (o: NestOptions) => void }) {
+  const set = <K extends keyof NestOptions>(k: K, v: NestOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Media">
+        <select value={opts.roll ? 'roll' : 'sheet'} onChange={e => set('roll', e.target.value === 'roll')} style={iStyle}>
+          <option value="sheet">Stacked sheets</option>
+          <option value="roll">Roll (variable length)</option>
+        </select>
+      </Field>
+      <SheetPicker opts={opts} set={set} />
+      <Field label="Quantity">
+        <select value={opts.fillSheet ? 'fill' : 'copies'} onChange={e => set('fillSheet', e.target.value === 'fill')} style={iStyle}>
+          <option value="fill">Fill the sheet</option>
+          <option value="copies">Copy count</option>
+        </select>
+      </Field>
+      {!opts.fillSheet && <Field label="Copies (per design)"><input type="number" min={1} max={2000} step={1} value={opts.copies} onChange={e => set('copies', +e.target.value)} style={iStyle} /></Field>}
+      <Field label="Item padding (in)"><input type="number" min={0} max={0.5} step={0.01} value={opts.paddingIn} onChange={e => set('paddingIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Sheet margin (in)"><input type="number" min={0} max={1} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Rotation"><Row><input type="checkbox" checked={opts.allowRotate} onChange={e => set('allowRotate', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Allow 90° rotation</span></Row></Field>
+      <Field label="Nesting"><Row><input type="checkbox" checked={!!opts.trueShape} onChange={e => set('trueShape', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>True-shape (pack into negative space)</span></Row></Field>
+      {opts.trueShape && <Field label="Detail (DPI)" note="Higher = tighter but slower"><input type="number" min={12} max={150} step={6} value={opts.dpi ?? 36} onChange={e => set('dpi', +e.target.value)} style={iStyle} /></Field>}
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Packs each source page (different sizes = different stickers) as tightly as it can. <strong>True-shape</strong> rasterises the artwork outline and nests items into each other's negative space (best for irregular die-cut shapes); leave it off for fast rectangular bin-packing.
+      </div>
+    </Grid>
+  );
+}
+
+// ── Calendar settings ─────────────────────────────────────────────────────────
+
+const DEFAULT_CALENDAR: CalendarOptions = { halfSheet: false, rotateBack: true, addMarks: false, markLenIn: 0.2, markOffIn: 0.1 };
+
+function CalendarSettings({ opts, onChange }: { opts: CalendarOptions; onChange: (o: CalendarOptions) => void }) {
+  const set = <K extends keyof CalendarOptions>(k: K, v: CalendarOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Page layout">
+        <select value={opts.halfSheet ? 'half' : 'full'} onChange={e => set('halfSheet', e.target.value === 'half')} style={iStyle}>
+          <option value="full">Full sheet (one page per side)</option>
+          <option value="half">Half sheet (image + grid, fold)</option>
+        </select>
+      </Field>
+      <Field label="Back cover"><Row><input type="checkbox" checked={opts.rotateBack} onChange={e => set('rotateBack', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Rotate back 180° (top-bound hanging)</span></Row></Field>
+      <Field label="Crop marks"><Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add crop marks</span></Row></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Pairs consecutive pages for wall/desk calendars. Full-sheet prints one page per side and rotates the back so it hangs the right way up; half-sheet stacks image + month grid on one sheet to fold. Source is typically 13 pages (cover + 12 months).
       </div>
     </Grid>
   );
@@ -2334,6 +2417,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [splitChunk, setSplitChunk] = useState(4);
   const [splitZip, setSplitZip] = useState(true);
   const [distortOpts, setDistortOpts] = useState<DistortUi>(DEFAULT_DISTORT);
+  const [calendarOpts, setCalendarOpts] = useState<CalendarOptions>(DEFAULT_CALENDAR);
+  const [nestOpts, setNestOpts] = useState<NestOptions>(DEFAULT_NEST);
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
   const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
@@ -2403,6 +2488,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
     switch (tool.engine) {
         case 'booklet': out = await imposeBooklet(file.bytes, bookletOpts); outName = `${base}-booklet.pdf`; break;
         case 'nupbook': out = await imposeNUpBook(file.bytes, nupBookOpts); outName = `${base}-nupbook-${nupBookOpts.nUp}up.pdf`; break;
+        case 'calendar': out = await imposeCalendar(file.bytes, calendarOpts); outName = `${base}-calendar.pdf`; break;
+        case 'nest': out = await nestPdf(file.bytes, nestOpts); outName = `${base}-nested.pdf`; break;
         case 'nup':
           out = await imposeNUp(file.bytes, nupOpts);
           outName = `${base}-${nupOpts.repeatFirst ? 'repeat' : `${tool.id}`}.pdf`; break;
@@ -2551,6 +2638,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'preflight' ? 'Preflight report' : 'Settings'}</h4>
                 {tool.engine === 'booklet' && <BookletSettings opts={bookletOpts} onChange={setBookletOpts} />}
                 {tool.engine === 'nupbook' && <NUpBookSettings opts={nupBookOpts} onChange={setNupBookOpts} />}
+                {tool.engine === 'calendar' && <CalendarSettings opts={calendarOpts} onChange={setCalendarOpts} />}
+                {tool.engine === 'nest' && <NestSettings opts={nestOpts} onChange={setNestOpts} />}
                 {tool.engine === 'nup' && <NUpSettings opts={nupOpts} onChange={setNupOpts} cardMode={cardMode} />}
                 {tool.engine === 'poster' && <PosterSettings opts={posterOpts} onChange={setPosterOpts} />}
                 {tool.engine === 'cropmarks' && <CropSettings opts={cropOpts} onChange={setCropOpts} />}
@@ -2714,6 +2803,7 @@ function BleedSettings({ opts, onChange }: { opts: BleedOptions; onChange: (o: B
         <select value={opts.mode ?? 'scale'} onChange={e => set('mode', e.target.value as BleedOptions['mode'])} style={iStyle}>
           <option value="scale">Scale (enlarge content)</option>
           <option value="mirror">Mirror edge</option>
+          <option value="repeat">Repeat edge</option>
           <option value="solid">Solid colour</option>
         </select>
       </Field>
@@ -2722,6 +2812,7 @@ function BleedSettings({ opts, onChange }: { opts: BleedOptions; onChange: (o: B
           <input type="color" value={hex} onChange={e => { const m = /#(..)(..)(..)/.exec(e.target.value)!; set('color', { r: parseInt(m[1]!, 16) / 255, g: parseInt(m[2]!, 16) / 255, b: parseInt(m[3]!, 16) / 255 }); }} style={{ ...iStyle, height: 38, padding: 2 }} />
         </Field>
       )}
+      <Field label="Pages" note="all · 1-5 · odd · last"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
     </Grid>
   );
 }
@@ -2738,6 +2829,16 @@ function HeaderFooterSettings({ opts, onChange }: { opts: HeaderFooterOptions; o
         </select>
       </Field>
       <Field label="Font size (pt)"><input type="number" min={6} max={36} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Font family">
+        <select value={opts.font ?? 'helvetica'} onChange={e => set('font', e.target.value as HeaderFooterOptions['font'])} style={iStyle}>
+          <option value="helvetica">Helvetica</option><option value="times">Times Roman</option><option value="courier">Courier</option>
+        </select>
+      </Field>
+      <Field label="Rotation">
+        <select value={String(opts.rotationDeg ?? 0)} onChange={e => set('rotationDeg', +e.target.value as HeaderFooterOptions['rotationDeg'])} style={iStyle}>
+          <option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option>
+        </select>
+      </Field>
       <Field label="Edge margin (pt)"><input type="number" min={6} max={96} step={1} value={opts.marginPt} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
       <Field label="Alternate sides"><Row><input type="checkbox" checked={!!opts.alternate} onChange={e => set('alternate', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Mirror on odd pages (book heads)</span></Row></Field>
       <div style={{ gridColumn: '1 / -1', fontSize: '.75rem', color: 'var(--muted)', lineHeight: 1.5 }}>
