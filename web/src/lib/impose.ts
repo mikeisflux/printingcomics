@@ -1972,13 +1972,266 @@ export async function addDimensions(bytes: Uint8Array): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const col = rgb(0.85, 0.11, 0.14);
+  const blue = rgb(0.15, 0.4, 0.85);
+  const dim = (bw: number, bh: number) => `${(bw / PT).toFixed(2)}in - ${Math.round(bw)} pt`;
   for (const pg of doc.getPages()) {
     const { width: w, height: h } = pg.getSize();
-    const wl = `${(w / PT).toFixed(2)}in - ${Math.round(w)} pt`;
-    const hl = `${(h / PT).toFixed(2)}in - ${Math.round(h)} pt`;
-    const ww = font.widthOfTextAtSize(wl, 8);
-    pg.drawText(wl, { x: (w - ww) / 2, y: 5, font, size: 8, color: col });
+    const trim = pg.getTrimBox();
+    const bleed = pg.getBleedBox();
+    const wl = dim(trim.width, trim.height);
+    const hl = `${(trim.height / PT).toFixed(2)}in - ${Math.round(trim.height)} pt`;
+    pg.drawText(wl, { x: (w - font.widthOfTextAtSize(wl, 8)) / 2, y: 5, font, size: 8, color: col });
     pg.drawText(hl, { x: 11, y: h / 2 - font.widthOfTextAtSize(hl, 8) / 2, font, size: 8, color: col, rotate: degrees(90) });
+    // Label the bleed size too, when it differs from the trim.
+    const hasBleed = Math.abs(bleed.width - trim.width) > 1 || Math.abs(bleed.height - trim.height) > 1;
+    if (hasBleed) {
+      const bl = `bleed ${(bleed.width / PT).toFixed(2)}×${(bleed.height / PT).toFixed(2)}in`;
+      pg.drawText(bl, { x: (w - font.widthOfTextAtSize(bl, 7)) / 2, y: h - 12, font, size: 7, color: blue });
+    }
+  }
+  return doc.save();
+}
+
+// ── Spot-colour helpers (Separation channels for RIPs / cutters) ────────────
+// Registers a `/Separation` colour space named `spotName` on the document (the
+// name is what a RIP or digital cutter reads) with a DeviceRGB alternate for
+// on-screen preview, wires it into the page's resources, and returns the
+// resource key to reference in the content stream. Cached per document.
+type SepCache = Map<string, import('pdf-lib').PDFRef>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ensureSeparation(PL: any, doc: any, page: any, spotName: string, preview: { r: number; g: number; b: number }, cache: SepCache): string {
+  const { PDFName, PDFDict } = PL;
+  const ctx = doc.context;
+  let csRef = cache.get(spotName);
+  if (!csRef) {
+    const fnRef = ctx.register(ctx.obj({ FunctionType: 2, Domain: [0, 1], C0: [1, 1, 1], C1: [preview.r, preview.g, preview.b], N: 1 }));
+    csRef = ctx.register(ctx.obj([PDFName.of('Separation'), PDFName.of(spotName), PDFName.of('DeviceRGB'), fnRef]));
+    cache.set(spotName, csRef!);
+  }
+  const resName = ('Spot' + spotName.replace(/[^A-Za-z0-9]/g, '')) || 'SpotCS';
+  page.node.normalize();
+  let resources = page.node.Resources();
+  if (!resources) { resources = ctx.obj({}); page.node.set(PDFName.of('Resources'), resources); }
+  let csDict = resources.lookupMaybe(PDFName.of('ColorSpace'), PDFDict);
+  if (!csDict) { csDict = ctx.obj({}); resources.set(PDFName.of('ColorSpace'), csDict); }
+  csDict.set(PDFName.of(resName), csRef);
+  return resName;
+}
+
+// Append (or prepend) a raw content stream to a page without disturbing the
+// existing content — used to lay spot-colour separations behind or in front.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function addContentStream(PL: any, ctx: any, page: any, str: string, prepend: boolean): void {
+  const { PDFName, PDFArray } = PL;
+  const streamRef = ctx.register(ctx.stream(str));
+  page.node.normalize();
+  const key = PDFName.of('Contents');
+  const cur = page.node.Contents();
+  if (cur instanceof PDFArray) { if (prepend) cur.insert(0, streamRef); else cur.push(streamRef); }
+  else if (cur) { const ref = page.node.get(key); const arr = ctx.obj(prepend ? [streamRef, ref] : [ref, streamRef]); page.node.set(key, arr); }
+  else { page.node.set(key, streamRef); }
+}
+
+const F = (v: number) => v.toFixed(3);
+// Vector path (no paint op) for a shape inside box (x,y,w,h).
+function shapePathOps(shape: 'rectangle' | 'rounded' | 'ellipse', x: number, y: number, w: number, h: number, radius: number): string {
+  if (shape === 'ellipse') {
+    const cx = x + w / 2, cy = y + h / 2, rx = w / 2, ry = h / 2, kx = 0.5523 * rx, ky = 0.5523 * ry;
+    return [
+      `${F(cx + rx)} ${F(cy)} m`,
+      `${F(cx + rx)} ${F(cy + ky)} ${F(cx + kx)} ${F(cy + ry)} ${F(cx)} ${F(cy + ry)} c`,
+      `${F(cx - kx)} ${F(cy + ry)} ${F(cx - rx)} ${F(cy + ky)} ${F(cx - rx)} ${F(cy)} c`,
+      `${F(cx - rx)} ${F(cy - ky)} ${F(cx - kx)} ${F(cy - ry)} ${F(cx)} ${F(cy - ry)} c`,
+      `${F(cx + kx)} ${F(cy - ry)} ${F(cx + rx)} ${F(cy - ky)} ${F(cx + rx)} ${F(cy)} c`,
+      'h',
+    ].join('\n');
+  }
+  if (shape === 'rounded') {
+    const r = Math.max(0, Math.min(radius, w / 2, h / 2)), k = 0.5523 * r;
+    if (r <= 0) return `${F(x)} ${F(y)} ${F(w)} ${F(h)} re`;
+    return [
+      `${F(x + r)} ${F(y)} m`,
+      `${F(x + w - r)} ${F(y)} l`,
+      `${F(x + w - r + k)} ${F(y)} ${F(x + w)} ${F(y + r - k)} ${F(x + w)} ${F(y + r)} c`,
+      `${F(x + w)} ${F(y + h - r)} l`,
+      `${F(x + w)} ${F(y + h - r + k)} ${F(x + w - r + k)} ${F(y + h)} ${F(x + w - r)} ${F(y + h)} c`,
+      `${F(x + r)} ${F(y + h)} l`,
+      `${F(x + r - k)} ${F(y + h)} ${F(x)} ${F(y + h - r + k)} ${F(x)} ${F(y + h - r)} c`,
+      `${F(x)} ${F(y + r)} l`,
+      `${F(x)} ${F(y + r - k)} ${F(x + r - k)} ${F(y)} ${F(x + r)} ${F(y)} c`,
+      'h',
+    ].join('\n');
+  }
+  return `${F(x)} ${F(y)} ${F(w)} ${F(h)} re`;
+}
+const circleOps = (cx: number, cy: number, r: number) => {
+  const k = 0.5523 * r;
+  return [
+    `${F(cx + r)} ${F(cy)} m`,
+    `${F(cx + r)} ${F(cy + k)} ${F(cx + k)} ${F(cy + r)} ${F(cx)} ${F(cy + r)} c`,
+    `${F(cx - k)} ${F(cy + r)} ${F(cx - r)} ${F(cy + k)} ${F(cx - r)} ${F(cy)} c`,
+    `${F(cx - r)} ${F(cy - k)} ${F(cx - k)} ${F(cy - r)} ${F(cx)} ${F(cy - r)} c`,
+    `${F(cx + k)} ${F(cy - r)} ${F(cx + r)} ${F(cy - k)} ${F(cx + r)} ${F(cy)} c`,
+  ].join('\n');
+};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function boxOf(page: any, target: string, customWpt?: number, customHpt?: number): { x: number; y: number; w: number; h: number } {
+  if (target === 'custom') {
+    const mb = page.getMediaBox();
+    const cw = customWpt ?? 216, ch = customHpt ?? 144;
+    return { x: mb.x + (mb.width - cw) / 2, y: mb.y + (mb.height - ch) / 2, w: cw, h: ch };
+  }
+  const b = target === 'bleed' ? page.getBleedBox() : target === 'media' || target === 'flood' ? page.getMediaBox() : page.getTrimBox();
+  return { x: b.x, y: b.y, w: b.width, h: b.height };
+}
+
+// ── Die lines / Cut contour (spot-colour toolpath) ──────────────────────────
+export interface CutContourOptions {
+  shape: 'rectangle' | 'rounded' | 'ellipse';
+  target: 'trim' | 'bleed' | 'media' | 'custom';
+  customWpt?: number; customHpt?: number;
+  spotName: string;              // e.g. 'CutContour', 'KissCut', 'Crease', 'Perf', 'ThruCut', 'DieCut'
+  thicknessPt?: number;          // default 0.25
+  dashed?: boolean;
+  dashLenPt?: number;            // default 6
+  dashGapPt?: number;            // default 3
+  cornerRadiusPt?: number;       // rounded only, default 8.5
+  xOffsetPt?: number;            // + = right
+  yOffsetPt?: number;            // + = down
+  previewColor?: { r: number; g: number; b: number };
+  pages?: string;
+}
+
+export async function addCutContour(bytes: Uint8Array, opts: CutContourOptions): Promise<Uint8Array> {
+  const PL = await import('pdf-lib');
+  const { PDFDocument } = PL;
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  const preview = opts.previewColor ?? { r: 0.925, g: 0, b: 0.55 };   // magenta preview
+  const th = opts.thicknessPt ?? 0.25;
+  const cache: SepCache = new Map();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const page = pages[i]!;
+    const resName = ensureSeparation(PL, doc, page, opts.spotName, preview, cache);
+    const b = boxOf(page, opts.target, opts.customWpt, opts.customHpt);
+    const x = b.x + (opts.xOffsetPt ?? 0), y = b.y - (opts.yOffsetPt ?? 0);
+    const path = shapePathOps(opts.shape, x, y, b.w, b.h, opts.cornerRadiusPt ?? 8.5);
+    const dash = opts.dashed ? `[${opts.dashLenPt ?? 6} ${opts.dashGapPt ?? 3}] 0 d\n` : '';
+    addContentStream(PL, doc.context, page, `\nq\n/${resName} CS\n1 SCN\n${th} w\n1 J 1 j\n${dash}${path}\nS\nQ\n`, false);
+  }
+  return doc.save();
+}
+
+// ── White ink / spot varnish (flood or targeted spot-colour fill) ───────────
+export interface WhiteVarnishOptions {
+  spotName: string;              // 'White' or 'Varnish' (or custom)
+  coverage: 'flood' | 'trim' | 'bleed' | 'custom';
+  customWpt?: number; customHpt?: number;
+  tint?: number;                 // 0..1 (default 1)
+  under?: boolean;               // white under-base (behind art) vs varnish (on top)
+  xOffsetPt?: number; yOffsetPt?: number;
+  previewColor?: { r: number; g: number; b: number };
+  pages?: string;
+}
+
+export async function addWhiteVarnish(bytes: Uint8Array, opts: WhiteVarnishOptions): Promise<Uint8Array> {
+  const PL = await import('pdf-lib');
+  const { PDFDocument } = PL;
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  const preview = opts.previewColor ?? { r: 0.85, g: 0.86, b: 0.92 };
+  const tint = opts.tint ?? 1;
+  const cache: SepCache = new Map();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const page = pages[i]!;
+    const resName = ensureSeparation(PL, doc, page, opts.spotName, preview, cache);
+    const b = boxOf(page, opts.coverage, opts.customWpt, opts.customHpt);
+    const x = b.x + (opts.xOffsetPt ?? 0), y = b.y - (opts.yOffsetPt ?? 0);
+    addContentStream(PL, doc.context, page, `\nq\n/${resName} cs\n${F(tint)} scn\n${F(x)} ${F(y)} ${F(b.w)} ${F(b.h)} re\nf\nQ\n`, !!opts.under);
+  }
+  return doc.save();
+}
+
+// ── Braille (Grade-1) ───────────────────────────────────────────────────────
+const BRAILLE_G1: Record<string, number[]> = {
+  a: [1], b: [1, 2], c: [1, 4], d: [1, 4, 5], e: [1, 5], f: [1, 2, 4], g: [1, 2, 4, 5], h: [1, 2, 5], i: [2, 4], j: [2, 4, 5],
+  k: [1, 3], l: [1, 2, 3], m: [1, 3, 4], n: [1, 3, 4, 5], o: [1, 3, 5], p: [1, 2, 3, 4], q: [1, 2, 3, 4, 5], r: [1, 2, 3, 5], s: [2, 3, 4], t: [2, 3, 4, 5],
+  u: [1, 3, 6], v: [1, 2, 3, 6], w: [2, 4, 5, 6], x: [1, 3, 4, 6], y: [1, 3, 4, 5, 6], z: [1, 3, 5, 6],
+  ' ': [], '.': [2, 5, 6], ',': [2], '-': [3, 6], '?': [2, 3, 6], '!': [2, 3, 5], "'": [3], ';': [2, 3], ':': [2, 5],
+};
+type Cell = number[] | '\n';
+function textToBrailleCells(text: string): Cell[] {
+  const cells: Cell[] = [];
+  let numberMode = false;
+  for (const raw of text) {
+    if (raw === '\n') { cells.push('\n'); numberMode = false; continue; }
+    const ch = raw.toLowerCase();
+    if (ch >= '0' && ch <= '9') {
+      if (!numberMode) { cells.push([3, 4, 5, 6]); numberMode = true; }   // number sign ⠼
+      const idx = ch === '0' ? 9 : ch.charCodeAt(0) - 49;                 // '1'→0 … '9'→8, '0'→9
+      cells.push(BRAILLE_G1['abcdefghij'[idx]!]!);
+    } else {
+      numberMode = false;
+      cells.push(BRAILLE_G1[ch] ?? []);                                   // unknown → blank cell
+    }
+  }
+  return cells;
+}
+
+export interface BrailleOptions {
+  text: string;
+  xPt?: number; yPt?: number;    // top-left origin of the first dot (default 1" in from top-left)
+  dotDiaPt?: number;             // default 4.25 (1.5 mm)
+  dotPitchPt?: number;           // within-cell dot spacing (default 7.09 = 2.5 mm)
+  cellSpacePt?: number;          // cell-to-cell advance (default 17.0 = 6 mm)
+  lineSpacePt?: number;          // line-to-line advance (default 28.35 = 10 mm)
+  spotName?: string;             // optional Separation channel (e.g. 'Varnish' / 'Emboss')
+  tint?: number;
+  previewColor?: { r: number; g: number; b: number };
+  pages?: string;
+}
+
+export async function addBraille(bytes: Uint8Array, opts: BrailleOptions): Promise<Uint8Array> {
+  const PL = await import('pdf-lib');
+  const { PDFDocument } = PL;
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  const r = (opts.dotDiaPt ?? 4.25) / 2;
+  const pitch = opts.dotPitchPt ?? 7.09;
+  const cellAdv = opts.cellSpacePt ?? 17.0;
+  const lineAdv = opts.lineSpacePt ?? 28.35;
+  const cells = textToBrailleCells(opts.text);
+  const useSpot = !!opts.spotName;
+  const preview = opts.previewColor ?? { r: 0.55, g: 0.55, b: 0.6 };
+  const cache: SepCache = new Map();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const page = pages[i]!;
+    const { width, height } = page.getSize();
+    const sx = opts.xPt ?? 72;
+    let cx = sx, cy = (opts.yPt ?? height - 72);
+    let ops = '\nq\n';
+    if (useSpot) { const resName = ensureSeparation(PL, doc, page, opts.spotName!, preview, cache); ops += `/${resName} cs\n${F(opts.tint ?? 1)} scn\n`; }
+    else ops += `${F(preview.r)} ${F(preview.g)} ${F(preview.b)} rg\n`;
+    for (const cell of cells) {
+      if (cell === '\n') { cx = sx; cy -= lineAdv; continue; }
+      for (const d of cell) {
+        const col = d <= 3 ? 0 : 1, row = (d - 1) % 3;
+        ops += circleOps(cx + col * pitch, cy - row * pitch, r) + '\nf\n';
+      }
+      cx += cellAdv;
+      if (cx > width - sx) { cx = sx; cy -= lineAdv; }                    // wrap at the right margin
+    }
+    ops += 'Q\n';
+    addContentStream(PL, doc.context, page, ops, false);
   }
   return doc.save();
 }
