@@ -142,6 +142,7 @@ for (const step of recipes.recipes[0].steps) {
 | **[docs/API.md](docs/API.md)** | Every engine function — signatures, options, return types, gotchas. |
 | **[docs/TOOLS.md](docs/TOOLS.md)** | The tool catalog: 90 tools by category, engine, preset dimensions, input expected. |
 | **[docs/CATALOG.md](docs/CATALOG.md)** | The 156 templates + 69 workflow recipes as data — shapes, the step-kind→engine map, and how to drive tools from them. |
+| **[docs/CATALOG-INDEX.md](docs/CATALOG-INDEX.md)** | Plain-English index: every template + workflow tile by name and the tool(s) it ties into. |
 | **[docs/INTEGRATION.md](docs/INTEGRATION.md)** | Embedding into React, Next.js, Vue/vanilla; theming; catalog data; bundler notes. |
 | **[docs/VERSIONS.md](docs/VERSIONS.md)** | **Exact versions to use** on the target site — Node, pdf-lib, pdfjs-dist, qrcode-generator, React, TypeScript, Vite, browser targets. |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How imposition works: coordinate math, saddle-stitch/creep, n-up, cut-&-stack, card packing, poster tiling, crop marks. |
