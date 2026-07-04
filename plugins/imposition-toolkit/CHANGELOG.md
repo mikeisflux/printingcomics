@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.10
+
+- Real **Separation (spot-colour)** support, and three tools built on it:
+  - **Die Lines / Cut Contour** — a die-line path (rectangle / rounded /
+    ellipse) around the trim / bleed / media / custom box on a named spot
+    channel (CutContour, KissCut, Crease, Perf, ThruCut, DieCut) that RIPs and
+    digital cutters read as a toolpath. Thickness, dashed (len/gap), corner
+    radius, X/Y offset, preview colour, page range.
+  - **White / Varnish** — a named spot fill laid as a white under-base (behind
+    the artwork) or a spot varnish / gloss (on top), with flood / trim / bleed
+    / custom coverage and tint.
+  - **Braille** — Grade-1 (uncontracted) dots at ADA metrics with an automatic
+    number sign for digits, optionally on an emboss / varnish spot channel.
+  - New `addCutContour`, `addWhiteVarnish`, `addBraille` engine functions.
+- **Dimensions** now also labels the bleed size when it differs from the trim.
+
 ## 1.2.9
 
 - Three new finishing / prepress mark tools:

@@ -443,6 +443,29 @@ sideGuideSide:'left'|'right', sizePt?, thicknessPt?, offsetPt?, color?, pages? }
 guide side for lateral registration. Best applied to the **imposed press
 sheet** (where the gripper margin already exists).
 
+### `addCutContour(bytes, opts: CutContourOptions): Promise<Uint8Array>`
+Adds a die-line path on a real `/Separation` **spot-colour** channel (with a
+DeviceRGB alternate for preview) that a RIP or digital cutter reads as a
+toolpath. `{ shape:'rectangle'|'rounded'|'ellipse', target:'trim'|'bleed'|
+'media'|'custom', customWpt?, customHpt?, spotName, thicknessPt?, dashed?,
+dashLenPt?, dashGapPt?, cornerRadiusPt?, xOffsetPt?, yOffsetPt?, previewColor?,
+pages? }`. Common `spotName`s: `CutContour`, `KissCut`, `Crease`, `Perf`,
+`ThruCut`, `DieCut`.
+
+### `addWhiteVarnish(bytes, opts: WhiteVarnishOptions): Promise<Uint8Array>`
+Lays a named Separation spot fill — white ink or spot varnish. `{ spotName,
+coverage:'flood'|'trim'|'bleed'|'custom', customWpt?, customHpt?, tint?, under?,
+xOffsetPt?, yOffsetPt?, previewColor?, pages? }`. `under:true` prints the fill
+**behind** the artwork (white under-base); `under:false` overprints it on top
+(varnish / gloss).
+
+### `addBraille(bytes, opts: BrailleOptions): Promise<Uint8Array>`
+Adds Grade-1 (uncontracted) Braille as raised dots at ADA metrics. `{ text,
+xPt?, yPt?, dotDiaPt?, dotPitchPt?, cellSpacePt?, lineSpacePt?, spotName?,
+tint?, previewColor?, pages? }`. Digits get an automatic number sign; set
+`spotName` to place the dots on an emboss / varnish spot channel, or leave it
+off to draw visible ink.
+
 ## Error handling
 
 Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).

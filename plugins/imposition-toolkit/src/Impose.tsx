@@ -4,7 +4,8 @@ import {
   getPdfInfo, imposeBooklet, imposeNUpBook, imposeCalendar, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
-  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks, preflight,
+  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks,
+  addCutContour, addWhiteVarnish, addBraille, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
@@ -15,6 +16,7 @@ import type {
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
   RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
   CollatingOptions, OmrOptions, GatheringOptions, FoldMarksOptions, LayMarksOptions,
+  CutContourOptions, WhiteVarnishOptions, BrailleOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -58,7 +60,8 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks'
+  | 'cutcontour' | 'whitevarnish' | 'braille';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -407,6 +410,32 @@ const LayThumb = () => (
       <line x1={130} y1={122} x2={130} y2={106} /><line x1={130} y1={106} x2={126} y2={112} /><line x1={130} y1={106} x2={134} y2={112} />
       <line x1={58} y1={74} x2={74} y2={74} /><line x1={74} y1={74} x2={68} y2={70} /><line x1={74} y1={74} x2={68} y2={78} />
     </g>
+  </svg>
+);
+const CutContourThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <rect x="62" y="34" width="76" height="80" rx="10" fill="none" stroke="#e5228a" strokeWidth="1.5" strokeDasharray="5,3" />
+    <text x="100" y="80" textAnchor="middle" fill="#94a3b8" fontSize="10">cut</text>
+  </svg>
+);
+const WhiteVarnishThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <rect x="58" y="30" width="84" height="88" rx="3" fill="#c7d2fe" opacity="0.65" />
+    <path d="M100 44 l10 20 -20 0 z" fill="#fff" stroke="#818cf8" strokeWidth="1.2" />
+    <circle cx="100" cy="72" r="9" fill="#fff" stroke="#818cf8" strokeWidth="1.2" />
+  </svg>
+);
+const BrailleThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {/* three braille cells (2×3 dot grids) */}
+    {[70, 100, 130].map((ox, ci) => (
+      <g key={ci}>
+        {([[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]] as [number, number][]).map((p, di) => {
+          const on = [[0,1,3],[0,1,2,3],[0,3]][ci]!.includes(di);
+          return <circle key={di} cx={ox + p[0] * 12} cy={44 + p[1] * 12} r="3.4" fill={on ? A : '#e2e8f0'} />;
+        })}
+      </g>
+    ))}
   </svg>
 );
 const HFThumb = () => (
@@ -926,6 +955,21 @@ const TOOLS: ToolDef[] = [
     id: 'laymarks', name: 'Lay Marks', preset: 'Lay Marks', category: 'Marks & prepress', engine: 'laymarks',
     desc: 'Press-sheet alignment guides — front lay at the gripper edge and side lay on the guide side — as arrow, line or crosshair marks.',
     tags: ['front lay', 'side lay', 'press alignment'], Thumb: LayThumb,
+  },
+  {
+    id: 'cutcontour', name: 'Die Lines', preset: 'Cut Contour', category: 'Marks & prepress', engine: 'cutcontour',
+    desc: 'Draw a die-line path (rectangle / rounded / ellipse) on a real spot-colour channel (CutContour, KissCut, Crease, Perf, DieCut) that RIPs and digital cutters read as a toolpath.',
+    tags: ['cut contour', 'kiss-cut / thru-cut', 'spot colour'], Thumb: CutContourThumb,
+  },
+  {
+    id: 'whitevarnish', name: 'White / Varnish', preset: 'White / Varnish', category: 'Marks & prepress', engine: 'whitevarnish',
+    desc: 'Add a white-ink under-base or spot-varnish / gloss layer as a named Separation spot colour — flood, trim, bleed or custom coverage.',
+    tags: ['white ink', 'spot varnish', 'under-base / gloss'], Thumb: WhiteVarnishThumb,
+  },
+  {
+    id: 'braille', name: 'Braille', preset: 'Braille', category: 'Marks & prepress', engine: 'braille',
+    desc: 'Add raised Grade-1 (uncontracted) Braille dots at ADA metrics, optionally on an emboss / varnish spot channel.',
+    tags: ['Grade-1 braille', 'ADA', 'raised dots'], Thumb: BrailleThumb,
   },
   {
     id: 'qrstamp', name: 'QR / Barcode', preset: 'QR Stamp', category: 'Marks & prepress', engine: 'qrstamp',
@@ -2022,6 +2066,19 @@ const DEFAULT_LAYMARKS: LayMarksOptions = {
   markType: 'arrow', edges: 'both', gripperEdge: 'bottom', sideGuideSide: 'left',
   sizePt: 14.17, thicknessPt: 0.5, offsetPt: 14.17, color: { r: 0, g: 0, b: 0 }, pages: 'all',
 };
+const DEFAULT_CUTCONTOUR: CutContourOptions = {
+  shape: 'rectangle', target: 'trim', spotName: 'CutContour', thicknessPt: 0.25,
+  dashed: false, dashLenPt: 6, dashGapPt: 3, cornerRadiusPt: 8.5, xOffsetPt: 0, yOffsetPt: 0,
+  previewColor: { r: 0.925, g: 0, b: 0.55 }, pages: 'all',
+};
+const DEFAULT_WHITEVARNISH: WhiteVarnishOptions = {
+  spotName: 'White', coverage: 'flood', tint: 1, under: true, xOffsetPt: 0, yOffsetPt: 0,
+  previewColor: { r: 0.85, g: 0.86, b: 0.92 }, pages: 'all',
+};
+const DEFAULT_BRAILLE: BrailleOptions = {
+  text: 'hello', xPt: 72, dotDiaPt: 4.25, dotPitchPt: 7.09, cellSpacePt: 17, lineSpacePt: 28.35,
+  previewColor: { r: 0.55, g: 0.55, b: 0.6 }, pages: 'all',
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2506,6 +2563,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [gatheringOpts, setGatheringOpts] = useState<GatheringOptions>(DEFAULT_GATHERING);
   const [foldMarksOpts, setFoldMarksOpts] = useState<FoldMarksOptions>(DEFAULT_FOLDMARKS);
   const [layMarksOpts, setLayMarksOpts] = useState<LayMarksOptions>(DEFAULT_LAYMARKS);
+  const [cutContourOpts, setCutContourOpts] = useState<CutContourOptions>(DEFAULT_CUTCONTOUR);
+  const [whiteVarnishOpts, setWhiteVarnishOpts] = useState<WhiteVarnishOptions>(DEFAULT_WHITEVARNISH);
+  const [brailleOpts, setBrailleOpts] = useState<BrailleOptions>(DEFAULT_BRAILLE);
   const [regOpts, setRegOpts] = useState<RegMarkOptions>(DEFAULT_REGMARK);
   const [insertOpts, setInsertOpts] = useState<InsertOptions>(DEFAULT_INSERT);
   const [nudgeOpts, setNudgeOpts] = useState<NudgeOptions>(DEFAULT_NUDGE);
@@ -2596,6 +2656,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'gathering': out = await addGatheringMarks(file.bytes, gatheringOpts); outName = `${base}-gathered.pdf`; break;
         case 'foldmarks': out = await addFoldMarks(file.bytes, foldMarksOpts); outName = `${base}-foldmarks.pdf`; break;
         case 'laymarks': out = await addLayMarks(file.bytes, layMarksOpts); outName = `${base}-laymarks.pdf`; break;
+        case 'cutcontour': out = await addCutContour(file.bytes, cutContourOpts); outName = `${base}-diecut.pdf`; break;
+        case 'whitevarnish': out = await addWhiteVarnish(file.bytes, whiteVarnishOpts); outName = `${base}-spot.pdf`; break;
+        case 'braille': out = await addBraille(file.bytes, brailleOpts); outName = `${base}-braille.pdf`; break;
         case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
         case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
         case 'nudge': out = await nudgePdf(file.bytes, nudgeOpts); outName = `${base}-nudged.pdf`; break;
@@ -2755,6 +2818,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'gathering' && <GatheringSettings opts={gatheringOpts} onChange={setGatheringOpts} />}
                 {tool.engine === 'foldmarks' && <FoldMarksSettings opts={foldMarksOpts} onChange={setFoldMarksOpts} />}
                 {tool.engine === 'laymarks' && <LayMarksSettings opts={layMarksOpts} onChange={setLayMarksOpts} />}
+                {tool.engine === 'cutcontour' && <CutContourSettings opts={cutContourOpts} onChange={setCutContourOpts} />}
+                {tool.engine === 'whitevarnish' && <WhiteVarnishSettings opts={whiteVarnishOpts} onChange={setWhiteVarnishOpts} />}
+                {tool.engine === 'braille' && <BrailleSettings opts={brailleOpts} onChange={setBrailleOpts} />}
                 {tool.engine === 'registration' && <RegistrationSettings opts={regOpts} onChange={setRegOpts} />}
                 {tool.engine === 'insert' && <InsertSettings opts={insertOpts} onChange={setInsertOpts} />}
                 {tool.engine === 'nudge' && <NudgeSettings opts={nudgeOpts} onChange={setNudgeOpts} />}
@@ -3164,6 +3230,104 @@ function LayMarksSettings({ opts, onChange }: { opts: LayMarksOptions; onChange:
       <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
       <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
         Front lay marks the gripper (leading) edge feed direction; side lay marks the guide side for lateral registration. Lay marks belong on the imposed <strong>press sheet</strong> — after imposition the gripper margin exists; on un-imposed pages the marks land inside the trim.
+      </div>
+    </Grid>
+  );
+}
+
+const SPOT_NAMES = ['CutContour', 'Through-cut', 'ThruCut', 'Crease', 'Perf', 'KissCut', 'DieCut'];
+
+function CutContourSettings({ opts, onChange }: { opts: CutContourOptions; onChange: (o: CutContourOptions) => void }) {
+  const set = <K extends keyof CutContourOptions>(k: K, v: CutContourOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Shape">
+        <select value={opts.shape} onChange={e => set('shape', e.target.value as CutContourOptions['shape'])} style={iStyle}>
+          <option value="rectangle">Rectangle</option><option value="rounded">Rounded rectangle</option><option value="ellipse">Ellipse</option>
+        </select>
+      </Field>
+      <Field label="Target box" note="Which PDF box the die line follows">
+        <select value={opts.target} onChange={e => set('target', e.target.value as CutContourOptions['target'])} style={iStyle}>
+          <option value="trim">Trim</option><option value="bleed">Bleed</option><option value="media">Media</option><option value="custom">Custom</option>
+        </select>
+      </Field>
+      {opts.target === 'custom' && <>
+        <Field label="Custom width (pt)"><input type="number" min={1} step={1} value={opts.customWpt ?? 216} onChange={e => set('customWpt', +e.target.value)} style={iStyle} /></Field>
+        <Field label="Custom height (pt)"><input type="number" min={1} step={1} value={opts.customHpt ?? 144} onChange={e => set('customHpt', +e.target.value)} style={iStyle} /></Field>
+      </>}
+      <Field label="Spot colour name" note="Layer name sent to the RIP / cutter">
+        <input list="spotnames" value={opts.spotName} onChange={e => set('spotName', e.target.value)} style={iStyle} />
+        <datalist id="spotnames">{SPOT_NAMES.map(s => <option key={s} value={s} />)}</datalist>
+      </Field>
+      {opts.shape === 'rounded' && <Field label="Corner radius (pt)"><input type="number" min={0} max={120} step={0.5} value={opts.cornerRadiusPt ?? 8.5} onChange={e => set('cornerRadiusPt', +e.target.value)} style={iStyle} /></Field>}
+      <Field label="Thickness (pt)"><input type="number" min={0.1} max={5} step={0.05} value={opts.thicknessPt ?? 0.25} onChange={e => set('thicknessPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Dashed"><Row><input type="checkbox" checked={!!opts.dashed} onChange={e => set('dashed', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Dashed / dotted line</span></Row></Field>
+      {opts.dashed && <>
+        <Field label="Dash length (pt)"><input type="number" min={0.5} max={40} step={0.5} value={opts.dashLenPt ?? 6} onChange={e => set('dashLenPt', +e.target.value)} style={iStyle} /></Field>
+        <Field label="Dash gap (pt)"><input type="number" min={0.5} max={40} step={0.5} value={opts.dashGapPt ?? 3} onChange={e => set('dashGapPt', +e.target.value)} style={iStyle} /></Field>
+      </>}
+      <Field label="X offset (pt)" note="+ right"><input type="number" step={0.5} value={opts.xOffsetPt ?? 0} onChange={e => set('xOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Y offset (pt)" note="+ down"><input type="number" step={0.5} value={opts.yOffsetPt ?? 0} onChange={e => set('yOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Preview colour" note="Output uses the spot channel"><input type="color" value={rgbToHex(opts.previewColor ?? { r: 0.925, g: 0, b: 0.55 })} onChange={e => set('previewColor', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Adds a vector die-line path on a real <strong>Separation</strong> spot channel (named above) so a RIP or digital cutter reads it as a toolpath, not artwork. The preview colour is on-screen only. For a closed cut set the shape to enclose the trim; run Preflight to confirm the path is closed before sending to the die maker.
+      </div>
+    </Grid>
+  );
+}
+
+function WhiteVarnishSettings({ opts, onChange }: { opts: WhiteVarnishOptions; onChange: (o: WhiteVarnishOptions) => void }) {
+  const set = <K extends keyof WhiteVarnishOptions>(k: K, v: WhiteVarnishOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Spot colour name">
+        <input list="wvnames" value={opts.spotName} onChange={e => set('spotName', e.target.value)} style={iStyle} />
+        <datalist id="wvnames"><option value="White" /><option value="Varnish" /><option value="Gloss" /><option value="Matte" /></datalist>
+      </Field>
+      <Field label="Coverage">
+        <select value={opts.coverage} onChange={e => set('coverage', e.target.value as WhiteVarnishOptions['coverage'])} style={iStyle}>
+          <option value="flood">Flood (whole page)</option><option value="trim">Trim box</option><option value="bleed">Bleed box</option><option value="custom">Custom</option>
+        </select>
+      </Field>
+      {opts.coverage === 'custom' && <>
+        <Field label="Custom width (pt)"><input type="number" min={1} step={1} value={opts.customWpt ?? 216} onChange={e => set('customWpt', +e.target.value)} style={iStyle} /></Field>
+        <Field label="Custom height (pt)"><input type="number" min={1} step={1} value={opts.customHpt ?? 144} onChange={e => set('customHpt', +e.target.value)} style={iStyle} /></Field>
+      </>}
+      <Field label="Layer order">
+        <select value={opts.under ? 'under' : 'over'} onChange={e => set('under', e.target.value === 'under')} style={iStyle}>
+          <option value="under">Under-base (behind art — white)</option>
+          <option value="over">On top (varnish / gloss)</option>
+        </select>
+      </Field>
+      <Field label="Tint" note="0–1 ink density"><input type="number" min={0} max={1} step={0.05} value={opts.tint ?? 1} onChange={e => set('tint', +e.target.value)} style={iStyle} /></Field>
+      <Field label="X offset (pt)"><input type="number" step={0.5} value={opts.xOffsetPt ?? 0} onChange={e => set('xOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Y offset (pt)"><input type="number" step={0.5} value={opts.yOffsetPt ?? 0} onChange={e => set('yOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Preview colour"><input type="color" value={rgbToHex(opts.previewColor ?? { r: 0.85, g: 0.86, b: 0.92 })} onChange={e => set('previewColor', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Lays a named <strong>Separation</strong> layer (White ink or spot Varnish) as a spot-colour fill. <em>Under-base</em> prints behind the artwork (white ink for clear/metallic/dark stock); <em>on top</em> is a gloss/matte varnish over the art. The preview colour is on-screen only.
+      </div>
+    </Grid>
+  );
+}
+
+function BrailleSettings({ opts, onChange }: { opts: BrailleOptions; onChange: (o: BrailleOptions) => void }) {
+  const set = <K extends keyof BrailleOptions>(k: K, v: BrailleOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Text" note="Grade-1 (letter-for-letter)"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
+      <Field label="X position (pt)"><input type="number" step={1} value={opts.xPt ?? 72} onChange={e => set('xPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Y position (pt)" note="From bottom; blank = 1″ from top"><input type="number" step={1} value={opts.yPt ?? 0} onChange={e => set('yPt', e.target.value === '' ? undefined as unknown as number : +e.target.value)} style={iStyle} /></Field>
+      <Field label="Dot diameter (pt)" note="1.5 mm ≈ 4.25"><input type="number" min={1} max={12} step={0.25} value={opts.dotDiaPt ?? 4.25} onChange={e => set('dotDiaPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Dot pitch (pt)" note="within a cell, 2.5 mm ≈ 7.09"><input type="number" min={2} max={20} step={0.25} value={opts.dotPitchPt ?? 7.09} onChange={e => set('dotPitchPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Cell spacing (pt)" note="6 mm ≈ 17"><input type="number" min={4} max={40} step={0.5} value={opts.cellSpacePt ?? 17} onChange={e => set('cellSpacePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Line spacing (pt)" note="10 mm ≈ 28.35"><input type="number" min={6} max={60} step={0.5} value={opts.lineSpacePt ?? 28.35} onChange={e => set('lineSpacePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Spot channel" note="blank = visible ink"><input list="brspots" value={opts.spotName ?? ''} onChange={e => set('spotName', e.target.value || undefined)} style={iStyle} /><datalist id="brspots"><option value="Varnish" /><option value="Emboss" /><option value="Braille" /></datalist></Field>
+      <Field label="Preview colour"><input type="color" value={rgbToHex(opts.previewColor ?? { r: 0.55, g: 0.55, b: 0.6 })} onChange={e => set('previewColor', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Places <strong>Grade-1</strong> (uncontracted) Braille as raised dots at ADA metrics (1.5 mm dots, 2.5 mm within-cell, 6 mm cell, 10 mm line). Digits get an automatic number sign. Target a spot channel (Emboss / Varnish) for a raised-dot plate, or leave blank to draw visible dots.
       </div>
     </Grid>
   );

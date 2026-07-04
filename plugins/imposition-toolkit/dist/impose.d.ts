@@ -415,6 +415,62 @@ export interface QrStampOptions {
 }
 export declare function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Promise<Uint8Array>;
 export declare function addDimensions(bytes: Uint8Array): Promise<Uint8Array>;
+export interface CutContourOptions {
+    shape: 'rectangle' | 'rounded' | 'ellipse';
+    target: 'trim' | 'bleed' | 'media' | 'custom';
+    customWpt?: number;
+    customHpt?: number;
+    spotName: string;
+    thicknessPt?: number;
+    dashed?: boolean;
+    dashLenPt?: number;
+    dashGapPt?: number;
+    cornerRadiusPt?: number;
+    xOffsetPt?: number;
+    yOffsetPt?: number;
+    previewColor?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
+}
+export declare function addCutContour(bytes: Uint8Array, opts: CutContourOptions): Promise<Uint8Array>;
+export interface WhiteVarnishOptions {
+    spotName: string;
+    coverage: 'flood' | 'trim' | 'bleed' | 'custom';
+    customWpt?: number;
+    customHpt?: number;
+    tint?: number;
+    under?: boolean;
+    xOffsetPt?: number;
+    yOffsetPt?: number;
+    previewColor?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
+}
+export declare function addWhiteVarnish(bytes: Uint8Array, opts: WhiteVarnishOptions): Promise<Uint8Array>;
+export interface BrailleOptions {
+    text: string;
+    xPt?: number;
+    yPt?: number;
+    dotDiaPt?: number;
+    dotPitchPt?: number;
+    cellSpacePt?: number;
+    lineSpacePt?: number;
+    spotName?: string;
+    tint?: number;
+    previewColor?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
+}
+export declare function addBraille(bytes: Uint8Array, opts: BrailleOptions): Promise<Uint8Array>;
 export interface NestOptions {
     sheetWIn: number;
     sheetHIn: number;
