@@ -1,7 +1,7 @@
 {
   "name": "imposition-toolkit",
-  "version": "1.2.8",
-  "description": "Client-side PDF imposition & pre-press toolkit — 76 print-production tools, 156 ready-made industry templates, and 6 chained workflows (booklets, n-up, cards, labels, folding, large-format, tickets, marks, dielines, true-shape sticker nesting, collating + OMR bindery marks, CSV data-merge + QR, resize, registration, insert/mix/nudge/repair) that run entirely in the browser via pdf-lib. Framework-agnostic engine + optional React 19 UI with a dark theme.",
+  "version": "1.2.9",
+  "description": "Client-side PDF imposition & pre-press toolkit — 79 print-production tools, 156 ready-made industry templates, and 6 chained workflows (booklets, n-up, cards, labels, folding, large-format, tickets, marks, dielines, true-shape sticker nesting, collating + gathering + OMR + lay + fold bindery marks, CSV data-merge + QR, resize, registration, insert/mix/nudge/repair) that run entirely in the browser via pdf-lib. Framework-agnostic engine + optional React 19 UI with a dark theme.",
   "type": "module",
   "main": "dist/impose.mjs",
   "module": "dist/impose.mjs",

@@ -1278,6 +1278,211 @@ export async function addOmrMarks(bytes: Uint8Array, opts: OmrOptions): Promise<
   return doc.save();
 }
 
+// ── Gathering marks ─────────────────────────────────────────────────────────
+// The gripper-edge cousin of collating marks: one mark per *section*, stepped
+// horizontally along the leading (gripper) edge instead of down the spine.
+// After cutting and stacking, a correct gather shows a clean staircase across
+// the stack edge. Marks sit an `edgeOffset` in from the gripper edge to clear
+// the press gripper zone (10–15 mm), and reset with a contrasting colour once
+// the staircase reaches `sectionsPerSet`.
+export interface GatheringOptions {
+  edge: 'top' | 'bottom';       // gripper (leading) edge
+  startOffsetPt?: number;       // first mark's distance from the left (default 18)
+  edgeOffsetPt?: number;        // inward from the gripper edge (default 8)
+  markWpt?: number;             // default 6
+  markHpt?: number;             // default 6
+  pagesPerSection?: number;     // pages that make up one section (default 16)
+  sectionsPerSet?: number;      // staircase length before it resets (default 12)
+  stepPt?: number;              // horizontal distance between marks (default 8)
+  color?: { r: number; g: number; b: number };
+  color2?: { r: number; g: number; b: number };  // contrasting colour for the 2nd pass
+  opacity?: number;
+  pages?: string;
+}
+
+export async function addGatheringMarks(bytes: Uint8Array, opts: GatheringOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const startOff = opts.startOffsetPt ?? 18;
+  const edgeOff = opts.edgeOffsetPt ?? 8;
+  const mw = opts.markWpt ?? 6;
+  const mh = opts.markHpt ?? 6;
+  const pps = Math.max(1, Math.round(opts.pagesPerSection ?? 16));
+  const sps = Math.max(1, Math.round(opts.sectionsPerSet ?? 12));
+  const step = opts.stepPt ?? 8;
+  const c1 = opts.color ?? { r: 0, g: 0, b: 0 };
+  const c2 = opts.color2 ?? c1;
+  const op = opts.opacity ?? 1;
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i]!;
+    const { height: h } = pg.getSize();
+    const sec = Math.floor(i / pps);      // which section this page belongs to
+    const slot = sec % sps;               // position within the staircase
+    const pass = Math.floor(sec / sps);   // wrap pass (0,1,2…)
+    const col = pass % 2 === 0 ? c1 : c2;
+    const x = startOff + slot * step;
+    const y = opts.edge === 'top' ? h - edgeOff - mh : edgeOff;
+    pg.drawRectangle({ x, y, width: mw, height: mh, color: rgb(col.r, col.g, col.b), opacity: op });
+  }
+  return doc.save();
+}
+
+// ── Folding marks ───────────────────────────────────────────────────────────
+// Dashed tick guides in the trim margin at each fold position so the finisher
+// knows where to fold. Supports the common brochure schemes plus a custom
+// position list. Ticks are drawn at the ends of each fold line (top/bottom for
+// vertical folds, left/right for horizontal); `fullLine` draws a light guide
+// clear across the sheet instead.
+export interface FoldMarksOptions {
+  scheme: 'half' | 'letter' | 'zfold' | 'gate' | 'doubleparallel' | 'roll' | 'accordion' | 'custom';
+  orientation: 'vertical' | 'horizontal';   // vertical folds divide the width
+  panels?: number;            // accordion / roll panel count (default 4)
+  positions?: string;         // custom: "33,66" (%) · "0.33,0.66" · "1/3,2/3"
+  edge: 'top' | 'bottom' | 'both';           // which end(s) of the fold line get a tick
+  markLenPt?: number;         // tick length from the edge (default 18)
+  offsetPt?: number;          // gap between the paper edge and the tick (default 0)
+  style: 'dashed' | 'solid' | 'dotted';
+  weightPt?: number;          // line weight (default 0.75)
+  fullLine?: boolean;         // guide line across the whole sheet instead of ticks
+  color?: { r: number; g: number; b: number };
+  pages?: string;
+}
+
+// Fold-line positions as fractions of the fold axis (0..1). `axisPt` is only
+// needed for the roll fold, whose panels shrink so each tucks inside the last.
+function foldFractions(opts: FoldMarksOptions, axisPt: number): number[] {
+  const n = Math.max(2, Math.round(opts.panels ?? 4));
+  const even = (k: number) => Array.from({ length: k - 1 }, (_, i) => (i + 1) / k);
+  switch (opts.scheme) {
+    case 'half': return [0.5];
+    case 'letter': return [1 / 3, 2 / 3];
+    case 'zfold': return [1 / 3, 2 / 3];
+    case 'gate': return [0.25, 0.75];
+    case 'doubleparallel': return [0.25, 0.5, 0.75];
+    case 'accordion': return even(n);
+    case 'roll': {
+      // panels decrease outward→inner by a 1/16" (4.5 pt) tuck allowance
+      const base = axisPt / n, d = 4.5;
+      const widths = Array.from({ length: n }, (_, i) => base + ((n - 1 - i) - (n - 1) / 2) * d);
+      const fr: number[] = []; let cum = 0;
+      for (let i = 0; i < n - 1; i++) { cum += widths[i]!; fr.push(cum / axisPt); }
+      return fr;
+    }
+    case 'custom':
+      return (opts.positions ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => {
+        if (s.includes('/')) { const [a, b] = s.split('/').map(Number); return (a ?? 0) / (b ?? 1); }
+        const v = parseFloat(s); return isNaN(v) ? -1 : v > 1 ? v / 100 : v;   // >1 ⇒ percent
+      }).filter(v => v > 0 && v < 1).sort((a, b) => a - b);
+    default: return [0.5];
+  }
+}
+
+export async function addFoldMarks(bytes: Uint8Array, opts: FoldMarksOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb, LineCapStyle } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const len = opts.markLenPt ?? 18;
+  const off = opts.offsetPt ?? 0;
+  const wgt = opts.weightPt ?? 0.75;
+  const c = opts.color ?? { r: 0, g: 0, b: 0 };
+  const col = rgb(c.r, c.g, c.b);
+  const dash = opts.style === 'dashed' ? [4, 3] : opts.style === 'dotted' ? [wgt, wgt * 2.5] : undefined;
+  const cap = opts.style === 'dotted' ? LineCapStyle.Round : LineCapStyle.Butt;
+  const wantLo = opts.edge === 'bottom' || opts.edge === 'both';   // bottom / left end
+  const wantHi = opts.edge === 'top' || opts.edge === 'both';      // top / right end
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  const vertical = opts.orientation === 'vertical';
+
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i]!;
+    const { width: w, height: h } = pg.getSize();
+    const axis = vertical ? w : h;
+    const draw = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      pg.drawLine({ start: a, end: b, thickness: wgt, color: col, ...(dash ? { dashArray: dash } : {}), lineCap: cap });
+    for (const f of foldFractions(opts, axis)) {
+      const p = f * axis;
+      if (vertical) {                                  // fold line runs top↕bottom at x=p
+        if (opts.fullLine) { draw({ x: p, y: off }, { x: p, y: h - off }); continue; }
+        if (wantHi) draw({ x: p, y: h - off }, { x: p, y: h - off - len });   // top tick
+        if (wantLo) draw({ x: p, y: off }, { x: p, y: off + len });            // bottom tick
+      } else {                                         // fold line runs left↔right at y=p
+        if (opts.fullLine) { draw({ x: off, y: p }, { x: w - off, y: p }); continue; }
+        if (wantHi) draw({ x: w - off, y: p }, { x: w - off - len, y: p });   // right tick
+        if (wantLo) draw({ x: off, y: p }, { x: off + len, y: p });            // left tick
+      }
+    }
+  }
+  return doc.save();
+}
+
+// ── Lay marks ───────────────────────────────────────────────────────────────
+// Press-sheet alignment guides for the operator: front lay at the gripper
+// (leading) edge showing the feed direction, and side lay on the guide side
+// for lateral registration. Marks sit an `offsetPt` in from each corner in the
+// trim waste, drawn as an arrow (points into the sheet / feed direction), a
+// plain line tick, or a crosshair.
+export interface LayMarksOptions {
+  markType: 'arrow' | 'line' | 'cross';
+  edges: 'gripper' | 'sideguide' | 'both';
+  gripperEdge?: 'top' | 'bottom';     // leading edge (default bottom)
+  sideGuideSide: 'left' | 'right';    // operator / drive side
+  sizePt?: number;          // mark size (default 14.17 = 5 mm)
+  thicknessPt?: number;     // line weight (default 0.5)
+  offsetPt?: number;        // inset from each corner (default 14.17)
+  color?: { r: number; g: number; b: number };
+  pages?: string;
+}
+
+export async function addLayMarks(bytes: Uint8Array, opts: LayMarksOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const size = opts.sizePt ?? 14.17;
+  const t = opts.thicknessPt ?? 0.5;
+  const o = opts.offsetPt ?? 14.17;
+  const c = opts.color ?? { r: 0, g: 0, b: 0 };
+  const col = rgb(c.r, c.g, c.b);
+  const wantGrip = opts.edges === 'gripper' || opts.edges === 'both';
+  const wantSide = opts.edges === 'sideguide' || opts.edges === 'both';
+  const gripBottom = (opts.gripperEdge ?? 'bottom') === 'bottom';
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i]!;
+    const { width: w, height: h } = pg.getSize();
+    const line = (x1: number, y1: number, x2: number, y2: number) =>
+      pg.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: t, color: col });
+    // one mark: anchor (x,y) with into-sheet direction (dx,dy)
+    const mark = (x: number, y: number, dx: number, dy: number) => {
+      if (opts.markType === 'cross') { line(x - size / 2, y, x + size / 2, y); line(x, y - size / 2, x, y + size / 2); return; }
+      const tx = x + dx * size, ty = y + dy * size;
+      line(x, y, tx, ty);                                   // shaft (line + arrow)
+      if (opts.markType === 'arrow') {
+        const hl = size * 0.4, px = -dy, py = dx;           // perpendicular for the head
+        line(tx, ty, tx - dx * hl + px * hl * 0.6, ty - dy * hl + py * hl * 0.6);
+        line(tx, ty, tx - dx * hl - px * hl * 0.6, ty - dy * hl - py * hl * 0.6);
+      }
+    };
+    if (wantGrip) {                                          // two front-lay marks on the gripper edge
+      const gy = gripBottom ? o : h - o, gdy = gripBottom ? 1 : -1;
+      mark(o, gy, 0, gdy); mark(w - o, gy, 0, gdy);
+    }
+    if (wantSide) {                                          // two side-lay marks on the guide side
+      const sx = opts.sideGuideSide === 'left' ? o : w - o, sdx = opts.sideGuideSide === 'left' ? 1 : -1;
+      mark(sx, o, sdx, 0); mark(sx, h - o, sdx, 0);
+    }
+  }
+  return doc.save();
+}
+
 // ── Preflight (inspection, non-destructive) ─────────────────────────────────
 
 export interface PreflightReport {

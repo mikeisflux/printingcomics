@@ -995,6 +995,165 @@ async function addOmrMarks(bytes, opts) {
   }
   return doc.save();
 }
+async function addGatheringMarks(bytes, opts) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const startOff = opts.startOffsetPt ?? 18;
+  const edgeOff = opts.edgeOffsetPt ?? 8;
+  const mw = opts.markWpt ?? 6;
+  const mh = opts.markHpt ?? 6;
+  const pps = Math.max(1, Math.round(opts.pagesPerSection ?? 16));
+  const sps = Math.max(1, Math.round(opts.sectionsPerSet ?? 12));
+  const step = opts.stepPt ?? 8;
+  const c1 = opts.color ?? { r: 0, g: 0, b: 0 };
+  const c2 = opts.color2 ?? c1;
+  const op = opts.opacity ?? 1;
+  const sel = parsePageRange(opts.pages ?? "all", n);
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i];
+    const { height: h } = pg.getSize();
+    const sec = Math.floor(i / pps);
+    const slot = sec % sps;
+    const pass = Math.floor(sec / sps);
+    const col = pass % 2 === 0 ? c1 : c2;
+    const x = startOff + slot * step;
+    const y = opts.edge === "top" ? h - edgeOff - mh : edgeOff;
+    pg.drawRectangle({ x, y, width: mw, height: mh, color: rgb(col.r, col.g, col.b), opacity: op });
+  }
+  return doc.save();
+}
+function foldFractions(opts, axisPt) {
+  const n = Math.max(2, Math.round(opts.panels ?? 4));
+  const even = (k) => Array.from({ length: k - 1 }, (_, i) => (i + 1) / k);
+  switch (opts.scheme) {
+    case "half":
+      return [0.5];
+    case "letter":
+      return [1 / 3, 2 / 3];
+    case "zfold":
+      return [1 / 3, 2 / 3];
+    case "gate":
+      return [0.25, 0.75];
+    case "doubleparallel":
+      return [0.25, 0.5, 0.75];
+    case "accordion":
+      return even(n);
+    case "roll": {
+      const base = axisPt / n, d = 4.5;
+      const widths = Array.from({ length: n }, (_, i) => base + (n - 1 - i - (n - 1) / 2) * d);
+      const fr = [];
+      let cum = 0;
+      for (let i = 0; i < n - 1; i++) {
+        cum += widths[i];
+        fr.push(cum / axisPt);
+      }
+      return fr;
+    }
+    case "custom":
+      return (opts.positions ?? "").split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+        if (s.includes("/")) {
+          const [a, b] = s.split("/").map(Number);
+          return (a ?? 0) / (b ?? 1);
+        }
+        const v = parseFloat(s);
+        return isNaN(v) ? -1 : v > 1 ? v / 100 : v;
+      }).filter((v) => v > 0 && v < 1).sort((a, b) => a - b);
+    default:
+      return [0.5];
+  }
+}
+async function addFoldMarks(bytes, opts) {
+  const { PDFDocument, rgb, LineCapStyle } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const len = opts.markLenPt ?? 18;
+  const off = opts.offsetPt ?? 0;
+  const wgt = opts.weightPt ?? 0.75;
+  const c = opts.color ?? { r: 0, g: 0, b: 0 };
+  const col = rgb(c.r, c.g, c.b);
+  const dash = opts.style === "dashed" ? [4, 3] : opts.style === "dotted" ? [wgt, wgt * 2.5] : void 0;
+  const cap = opts.style === "dotted" ? LineCapStyle.Round : LineCapStyle.Butt;
+  const wantLo = opts.edge === "bottom" || opts.edge === "both";
+  const wantHi = opts.edge === "top" || opts.edge === "both";
+  const sel = parsePageRange(opts.pages ?? "all", n);
+  const vertical = opts.orientation === "vertical";
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i];
+    const { width: w, height: h } = pg.getSize();
+    const axis = vertical ? w : h;
+    const draw = (a, b) => pg.drawLine({ start: a, end: b, thickness: wgt, color: col, ...dash ? { dashArray: dash } : {}, lineCap: cap });
+    for (const f of foldFractions(opts, axis)) {
+      const p = f * axis;
+      if (vertical) {
+        if (opts.fullLine) {
+          draw({ x: p, y: off }, { x: p, y: h - off });
+          continue;
+        }
+        if (wantHi) draw({ x: p, y: h - off }, { x: p, y: h - off - len });
+        if (wantLo) draw({ x: p, y: off }, { x: p, y: off + len });
+      } else {
+        if (opts.fullLine) {
+          draw({ x: off, y: p }, { x: w - off, y: p });
+          continue;
+        }
+        if (wantHi) draw({ x: w - off, y: p }, { x: w - off - len, y: p });
+        if (wantLo) draw({ x: off, y: p }, { x: off + len, y: p });
+      }
+    }
+  }
+  return doc.save();
+}
+async function addLayMarks(bytes, opts) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const size = opts.sizePt ?? 14.17;
+  const t = opts.thicknessPt ?? 0.5;
+  const o = opts.offsetPt ?? 14.17;
+  const c = opts.color ?? { r: 0, g: 0, b: 0 };
+  const col = rgb(c.r, c.g, c.b);
+  const wantGrip = opts.edges === "gripper" || opts.edges === "both";
+  const wantSide = opts.edges === "sideguide" || opts.edges === "both";
+  const gripBottom = (opts.gripperEdge ?? "bottom") === "bottom";
+  const sel = parsePageRange(opts.pages ?? "all", n);
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i];
+    const { width: w, height: h } = pg.getSize();
+    const line = (x1, y1, x2, y2) => pg.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: t, color: col });
+    const mark = (x, y, dx, dy) => {
+      if (opts.markType === "cross") {
+        line(x - size / 2, y, x + size / 2, y);
+        line(x, y - size / 2, x, y + size / 2);
+        return;
+      }
+      const tx = x + dx * size, ty = y + dy * size;
+      line(x, y, tx, ty);
+      if (opts.markType === "arrow") {
+        const hl = size * 0.4, px = -dy, py = dx;
+        line(tx, ty, tx - dx * hl + px * hl * 0.6, ty - dy * hl + py * hl * 0.6);
+        line(tx, ty, tx - dx * hl - px * hl * 0.6, ty - dy * hl - py * hl * 0.6);
+      }
+    };
+    if (wantGrip) {
+      const gy = gripBottom ? o : h - o, gdy = gripBottom ? 1 : -1;
+      mark(o, gy, 0, gdy);
+      mark(w - o, gy, 0, gdy);
+    }
+    if (wantSide) {
+      const sx = opts.sideGuideSide === "left" ? o : w - o, sdx = opts.sideGuideSide === "left" ? 1 : -1;
+      mark(sx, o, sdx, 0);
+      mark(sx, h - o, sdx, 0);
+    }
+  }
+  return doc.save();
+}
 async function preflight(bytes) {
   const { PDFDocument } = await import("pdf-lib");
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -1636,8 +1795,11 @@ export {
   addColorBar,
   addCropMarksOnly,
   addDimensions,
+  addFoldMarks,
+  addGatheringMarks,
   addHeaderFooter,
   addJobSlug,
+  addLayMarks,
   addOmrMarks,
   addPageNumbers,
   addQrStamp,

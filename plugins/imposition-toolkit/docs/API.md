@@ -406,6 +406,43 @@ Marks must be solid black at 100% density and the edge must match the
 machine's sensor position — patterns are manufacturer-specific, so confirm the
 spec with your finishing vendor.
 
+### `addGatheringMarks(bytes, opts: GatheringOptions): Promise<Uint8Array>`
+The gripper-edge cousin of collating marks. `{ edge:'top'|'bottom',
+startOffsetPt?, edgeOffsetPt?, markWpt?, markHpt?, pagesPerSection?,
+sectionsPerSet?, stepPt?, color?, color2?, opacity?, pages? }` — one mark per
+`pagesPerSection` pages, stepped **horizontally** along the leading edge (kept
+`edgeOffsetPt` clear of the gripper zone); the staircase resets after
+`sectionsPerSet` sections and switches to `color2`.
+
+### `addFoldMarks(bytes, opts: FoldMarksOptions): Promise<Uint8Array>`
+Dashed fold-tick guides in the trim margin at each fold.
+
+```ts
+interface FoldMarksOptions {
+  scheme: 'half' | 'letter' | 'zfold' | 'gate' | 'doubleparallel'
+        | 'roll' | 'accordion' | 'custom';
+  orientation: 'vertical' | 'horizontal';   // vertical folds divide the width
+  panels?: number;            // accordion / roll panel count
+  positions?: string;         // custom: "33,66" (%) · "0.33,0.66" · "1/3,2/3"
+  edge: 'top' | 'bottom' | 'both';           // which end(s) of the fold line
+  markLenPt?: number; offsetPt?: number; weightPt?: number;
+  style: 'dashed' | 'solid' | 'dotted';
+  fullLine?: boolean;         // guide line across the whole sheet
+  color?: { r: number; g: number; b: number }; pages?: string;
+}
+```
+
+Roll fold shrinks each panel by a 1/16″ tuck allowance so it nests inside the
+previous; every other scheme uses exact fold fractions.
+
+### `addLayMarks(bytes, opts: LayMarksOptions): Promise<Uint8Array>`
+Press-sheet alignment guides. `{ markType:'arrow'|'line'|'cross',
+edges:'gripper'|'sideguide'|'both', gripperEdge?:'top'|'bottom',
+sideGuideSide:'left'|'right', sizePt?, thicknessPt?, offsetPt?, color?, pages? }`
+— front lay marks the gripper (leading) edge feed direction; side lay marks the
+guide side for lateral registration. Best applied to the **imposed press
+sheet** (where the gripper margin already exists).
+
 ## Error handling
 
 Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).

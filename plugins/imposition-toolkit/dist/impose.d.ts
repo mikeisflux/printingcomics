@@ -275,6 +275,64 @@ export interface OmrOptions {
     pages?: string;
 }
 export declare function addOmrMarks(bytes: Uint8Array, opts: OmrOptions): Promise<Uint8Array>;
+export interface GatheringOptions {
+    edge: 'top' | 'bottom';
+    startOffsetPt?: number;
+    edgeOffsetPt?: number;
+    markWpt?: number;
+    markHpt?: number;
+    pagesPerSection?: number;
+    sectionsPerSet?: number;
+    stepPt?: number;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    color2?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    opacity?: number;
+    pages?: string;
+}
+export declare function addGatheringMarks(bytes: Uint8Array, opts: GatheringOptions): Promise<Uint8Array>;
+export interface FoldMarksOptions {
+    scheme: 'half' | 'letter' | 'zfold' | 'gate' | 'doubleparallel' | 'roll' | 'accordion' | 'custom';
+    orientation: 'vertical' | 'horizontal';
+    panels?: number;
+    positions?: string;
+    edge: 'top' | 'bottom' | 'both';
+    markLenPt?: number;
+    offsetPt?: number;
+    style: 'dashed' | 'solid' | 'dotted';
+    weightPt?: number;
+    fullLine?: boolean;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
+}
+export declare function addFoldMarks(bytes: Uint8Array, opts: FoldMarksOptions): Promise<Uint8Array>;
+export interface LayMarksOptions {
+    markType: 'arrow' | 'line' | 'cross';
+    edges: 'gripper' | 'sideguide' | 'both';
+    gripperEdge?: 'top' | 'bottom';
+    sideGuideSide: 'left' | 'right';
+    sizePt?: number;
+    thicknessPt?: number;
+    offsetPt?: number;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
+}
+export declare function addLayMarks(bytes: Uint8Array, opts: LayMarksOptions): Promise<Uint8Array>;
 export interface PreflightReport {
     pages: number;
     uniformSize: boolean;

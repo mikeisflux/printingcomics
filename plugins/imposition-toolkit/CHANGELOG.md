@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.9
+
+- Three new finishing / prepress mark tools:
+  - **Folding Marks** — dashed fold-tick guides in the trim margin for half /
+    letter / Z / gate / double-parallel / roll / accordion / custom schemes,
+    vertical or horizontal fold axis, dashed/solid/dotted, length / weight /
+    offset, optional full guide line. Roll fold shrinks each panel by a tuck
+    allowance so it nests inside the previous.
+  - **Gathering Marks** — the gripper-edge cousin of collating marks: one mark
+    per section, stepped horizontally along the leading edge (clear of the
+    gripper zone), with a sections-per-set reset + contrasting wrap colour.
+  - **Lay Marks** — press-sheet alignment: front lay (gripper edge) + side lay
+    (guide side) as arrow / line / crosshair glyphs, with size, thickness and
+    corner offset.
+  - New `addFoldMarks`, `addGatheringMarks`, `addLayMarks` engine functions.
+
 ## 1.2.8
 
 - **Collating Marks** rewritten to model real signature gathering: one mark per
