@@ -11,7 +11,7 @@ each output page's content stream (`decodePDFRawStream`) and assert the
 documented behavior. Imposition **order** is proven by mapping each embedded
 XObject's BBox back to its source page and reading the `cm … Do` placements.
 
-## Results — 43/43 verified
+## Results — 45/45 verified
 
 | Tool | Assertion | ✓ |
 |---|---|---|
@@ -49,9 +49,10 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Braille (Grade-1) | text→cell dot counts, number sign, spot channel | ✓ |
 | Die Lines | red cut + blue crease strokes present | ✓ |
 | Dimensions | trim width + height labels + bleed size | ✓ |
-| Barcode / QR | QR module fills drawn | ✓ |
-| Watermark | diagonal text | ✓ |
-| Backdrop | full-page fill *before* content | ✓ |
+| Barcode / QR | QR + Code128 + **DataMatrix (ECC200)** + EAN-13; RS syndromes vanish, 9-pt position, rotation, colours | ✓ |
+| Watermark | diagonal text, colour + page range | ✓ |
+| Backdrop (fill) | full-page solid fill *before* content | ✓ |
+| Backdrop (file) | composites uploaded PDF/image behind content; repeat / range / opacity | ✓ |
 | PDF Repair | rebuilt, page count preserved | ✓ |
 | Page Numbering | number on every page | ✓ |
 | Cutter Marks | margin added + corner marks | ✓ |
@@ -93,7 +94,8 @@ These documented options are now implemented and verified:
 ## Remaining option gaps (bigger builds)
 
 - **N-up Book** — 8-up octavo / 16 / 32 fall back to folio saddle/perfect.
-- **Barcode** — DataMatrix (needs Reed-Solomon + matrix placement).
+- **Barcode** — ~~DataMatrix~~ now implemented (ECC200: GF(256)/0x12d Reed-Solomon
+  with FCR α¹, ISO 16022 Annex F placement, ASCII encodation, sizes 10–26).
 - **Gang Sheet** — the *classic* Gang Sheet tool still lays out a uniform grid;
   mixed-size bin-packing now lives in the dedicated **Nesting / Stickers** tool.
 - **Preflight** — size/uniformity only (no fonts / DPI / ink-coverage).

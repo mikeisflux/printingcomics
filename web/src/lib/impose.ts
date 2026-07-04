@@ -1091,6 +1091,8 @@ export interface WatermarkOptions {
   opacity: number;
   angleDeg: number;
   fontSizePt: number;
+  color?: { r: number; g: number; b: number };   // default mid-grey
+  pages?: string;                                  // default all
 }
 
 export async function addTextWatermark(bytes: Uint8Array, opts: WatermarkOptions): Promise<Uint8Array> {
@@ -1098,7 +1100,12 @@ export async function addTextWatermark(bytes: Uint8Array, opts: WatermarkOptions
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
   const rad = (opts.angleDeg * Math.PI) / 180;
-  for (const pg of doc.getPages()) {
+  const c = opts.color ?? { r: 0.5, g: 0.5, b: 0.5 };
+  const pages = doc.getPages();
+  const sel = parsePageRange(opts.pages ?? 'all', pages.length);
+  for (let i = 0; i < pages.length; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i]!;
     const { width: w, height: h } = pg.getSize();
     const tw = font.widthOfTextAtSize(opts.text || 'PROOF', opts.fontSizePt);
     // Position the baseline so the text's midpoint lands at the page centre.
@@ -1106,7 +1113,7 @@ export async function addTextWatermark(bytes: Uint8Array, opts: WatermarkOptions
     const y = h / 2 - (tw / 2) * Math.sin(rad);
     pg.drawText(opts.text || 'PROOF', {
       x, y, font, size: opts.fontSizePt,
-      color: rgb(0.5, 0.5, 0.5), opacity: opts.opacity, rotate: degrees(opts.angleDeg),
+      color: rgb(c.r, c.g, c.b), opacity: opts.opacity, rotate: degrees(opts.angleDeg),
     });
   }
   return doc.save();
@@ -1738,7 +1745,112 @@ function drawEan13(page: any, rgb: any, text: string, x: number, y: number, w: n
 function drawBarcode(page: any, rgb: any, qrcode: any, symbology: string, text: string, x: number, y: number, w: number, h: number) {
   if (symbology === 'code128') drawCode128(page, rgb, text, x, y, w, h);
   else if (symbology === 'ean13') drawEan13(page, rgb, text, x, y, w, h);
+  else if (symbology === 'datamatrix') { const dm = encodeDataMatrix(text); const cell = Math.min(w, h) / (dm.size + 4); drawModuleGrid(page, rgb, dm.matrix, x, y, cell, 2); }
   else drawQrCode(page, rgb, qrcode, text, x, y, Math.min(w, h));
+}
+
+// ── DataMatrix (ECC200) ─────────────────────────────────────────────────────
+// GF(256) with primitive polynomial 0x12d, Reed-Solomon (first consecutive
+// root α¹), ASCII encodation and the ISO/IEC 16022 Annex F module placement.
+// Square symbols 10×10 … 26×26 (single data region).
+const GF_EXP = new Uint8Array(512);
+const GF_LOG = new Uint8Array(256);
+(() => { let x = 1; for (let i = 0; i < 255; i++) { GF_EXP[i] = x; GF_LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x12d; } for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255]!; })();
+const gfMul = (a: number, b: number) => (a === 0 || b === 0) ? 0 : GF_EXP[GF_LOG[a]! + GF_LOG[b]!]!;
+
+// Reed-Solomon check words for DataMatrix (generator roots α¹…α^nc).
+function dmReedSolomon(data: number[], nc: number): number[] {
+  const gen = new Array(nc + 1).fill(0); gen[0] = 1;
+  for (let i = 1; i <= nc; i++) { gen[i] = 1; for (let j = i - 1; j > 0; j--) gen[j] = gen[j - 1] ^ gfMul(gen[j]!, GF_EXP[i]!); gen[0] = gfMul(gen[0]!, GF_EXP[i]!); }
+  const ecc = new Array(nc).fill(0);
+  for (const d of data) {
+    const k = d ^ ecc[0];
+    for (let j = 0; j < nc - 1; j++) ecc[j] = ecc[j + 1]! ^ gfMul(k, gen[nc - 1 - j]!);
+    ecc[nc - 1] = gfMul(k, gen[0]!);
+  }
+  return ecc;
+}
+
+// ASCII encodation (digit pairs → 130+, byte → +1, extended → upper-shift).
+function dmEncodeAscii(text: string): number[] {
+  const b = Array.from(text, c => c.charCodeAt(0) & 0xff);
+  const cw: number[] = [];
+  for (let i = 0; i < b.length;) {
+    const c = b[i]!;
+    if (c >= 48 && c <= 57 && i + 1 < b.length && b[i + 1]! >= 48 && b[i + 1]! <= 57) { cw.push((c - 48) * 10 + (b[i + 1]! - 48) + 130); i += 2; }
+    else if (c < 128) { cw.push(c + 1); i++; }
+    else { cw.push(235); cw.push(c - 128 + 1); i++; }
+  }
+  return cw;
+}
+
+const DM_SIZES = [[10, 3, 5], [12, 5, 7], [14, 8, 10], [16, 12, 12], [18, 18, 14], [20, 22, 18], [22, 30, 20], [24, 36, 24], [26, 44, 28]];
+
+// ISO 16022 Annex F placement: fill an nrow×ncol mapping matrix with the bit
+// index (codeword*8 + bit) at each cell.
+function dmPlacement(nrow: number, ncol: number): Int32Array {
+  const arr = new Int32Array(nrow * ncol).fill(-1);
+  const mod = (r: number, c: number, chr: number, bit: number) => {
+    if (r < 0) { r += nrow; c += 4 - ((nrow + 4) % 8); }
+    if (c < 0) { c += ncol; r += 4 - ((ncol + 4) % 8); }
+    arr[r * ncol + c] = chr * 8 + bit;
+  };
+  const utah = (r: number, c: number, chr: number) => { mod(r - 2, c - 2, chr, 0); mod(r - 2, c - 1, chr, 1); mod(r - 1, c - 2, chr, 2); mod(r - 1, c - 1, chr, 3); mod(r - 1, c, chr, 4); mod(r, c - 2, chr, 5); mod(r, c - 1, chr, 6); mod(r, c, chr, 7); };
+  const c1 = (chr: number) => { mod(nrow - 1, 0, chr, 0); mod(nrow - 1, 1, chr, 1); mod(nrow - 1, 2, chr, 2); mod(0, ncol - 2, chr, 3); mod(0, ncol - 1, chr, 4); mod(1, ncol - 1, chr, 5); mod(2, ncol - 1, chr, 6); mod(3, ncol - 1, chr, 7); };
+  const c2 = (chr: number) => { mod(nrow - 3, 0, chr, 0); mod(nrow - 2, 0, chr, 1); mod(nrow - 1, 0, chr, 2); mod(0, ncol - 4, chr, 3); mod(0, ncol - 3, chr, 4); mod(0, ncol - 2, chr, 5); mod(0, ncol - 1, chr, 6); mod(1, ncol - 1, chr, 7); };
+  const c3 = (chr: number) => { mod(nrow - 3, 0, chr, 0); mod(nrow - 2, 0, chr, 1); mod(nrow - 1, 0, chr, 2); mod(0, ncol - 2, chr, 3); mod(0, ncol - 1, chr, 4); mod(1, ncol - 1, chr, 5); mod(2, ncol - 1, chr, 6); mod(3, ncol - 1, chr, 7); };
+  const c4 = (chr: number) => { mod(nrow - 1, 0, chr, 0); mod(nrow - 1, ncol - 1, chr, 1); mod(0, ncol - 3, chr, 2); mod(0, ncol - 2, chr, 3); mod(0, ncol - 1, chr, 4); mod(1, ncol - 3, chr, 5); mod(1, ncol - 2, chr, 6); mod(1, ncol - 1, chr, 7); };
+  let chr = 0, r = 4, c = 0;
+  do {
+    if (r === nrow && c === 0) c1(chr++);
+    else if (r === nrow - 2 && c === 0 && ncol % 4) c2(chr++);
+    else if (r === nrow - 2 && c === 0 && ncol % 8 === 4) c3(chr++);
+    else if (r === nrow + 4 && c === 2 && ncol % 8 === 0) c4(chr++);
+    do { if (r < nrow && c >= 0 && arr[r * ncol + c] === -1) utah(r, c, chr++); r -= 2; c += 2; } while (r >= 0 && c < ncol);
+    r += 1; c += 3;
+    do { if (r >= 0 && c < ncol && arr[r * ncol + c] === -1) utah(r, c, chr++); r += 2; c -= 2; } while (r < nrow && c >= 0);
+    r += 3; c += 1;
+  } while (r < nrow || c < ncol);
+  if (arr[(nrow - 1) * ncol + ncol - 1] === -1) { arr[(nrow - 1) * ncol + ncol - 1] = arr[(nrow - 2) * ncol + ncol - 2] = -2; } // fixed corner (dark)
+  return arr;
+}
+
+export interface DataMatrixResult { size: number; matrix: boolean[][]; codewords: number[]; ecc: number[]; }
+
+export function encodeDataMatrix(text: string): DataMatrixResult {
+  let data = dmEncodeAscii(text || ' ');
+  const spec = DM_SIZES.find(s => data.length <= s[1]!);
+  if (!spec) throw new Error('DataMatrix: data too long (max 44 codewords / 26×26)');
+  const [D, cap, nc] = spec as [number, number, number];
+  if (data.length < cap) {                                  // pad: EOM then randomised 253-state
+    data.push(129);
+    while (data.length < cap) { const pos = data.length + 1; let v = ((149 * pos) % 253) + 1 + 129; if (v > 254) v -= 254; data.push(v); }
+  }
+  const all = data.concat(dmReedSolomon(data, nc));
+  const nrow = D - 2, ncol = D - 2;
+  const place = dmPlacement(nrow, ncol);
+  // build full D×D bitmap: finder border + mapped interior
+  const m: boolean[][] = Array.from({ length: D }, () => new Array(D).fill(false));
+  for (let row = 0; row < D; row++) for (let col = 0; col < D; col++) {
+    if (col === 0) m[row]![col] = true;                     // left solid
+    else if (row === D - 1) m[row]![col] = true;            // bottom solid
+    else if (row === 0) m[row]![col] = (col % 2 === 0);     // top timing
+    else if (col === D - 1) m[row]![col] = ((D - 1 - row) % 2 === 0); // right timing
+    else { const idx = place[(row - 1) * ncol + (col - 1)]!; m[row]![col] = idx === -2 ? true : idx >= 0 && ((all[Math.floor(idx / 8)]! >> (7 - (idx % 8))) & 1) === 1; }
+  }
+  return { size: D, matrix: m, codewords: data, ecc: all.slice(data.length) };
+}
+
+// Draw a boolean module grid (QR / DataMatrix) with `quiet` modules of margin.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function drawModuleGrid(page: any, rgb: any, matrix: boolean[][], x: number, y: number, cell: number, quiet: number) {
+  const n = matrix.length, total = n + quiet * 2, size = total * cell;
+  page.drawRectangle({ x, y, width: size, height: size, color: rgb(1, 1, 1) });
+  const black = rgb(0, 0, 0);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (!matrix[r]![c]) continue;
+    page.drawRectangle({ x: x + (quiet + c) * cell, y: y + size - (quiet + r + 1) * cell, width: cell + 0.3, height: cell + 0.3, color: black });
+  }
 }
 
 export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): Promise<DataMergeResult> {
@@ -1936,6 +2048,51 @@ export async function addBackdrop(bytes: Uint8Array, opts: BackdropOptions): Pro
   return out.save();
 }
 
+// ── Backdrop file (place an uploaded PDF / image behind the content) ─────────
+export interface BackdropFileOptions {
+  offsetXPt?: number;   // + right
+  offsetYPt?: number;   // + down
+  scalePct?: number;    // default 100
+  opacity?: number;     // 0..1, default 1
+  repeat?: boolean;     // all pages (true) vs page 1 only (false); default true
+  pages?: string;
+}
+
+export async function addBackdropFile(baseBytes: Uint8Array, backdropBytes: Uint8Array, opts: BackdropFileOptions): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const src = await PDFDocument.load(baseBytes, { ignoreEncryption: true });
+  const pages = src.getPages();
+  const out = await PDFDocument.create();
+  const srcEmbeds = await out.embedPages(pages);
+  // Embed the backdrop as a PDF page or an image, exposing a common placer.
+  const sig = String.fromCharCode(...backdropBytes.slice(0, 4));
+  let bw0: number, bh0: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let place: (pg: any, x: number, y: number, w: number, h: number, op: number) => void;
+  if (sig === '%PDF') {
+    const [bd] = await out.embedPdf(backdropBytes, [0]);
+    bw0 = bd!.width; bh0 = bd!.height;
+    place = (pg, x, y, w, h, op) => pg.drawPage(bd!, { x, y, width: w, height: h, opacity: op });
+  } else {
+    const isPng = backdropBytes[0] === 0x89 && backdropBytes[1] === 0x50;
+    const img = isPng ? await out.embedPng(backdropBytes) : await out.embedJpg(backdropBytes);
+    bw0 = img.width; bh0 = img.height;
+    place = (pg, x, y, w, h, op) => pg.drawImage(img, { x, y, width: w, height: h, opacity: op });
+  }
+  const scale = (opts.scalePct ?? 100) / 100;
+  const op = opts.opacity ?? 1;
+  const bw = bw0 * scale, bh = bh0 * scale;
+  const sel = parsePageRange(opts.pages ?? 'all', pages.length);
+  for (let i = 0; i < pages.length; i++) {
+    const { width: w, height: h } = pages[i]!.getSize();
+    const pg = out.addPage([w, h]);
+    const applies = opts.repeat === false ? i === 0 : sel.has(i + 1);
+    if (applies) place(pg, opts.offsetXPt ?? 0, h - bh - (opts.offsetYPt ?? 0), bw, bh, op);   // top-aligned; +Y offset = down
+    pg.drawPage(srcEmbeds[i]!, { x: 0, y: 0, width: w, height: h });
+  }
+  return out.save();
+}
+
 // ── QR / Barcode stamp (standalone) ─────────────────────────────────────────
 // Stamp a scannable QR encoding a fixed string (URL, vCard, code) on every page.
 
@@ -1959,6 +2116,113 @@ export async function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Promi
     const x = opts.position === 'center' ? (w - bw) / 2 : opts.position.includes('l') ? m : w - bw - m;
     const y = opts.position === 'center' ? (h - bh) / 2 : opts.position.includes('t') ? h - bh - m : m;
     drawBarcode(pg, rgb, qrcode, sym, opts.text || ' ', x, y, bw, bh);
+  }
+  return doc.save();
+}
+
+// ── Full barcode stamp (QR / Code 128 / DataMatrix / EAN-13) ────────────────
+// Bit string for Code 128 B (module widths expanded to 1/0 runs).
+function code128Bits(text: string): string {
+  const data = (text || ' ').replace(/[^\x20-\x7e]/g, '');
+  const vals = [104];
+  for (const ch of data) vals.push(ch.charCodeAt(0) - 32);
+  let sum = 104; for (let i = 1; i < vals.length; i++) sum += vals[i]! * i;
+  vals.push(sum % 103, 106);
+  let bits = ''; for (const v of vals) { let bar = true; for (const d of C128[v]!) { bits += (bar ? '1' : '0').repeat(+d); bar = !bar; } }
+  return bits;
+}
+function ean13Bits(text: string): string {
+  let d = (text || '').replace(/\D/g, '').slice(0, 13);
+  while (d.length < 12) d = '0' + d;
+  if (d.length === 12) { let s = 0; for (let i = 0; i < 12; i++) s += (+d[i]!) * (i % 2 ? 3 : 1); d += String((10 - (s % 10)) % 10); }
+  const parity = EAN_PARITY[+d[0]!]!;
+  let bits = '101';
+  for (let i = 1; i <= 6; i++) bits += (parity[i - 1] === 'L' ? EAN_L : EAN_G)[+d[i]!];
+  bits += '01010';
+  for (let i = 7; i <= 12; i++) bits += EAN_R[+d[i]!];
+  return bits + '101';
+}
+
+type XYWH = { x: number; y: number; w: number; h: number };
+// Rotate an axis-aligned local rect (bottom-left origin) inside a W×H box by
+// 0/90/180/270°; the result stays axis-aligned.
+function rotateRect(deg: number, W: number, H: number, lx: number, ly: number, w: number, h: number): XYWH {
+  switch (((deg % 360) + 360) % 360) {
+    case 90: return { x: H - (ly + h), y: lx, w: h, h: w };
+    case 180: return { x: W - (lx + w), y: H - (ly + h), w, h };
+    case 270: return { x: ly, y: W - (lx + w), w: h, h: w };
+    default: return { x: lx, y: ly, w, h };
+  }
+}
+
+export interface BarcodeStampOptions {
+  text: string;
+  symbology: 'qr' | 'code128' | 'datamatrix' | 'ean13';
+  scale?: number;             // module size in points (default 3)
+  quietZone?: number;         // quiet modules around the symbol (default 4)
+  barHeightMm?: number;       // linear bar height (default 15)
+  position: 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br';
+  marginPt?: number;          // inset from the anchored edge (default 18)
+  xOffsetPt?: number;         // + right
+  yOffsetPt?: number;         // + down
+  rotationDeg?: 0 | 90 | 180 | 270;
+  barColor?: { r: number; g: number; b: number };
+  bgColor?: { r: number; g: number; b: number };
+  transparent?: boolean;      // skip the background fill
+  showText?: boolean;         // human-readable value under linear codes
+  pages?: string;
+}
+
+export async function addBarcodeStamp(bytes: Uint8Array, opts: BarcodeStampOptions): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const scale = opts.scale ?? 3;
+  const q = opts.quietZone ?? 4;
+  const rot = opts.rotationDeg ?? 0;
+  const bar = opts.barColor ?? { r: 0, g: 0, b: 0 };
+  const bg = opts.bgColor ?? { r: 1, g: 1, b: 1 };
+  const barCol = rgb(bar.r, bar.g, bar.b), bgCol = rgb(bg.r, bg.g, bg.b);
+  const is2D = opts.symbology === 'qr' || opts.symbology === 'datamatrix';
+  const sel = parsePageRange(opts.pages ?? 'all', doc.getPageCount());
+  const margin = opts.marginPt ?? 18;
+
+  // Build local (unrotated, bottom-left origin) module rects + footprint + text.
+  const cells: XYWH[] = [];
+  let W = 0, H = 0, label = '';
+  if (is2D) {
+    let grid: boolean[][];
+    if (opts.symbology === 'datamatrix') grid = encodeDataMatrix(opts.text || ' ').matrix;
+    else { const mod = await import('qrcode-generator'); const qrcode = (mod as unknown as { default?: any }).default ?? mod; const qr = qrcode(0, 'M'); qr.addData(opts.text || ' '); qr.make(); const n = qr.getModuleCount(); grid = Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => qr.isDark(r, c))); }
+    const n = grid.length, tot = n + 2 * q;
+    W = H = tot * scale;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (grid[r]![c]) cells.push({ x: (q + c) * scale, y: H - (q + r + 1) * scale, w: scale + 0.3, h: scale + 0.3 });
+  } else {
+    const bits = opts.symbology === 'ean13' ? ean13Bits(opts.text) : code128Bits(opts.text);
+    label = opts.symbology === 'ean13' ? (opts.text || '').replace(/\D/g, '').slice(0, 13) : (opts.text || '');
+    const barH = (opts.barHeightMm ?? 15) * 2.83465;
+    const textGap = opts.showText ? 11 : 0;
+    W = (bits.length + 2 * q) * scale; H = barH + textGap;
+    for (let i = 0; i < bits.length; i++) if (bits[i] === '1') cells.push({ x: (q + i) * scale, y: textGap, w: scale + 0.15, h: barH });
+  }
+  // footprint after rotation
+  const swap = rot === 90 || rot === 270;
+  const fw = swap ? H : W, fh = swap ? W : H;
+
+  for (let p = 0; p < doc.getPageCount(); p++) {
+    if (!sel.has(p + 1)) continue;
+    const pg = doc.getPage(p);
+    const { width: pw, height: ph } = pg.getSize();
+    const hz = opts.position[1], vt = opts.position[0];
+    let ax = hz === 'l' ? margin : hz === 'c' ? (pw - fw) / 2 : pw - fw - margin;
+    let ay = vt === 't' ? ph - fh - margin : vt === 'm' ? (ph - fh) / 2 : margin;
+    ax += opts.xOffsetPt ?? 0; ay -= opts.yOffsetPt ?? 0;
+    if (!opts.transparent) pg.drawRectangle({ x: ax, y: ay, width: fw, height: fh, color: bgCol });
+    for (const c of cells) { const r = rotateRect(rot, W, H, c.x, c.y, c.w, c.h); pg.drawRectangle({ x: ax + r.x, y: ay + r.y, width: r.w, height: r.h, color: barCol }); }
+    if (opts.showText && !is2D && rot === 0 && label) {
+      const ts = 8, tw = font.widthOfTextAtSize(label, ts);
+      pg.drawText(label, { x: ax + (fw - tw) / 2, y: ay + 1, font, size: ts, color: barCol });
+    }
   }
   return doc.save();
 }
