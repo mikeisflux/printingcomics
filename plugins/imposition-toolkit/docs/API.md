@@ -510,6 +510,23 @@ warningColor?, pages? }`. Pure helpers `rgbToCmyk` / `cmykToRgb` /
 `isOutOfCmykGamut` are unit-testable. *Not a device-exact ICC transform* — for
 that, pair a full CMM; use `assignOutputIntent` to embed the profile.
 
+### `editPdf(bytes, ops: EditOp[]): Promise<Uint8Array>`
+Apply page-level edits. Each `EditOp` is one of: `{type:'text', page, xPt, yPt,
+text, sizePt?, color?, font?}`, `{type:'redact', page, xPt, yPt, wPt, hPt}`
+(opaque black box), `{type:'box', …, fill?}`, `{type:'line', page, x1,y1,x2,y2,
+thicknessPt?}`, `{type:'rotate', page, angleDeg}`, or `{type:'delete', pages}`.
+Draw/rotate ops run before deletes so page numbers stay stable; coordinates are
+points from the bottom-left.
+
+### `exportJdf(opts: JdfOptions): Uint8Array`
+Generate a CIP4 **JDF 1.4** Product-intent job ticket (XML, returned as bytes).
+`{ jobName, jobId?, productType?, quantity, widthPt, heightPt, pages?, sides?,
+mediaWidthPt?, mediaHeightPt?, mediaType?, binding? }`. Download it with
+`downloadFile(bytes, 'job.jdf', 'application/vnd.cip4-jdf+xml')`.
+
+### `downloadFile(bytes, filename, mime?)` *(browser)*
+Generic Blob download (any MIME). `downloadPdf` delegates to it.
+
 ## Error handling
 
 Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).

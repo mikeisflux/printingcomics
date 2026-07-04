@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.14
+
+- **Edit PDF** — page-level edits: add text, redact (opaque box), draw
+  boxes/lines, rotate individual pages, delete pages. New `editPdf` engine.
+- **JDF / CIP4 export** — emit a well-formed CIP4 **JDF 1.4** Product-intent job
+  ticket (`.jdf` XML) with finished + media dimensions, quantity, sides and
+  binding. New `exportJdf` engine + `downloadFile(bytes, name, mime)`.
+- Debug sweep: a master smoke-test now exercises **all 74 exported engine
+  functions** on a live PDF (and the built `dist/impose.mjs`) each run — green.
+  This completes the full pdfpress tool inventory (90 tools).
+
 ## 1.2.13
 
 - **Production Recipes** — the Workflows tab now ships **69 named, step-by-step

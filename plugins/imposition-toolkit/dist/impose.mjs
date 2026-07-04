@@ -1289,6 +1289,83 @@ function computeGangPlan(distinctItems, itemsPerSheet, quantity, makeready = 0, 
   const spoilageSheets = Math.ceil(runSheets * Math.max(0, spoilagePct) / 100);
   return { itemsPerSheet: ips, setsPerSheet, runSheets, makereadySheets, spoilageSheets, totalSheets: runSheets + makereadySheets + spoilageSheets };
 }
+async function editPdf(bytes, ops) {
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const fonts = {
+    helvetica: await doc.embedFont(StandardFonts.Helvetica),
+    times: await doc.embedFont(StandardFonts.TimesRoman),
+    courier: await doc.embedFont(StandardFonts.Courier)
+  };
+  for (const op of ops) {
+    if (op.type === "delete") continue;
+    const pg = doc.getPage(op.page - 1);
+    if (!pg) continue;
+    if (op.type === "text") pg.drawText(op.text || "", { x: op.xPt, y: op.yPt, size: op.sizePt ?? 12, font: fonts[op.font ?? "helvetica"], color: rgb(op.color?.r ?? 0, op.color?.g ?? 0, op.color?.b ?? 0) });
+    else if (op.type === "box") {
+      const c = op.color ?? { r: 0, g: 0, b: 0 };
+      pg.drawRectangle({ x: op.xPt, y: op.yPt, width: op.wPt, height: op.hPt, ...op.fill === false ? { borderColor: rgb(c.r, c.g, c.b), borderWidth: 1 } : { color: rgb(c.r, c.g, c.b) }, opacity: op.opacity ?? 1 });
+    } else if (op.type === "redact") pg.drawRectangle({ x: op.xPt, y: op.yPt, width: op.wPt, height: op.hPt, color: rgb(0, 0, 0) });
+    else if (op.type === "line") pg.drawLine({ start: { x: op.x1, y: op.y1 }, end: { x: op.x2, y: op.y2 }, thickness: op.thicknessPt ?? 1, color: rgb(op.color?.r ?? 0, op.color?.g ?? 0, op.color?.b ?? 0) });
+    else if (op.type === "rotate") pg.setRotation(degrees(((pg.getRotation().angle + op.angleDeg) % 360 + 360) % 360));
+  }
+  const n = doc.getPageCount();
+  const toRemove = /* @__PURE__ */ new Set();
+  for (const op of ops) if (op.type === "delete") for (const p of parsePageRange(op.pages, n)) toRemove.add(p - 1);
+  [...toRemove].sort((a, b) => b - a).forEach((i) => {
+    if (doc.getPageCount() > 1) doc.removePage(i);
+  });
+  return doc.save();
+}
+const xesc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const f2 = (v) => v.toFixed(2);
+function exportJdf(opts) {
+  const id = opts.jobId || "J" + Math.abs(hashStr(opts.jobName)).toString(36).toUpperCase();
+  const name = xesc(opts.jobName || "Untitled Job");
+  const prod = xesc(opts.productType || "Unknown");
+  const sides = opts.sides || "TwoSidedFlipY";
+  const bind = opts.binding && opts.binding !== "None" ? `
+      <BindingIntent Class="Intent" Status="Available">
+        <BindingType DataType="EnumerationSpan" Preferred="${opts.binding}"/>
+      </BindingIntent>` : "";
+  const mediaW = opts.mediaWidthPt ?? opts.widthPt, mediaH = opts.mediaHeightPt ?? opts.heightPt;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<JDF xmlns="http://www.CIP4.org/JDFSchema_1_1" ID="${id}" Type="Product" JobID="${id}"
+     Status="Waiting" Version="1.4" DescriptiveName="${name}" JobPartID="root"
+     Agent="Printing Comics Imposition Toolkit" AgentVersion="1.2">
+  <ResourcePool>
+    <LayoutIntent ID="LI1" Class="Intent" Status="Available">
+      <Dimensions DataType="ShapeSpan" Preferred="${f2(opts.widthPt)} ${f2(opts.heightPt)}"/>
+      <Sides DataType="EnumerationSpan" Preferred="${sides}"/>
+      <Pages DataType="IntegerSpan" Preferred="${opts.pages ?? 1}"/>
+    </LayoutIntent>
+    <MediaIntent ID="MI1" Class="Intent" Status="Available">
+      <Dimensions DataType="ShapeSpan" Preferred="${f2(mediaW)} ${f2(mediaH)}"/>
+      <MediaType DataType="EnumerationSpan" Preferred="${xesc(opts.mediaType || "Paper")}"/>
+    </MediaIntent>${bind}
+    <ProductionIntent ID="PI1" Class="Intent" Status="Available">
+      <PrintProcess DataType="NameSpan" Preferred="Digital"/>
+    </ProductionIntent>
+    <Component ID="COMP1" Class="Quantity" Status="Unavailable" ComponentType="FinalProduct"
+               DescriptiveName="${name}" Amount="${Math.max(1, Math.round(opts.quantity))}"/>
+  </ResourcePool>
+  <ResourceLinkPool>
+    <LayoutIntentLink rRef="LI1" Usage="Input"/>
+    <MediaIntentLink rRef="MI1" Usage="Input"/>${opts.binding && opts.binding !== "None" ? '\n    <BindingIntentLink rRef="BI1" Usage="Input"/>' : ""}
+    <ComponentLink rRef="COMP1" Usage="Output" Amount="${Math.max(1, Math.round(opts.quantity))}"/>
+  </ResourceLinkPool>
+  <Comment Name="ProductType">${prod}</Comment>
+</JDF>
+`;
+  return new TextEncoder().encode(xml);
+}
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = h * 31 + s.charCodeAt(i) | 0;
+  }
+  return h;
+}
 async function optimizePdf(bytes, opts = {}) {
   const { PDFDocument } = await import("pdf-lib");
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -2834,8 +2911,8 @@ async function renderNest(outDoc, srcPages, sheets, opts, degrees) {
   }
   return outDoc.save();
 }
-function downloadPdf(bytes, filename) {
-  const blob = new Blob([bytes], { type: "application/pdf" });
+function downloadFile(bytes, filename, mime = "application/octet-stream") {
+  const blob = new Blob([bytes], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -2844,6 +2921,9 @@ function downloadPdf(bytes, filename) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 2e3);
+}
+function downloadPdf(bytes, filename) {
+  downloadFile(bytes, filename, "application/pdf");
 }
 function downloadMultiple(files, baseName) {
   files.forEach((bytes, i) => downloadPdf(bytes, `${baseName}-part${i + 1}.pdf`));
@@ -2882,10 +2962,13 @@ export {
   decryptPdf,
   distortFactorFromCylinder,
   distortPdf,
+  downloadFile,
   downloadMultiple,
   downloadPdf,
+  editPdf,
   encodeDataMatrix,
   expandShuffle,
+  exportJdf,
   flipPdf,
   generateBleed,
   getPdfInfo,

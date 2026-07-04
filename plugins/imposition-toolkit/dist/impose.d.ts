@@ -382,6 +382,77 @@ export interface GangPlan {
     totalSheets: number;
 }
 export declare function computeGangPlan(distinctItems: number, itemsPerSheet: number, quantity: number, makeready?: number, spoilagePct?: number): GangPlan;
+export type EditOp = {
+    type: 'text';
+    page: number;
+    xPt: number;
+    yPt: number;
+    text: string;
+    sizePt?: number;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    font?: 'helvetica' | 'times' | 'courier';
+} | {
+    type: 'box';
+    page: number;
+    xPt: number;
+    yPt: number;
+    wPt: number;
+    hPt: number;
+    fill?: boolean;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    opacity?: number;
+} | {
+    type: 'redact';
+    page: number;
+    xPt: number;
+    yPt: number;
+    wPt: number;
+    hPt: number;
+} | {
+    type: 'line';
+    page: number;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    thicknessPt?: number;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+} | {
+    type: 'rotate';
+    page: number;
+    angleDeg: number;
+} | {
+    type: 'delete';
+    pages: string;
+};
+export declare function editPdf(bytes: Uint8Array, ops: EditOp[]): Promise<Uint8Array>;
+export interface JdfOptions {
+    jobName: string;
+    jobId?: string;
+    productType?: string;
+    quantity: number;
+    widthPt: number;
+    heightPt: number;
+    pages?: number;
+    sides?: 'OneSided' | 'TwoSidedFlipY' | 'TwoSidedFlipX';
+    mediaWidthPt?: number;
+    mediaHeightPt?: number;
+    mediaType?: string;
+    binding?: 'None' | 'SaddleStitch' | 'PerfectBound' | 'CaseBound' | 'WireO' | 'Coil';
+}
+export declare function exportJdf(opts: JdfOptions): Uint8Array;
 export interface OptimizeOptions {
     objectStreams?: boolean;
     removeUnused?: boolean;
@@ -642,6 +713,7 @@ export interface NestOptions {
     dpi?: number;
 }
 export declare function nestPdf(bytes: Uint8Array, opts: NestOptions): Promise<Uint8Array>;
+export declare function downloadFile(bytes: Uint8Array, filename: string, mime?: string): void;
 export declare function downloadPdf(bytes: Uint8Array, filename: string): void;
 export declare function downloadMultiple(files: Uint8Array[], baseName: string): void;
 export {};

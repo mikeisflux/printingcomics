@@ -7,7 +7,8 @@ import {
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks,
   addCutContour, addWhiteVarnish, addBraille, addBarcodeStamp, addBackdropFile, applyColorEffects, applyColorManagement, assignOutputIntent,
   preflight, preflightClean, computeGangPlan, readLayers, setLayers, imposeCustomGrid, optimizePdf, decryptPdf,
-  makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
+  editPdf, exportJdf,
+  makeDieline, imposeDataMerge, downloadPdf, downloadFile, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
 } from './impose';
@@ -19,7 +20,7 @@ import type {
   CollatingOptions, OmrOptions, GatheringOptions, FoldMarksOptions, LayMarksOptions,
   CutContourOptions, WhiteVarnishOptions, BrailleOptions, BarcodeStampOptions, BackdropFileOptions,
   ColorEffectsOptions, ColorManageOptions, RepairOptions,
-  PreflightCleanOptions, PdfLayer, LayerState, CustomImposeOptions, CustomCell, OptimizeOptions,
+  PreflightCleanOptions, PdfLayer, LayerState, CustomImposeOptions, CustomCell, OptimizeOptions, EditOp, JdfOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ type ToolEngine =
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
   | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks'
   | 'cutcontour' | 'whitevarnish' | 'braille' | 'barcode' | 'backdropfile' | 'coloreffects' | 'colormanage'
-  | 'layers' | 'customgrid' | 'pdftools';
+  | 'layers' | 'customgrid' | 'pdftools' | 'editpdf' | 'jdf';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -953,6 +954,16 @@ const TOOLS: ToolDef[] = [
     id: 'pdftools', name: 'PDF Tools', preset: 'PDF Optimizer', category: 'Page & PDF tools', engine: 'pdftools',
     desc: 'Optimize (shrink), decrypt (remove password), or repair a PDF. Encryption and linearization need a server-side pass and are flagged as such.',
     tags: ['optimize / shrink', 'decrypt', 'repair'], Thumb: RepairThumb,
+  },
+  {
+    id: 'editpdf', name: 'Edit PDF', preset: 'Edit PDF', category: 'Page & PDF tools', engine: 'editpdf',
+    desc: 'Apply page edits — add text, redact (opaque box), draw boxes/lines, rotate individual pages, and delete pages.',
+    tags: ['annotate', 'redact', 'rotate / delete pages'], Thumb: () => (<svg viewBox="0 0 200 148" width="100%" height="100%">{frame}<rect x="64" y="40" width="72" height="9" rx="2" fill="#cbd5e1" /><rect x="64" y="58" width="52" height="9" rx="2" fill="#111" /><rect x="64" y="76" width="60" height="9" rx="2" fill="#cbd5e1" /><path d="M120 96 l14 -14 8 8 -14 14 -10 2 z" fill="#fde68a" stroke={A} strokeWidth="1.5" /></svg>),
+  },
+  {
+    id: 'jdf', name: 'JDF / CIP4 Export', preset: 'JDF / CIP4 Export', category: 'Large & specialty', engine: 'jdf',
+    desc: 'Export a CIP4 JDF 1.4 Product-intent job ticket (.jdf XML) describing the finished size, media, quantity, sides and binding for MIS / prepress scheduling.',
+    tags: ['JDF 1.4', 'CIP4', 'job ticket'], Thumb: () => (<svg viewBox="0 0 200 148" width="100%" height="100%">{frame}<text x="100" y="70" textAnchor="middle" fontFamily="monospace" fontSize="13" fill={A}>&lt;JDF/&gt;</text><rect x="64" y="86" width="72" height="6" rx="1" fill="#cbd5e1" /><rect x="64" y="98" width="52" height="6" rx="1" fill="#cbd5e1" /></svg>),
   },
   {
     id: 'registration', name: 'Registration Marks', preset: 'Registration Marks', category: 'Marks & prepress', engine: 'registration',
@@ -2150,6 +2161,11 @@ const DEFAULT_CUSTOMGRID: { cols: number; rows: number; sheetWIn: number; sheetH
 const DEFAULT_PDFTOOLS: { operation: 'optimize' | 'linearize' | 'encrypt' | 'decrypt' | 'repair'; objectStreams: boolean; removeUnused: boolean } = {
   operation: 'optimize', objectStreams: true, removeUnused: true,
 };
+const DEFAULT_JDF: JdfOptions = {
+  jobName: 'Untitled Job', productType: 'Brochure', quantity: 500,
+  widthPt: 612, heightPt: 792, pages: 1, sides: 'TwoSidedFlipY',
+  mediaWidthPt: 936, mediaHeightPt: 1368, mediaType: 'Paper', binding: 'None',
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2650,6 +2666,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [layerStates, setLayerStates] = useState<Record<string, 'on' | 'off' | 'default'>>({});
   const [customGridOpts, setCustomGridOpts] = useState<typeof DEFAULT_CUSTOMGRID>(DEFAULT_CUSTOMGRID);
   const [pdfToolsOpts, setPdfToolsOpts] = useState<typeof DEFAULT_PDFTOOLS>(DEFAULT_PDFTOOLS);
+  const [editOps, setEditOps] = useState<EditOp[]>([]);
+  const [jdfOpts, setJdfOpts] = useState<JdfOptions>(DEFAULT_JDF);
   const [mixReverse, setMixReverse] = useState(false);
   // Initialise order-list tools from the (possibly already-loaded) file so they
   // are correct even when this tool was reached by switching in the rail.
@@ -2784,6 +2802,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
           out = await addBackdropFile(file.bytes, stampFile.bytes, { ...backdropFileOpts, opacity: (backdropFileOpts.opacity ?? 100) / 100 });
           outName = `${base}-backdrop.pdf`; break;
         case 'dimensions': out = await addDimensions(file.bytes); outName = `${base}-dimensions.pdf`; break;
+        case 'editpdf': out = await editPdf(file.bytes, editOps); outName = `${base}-edited.pdf`; break;
+        case 'jdf': out = exportJdf({ ...jdfOpts, widthPt: file.info.widthPt, heightPt: file.info.heightPt, pages: file.info.count }); outName = `${base}.jdf`; break;
         case 'distort': out = await distortPdf(file.bytes, { factorPct: distortFactor(distortOpts), direction: distortOpts.direction, pages: pageRange }); outName = `${base}-distort.pdf`; break;
         case 'mix':
           if (!stampFile) throw new Error('Add the second PDF to interleave first.');
@@ -2810,7 +2830,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
     try {
       const r = await generate();
       if (r === null) { setStatus('idle'); return; }
-      if (r !== 'multi') downloadPdf(r.bytes, r.name);
+      if (r !== 'multi') downloadFile(r.bytes, r.name, r.name.endsWith('.jdf') ? 'application/vnd.cip4-jdf+xml' : 'application/pdf');
       setStatus('done'); setTimeout(() => setStatus('idle'), 3000);
     } catch (e) {
       setStatus('error'); setErrMsg(e instanceof Error ? e.message : 'Processing failed');
@@ -2955,6 +2975,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'layers' && file && <LayersPanel file={file} states={layerStates} onChange={setLayerStates} />}
                 {tool.engine === 'customgrid' && <CustomGridSettings opts={customGridOpts} onChange={setCustomGridOpts} />}
                 {tool.engine === 'pdftools' && <PdfToolsSettings opts={pdfToolsOpts} onChange={setPdfToolsOpts} />}
+                {tool.engine === 'editpdf' && <EditPdfSettings ops={editOps} onChange={setEditOps} />}
+                {tool.engine === 'jdf' && <JdfSettings opts={jdfOpts} onChange={setJdfOpts} file={file} />}
                 {tool.engine === 'dimensions' && (
                   <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--muted)', lineHeight: 1.5 }}>
                     Stamps each page with its exact trim and bleed size (inches + points) along the edges. No options needed.
@@ -3371,6 +3393,76 @@ function PdfToolsSettings({ opts, onChange }: { opts: typeof DEFAULT_PDFTOOLS; o
         {opts.operation === 'repair' && 'Re-writes the whole PDF structure — fixes broken xref tables, stream lengths and object numbering that make viewers/RIPs reject a file.'}
         {opts.operation === 'linearize' && '⚠ Linearisation (fast web view) reorders the byte stream and is not available in the browser engine — it needs a server-side pass (e.g. qpdf/Ghostscript). Use Optimize to shrink instead.'}
         {opts.operation === 'encrypt' && '⚠ Writing encryption is not available in the browser engine (pdf-lib cannot author encryption). Encrypt with a desktop tool or a server-side pass. Decrypt (removing protection) is supported here.'}
+      </div>
+    </Grid>
+  );
+}
+
+function EditPdfSettings({ ops, onChange }: { ops: EditOp[]; onChange: (o: EditOp[]) => void }) {
+  const upd = (i: number, patch: any) => onChange(ops.map((o, j) => j === i ? { ...o, ...patch } as EditOp : o)); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const del = (i: number) => onChange(ops.filter((_, j) => j !== i));
+  const add = (op: EditOp) => onChange([...ops, op]);
+  const num = (v: number, on: (n: number) => void, w = 62) => <input type="number" value={v} onChange={e => on(+e.target.value)} style={{ ...iStyle, width: w, padding: '.25rem .4rem' }} />;
+  return (
+    <div style={{ display: 'grid', gap: '.6rem' }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {([['+ Text', { type: 'text', page: 1, xPt: 72, yPt: 72, text: 'Text', sizePt: 12 }],
+        ['+ Redact', { type: 'redact', page: 1, xPt: 72, yPt: 72, wPt: 144, hPt: 20 }],
+        ['+ Box', { type: 'box', page: 1, xPt: 72, yPt: 72, wPt: 100, hPt: 60, fill: false, color: { r: 0.9, g: 0, b: 0 } }],
+        ['+ Line', { type: 'line', page: 1, x1: 72, y1: 72, x2: 200, y2: 72, thicknessPt: 1 }],
+        ['+ Rotate', { type: 'rotate', page: 1, angleDeg: 90 }],
+        ['+ Delete', { type: 'delete', pages: 'last' }]] as [string, EditOp][]).map(([label, op]) => (
+          <button key={label} className="btn secondary" style={{ padding: '.25rem .55rem', fontSize: '.74rem' }} onClick={() => add(op)}>{label}</button>
+        ))}
+      </div>
+      {ops.length === 0 && <div style={{ fontSize: '.82rem', color: 'var(--muted)' }}>Add edit operations above. Coordinates are in points from the <strong>bottom-left</strong> corner (72 pt = 1 in).</div>}
+      {ops.map((op, i) => (
+        <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '.5rem .6rem', display: 'grid', gap: '.4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+            <span style={{ fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase', color: VIOLET, flex: 1 }}>{op.type}</span>
+            {op.type !== 'delete' && <label style={{ fontSize: '.75rem', color: 'var(--muted)' }}>page {num((op as any).page, n => upd(i, { page: n }), 46)}</label>}
+            <button className="btn secondary" style={{ padding: '.15rem .45rem', fontSize: '.72rem' }} onClick={() => del(i)}>✕</button>
+          </div>
+          <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '.75rem', color: 'var(--muted)' }}>
+            {op.type === 'text' && <>x {num(op.xPt, n => upd(i, { xPt: n }))} y {num(op.yPt, n => upd(i, { yPt: n }))} size {num(op.sizePt ?? 12, n => upd(i, { sizePt: n }), 46)}<input value={op.text} onChange={e => upd(i, { text: e.target.value })} style={{ ...iStyle, flex: 1, minWidth: 120, padding: '.25rem .4rem' }} /></>}
+            {(op.type === 'redact' || op.type === 'box') && <>x {num(op.xPt, n => upd(i, { xPt: n }))} y {num(op.yPt, n => upd(i, { yPt: n }))} w {num(op.wPt, n => upd(i, { wPt: n }))} h {num(op.hPt, n => upd(i, { hPt: n }))}{op.type === 'box' && <label><input type="checkbox" checked={op.fill ?? false} onChange={e => upd(i, { fill: e.target.checked })} /> fill</label>}</>}
+            {op.type === 'line' && <>x1 {num(op.x1, n => upd(i, { x1: n }))} y1 {num(op.y1, n => upd(i, { y1: n }))} x2 {num(op.x2, n => upd(i, { x2: n }))} y2 {num(op.y2, n => upd(i, { y2: n }))} w {num(op.thicknessPt ?? 1, n => upd(i, { thicknessPt: n }), 46)}</>}
+            {op.type === 'rotate' && <>by {num(op.angleDeg, n => upd(i, { angleDeg: n }), 56)}°</>}
+            {op.type === 'delete' && <>pages <input value={op.pages} onChange={e => upd(i, { pages: e.target.value })} style={{ ...iStyle, width: 120, padding: '.25rem .4rem' }} /> <span>(all · 1-5 · odd · last)</span></>}
+          </div>
+        </div>
+      ))}
+      <div style={{ fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>Applies each operation in order — annotate text, redact (opaque black box), draw boxes/lines, rotate or delete pages. Operations run before deletions so page numbers stay stable.</div>
+    </div>
+  );
+}
+
+const JDF_PRODUCTS = ['Brochure', 'Book', 'BusinessCard', 'Flyer', 'Poster', 'Postcard', 'Label', 'Folder', 'Magazine', 'Catalog', 'Unknown'];
+
+function JdfSettings({ opts, onChange, file }: { opts: JdfOptions; onChange: (o: JdfOptions) => void; file: LoadedFile | null }) {
+  const set = <K extends keyof JdfOptions>(k: K, v: JdfOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Job name"><input type="text" value={opts.jobName} onChange={e => set('jobName', e.target.value)} style={iStyle} /></Field>
+      <Field label="Job ID" note="blank = auto"><input type="text" value={opts.jobId ?? ''} onChange={e => set('jobId', e.target.value || undefined)} style={iStyle} /></Field>
+      <Field label="Product type">
+        <select value={opts.productType} onChange={e => set('productType', e.target.value)} style={iStyle}>{JDF_PRODUCTS.map(p => <option key={p} value={p}>{p}</option>)}</select>
+      </Field>
+      <Field label="Quantity"><input type="number" min={1} value={opts.quantity} onChange={e => set('quantity', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Sides">
+        <select value={opts.sides} onChange={e => set('sides', e.target.value as JdfOptions['sides'])} style={iStyle}>
+          <option value="OneSided">One-sided</option><option value="TwoSidedFlipY">Two-sided (flip long)</option><option value="TwoSidedFlipX">Two-sided (flip short)</option>
+        </select>
+      </Field>
+      <Field label="Binding">
+        <select value={opts.binding} onChange={e => set('binding', e.target.value as JdfOptions['binding'])} style={iStyle}>
+          {['None', 'SaddleStitch', 'PerfectBound', 'CaseBound', 'WireO', 'Coil'].map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+      </Field>
+      <Field label="Media width (pt)"><input type="number" value={opts.mediaWidthPt ?? 936} onChange={e => set('mediaWidthPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Media height (pt)"><input type="number" value={opts.mediaHeightPt ?? 1368} onChange={e => set('mediaHeightPt', +e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Exports a CIP4 <strong>JDF 1.4</strong> Product-intent job ticket (.jdf XML) that MIS / prepress systems read to schedule the job. Finished size ({file ? `${(file.info.widthPt / 72).toFixed(2)}×${(file.info.heightPt / 72).toFixed(2)} in, ${file.info.count} pages` : 'from the loaded PDF'}) and media size are written as intent dimensions in points.
       </div>
     </Grid>
   );
