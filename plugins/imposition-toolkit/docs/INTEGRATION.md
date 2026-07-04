@@ -1,19 +1,22 @@
 # Integration Guide
 
-Two ways to use the toolkit: the **full React UI** or the **engine on its own**.
-Pick based on whether your site runs React.
+Three ways to use the toolkit: the **full React UI**, the **engine on its own**,
+or the **catalog data** (templates + workflows, no React). Pick based on whether
+your site runs React and whether you want the ready-made presets.
 
 ---
 
-## 1. React (full UI)
+## 1. React (full UI — all 90 tools + 156 templates + 75 workflows)
 
 ### File setup
 
-Copy `src/impose.ts`, `src/Impose.tsx`, and `src/impose.css` into your project
-(any folder). Install the one runtime dependency:
+Copy the **whole `src/` folder** (keep the files together — `Impose.tsx` imports
+`impose.ts` and `catalog.ts` as siblings and needs `impose.css`):
 
 ```bash
-npm install pdf-lib
+cp -r imposition-toolkit/src  ./src/imposition-toolkit
+npm install pdf-lib                       # required
+npm install pdfjs-dist qrcode-generator   # optional: rasterizing tools + QR
 ```
 
 ### Render it
@@ -169,3 +172,26 @@ smoke-tested against [API.md](API.md).
   (`ignoreEncryption`) but cannot open truly password-locked files.
 - **Distorted cards** — in fixed-cell mode the source page is scaled to the cell;
   design the card at the target aspect ratio (or matching size + bleed).
+
+---
+
+## 3. Catalog data (templates & workflows — no React)
+
+The 156 templates and 69 workflow recipes ship as data you can consume without
+the UI — typed ESM, JSON, or TS source:
+
+```js
+import { TEMPLATES, RECIPES, TEMPLATE_INDUSTRIES } from 'imposition-toolkit/catalog'; // dist/catalog.mjs
+import templates from 'imposition-toolkit/templates.json' assert { type: 'json' };    // dist/templates.json
+import recipes   from 'imposition-toolkit/recipes.json'   assert { type: 'json' };     // dist/recipes.json
+```
+
+- A **template** (`{ id, name, industry, toolId, specs, preset? }`) is a preset
+  for one tool — spread `preset.<family>` over that engine's option defaults.
+- A **recipe** (`{ id, name, cat, desc, input, tip, tags, steps }`) is an ordered
+  pipeline; map each `step.kind` to an engine function and fold the steps over
+  the PDF bytes.
+
+The full data shapes, the **`kind → engine` map**, and a runnable
+`runRecipe()` helper are in **[CATALOG.md](CATALOG.md)**. These JSON/ESM files
+are generated from `src/catalog.ts` by `npm run build`.

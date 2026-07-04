@@ -45,25 +45,35 @@ See **[`docs/TOOLS.md`](docs/TOOLS.md)** and **[`CHANGELOG.md`](CHANGELOG.md)**.
 
 ## Quick start
 
-### Option A — React drop-in (full UI)
+### Option A — React drop-in (full UI: all tools + templates + workflows)
 
 ```bash
+# 1) install the runtime peer + optional peers (see below)
 npm install pdf-lib
-# copy plugins/imposition-toolkit/src/* into your project
+npm install pdfjs-dist qrcode-generator   # optional: rasterizing tools + QR
+
+# 2) copy the whole src/ folder into your project (keep the files together —
+#    Impose.tsx imports impose.ts and catalog.ts as siblings)
+cp -r node_modules/imposition-toolkit/src  ./src/imposition-toolkit
+#    …or, if you vendored the zip, copy plugins/imposition-toolkit/src/* in.
 ```
 
 ```tsx
 import { AdminImpose } from './imposition-toolkit/Impose';
-import './imposition-toolkit/impose.css'; // provides tokens + .btn/.admin-card/.admin-table
+import './imposition-toolkit/impose.css'; // tokens + .btn/.admin-card/.admin-table
 
 export default function ImposePage() {
-  return <AdminImpose />;
+  return <AdminImpose />;   // the whole workspace: 90 tools, 156 templates, 75 workflows
 }
 ```
 
-Requires React 19 (uses `React.ReactElement`). Works with Vite, Next.js
-(client component — add `'use client'`), CRA, etc. `pdf-lib` is dynamically
-imported the first time a tool runs, so it stays out of your initial bundle.
+Requires **React 19** (uses `React.ReactElement`). Works with Vite, Next.js
+(client component — add `'use client'`), CRA, etc. `pdf-lib`, `pdfjs-dist` and
+`qrcode-generator` are **dynamically imported** the first time a tool that needs
+them runs, so they stay out of your initial bundle. `pdfjs-dist` is only pulled
+in by the rasterizing tools (Color Effects, Color Management, true-shape
+Nesting); `qrcode-generator` only by QR output. Everything else needs just
+`pdf-lib`.
 
 ### Option B — Engine only, plain JavaScript (no React, no bundler)
 
@@ -87,6 +97,42 @@ imported the first time a tool runs, so it stays out of your initial bundle.
 A complete, runnable single-file demo is in
 **[`examples/vanilla.html`](examples/vanilla.html)**.
 
+> The Option A component **already includes** all 156 templates and 75 workflows
+> (they live in `src/Impose.tsx`). Options B and C are for headless use.
+
+### Option C — Catalog data (templates & workflows, no React)
+
+The **156 templates** and **69 production-recipe workflows** ship as pure data so
+the engine-only path can drive them too — as ESM, as JSON, or as TypeScript source:
+
+```js
+// ESM (typed)
+import { TEMPLATES, RECIPES, TEMPLATE_INDUSTRIES } from './imposition-toolkit/dist/catalog.mjs';
+// …or plain JSON (no bundler)
+import templates from './imposition-toolkit/dist/templates.json' assert { type: 'json' };
+import recipes   from './imposition-toolkit/dist/recipes.json'   assert { type: 'json' };
+```
+
+Each **template** is `{ id, name, industry, toolId, specs, preset? }` — `toolId`
+names the tool it opens and `preset` is the option overrides to apply (e.g.
+`{ nup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, addMarks: true } }`).
+Each **recipe** is `{ id, name, cat, desc, input, tip, tags, steps }` where each
+step is `{ kind, label, opts? }` and `kind` maps to an engine function — run them
+in order to reproduce the workflow. See **[docs/CATALOG.md](docs/CATALOG.md)**.
+
+```js
+// Drive the engine from a recipe (kind → engine function)
+import * as E from './imposition-toolkit/dist/impose.mjs';
+const STEP = { preflight: null, booklet: E.imposeBooklet, nup: E.imposeNUp,
+  bleed: E.generateBleed, cropmarks: E.addCropMarksOnly, colorbar: E.addColorBar,
+  collating: E.addCollatingMarks, /* …see docs/CATALOG.md for the full map */ };
+let pdf = bytes;
+for (const step of recipes.recipes[0].steps) {
+  const fn = STEP[step.kind];
+  if (fn) pdf = await fn(pdf, step.opts ?? {});
+}
+```
+
 ---
 
 ## Documentation
@@ -94,9 +140,10 @@ A complete, runnable single-file demo is in
 | Doc | Contents |
 |---|---|
 | **[docs/API.md](docs/API.md)** | Every engine function — signatures, options, return types, gotchas. |
-| **[docs/TOOLS.md](docs/TOOLS.md)** | The tool catalog: category, engine, preset dimensions, input expected. |
-| **[docs/INTEGRATION.md](docs/INTEGRATION.md)** | Embedding into React, Next.js, Vue/vanilla; theming; bundler notes. |
-| **[docs/VERSIONS.md](docs/VERSIONS.md)** | **Exact versions to use** on the target site — Node, pdf-lib, qrcode-generator, React, TypeScript, Vite, browser targets. |
+| **[docs/TOOLS.md](docs/TOOLS.md)** | The tool catalog: 90 tools by category, engine, preset dimensions, input expected. |
+| **[docs/CATALOG.md](docs/CATALOG.md)** | The 156 templates + 69 workflow recipes as data — shapes, the step-kind→engine map, and how to drive tools from them. |
+| **[docs/INTEGRATION.md](docs/INTEGRATION.md)** | Embedding into React, Next.js, Vue/vanilla; theming; catalog data; bundler notes. |
+| **[docs/VERSIONS.md](docs/VERSIONS.md)** | **Exact versions to use** on the target site — Node, pdf-lib, pdfjs-dist, qrcode-generator, React, TypeScript, Vite, browser targets. |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How imposition works: coordinate math, saddle-stitch/creep, n-up, cut-&-stack, card packing, poster tiling, crop marks. |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history. |
 

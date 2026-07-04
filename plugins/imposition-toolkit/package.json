@@ -1,7 +1,7 @@
 {
   "name": "imposition-toolkit",
-  "version": "1.2.14",
-  "description": "Client-side PDF imposition & pre-press toolkit — 90 print-production tools, 156 ready-made industry templates, and 6 chained workflows (booklets, n-up, cards, labels, folding, large-format, tickets, marks, dielines, cut-contour spot toolpaths, white/varnish spot layers, braille, QR/Code128/DataMatrix/EAN-13 barcodes, file backdrops, true-shape sticker nesting, collating + gathering + OMR + lay + fold bindery marks, CSV data-merge + QR, resize, registration, insert/mix/nudge/repair) that run entirely in the browser via pdf-lib. Framework-agnostic engine + optional React 19 UI with a dark theme.",
+  "version": "1.2.15",
+  "description": "Client-side PDF imposition & pre-press toolkit — 90 print-production tools, 156 ready-made industry templates and 69 production-recipe workflows (all also shipped as data: dist/catalog.mjs + templates.json + recipes.json). Covers booklets, n-up, cards, labels, folding, large-format, tickets, marks, dielines, cut-contour spot toolpaths, white/varnish, braille, QR/Code128/DataMatrix/EAN-13 barcodes, file backdrops, true-shape sticker nesting, collating/gathering/OMR/lay/fold bindery marks, CSV data-merge + QR, colour effects/management, edit + JDF/CIP4 export, layers, optimize/decrypt/repair — running entirely in the browser via pdf-lib. Framework-agnostic engine + optional React 19 UI with a dark theme.",
   "type": "module",
   "main": "dist/impose.mjs",
   "module": "dist/impose.mjs",
@@ -11,8 +11,15 @@
       "types": "./dist/impose.d.ts",
       "import": "./dist/impose.mjs"
     },
+    "./catalog": {
+      "types": "./dist/catalog.d.ts",
+      "import": "./dist/catalog.mjs"
+    },
+    "./templates.json": "./dist/templates.json",
+    "./recipes.json": "./dist/recipes.json",
     "./engine": "./src/impose.ts",
     "./component": "./src/Impose.tsx",
+    "./catalog-source": "./src/catalog.ts",
     "./style.css": "./src/impose.css"
   },
   "files": [
@@ -20,6 +27,7 @@
     "dist",
     "docs",
     "examples",
+    "scripts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -28,7 +36,7 @@
     "*.css"
   ],
   "scripts": {
-    "build": "esbuild src/impose.ts --format=esm --target=es2020 --outfile=dist/impose.mjs && tsc src/pdfjs-worker-url.d.ts src/impose.ts --declaration --emitDeclarationOnly --skipLibCheck --moduleResolution bundler --module esnext --target es2020 --outDir dist"
+    "build": "esbuild src/impose.ts --format=esm --target=es2020 --outfile=dist/impose.mjs && esbuild src/catalog.ts --format=esm --target=es2020 --outfile=dist/catalog.mjs && tsc src/pdfjs-worker-url.d.ts src/impose.ts src/catalog.ts --declaration --emitDeclarationOnly --skipLibCheck --moduleResolution bundler --module esnext --target es2020 --outDir dist && node scripts/emit-catalog-json.mjs"
   },
   "peerDependencies": {
     "pdf-lib": "^1.17.1",

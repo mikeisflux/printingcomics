@@ -11,7 +11,8 @@ match — the "runtime" below is only your **build/CI** environment.
 | **Node.js** (build/CI only) | **22 LTS** (`22.x`) | `>=22` | The toolkit ships as browser code; Node only builds it. 22 is the current LTS. |
 | **npm** | `10.x`+ | `>=10` | Or pnpm/yarn — any workspace-aware manager. |
 | **pdf-lib** | `1.17.1` | `^1.17.1` | The one required runtime dep. Dynamically imported → lazy-loaded, out of your initial bundle. |
-| **qrcode-generator** | `2.0.4` | `^1.4.4 \|\| ^2.0.0` | **Optional** — only loaded when a data-merge uses QR. Omit if you never generate QR. |
+| **pdfjs-dist** | `6.1.200` | `^6.0.0` | **Optional** — only loaded by the rasterizing tools (Color Effects, Color Management, true-shape Nesting). Omit if you don't use them. |
+| **qrcode-generator** | `2.0.4` | `^1.4.4 \|\| ^2.0.0` | **Optional** — only loaded when QR output is generated. Omit if you never generate QR. |
 | **react** / **react-dom** | `19.x` | `^19` | Only for the `<AdminImpose />` component. The engine (`impose.ts` / `dist/impose.mjs`) needs no framework. |
 | **TypeScript** | `6.x` | `^5.6` | Only if you consume the `.ts`/`.tsx` sources directly. The `dist/` build + `.d.ts` are plain JS. |
 | **Vite** | `8.x` | `^6` | Any modern bundler works (webpack 5, Rollup 4, esbuild ≥0.28). Vite 8 uses the Rolldown bundler. |

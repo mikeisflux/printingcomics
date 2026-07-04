@@ -1,9 +1,11 @@
 # Tool Catalog
 
-73 tools across 8 categories, **156 ready-made industry templates**, 6 chained
-workflows and a custom pipeline builder. Each tool maps to an engine from
-[API.md](API.md) with a preset; every value is editable in the UI. Auto-fit
-layouts recompute `cols × rows` from the sheet + item size.
+**90 tools** across 8 categories, **156 ready-made industry templates**, and
+**69 production-recipe workflows** (+ 6 starter chains and a custom pipeline
+builder). Each tool maps to an engine from [API.md](API.md) with a preset; every
+value is editable in the UI. Auto-fit layouts recompute `cols × rows` from the
+sheet + item size. Templates and workflows are also available as data — see
+[CATALOG.md](CATALOG.md).
 
 ## Templates (156)
 

@@ -1,0 +1,1957 @@
+{
+  "recipes": [
+    {
+      "id": "r-saddle",
+      "name": "Saddle-Stitch Booklet",
+      "desc": "Standard saddle-stitched booklet — the most common short-run binding.",
+      "cat": "Booklets & Books",
+      "input": "Single PDF, sequential pages, count a multiple of 4, 3mm bleed.",
+      "tip": "Keep page count ≤ 64 for saddle-stitch; enable creep on stock heavier than 100gsm.",
+      "tags": [
+        "saddle-stitch",
+        "booklet",
+        "binding"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose booklet"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-saddle-bleed",
+      "name": "Saddle-Stitch with Bleeds",
+      "desc": "Saddle-stitch with synthetic bleed generation for artwork delivered without bleeds.",
+      "cat": "Booklets & Books",
+      "input": "PDF at trim size (no bleed). Page count a multiple of 4.",
+      "tip": "Synthetic bleeds are a rescue technique, not a replacement for real bleeds — flag it on the job ticket.",
+      "tags": [
+        "saddle-stitch",
+        "bleed",
+        "no-bleed"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "bleed",
+          "label": "Generate bleeds",
+          "opts": {
+            "bleedIn": 0.125,
+            "mode": "mirror"
+          }
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose booklet"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-a5-sra3",
+      "name": "A5 Saddle-Stitch 2-Up on SRA3",
+      "desc": "Impose A5 on SRA4 flats, then repeat two copies on SRA3.",
+      "cat": "Booklets & Books",
+      "input": "A5 portrait PDF, sequential reading order, preferably 3mm bleed.",
+      "tip": "Use Grid step-and-repeat (adapts to any booklet page count); SRA4 is exactly half of SRA3.",
+      "tags": [
+        "a5",
+        "sra3",
+        "2-up"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight A5 pages"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose SRA4 booklet flats"
+        },
+        {
+          "kind": "nup",
+          "label": "Repeat 2-up on SRA3",
+          "opts": {
+            "cols": 2,
+            "rows": 1,
+            "sheetWIn": 12.6,
+            "sheetHIn": 17.72
+          }
+        }
+      ]
+    },
+    {
+      "id": "r-perfect",
+      "name": "Perfect-Bound Book",
+      "desc": "PUR/hot-melt perfect binding for books with 48+ pages.",
+      "cat": "Booklets & Books",
+      "input": "Single PDF, sequential, 3mm bleed, CMYK. Count divisible by 8/16/32.",
+      "tip": "Leave 5mm extra at the spine edge for PUR milling; confirm signature count with your bindery.",
+      "tags": [
+        "perfect-binding",
+        "PUR",
+        "signatures"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures",
+          "opts": {
+            "creepIn": 0
+          }
+        },
+        {
+          "kind": "collating",
+          "label": "Add collating marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-perfect-cb",
+      "name": "Perfect-Bound with Color Bar",
+      "desc": "Perfect-bound signatures with inline color bars for press density control.",
+      "cat": "Booklets & Books",
+      "input": "CMYK PDF, 3mm bleed, page count divisible by 16.",
+      "tip": "Color bars need ≥ 8mm of non-image area along the gripper edge — verify plate size.",
+      "tags": [
+        "perfect-binding",
+        "color-bar",
+        "offset"
+      ],
+      "steps": [
+        {
+          "kind": "booklet",
+          "label": "Impose signatures",
+          "opts": {
+            "creepIn": 0
+          }
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bars"
+        },
+        {
+          "kind": "collating",
+          "label": "Add collating marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-casebound",
+      "name": "Case-Bound (Hardcover) Book",
+      "desc": "Smyth-sewn case-bound book with signature imposition and spine marks.",
+      "cat": "Booklets & Books",
+      "input": "Text-block PDF, sequential, 3mm bleed, CMYK. Cover supplied separately.",
+      "tip": "Case-bound needs a separate cover imposition; add 3mm to the spine-side bleed for Smyth-sewing.",
+      "tags": [
+        "case-bound",
+        "hardcover",
+        "smyth-sewn"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "gathering",
+          "label": "Add gathering marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-zine",
+      "name": "Zine / Mini Booklet",
+      "desc": "Small-format DIY zine from a single sheet (8-page or 16-page fold).",
+      "cat": "Booklets & Books",
+      "input": "8-page or 16-page PDF at final reading size.",
+      "tip": "For a single-sheet 8-page zine, print duplex, cut a centre slit and fold — verify with a paper dummy.",
+      "tags": [
+        "zine",
+        "mini-booklet",
+        "fold"
+      ],
+      "steps": [
+        {
+          "kind": "resize",
+          "label": "Scale pages"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose as booklet"
+        },
+        {
+          "kind": "foldmarks",
+          "label": "Add fold marks"
+        }
+      ]
+    },
+    {
+      "id": "r-comic",
+      "name": "Comic Book Signatures",
+      "desc": "Comic/graphic novel imposed in saddle-stitch or perfect-bound signatures.",
+      "cat": "Booklets & Books",
+      "input": "Sequential pages at comic trim size + 3mm bleed. RGB or CMYK.",
+      "tip": "US comic trim is 6.625×10.25\"; manga is typically B6 (128×182mm). Confirm with the publisher spec.",
+      "tags": [
+        "comic",
+        "graphic-novel",
+        "manga"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "colormanage",
+          "label": "Convert to CMYK"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose booklet"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-childrens",
+      "name": "Children's Book",
+      "desc": "Full-color picture book with heavy stock and case binding.",
+      "cat": "Booklets & Books",
+      "input": "Full-color CMYK PDF, min 300 DPI, 5mm bleed for board books.",
+      "tip": "Board books need special imposition — each 'page' is two laminated sheets; confirm with the bindery.",
+      "tags": [
+        "childrens-book",
+        "picture-book",
+        "case-bound"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bars"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-photobook",
+      "name": "Photo Book",
+      "desc": "Lay-flat photo book with flush-mount or perfect binding.",
+      "cat": "Booklets & Books",
+      "input": "High-res CMYK or sRGB PDF with 3mm bleed. Even page count.",
+      "tip": "Lay-flat requires page pairs printed as spreads — a gutter gap will ruin panoramic photos.",
+      "tags": [
+        "photo-book",
+        "lay-flat",
+        "flush-mount"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "colormanage",
+          "label": "Color convert"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-magazine",
+      "name": "Magazine Production",
+      "desc": "Full commercial magazine with saddle-stitch or perfect binding and press marks.",
+      "cat": "Booklets & Books",
+      "input": "Complete magazine PDF, sequential, CMYK, 3mm bleed, fonts embedded.",
+      "tip": "Ads from multiple sources have inconsistent color — verify TIC does not exceed 340% for heatset web.",
+      "tags": [
+        "magazine",
+        "web-offset",
+        "commercial"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bars"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-catalog",
+      "name": "Catalog Signatures",
+      "desc": "Multi-signature catalog for perfect binding on commercial presses.",
+      "cat": "Booklets & Books",
+      "input": "CMYK PDF, page count divisible by signature size, 3mm bleed.",
+      "tip": "Large catalogs (200+ pages) benefit from 32-up if your press handles the sheet — fewer signatures = fewer errors.",
+      "tags": [
+        "catalog",
+        "signatures",
+        "gathering"
+      ],
+      "steps": [
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "gathering",
+          "label": "Add gathering marks"
+        },
+        {
+          "kind": "collating",
+          "label": "Add collating marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-annual",
+      "name": "Annual Report",
+      "desc": "Corporate annual report with mixed content and premium finishing.",
+      "cat": "Booklets & Books",
+      "input": "CMYK + spot color PDF, 3mm bleed, fonts embedded, transparency flattened.",
+      "tip": "If it mixes coated and uncoated stocks, impose each stock type separately and coordinate signature order.",
+      "tags": [
+        "annual-report",
+        "corporate",
+        "spot-color"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bars"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-bizcard",
+      "name": "Business Cards",
+      "desc": "Standard multi-up business card layout on a press sheet.",
+      "cat": "Cards & Flat",
+      "input": "Business card PDF at trim size with 3mm bleed. Duplex as pages 1 & 2.",
+      "tip": "Standard sizes: 3.5×2\" (US), 85×55mm (EU), 91×55mm (AU/NZ). Pull bleeds from the document.",
+      "tags": [
+        "business-cards",
+        "multi-up",
+        "cutting"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Impose cards",
+          "opts": {
+            "cellWIn": 3.5,
+            "cellHIn": 2,
+            "sheetWIn": 8.5,
+            "sheetHIn": 11,
+            "marginIn": 0.25,
+            "gutterIn": 0.125
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add cut marks"
+        }
+      ]
+    },
+    {
+      "id": "r-bizcard-nb",
+      "name": "Business Cards (No-Bleed Rescue)",
+      "desc": "Business cards from artwork delivered without bleeds.",
+      "cat": "Cards & Flat",
+      "input": "Business card PDF at exact trim size, no bleed.",
+      "tip": "Synthetic bleeds on edge-to-edge photos show mirrored artefacts — request proper bleeds when possible.",
+      "tags": [
+        "business-cards",
+        "no-bleed",
+        "rescue"
+      ],
+      "steps": [
+        {
+          "kind": "bleed",
+          "label": "Generate bleeds",
+          "opts": {
+            "bleedIn": 0.125,
+            "mode": "mirror"
+          }
+        },
+        {
+          "kind": "nup",
+          "label": "Impose cards",
+          "opts": {
+            "cellWIn": 3.5,
+            "cellHIn": 2,
+            "sheetWIn": 8.5,
+            "sheetHIn": 11
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add cut marks"
+        }
+      ]
+    },
+    {
+      "id": "r-postcard",
+      "name": "Postcards",
+      "desc": "Multi-up postcards (4×6 or A6) on press sheets.",
+      "cat": "Cards & Flat",
+      "input": "Postcard PDF at trim size, front and back pages, 3mm bleed.",
+      "tip": "USPS requires min 3.5×5\" and specific barcode clear zones for mailable postcards.",
+      "tags": [
+        "postcards",
+        "direct-mail",
+        "multi-up"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Impose postcards",
+          "opts": {
+            "cellWIn": 6,
+            "cellHIn": 4,
+            "sheetWIn": 13,
+            "sheetHIn": 19
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-greeting",
+      "name": "Greeting Cards",
+      "desc": "Folded greeting cards imposed for duplex printing and fold finishing.",
+      "cat": "Cards & Flat",
+      "input": "4-page PDF in reading order at final folded size with 3mm bleed.",
+      "tip": "Greeting cards are typically 4 pages (front, inside-L, inside-R, back) — the booklet tool reorders spreads.",
+      "tags": [
+        "greeting-cards",
+        "folded",
+        "score"
+      ],
+      "steps": [
+        {
+          "kind": "booklet",
+          "label": "Impose as booklet"
+        },
+        {
+          "kind": "foldmarks",
+          "label": "Add fold marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-playing",
+      "name": "Playing Cards",
+      "desc": "Full deck of playing cards imposed for sheet-fed printing.",
+      "cat": "Cards & Flat",
+      "input": "54 cards as individual pages, poker size (63×88mm) with 3mm bleed.",
+      "tip": "Playing cards need exact front-to-back registration or the back pattern reveals the face at the edges.",
+      "tags": [
+        "playing-cards",
+        "die-cut",
+        "registration"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Grid layout",
+          "opts": {
+            "cols": 5,
+            "rows": 4,
+            "sheetWIn": 13,
+            "sheetHIn": 19
+          }
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add cut marks"
+        }
+      ]
+    },
+    {
+      "id": "r-doorhanger",
+      "name": "Door Hangers",
+      "desc": "Multi-up door hangers with a die-cut hook hole.",
+      "cat": "Cards & Flat",
+      "input": "Door hanger PDF at trim size with die-cut hook area marked. 3mm bleed.",
+      "tip": "Standard door hanger is 4.25×11\". Use the cut-contour tool to define the hook die precisely.",
+      "tags": [
+        "door-hangers",
+        "die-cut",
+        "multi-up"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add die contour"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-rackcard",
+      "name": "Rack Cards",
+      "desc": "4×9 inch rack cards imposed for multi-up printing.",
+      "cat": "Cards & Flat",
+      "input": "Rack card PDF at 4×9\" trim size with 3mm bleed.",
+      "tip": "Rack cards have a narrow aspect — run the grain parallel to the long edge for stiffness.",
+      "tags": [
+        "rack-cards",
+        "display",
+        "multi-up"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Impose rack cards",
+          "opts": {
+            "cellWIn": 4,
+            "cellHIn": 9,
+            "sheetWIn": 13,
+            "sheetHIn": 19
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-numticket",
+      "name": "Numbered Tickets",
+      "desc": "Sequential numbered tickets with cut-and-stack imposition.",
+      "cat": "Cards & Flat",
+      "input": "PDF with one page per ticket, sequentially numbered. Count divisible by grid cells.",
+      "tip": "Cut-and-stack numbering needs the shuffle order to match your guillotine cut sequence — verify with a test sheet.",
+      "tags": [
+        "tickets",
+        "numbered",
+        "cut-and-stack"
+      ],
+      "steps": [
+        {
+          "kind": "shuffle",
+          "label": "Shuffle for cut-and-stack"
+        },
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-vdticket",
+      "name": "Variable Data Tickets",
+      "desc": "Tickets with variable data (barcodes, names, seats) imposed efficiently.",
+      "cat": "Cards & Flat",
+      "input": "PDF with one ticket per page, each containing unique variable data.",
+      "tip": "Variable data tickets need each barcode unique and scannable — verify readability at final printed size.",
+      "tags": [
+        "tickets",
+        "VDP",
+        "barcode"
+      ],
+      "steps": [
+        {
+          "kind": "barcode",
+          "label": "Add barcodes"
+        },
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-wedding",
+      "name": "Wedding Invitations",
+      "desc": "Premium invitations with RSVP cards and envelopes imposed together.",
+      "cat": "Cards & Flat",
+      "input": "Separate PDFs for each suite component (invite, RSVP, details), each at trim size with bleed.",
+      "tip": "Wedding suites often include multiple card sizes — gang them so all pieces print in the same pass with identical color.",
+      "tags": [
+        "wedding",
+        "gang",
+        "suite"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Merge components"
+        },
+        {
+          "kind": "nest",
+          "label": "Gang on sheet"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-sticker-sheet",
+      "name": "Sticker Sheets",
+      "desc": "Full sticker sheets with kiss-cut contours for peel-and-stick.",
+      "cat": "Labels & Stickers",
+      "input": "Individual sticker artwork as separate pages. 1mm bleed around each.",
+      "tip": "Kiss-cut depth penetrates the vinyl/paper but NOT the liner; keep ≥ 3mm padding for plotter tracking.",
+      "tags": [
+        "stickers",
+        "kiss-cut",
+        "nesting"
+      ],
+      "steps": [
+        {
+          "kind": "nest",
+          "label": "Nest stickers"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add die lines",
+          "opts": {
+            "spotName": "KissCut",
+            "dashed": true
+          }
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        }
+      ]
+    },
+    {
+      "id": "r-diecut-sticker",
+      "name": "Die-Cut Stickers",
+      "desc": "Individual die-cut stickers (through-cut, no backing sheet).",
+      "cat": "Labels & Stickers",
+      "input": "Individual sticker designs, one per page, at final size with 1mm bleed.",
+      "tip": "Thru-cut on vinyl needs a slightly oversized cut path (0.5mm offset) to avoid white borders from misregistration.",
+      "tags": [
+        "die-cut",
+        "stickers",
+        "thru-cut"
+      ],
+      "steps": [
+        {
+          "kind": "nest",
+          "label": "Nest stickers"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add thru-cut contour",
+          "opts": {
+            "spotName": "ThruCut"
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-productlabel",
+      "name": "Product Labels",
+      "desc": "Multi-up product labels for bottles, jars and boxes.",
+      "cat": "Labels & Stickers",
+      "input": "Label PDF at flat die size with 2mm bleed. CMYK + spot if brand-critical.",
+      "tip": "Labels for curved surfaces (bottles) need distortion compensation — confirm values with the applicator vendor.",
+      "tags": [
+        "product-labels",
+        "bottles",
+        "brand"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bar"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add die marks"
+        }
+      ]
+    },
+    {
+      "id": "r-shipping",
+      "name": "Shipping Labels",
+      "desc": "Shipping labels (4×6\") on self-adhesive A4/Letter sheets.",
+      "cat": "Labels & Stickers",
+      "input": "4×6\" label PDF per shipment, one page per label.",
+      "tip": "Shipping labels are usually thermal-printed; for offset/digital use a label-stock template and align to the die exactly.",
+      "tags": [
+        "shipping",
+        "barcode",
+        "logistics"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Grid layout",
+          "opts": {
+            "cellWIn": 6,
+            "cellHIn": 4
+          }
+        },
+        {
+          "kind": "barcode",
+          "label": "Add barcodes"
+        }
+      ]
+    },
+    {
+      "id": "r-address",
+      "name": "Address Labels",
+      "desc": "Avery-style address labels on standard label sheets.",
+      "cat": "Labels & Stickers",
+      "input": "Individual label content, one per page, at the Avery cell size.",
+      "tip": "Pre-die-cut label stock needs exact registration — test-print on plain paper and hold against a sheet first.",
+      "tags": [
+        "address-labels",
+        "Avery",
+        "mail-merge"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Grid layout",
+          "opts": {
+            "cellWIn": 2.625,
+            "cellHIn": 1,
+            "sheetWIn": 8.5,
+            "sheetHIn": 11,
+            "marginIn": 0.1875,
+            "addMarks": false
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add guides",
+          "opts": {
+            "markLenIn": 0.1
+          }
+        }
+      ]
+    },
+    {
+      "id": "r-vinyl",
+      "name": "Vinyl Stickers",
+      "desc": "Outdoor-rated vinyl stickers with laminate overprint and contour cut.",
+      "cat": "Labels & Stickers",
+      "input": "Sticker artwork on transparent background (PNG/PDF) at final size.",
+      "tip": "For outdoor vinyl add a 2mm white border to prevent edge peel; use solvent or UV-cure inks only.",
+      "tags": [
+        "vinyl",
+        "outdoor",
+        "contour-cut"
+      ],
+      "steps": [
+        {
+          "kind": "nest",
+          "label": "Nest on material"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add cut contour"
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        }
+      ]
+    },
+    {
+      "id": "r-qrlabel",
+      "name": "QR Code Labels",
+      "desc": "Unique QR code labels for product tracking or authentication.",
+      "cat": "Labels & Stickers",
+      "input": "One QR code per page, or a data file for batch generation. Label size specified.",
+      "tip": "QR codes need min 15mm at print resolution; add error-correction level H (30%) for labels that may get scratched.",
+      "tags": [
+        "QR-code",
+        "labels",
+        "tracking"
+      ],
+      "steps": [
+        {
+          "kind": "qrstamp",
+          "label": "Generate QR codes"
+        },
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-coaster",
+      "name": "Coasters",
+      "desc": "Printed coasters (round or square) imposed for die cutting.",
+      "cat": "Labels & Stickers",
+      "input": "Coaster artwork at die size (typically 95mm round/square) with 3mm bleed.",
+      "tip": "Coaster board (1.4mm pulpboard) absorbs ink differently — reduce TIC to 280% and expect color shift.",
+      "tags": [
+        "coasters",
+        "die-cut",
+        "pulpboard"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add die contour",
+          "opts": {
+            "shape": "ellipse"
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-box",
+      "name": "Box Layout",
+      "desc": "Folding carton box flat (die-line) with artwork positioned for die cutting.",
+      "cat": "Packaging",
+      "input": "Flat artwork matching the die-line exactly. Die-line supplied as a separate overlay PDF.",
+      "tip": "Always work from the die-maker's approved CAD file — even 0.5mm off can jam the gluing machine.",
+      "tags": [
+        "box",
+        "folding-carton",
+        "die-line"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Apply die template"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add cut contour"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-labelwrap",
+      "name": "Label Wrap",
+      "desc": "Wraparound labels for bottles/cans/tubes with distortion compensation.",
+      "cat": "Packaging",
+      "input": "Flat label artwork at unwrapped dimensions with 2mm bleed. Specify diameter.",
+      "tip": "distortion% = (thickness / (diameter/2 + thickness)) × 100. Round containers need only circumferential distortion.",
+      "tags": [
+        "label-wrap",
+        "bottle",
+        "distortion"
+      ],
+      "steps": [
+        {
+          "kind": "distort",
+          "label": "Apply distortion"
+        },
+        {
+          "kind": "nup",
+          "label": "Multi-up layout"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-corrugated",
+      "name": "Corrugated Packaging",
+      "desc": "Large-format corrugated box or display printed on flatbed or flexo.",
+      "cat": "Packaging",
+      "input": "Artwork on the corrugated die flat. Spot colors preferred. Verify flute direction.",
+      "tip": "Corrugated print is low resolution (65-100 LPI) — simplify halftones, min type 8pt, avoid reverses < 10pt.",
+      "tags": [
+        "corrugated",
+        "flexo",
+        "large-format"
+      ],
+      "steps": [
+        {
+          "kind": "distort",
+          "label": "Flexo distortion"
+        },
+        {
+          "kind": "colormanage",
+          "label": "Color convert"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-bag",
+      "name": "Bag Layout",
+      "desc": "Paper or poly bag printed flat and imposed for production.",
+      "cat": "Packaging",
+      "input": "Flat bag artwork with fold lines marked. Gusset panels if applicable.",
+      "tip": "Bag printing wraps around fold edges; side gusset panels are often printed in mirror — verify with a folding dummy.",
+      "tags": [
+        "bag",
+        "poly-bag",
+        "packaging"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Apply bag template"
+        },
+        {
+          "kind": "nup",
+          "label": "Multi-up"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-sleeve",
+      "name": "Sleeve / Band",
+      "desc": "Shrink sleeves or belly bands for product packaging.",
+      "cat": "Packaging",
+      "input": "Flat sleeve artwork at pre-shrink dimensions. Specify shrink material and container.",
+      "tip": "Shrink sleeves distort differently circumferentially vs vertically — get the exact shrink ratios from your converter.",
+      "tags": [
+        "sleeve",
+        "shrink-sleeve",
+        "gravure"
+      ],
+      "steps": [
+        {
+          "kind": "distort",
+          "label": "Shrink distortion"
+        },
+        {
+          "kind": "nup",
+          "label": "Multi-up layout"
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        }
+      ]
+    },
+    {
+      "id": "r-envelope",
+      "name": "Envelope Layout",
+      "desc": "Printed envelopes imposed for flatbed or rotary die cutting.",
+      "cat": "Packaging",
+      "input": "Envelope artwork on the flat die layout with fold flaps. Die template as overlay.",
+      "tip": "Envelope flaps must be oriented for the fold direction — print on the inside of the flap if the design wraps the seal.",
+      "tags": [
+        "envelope",
+        "die-cut",
+        "mail"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Apply envelope template"
+        },
+        {
+          "kind": "nup",
+          "label": "Multi-up"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add die lines"
+        }
+      ]
+    },
+    {
+      "id": "r-poster",
+      "name": "Poster Tiling",
+      "desc": "Large poster split into printable tiles with overlap for assembly.",
+      "cat": "Large Format",
+      "input": "Single-page PDF at full poster size (e.g. 24×36\" or A0). 150-300 DPI.",
+      "tip": "Use 10-15mm overlap between tiles; align the tile grid to avoid splitting faces/text across a seam.",
+      "tags": [
+        "poster",
+        "tiling",
+        "assembly"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Split into tiles"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-banner",
+      "name": "Banner Printing",
+      "desc": "Wide-format banners with tiling for roll-fed printers.",
+      "cat": "Large Format",
+      "input": "Single PDF at final banner size or at 1/4 scale. Specify dimensions.",
+      "tip": "Banners viewed at 3+ metres need only 72-100 DPI; vinyl banners need a 25mm hemming allowance.",
+      "tags": [
+        "banner",
+        "wide-format",
+        "vinyl"
+      ],
+      "steps": [
+        {
+          "kind": "resize",
+          "label": "Scale to size"
+        },
+        {
+          "kind": "passthrough",
+          "label": "Tile if needed"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-signage",
+      "name": "Signage Repeat",
+      "desc": "Repeated signage (shelf talkers, aisle signs) ganged on large-format sheets.",
+      "cat": "Large Format",
+      "input": "Single sign PDF at trim size with 3mm bleed. Specify substrate sheet dimensions.",
+      "tip": "For rigid substrates add 3mm bleed beyond the cut; the CNC router kerf is 2-3mm — account for it in gutters.",
+      "tags": [
+        "signage",
+        "step-and-repeat",
+        "rigid"
+      ],
+      "steps": [
+        {
+          "kind": "nup",
+          "label": "Step-and-repeat"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add cut marks"
+        }
+      ]
+    },
+    {
+      "id": "r-tradeshow",
+      "name": "Trade Show Panels",
+      "desc": "Multi-panel trade show displays split for separate printing and assembly.",
+      "cat": "Large Format",
+      "input": "Full continuous artwork at the assembled display size. Specify frame system + panel count.",
+      "tip": "Trade-show frame systems have pockets that add 25-50mm per side — get exact frame specs before sizing panels.",
+      "tags": [
+        "trade-show",
+        "panels",
+        "display"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Split into panels"
+        },
+        {
+          "kind": "resize",
+          "label": "Scale panels"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add guides"
+        }
+      ]
+    },
+    {
+      "id": "r-floor",
+      "name": "Floor Graphics",
+      "desc": "Floor decals and wayfinding graphics with contour cutting.",
+      "cat": "Large Format",
+      "input": "Floor graphic artwork at final size. Include 10mm bleed for contour shapes.",
+      "tip": "Floor graphics must be laminated with anti-slip overlaminate (ASTM D2047) — always specify the laminate.",
+      "tags": [
+        "floor-graphics",
+        "contour-cut",
+        "safety"
+      ],
+      "steps": [
+        {
+          "kind": "resize",
+          "label": "Scale to size"
+        },
+        {
+          "kind": "cutcontour",
+          "label": "Add cut contour"
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        }
+      ]
+    },
+    {
+      "id": "r-vehicle",
+      "name": "Vehicle Wrap",
+      "desc": "Vehicle wrap panels split for contour-cut application.",
+      "cat": "Large Format",
+      "input": "Full vehicle artwork on a professional template. Panels pre-separated or as one flat.",
+      "tip": "Vehicle wraps need 50-75mm extra per panel for wrapping edges — use a professional template, not hand-measured.",
+      "tags": [
+        "vehicle-wrap",
+        "vinyl",
+        "large-format"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Split into panels"
+        },
+        {
+          "kind": "resize",
+          "label": "Verify scale"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add panel marks"
+        }
+      ]
+    },
+    {
+      "id": "r-fullmarks",
+      "name": "Full Press Marks",
+      "desc": "Complete press mark set for commercial offset production.",
+      "cat": "Production Marks",
+      "input": "Already-imposed press sheet PDF ready for mark application.",
+      "tip": "Standard mark set for any commercial offset job — place marks ≥ 3mm from trim and keep them from overlapping.",
+      "tags": [
+        "press-marks",
+        "offset",
+        "registration"
+      ],
+      "steps": [
+        {
+          "kind": "cropmarks",
+          "label": "Crop & fold marks"
+        },
+        {
+          "kind": "registration",
+          "label": "Registration targets"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Color control bar"
+        },
+        {
+          "kind": "jobslug",
+          "label": "Job info slug"
+        }
+      ]
+    },
+    {
+      "id": "r-digitalready",
+      "name": "Digital Press Ready",
+      "desc": "Mark set optimized for digital presses (HP Indigo, Xerox iGen).",
+      "cat": "Production Marks",
+      "input": "Imposed PDF, any tool. CMYK with transparency flattened.",
+      "tip": "Digital presses have built-in registration — focus on color bars and trim marks to keep the DFE file simple.",
+      "tags": [
+        "digital-press",
+        "HP-Indigo",
+        "Xerox"
+      ],
+      "steps": [
+        {
+          "kind": "cropmarks",
+          "label": "Trim marks"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Color bar"
+        }
+      ]
+    },
+    {
+      "id": "r-offsetready",
+      "name": "Offset Press Ready",
+      "desc": "Full offset press preparation with all required finishing marks.",
+      "cat": "Production Marks",
+      "input": "Imposed press-sheet PDF, CMYK, transparency flattened, fonts embedded.",
+      "tip": "Verify the plate accommodates all marks — on CTP workflows marks are often added by the CTP software.",
+      "tags": [
+        "offset",
+        "CTP",
+        "commercial-print"
+      ],
+      "steps": [
+        {
+          "kind": "cropmarks",
+          "label": "Full trim marks"
+        },
+        {
+          "kind": "registration",
+          "label": "Registration marks"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Color bar"
+        },
+        {
+          "kind": "passthrough",
+          "label": "Lay marks"
+        }
+      ]
+    },
+    {
+      "id": "r-saddlefinish",
+      "name": "Saddle-Stitch Finishing Marks",
+      "desc": "Finishing marks specifically for saddle-stitch bindery operations.",
+      "cat": "Production Marks",
+      "input": "Imposed saddle-stitch signatures, ready for finishing marks.",
+      "tip": "The saddle-stitch line reads collating marks optically — ensure high contrast and consistent placement.",
+      "tags": [
+        "saddle-stitch",
+        "finishing",
+        "collating"
+      ],
+      "steps": [
+        {
+          "kind": "cropmarks",
+          "label": "Trim marks"
+        },
+        {
+          "kind": "foldmarks",
+          "label": "Fold marks"
+        },
+        {
+          "kind": "collating",
+          "label": "Collating marks"
+        }
+      ]
+    },
+    {
+      "id": "r-pbfinish",
+      "name": "Perfect Bind Finishing Marks",
+      "desc": "Finishing marks for perfect binding with gathering verification.",
+      "cat": "Production Marks",
+      "input": "Imposed perfect-bind signatures with known signature thickness.",
+      "tip": "OMR and gathering marks serve different purposes — gathering is visual, OMR is machine-verified. Use both on high-volume runs.",
+      "tags": [
+        "perfect-bind",
+        "gathering",
+        "OMR"
+      ],
+      "steps": [
+        {
+          "kind": "cropmarks",
+          "label": "Trim marks"
+        },
+        {
+          "kind": "gathering",
+          "label": "Gathering marks"
+        },
+        {
+          "kind": "passthrough",
+          "label": "OMR marks"
+        }
+      ]
+    },
+    {
+      "id": "r-diecutmarks",
+      "name": "Die-Cut Production Marks",
+      "desc": "Complete die-cutting mark set for labels, stickers and packaging.",
+      "cat": "Production Marks",
+      "input": "Artwork with die-line paths on separate spot-color layers, imposed on the press sheet.",
+      "tip": "Use industry layer naming: CutContour, KissCut, Crease, Perforation — automated cutters recognise these from the metadata.",
+      "tags": [
+        "die-cut",
+        "contour",
+        "packaging"
+      ],
+      "steps": [
+        {
+          "kind": "cutcontour",
+          "label": "Die contour"
+        },
+        {
+          "kind": "registration",
+          "label": "Registration marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Sheet marks"
+        }
+      ]
+    },
+    {
+      "id": "r-proofwm",
+      "name": "Watermarked Proof",
+      "desc": "Draft proof with watermark and job info for client approval.",
+      "cat": "Production Marks",
+      "input": "Any PDF at any stage. This is a proofing overlay, not production output.",
+      "tip": "Always watermark proofs before sending to clients — an unwatermarked proof has reached press in every shop.",
+      "tags": [
+        "proof",
+        "watermark",
+        "approval"
+      ],
+      "steps": [
+        {
+          "kind": "watermark",
+          "label": "Add watermark",
+          "opts": {
+            "text": "PROOF",
+            "opacity": 0.15
+          }
+        },
+        {
+          "kind": "jobslug",
+          "label": "Add proof info"
+        }
+      ]
+    },
+    {
+      "id": "r-brandedproof",
+      "name": "Branded Proof",
+      "desc": "Client proof with your shop's branding, job info and color patches.",
+      "cat": "Production Marks",
+      "input": "PDF to be proofed, at any stage of production.",
+      "tip": "Include your shop's ICC profile name in the footer so the client can identify the proofing condition.",
+      "tags": [
+        "proof",
+        "branded",
+        "approval"
+      ],
+      "steps": [
+        {
+          "kind": "watermark",
+          "label": "Add proof watermark",
+          "opts": {
+            "text": "PROOF"
+          }
+        },
+        {
+          "kind": "headerfooter",
+          "label": "Add header/footer"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add reference bar"
+        }
+      ]
+    },
+    {
+      "id": "r-wallcal",
+      "name": "Wall Calendar",
+      "desc": "12-month wall calendar with saddle-stitch or wire-o binding.",
+      "cat": "Calendars & Specialty",
+      "input": "13-page PDF (cover + 12 months) in landscape with 3mm bleed.",
+      "tip": "Wall calendars need a hanging hole — add a drill mark top-center; wire-o is preferred so pages lay flat.",
+      "tags": [
+        "calendar",
+        "wall-calendar",
+        "wire-o"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Generate calendar"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose for binding"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-deskcal",
+      "name": "Desk Calendar",
+      "desc": "Desk tent calendar with fold-and-stand construction.",
+      "cat": "Calendars & Specialty",
+      "input": "13-page PDF at the flat (unfolded) desk size with 3mm bleed.",
+      "tip": "Desk calendars fold in half to stand — the base half is usually blank; ensure front/back align for the fold.",
+      "tags": [
+        "calendar",
+        "desk-calendar",
+        "tent"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Generate calendar"
+        },
+        {
+          "kind": "nup",
+          "label": "Impose as cards"
+        },
+        {
+          "kind": "foldmarks",
+          "label": "Add fold marks"
+        }
+      ]
+    },
+    {
+      "id": "r-planner",
+      "name": "Planner / Diary",
+      "desc": "Wire-o or perfect-bound planner with weekly/daily layouts.",
+      "cat": "Calendars & Specialty",
+      "input": "Complete planner PDF, sequential, 3mm bleed. Count divisible by signature size.",
+      "tip": "Wire-o planners need a 12mm margin on the bind side for wire holes; perfect-bound need 5mm spine milling.",
+      "tags": [
+        "planner",
+        "diary",
+        "wire-o"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight"
+        },
+        {
+          "kind": "booklet",
+          "label": "Impose signatures"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-menu",
+      "name": "Restaurant Menu",
+      "desc": "Folded restaurant menu (bi-fold, tri-fold, or booklet).",
+      "cat": "Calendars & Specialty",
+      "input": "Menu PDF in reading-order pages, final folded size with 3mm bleed.",
+      "tip": "Menus on heavy stock (300gsm+) must be scored before folding or the paper cracks — add scoring marks.",
+      "tags": [
+        "menu",
+        "restaurant",
+        "score"
+      ],
+      "steps": [
+        {
+          "kind": "booklet",
+          "label": "Impose as booklet"
+        },
+        {
+          "kind": "foldmarks",
+          "label": "Add fold marks"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add trim marks"
+        }
+      ]
+    },
+    {
+      "id": "r-newsletter",
+      "name": "Newsletter",
+      "desc": "Folded newsletter (4-8 pages) for mailing or distribution.",
+      "cat": "Calendars & Specialty",
+      "input": "4-page or 8-page newsletter PDF in reading order, folded size, 3mm bleed.",
+      "tip": "For self-mailers the address panel must meet USPS regulations: clear zone around the barcode, correct fold-edge placement.",
+      "tags": [
+        "newsletter",
+        "self-mailer",
+        "mailing"
+      ],
+      "steps": [
+        {
+          "kind": "booklet",
+          "label": "Impose booklet"
+        },
+        {
+          "kind": "headerfooter",
+          "label": "Add mailing panel"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-envprod",
+      "name": "Envelope Production",
+      "desc": "Printed envelopes imposed and prepared for envelope-making machinery.",
+      "cat": "Calendars & Specialty",
+      "input": "Flat envelope artwork on the die-maker template with fold flaps.",
+      "tip": "Window envelopes need the window precisely registered to the letter fold — test with the actual insert.",
+      "tags": [
+        "envelope",
+        "die-cut",
+        "production"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Apply die template"
+        },
+        {
+          "kind": "nup",
+          "label": "Multi-up"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-mixedgang",
+      "name": "Mixed Gang Run",
+      "desc": "Multiple different jobs ganged on a single press sheet for cost efficiency.",
+      "cat": "Ganging & Optimization",
+      "input": "Multiple job PDFs at their individual trim sizes with bleed. Same stock and coating.",
+      "tip": "Gang runs share ink density — group items with similar color requirements (e.g. all warm tones together).",
+      "tags": [
+        "gang",
+        "multi-job",
+        "cost-saving"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Merge jobs"
+        },
+        {
+          "kind": "nest",
+          "label": "Gang on sheet"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-gangfull",
+      "name": "Gang Run with Full Marks",
+      "desc": "Ganged production sheet with complete finishing marks for commercial press.",
+      "cat": "Ganging & Optimization",
+      "input": "Multiple production-ready PDFs, trimmed to final size with 3mm bleed. Same substrate.",
+      "tip": "Number each ganged item in the slug so the cutter operator can verify all pieces after cutting.",
+      "tags": [
+        "gang",
+        "full-marks",
+        "commercial"
+      ],
+      "steps": [
+        {
+          "kind": "nest",
+          "label": "Gang items"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bar"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add all marks"
+        },
+        {
+          "kind": "jobslug",
+          "label": "Add job info"
+        }
+      ]
+    },
+    {
+      "id": "r-expertcustom",
+      "name": "Expert Custom Imposition",
+      "desc": "Fully custom imposition using Expert Grid for non-standard layouts.",
+      "cat": "Ganging & Optimization",
+      "input": "Source pages ready for custom positioning. Know your press sheet size and grid requirements.",
+      "tip": "Expert Grid is the escape hatch for layouts no standard tool handles — plan your grid on paper first.",
+      "tags": [
+        "expert",
+        "custom",
+        "imposition"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Custom grid layout"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-expertfinish",
+      "name": "Expert Grid with Finishing",
+      "desc": "Custom Expert Grid imposition with full finishing marks.",
+      "cat": "Ganging & Optimization",
+      "input": "Source pages and a detailed imposition plan (grid spec, gutter widths, rotations).",
+      "tip": "Verify finishing marks do not overlap the grid cells — custom gutters may be narrower than the mark footprint.",
+      "tags": [
+        "expert",
+        "finishing",
+        "production"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Custom layout"
+        },
+        {
+          "kind": "colorbar",
+          "label": "Add color bar"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        }
+      ]
+    },
+    {
+      "id": "r-cutstacknum",
+      "name": "Cut-and-Stack Numbering",
+      "desc": "Sequential numbering with cut-and-stack page ordering for tickets, NCR or raffle books.",
+      "cat": "Ganging & Optimization",
+      "input": "PDF with one page per numbered item, sequentially numbered. Count = grid cells × sheet count.",
+      "tip": "The shuffle order MUST match your cutting sequence (top-to-bottom then left-to-right). Verify a test sheet first.",
+      "tags": [
+        "cut-and-stack",
+        "numbering",
+        "NCR"
+      ],
+      "steps": [
+        {
+          "kind": "shuffle",
+          "label": "Cut-and-stack shuffle"
+        },
+        {
+          "kind": "nup",
+          "label": "Grid layout"
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-printready",
+      "name": "Print-Ready Preparation",
+      "desc": "Standard pre-flight and preparation workflow for incoming files.",
+      "cat": "Transform & Prep",
+      "input": "Any incoming PDF from a client or designer. No specific format required.",
+      "tip": "First-pass workflow for every incoming file — run preflight first, then convert and optimize. Never skip preflight.",
+      "tags": [
+        "preflight",
+        "print-ready",
+        "first-pass"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Preflight check"
+        },
+        {
+          "kind": "colormanage",
+          "label": "Color convert"
+        },
+        {
+          "kind": "optimize",
+          "label": "Optimize"
+        }
+      ]
+    },
+    {
+      "id": "r-preflightfix",
+      "name": "Preflight and Fix",
+      "desc": "Identify and repair common PDF issues before production.",
+      "cat": "Transform & Prep",
+      "input": "Problematic PDF that crashes, shows errors, or renders incorrectly.",
+      "tip": "If repair fails the file may be too damaged — re-save as PDF/X in Acrobat, or distill from PostScript as a last resort.",
+      "tags": [
+        "preflight",
+        "repair",
+        "troubleshoot"
+      ],
+      "steps": [
+        {
+          "kind": "preflight",
+          "label": "Identify issues"
+        },
+        {
+          "kind": "repair",
+          "label": "Repair PDF"
+        },
+        {
+          "kind": "optimize",
+          "label": "Optimize"
+        }
+      ]
+    },
+    {
+      "id": "r-multimerge",
+      "name": "Multi-File Merge",
+      "desc": "Merge multiple source files into a single document for unified processing.",
+      "cat": "Transform & Prep",
+      "input": "Multiple PDFs to be combined. Specify the desired page order.",
+      "tip": "Merge order becomes page order — double-check the sequence; convert to a common color profile before merging.",
+      "tags": [
+        "merge",
+        "multi-file",
+        "consolidate"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Merge files"
+        },
+        {
+          "kind": "resize",
+          "label": "Normalize size"
+        }
+      ]
+    },
+    {
+      "id": "r-duplex",
+      "name": "Duplex Interleave",
+      "desc": "Interleave separate front and back files for duplex printing.",
+      "cat": "Transform & Prep",
+      "input": "Two PDFs: one with all fronts, one with all backs. Both must have the same page count.",
+      "tip": "If the back file is in reverse order (common from scanning), reverse it first — one page off cascades through the whole job.",
+      "tags": [
+        "duplex",
+        "interleave",
+        "two-sided"
+      ],
+      "steps": [
+        {
+          "kind": "passthrough",
+          "label": "Interleave fronts and backs"
+        },
+        {
+          "kind": "resize",
+          "label": "Normalize dimensions"
+        }
+      ]
+    },
+    {
+      "id": "r-worktumble",
+      "name": "Work and Tumble",
+      "desc": "Flip backup for the work-and-tumble duplex printing method.",
+      "cat": "Transform & Prep",
+      "input": "Imposed front-side sheet ready for tumble backup creation.",
+      "tip": "Work-and-tumble flips along the short edge; work-and-turn along the long edge — the wrong flip mirrors the backs.",
+      "tags": [
+        "work-and-tumble",
+        "duplex",
+        "flip"
+      ],
+      "steps": [
+        {
+          "kind": "flip",
+          "label": "Flip for tumble",
+          "opts": {
+            "direction": "v"
+          }
+        },
+        {
+          "kind": "cropmarks",
+          "label": "Add marks"
+        }
+      ]
+    },
+    {
+      "id": "r-landscape",
+      "name": "Landscape Rotation",
+      "desc": "Rotate pages from portrait to landscape (or vice versa) for press feed direction.",
+      "cat": "Transform & Prep",
+      "input": "PDF with pages in the wrong orientation for the target press.",
+      "tip": "Confirm rotation direction (CW vs CCW) with a test page — the wrong rotation puts the gripper edge on the wrong side.",
+      "tags": [
+        "rotate",
+        "landscape",
+        "orientation"
+      ],
+      "steps": [
+        {
+          "kind": "rotate",
+          "label": "Rotate pages",
+          "opts": {
+            "angleDeg": 90
+          }
+        },
+        {
+          "kind": "passthrough",
+          "label": "Verify dimensions"
+        }
+      ]
+    },
+    {
+      "id": "r-flexo",
+      "name": "Flexo Distortion",
+      "desc": "Pre-distort artwork for flexographic plate mounting on cylinders.",
+      "cat": "Transform & Prep",
+      "input": "Artwork at 1:1 undistorted size. Specify plate thickness and cylinder repeat length.",
+      "tip": "D% = (plate thickness × π / repeat length) × 100. Always get these values from the plate maker.",
+      "tags": [
+        "flexo",
+        "distortion",
+        "plate"
+      ],
+      "steps": [
+        {
+          "kind": "distort",
+          "label": "Apply distortion"
+        },
+        {
+          "kind": "colormanage",
+          "label": "Convert to flexo profile"
+        },
+        {
+          "kind": "registration",
+          "label": "Add registration"
+        }
+      ]
+    }
+  ]
+}

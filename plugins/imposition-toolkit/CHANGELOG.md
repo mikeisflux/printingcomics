@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.15
+
+- **Templates & workflows are now first-class data in the package.** The 156
+  templates and 69 production-recipe workflows were extracted from the React
+  component into a pure `src/catalog.ts` (types-only import of the engine), and
+  the build now emits:
+  - `dist/catalog.mjs` (+ `dist/catalog.d.ts`) — typed ESM (`TEMPLATES`,
+    `RECIPES`, `TEMPLATE_INDUSTRIES`)
+  - `dist/templates.json` — `{ industries, templates }`
+  - `dist/recipes.json` — `{ recipes }`
+  New package exports: `imposition-toolkit/catalog`, `.../templates.json`,
+  `.../recipes.json`, `.../catalog-source`.
+- New **docs/CATALOG.md** — the template + recipe data shapes, the
+  `step.kind → engine` map, and a runnable `runRecipe()` example for the
+  engine-only path. README / INTEGRATION / TOOLS / VERSIONS updated for install
+  + usage of everything (incl. the `pdfjs-dist` optional peer).
+
 ## 1.2.14
 
 - **Edit PDF** — page-level edits: add text, redact (opaque box), draw
