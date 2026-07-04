@@ -4,7 +4,7 @@ import {
   getPdfInfo, imposeBooklet, imposeNUpBook, imposeCalendar, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
-  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, preflight,
+  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
@@ -14,7 +14,7 @@ import type {
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
   RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
-  CollatingOptions, OmrOptions,
+  CollatingOptions, OmrOptions, GatheringOptions, FoldMarksOptions, LayMarksOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -382,6 +382,31 @@ const OmrThumb = () => (
     {/* a row of OMR bars along the bottom edge; program 0b1011010 pattern */}
     {[0,1,0,1,1,0,1,0].map((b,i)=>(<rect key={i} x={60+i*10} y={110} width="4" height={b?16:8} fill={b?'#111':'#cbd5e1'} />))}
     <rect x={52} y={110} width="4" height="16" fill={A} />
+  </svg>
+);
+const GatherThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {/* horizontal staircase of gripper-edge marks along the top */}
+    {[0,1,2,3].map(i=>(<rect key={i} x={62+i*16} y={28} width="12" height="10" fill={A} transform={`translate(0,${i*3})`} />))}
+  </svg>
+);
+const FoldMarksThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {/* dashed fold-tick guides at 1/3 and 2/3 */}
+    {[84,116].map((x,i)=>(<g key={i}>
+      <line x1={x} y1={22} x2={x} y2={40} stroke={A} strokeWidth="1.5" strokeDasharray="4,3" />
+      <line x1={x} y1={108} x2={x} y2={126} stroke={A} strokeWidth="1.5" strokeDasharray="4,3" />
+    </g>))}
+  </svg>
+);
+const LayThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {/* front-lay arrows on the gripper (bottom) + side-lay arrow on the left */}
+    <g stroke={A} strokeWidth="1.5">
+      <line x1={70} y1={122} x2={70} y2={106} /><line x1={70} y1={106} x2={66} y2={112} /><line x1={70} y1={106} x2={74} y2={112} />
+      <line x1={130} y1={122} x2={130} y2={106} /><line x1={130} y1={106} x2={126} y2={112} /><line x1={130} y1={106} x2={134} y2={112} />
+      <line x1={58} y1={74} x2={74} y2={74} /><line x1={74} y1={74} x2={68} y2={70} /><line x1={74} y1={74} x2={68} y2={78} />
+    </g>
   </svg>
 );
 const HFThumb = () => (
@@ -886,6 +911,21 @@ const TOOLS: ToolDef[] = [
     id: 'omr', name: 'OMR Marks', preset: 'OMR Marks', category: 'Marks & prepress', engine: 'omr',
     desc: 'Add optical machine-readable bars along a sheet edge that automated bindery equipment reads to trigger fold / collate / cut / stack.',
     tags: ['optical marks', 'bindery automation', 'fold/collate/cut'], Thumb: OmrThumb,
+  },
+  {
+    id: 'gathering', name: 'Gathering Marks', preset: 'Gathering Marks', category: 'Marks & prepress', engine: 'gathering',
+    desc: 'Gripper-edge marks that step across the leading edge so a mis-gathered sheet stack shows a broken staircase — a front-of-press QC check.',
+    tags: ['gripper edge', 'gather QC', 'sheet sequence'], Thumb: GatherThumb,
+  },
+  {
+    id: 'foldmarks', name: 'Folding Marks', preset: 'Folding Marks', category: 'Marks & prepress', engine: 'foldmarks',
+    desc: 'Dashed fold-tick guides in the trim margin for half / letter / Z / gate / double-parallel / roll / accordion / custom fold schemes.',
+    tags: ['fold guides', 'brochure', 'tri-fold / Z / gate'], Thumb: FoldMarksThumb,
+  },
+  {
+    id: 'laymarks', name: 'Lay Marks', preset: 'Lay Marks', category: 'Marks & prepress', engine: 'laymarks',
+    desc: 'Press-sheet alignment guides — front lay at the gripper edge and side lay on the guide side — as arrow, line or crosshair marks.',
+    tags: ['front lay', 'side lay', 'press alignment'], Thumb: LayThumb,
   },
   {
     id: 'qrstamp', name: 'QR / Barcode', preset: 'QR Stamp', category: 'Marks & prepress', engine: 'qrstamp',
@@ -1968,6 +2008,20 @@ const DEFAULT_OMR: OmrOptions = {
   widthPt: 14.17, heightPt: 2.83, spacingPt: 14.17, startOffsetPt: 40, edgeOffsetPt: 8.5,
   sync: true, color: { r: 0, g: 0, b: 0 }, opacity: 1, pages: 'all',
 };
+const DEFAULT_GATHERING: GatheringOptions = {
+  edge: 'top', startOffsetPt: 18, edgeOffsetPt: 8, markWpt: 6, markHpt: 6,
+  pagesPerSection: 16, sectionsPerSet: 12, stepPt: 8,
+  color: { r: 0, g: 0, b: 0 }, color2: { r: 0, g: 0.6, b: 0.9 }, opacity: 1, pages: 'all',
+};
+const DEFAULT_FOLDMARKS: FoldMarksOptions = {
+  scheme: 'letter', orientation: 'vertical', panels: 4, positions: '33,66',
+  edge: 'both', markLenPt: 18, offsetPt: 0, style: 'dashed', weightPt: 0.75, fullLine: false,
+  color: { r: 0, g: 0, b: 0 }, pages: 'all',
+};
+const DEFAULT_LAYMARKS: LayMarksOptions = {
+  markType: 'arrow', edges: 'both', gripperEdge: 'bottom', sideGuideSide: 'left',
+  sizePt: 14.17, thicknessPt: 0.5, offsetPt: 14.17, color: { r: 0, g: 0, b: 0 }, pages: 'all',
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2449,6 +2503,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [slugOpts, setSlugOpts] = useState<JobSlugOptions>({ text: 'Job • ' + new Date().toISOString().slice(0, 10), position: 'bottom', fontSizePt: 8 });
   const [collatingOpts, setCollatingOpts] = useState<CollatingOptions>(DEFAULT_COLLATING);
   const [omrOpts, setOmrOpts] = useState<OmrOptions>(DEFAULT_OMR);
+  const [gatheringOpts, setGatheringOpts] = useState<GatheringOptions>(DEFAULT_GATHERING);
+  const [foldMarksOpts, setFoldMarksOpts] = useState<FoldMarksOptions>(DEFAULT_FOLDMARKS);
+  const [layMarksOpts, setLayMarksOpts] = useState<LayMarksOptions>(DEFAULT_LAYMARKS);
   const [regOpts, setRegOpts] = useState<RegMarkOptions>(DEFAULT_REGMARK);
   const [insertOpts, setInsertOpts] = useState<InsertOptions>(DEFAULT_INSERT);
   const [nudgeOpts, setNudgeOpts] = useState<NudgeOptions>(DEFAULT_NUDGE);
@@ -2536,6 +2593,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'slug': out = await addJobSlug(file.bytes, { ...slugOpts, fileName: file.name }); outName = `${base}-slug.pdf`; break;
         case 'collating': out = await addCollatingMarks(file.bytes, collatingOpts); outName = `${base}-collated.pdf`; break;
         case 'omr': out = await addOmrMarks(file.bytes, omrOpts); outName = `${base}-omr.pdf`; break;
+        case 'gathering': out = await addGatheringMarks(file.bytes, gatheringOpts); outName = `${base}-gathered.pdf`; break;
+        case 'foldmarks': out = await addFoldMarks(file.bytes, foldMarksOpts); outName = `${base}-foldmarks.pdf`; break;
+        case 'laymarks': out = await addLayMarks(file.bytes, layMarksOpts); outName = `${base}-laymarks.pdf`; break;
         case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
         case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
         case 'nudge': out = await nudgePdf(file.bytes, nudgeOpts); outName = `${base}-nudged.pdf`; break;
@@ -2692,6 +2752,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'slug' && <JobSlugSettings opts={slugOpts} onChange={setSlugOpts} />}
                 {tool.engine === 'collating' && <CollatingSettings opts={collatingOpts} onChange={setCollatingOpts} />}
                 {tool.engine === 'omr' && <OmrSettings opts={omrOpts} onChange={setOmrOpts} />}
+                {tool.engine === 'gathering' && <GatheringSettings opts={gatheringOpts} onChange={setGatheringOpts} />}
+                {tool.engine === 'foldmarks' && <FoldMarksSettings opts={foldMarksOpts} onChange={setFoldMarksOpts} />}
+                {tool.engine === 'laymarks' && <LayMarksSettings opts={layMarksOpts} onChange={setLayMarksOpts} />}
                 {tool.engine === 'registration' && <RegistrationSettings opts={regOpts} onChange={setRegOpts} />}
                 {tool.engine === 'insert' && <InsertSettings opts={insertOpts} onChange={setInsertOpts} />}
                 {tool.engine === 'nudge' && <NudgeSettings opts={nudgeOpts} onChange={setNudgeOpts} />}
@@ -2979,6 +3042,128 @@ function OmrSettings({ opts, onChange }: { opts: OmrOptions; onChange: (o: OmrOp
       <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
       <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
         Encodes the program number as a bar sequence read by automated bindery equipment to trigger fold / collate / cut / stack. Marks must be solid black at 100% density; the edge must match the machine's sensor position. Confirm the exact spec with your finishing vendor — patterns are manufacturer-specific.
+      </div>
+    </Grid>
+  );
+}
+
+function GatheringSettings({ opts, onChange }: { opts: GatheringOptions; onChange: (o: GatheringOptions) => void }) {
+  const set = <K extends keyof GatheringOptions>(k: K, v: GatheringOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Gripper edge" note="Leading edge of the press sheet">
+        <select value={opts.edge} onChange={e => set('edge', e.target.value as GatheringOptions['edge'])} style={iStyle}>
+          <option value="top">Top</option><option value="bottom">Bottom</option>
+        </select>
+      </Field>
+      <Field label="Start offset (from left, pt)"><input type="number" min={0} max={600} step={1} value={opts.startOffsetPt ?? 18} onChange={e => set('startOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge offset (pt)" note="Clear the gripper zone (10–15 mm)"><input type="number" min={0} max={80} step={0.5} value={opts.edgeOffsetPt ?? 8} onChange={e => set('edgeOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark width (pt)"><input type="number" min={1} max={40} step={1} value={opts.markWpt ?? 6} onChange={e => set('markWpt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark height (pt)"><input type="number" min={1} max={40} step={1} value={opts.markHpt ?? 6} onChange={e => set('markHpt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages / section">
+        <select value={opts.pagesPerSection ?? 16} onChange={e => set('pagesPerSection', +e.target.value)} style={iStyle}>
+          {[4, 8, 16, 32].map(v => <option key={v} value={v}>{v}pp</option>)}
+        </select>
+      </Field>
+      <Field label="Sections / set" note="Staircase resets after this many">
+        <select value={opts.sectionsPerSet ?? 12} onChange={e => set('sectionsPerSet', +e.target.value)} style={iStyle}>
+          {[8, 12, 16, 24, 32].map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </Field>
+      <Field label="Step size (pt)" note="Horizontal distance between marks"><input type="number" min={1} max={60} step={1} value={opts.stepPt ?? 8} onChange={e => set('stepPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark colour"><input type="color" value={rgbToHex(opts.color ?? { r: 0, g: 0, b: 0 })} onChange={e => set('color', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Wrap colour" note="2nd-pass (contrasting)"><input type="color" value={rgbToHex(opts.color2 ?? { r: 0, g: 0.6, b: 0.9 })} onChange={e => set('color2', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Opacity"><input type="number" min={0.1} max={1} step={0.05} value={opts.opacity ?? 1} onChange={e => set('opacity', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        The gripper-edge cousin of collating marks: one mark per <strong>section</strong>, stepped <em>horizontally</em> along the leading edge (kept clear of the gripper zone). A clean staircase across the cut stack confirms correct gathering; the pattern resets and switches to the wrap colour every <em>sections / set</em>.
+      </div>
+    </Grid>
+  );
+}
+
+function FoldMarksSettings({ opts, onChange }: { opts: FoldMarksOptions; onChange: (o: FoldMarksOptions) => void }) {
+  const set = <K extends keyof FoldMarksOptions>(k: K, v: FoldMarksOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Fold scheme">
+        <select value={opts.scheme} onChange={e => set('scheme', e.target.value as FoldMarksOptions['scheme'])} style={iStyle}>
+          <option value="half">Half fold (bi-fold)</option>
+          <option value="letter">Letter / tri-fold</option>
+          <option value="zfold">Z-fold</option>
+          <option value="gate">Gate fold</option>
+          <option value="doubleparallel">Double parallel</option>
+          <option value="roll">Roll fold</option>
+          <option value="accordion">Accordion (N panels)</option>
+          <option value="custom">Custom positions</option>
+        </select>
+      </Field>
+      <Field label="Fold direction">
+        <select value={opts.orientation} onChange={e => set('orientation', e.target.value as FoldMarksOptions['orientation'])} style={iStyle}>
+          <option value="vertical">Vertical folds (divide width)</option>
+          <option value="horizontal">Horizontal folds (divide height)</option>
+        </select>
+      </Field>
+      {(opts.scheme === 'accordion' || opts.scheme === 'roll') && <Field label="Panels"><input type="number" min={2} max={12} step={1} value={opts.panels ?? 4} onChange={e => set('panels', +e.target.value)} style={iStyle} /></Field>}
+      {opts.scheme === 'custom' && <Field label="Positions" note='"33,66" (%) · "1/3,2/3"'><input type="text" value={opts.positions ?? ''} onChange={e => set('positions', e.target.value)} style={iStyle} /></Field>}
+      <Field label="Tick placement">
+        <select value={opts.edge} onChange={e => set('edge', e.target.value as FoldMarksOptions['edge'])} style={iStyle}>
+          <option value="both">Both ends</option>
+          <option value="top">Top / right end</option>
+          <option value="bottom">Bottom / left end</option>
+        </select>
+      </Field>
+      <Field label="Line style">
+        <select value={opts.style} onChange={e => set('style', e.target.value as FoldMarksOptions['style'])} style={iStyle}>
+          <option value="dashed">Dashed</option><option value="solid">Solid</option><option value="dotted">Dotted</option>
+        </select>
+      </Field>
+      <Field label="Tick length (pt)"><input type="number" min={2} max={200} step={1} value={opts.markLenPt ?? 18} onChange={e => set('markLenPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge offset (pt)"><input type="number" min={0} max={80} step={0.5} value={opts.offsetPt ?? 0} onChange={e => set('offsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Line weight (pt)"><input type="number" min={0.25} max={5} step={0.25} value={opts.weightPt ?? 0.75} onChange={e => set('weightPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Full guide line"><Row><input type="checkbox" checked={!!opts.fullLine} onChange={e => set('fullLine', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Across whole sheet</span></Row></Field>
+      <Field label="Colour"><input type="color" value={rgbToHex(opts.color ?? { r: 0, g: 0, b: 0 })} onChange={e => set('color', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Dashed tick guides in the trim margin at each fold. <strong>Vertical</strong> folds divide the width (brochure panels); <strong>horizontal</strong> divide the height. Roll fold shrinks each panel so it tucks inside the previous; use <em>Custom</em> for exact positions.
+      </div>
+    </Grid>
+  );
+}
+
+function LayMarksSettings({ opts, onChange }: { opts: LayMarksOptions; onChange: (o: LayMarksOptions) => void }) {
+  const set = <K extends keyof LayMarksOptions>(k: K, v: LayMarksOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Mark type">
+        <select value={opts.markType} onChange={e => set('markType', e.target.value as LayMarksOptions['markType'])} style={iStyle}>
+          <option value="arrow">Arrow</option><option value="line">Line</option><option value="cross">Cross</option>
+        </select>
+      </Field>
+      <Field label="Edges">
+        <select value={opts.edges} onChange={e => set('edges', e.target.value as LayMarksOptions['edges'])} style={iStyle}>
+          <option value="both">Both (front + side lay)</option>
+          <option value="gripper">Gripper (front lay)</option>
+          <option value="sideguide">Side guide (side lay)</option>
+        </select>
+      </Field>
+      <Field label="Gripper edge" note="Leading edge (feeds first)">
+        <select value={opts.gripperEdge ?? 'bottom'} onChange={e => set('gripperEdge', e.target.value as 'top' | 'bottom')} style={iStyle}>
+          <option value="bottom">Bottom</option><option value="top">Top</option>
+        </select>
+      </Field>
+      <Field label="Side guide side">
+        <select value={opts.sideGuideSide} onChange={e => set('sideGuideSide', e.target.value as LayMarksOptions['sideGuideSide'])} style={iStyle}>
+          <option value="left">Left</option><option value="right">Right</option>
+        </select>
+      </Field>
+      <Field label="Mark size (pt)"><input type="number" min={2} max={80} step={0.5} value={opts.sizePt ?? 14.17} onChange={e => set('sizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Line thickness (pt)"><input type="number" min={0.25} max={5} step={0.25} value={opts.thicknessPt ?? 0.5} onChange={e => set('thicknessPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Offset from corner (pt)"><input type="number" min={0} max={120} step={0.5} value={opts.offsetPt ?? 14.17} onChange={e => set('offsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Colour"><input type="color" value={rgbToHex(opts.color ?? { r: 0, g: 0, b: 0 })} onChange={e => set('color', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Front lay marks the gripper (leading) edge feed direction; side lay marks the guide side for lateral registration. Lay marks belong on the imposed <strong>press sheet</strong> — after imposition the gripper margin exists; on un-imposed pages the marks land inside the trim.
       </div>
     </Grid>
   );

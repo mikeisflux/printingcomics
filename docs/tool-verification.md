@@ -11,7 +11,7 @@ each output page's content stream (`decodePDFRawStream`) and assert the
 documented behavior. Imposition **order** is proven by mapping each embedded
 XObject's BBox back to its source page and reading the `cm … Do` placements.
 
-## Results — 37/37 verified
+## Results — 40/40 verified
 
 | Tool | Assertion | ✓ |
 |---|---|---|
@@ -41,6 +41,9 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Registration Marks | crosshair + bullseye strokes | ✓ |
 | Collating Marks | per-signature staircase, wrap colour, half-height, range | ✓ |
 | OMR Marks | program bits → bars, sync, bar-height, repeats, per-edge geometry | ✓ |
+| Gathering Marks | per-section horizontal staircase, gripper edge, wrap colour | ✓ |
+| Folding Marks | fold fractions per scheme, dash styles, roll-fold tuck, custom | ✓ |
+| Lay Marks | arrow/line/cross glyph counts, gripper + side-lay geometry | ✓ |
 | Die Lines | red cut + blue crease strokes present | ✓ |
 | Dimensions | width + height labels | ✓ |
 | Barcode / QR | QR module fills drawn | ✓ |
@@ -95,6 +98,8 @@ These documented options are now implemented and verified:
 
 ## Not implemented (deep specialty)
 
-Edit PDF, Folding/OMR/Gathering/Lay marks,
-White/Varnish, Braille, Color Effects, Color Management (ICC), Layers (OCG),
-PDF Optimizer (linearize/encrypt), JDF/CIP4 export.
+Edit PDF, White/Varnish, Braille, Color Effects, Color Management (ICC),
+Layers (OCG), PDF Optimizer (linearize/encrypt), JDF/CIP4 export.
+
+(OMR, Folding, Gathering and Lay marks — previously listed here — are now
+implemented and verified above.)
