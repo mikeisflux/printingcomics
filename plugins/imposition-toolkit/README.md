@@ -1,6 +1,6 @@
 # Imposition Toolkit
 
-A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **83
+A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **85
 print-production tools + 156 ready-made industry templates + 6 chained
 workflows** plus 5 planning calculators, extracted from the Printing Comics
 storefront so it can be dropped into any other website.
@@ -29,10 +29,10 @@ component, and there are no network calls during processing.
 | **Booklets & books** | N-up Book · Booklet · Saddle-Stitch Magazine · Perfect-Bound Book · Zine · Event Program · Catalog · Comic/Manga · Notebook · Flip Book |
 | **Cards & labels** | Business Cards · **Trading Cards** · Stickers · **Nesting (true-shape)** · Step & Repeat · Calendar · Postcards · Labels · Bookmarks · Hang Tags · Coasters · Letterhead · Compliment Slips · NCR Pads · Envelopes |
 | **Folding** | Trifold · Folded (Z-fold) · Greeting Card · Menu · Wedding Invitation · Presentation Folder (dieline) |
-| **Large & specialty** | Tiled Poster · Banner · Feather Flags · Roller Banner · Packaging Dieline · Box/Carton |
+| **Large & specialty** | Tiled Poster · Banner · Feather Flags · Roller Banner · Packaging Dieline · Box/Carton · **Color Management (ICC/CMYK)** |
 | **Tickets & data** | Variable Data (CSV+QR) · Raffle Tickets · Coupons · Name Badges |
 | **Marks & prepress** | Bleed & Crop Marks · Cutter Marks · Color Bar & Header · Page Numbering & Bates · Registration · Collating · Gathering · OMR · Folding · Lay Marks · **Die Lines (Cut Contour)** · **White/Varnish** · **Braille** · Preflight Inspector |
-| **Page & PDF tools** | Merge · Split · Rotate · Flip/Mirror · Overlay/Watermark · Shuffle · Crop |
+| **Page & PDF tools** | Merge · Split · Rotate · Flip/Mirror · Overlay/Watermark · Shuffle · Crop · PDF Repair · **Color Effects** · Backdrop / Background Fill · **Barcode / QR (QR·Code128·DataMatrix·EAN-13)** |
 
 Highlights new in 1.1: a **real dieline generator** (box net with cut/crease/glue
 from W×H×D), **CSV data-merge** with a **scannable QR** per record, plus bleed,

@@ -484,6 +484,32 @@ overlay). `{ offsetXPt?, offsetYPt?, scalePct?, opacity? (0–1), repeat?, pages
 `addTextWatermark` also accepts `color?` and `pages?` for coloured, ranged
 watermarks.
 
+### `repairPdf(bytes, opts?: RepairOptions): Promise<Uint8Array>`
+Rebuild the PDF from scratch. `{ stripMetadata?, removeAnnotations?,
+removeJavaScript?, pages? }` — the rebuild alone already drops dead objects,
+document-level JavaScript and source metadata; the flags additionally clear the
+Info/XMP, page `/Annots` and page `/AA` actions.
+
+### `applyColorEffects(bytes, opts: ColorEffectsOptions): Promise<Uint8Array>` *(browser)*
+Rasterise targeted pages and apply a CSS-filter stack. `{ brightness?,
+contrast?, saturation? (all 0–200, 100 = unchanged), grayscale?, warmTone?,
+invert? (0–100), hueRotate? (0–360), dpi?, pages? }`. Needs a canvas + the
+optional `pdfjs-dist` peer. `colorEffectsFilter(opts)` is the pure,
+unit-testable filter-string builder.
+
+### `assignOutputIntent(baseBytes, iccBytes, conditionName): Promise<Uint8Array>`
+Embed a destination ICC profile as a PDF/X `/OutputIntent` (lossless — no
+rasterisation, vectors intact). `/N` is read from the ICC header's colour-space
+signature.
+
+### `applyColorManagement(bytes, opts: ColorManageOptions): Promise<Uint8Array>` *(browser)*
+Rasterise and map RGB → CMYK → RGB through an 8-primary Neugebauer ink model
+(a genuinely smaller-than-sRGB gamut), with rendering intents and an optional
+out-of-gamut warning overlay. `{ intent, dpi?, convert?, gamutWarning?,
+warningColor?, pages? }`. Pure helpers `rgbToCmyk` / `cmykToRgb` /
+`isOutOfCmykGamut` are unit-testable. *Not a device-exact ICC transform* — for
+that, pair a full CMM; use `assignOutputIntent` to embed the profile.
+
 ## Error handling
 
 Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).

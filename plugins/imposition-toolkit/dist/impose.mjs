@@ -1688,13 +1688,233 @@ async function nudgePdf(bytes, opts) {
   }
   return out.save();
 }
-async function repairPdf(bytes) {
-  const { PDFDocument } = await import("pdf-lib");
+async function repairPdf(bytes, opts = {}) {
+  const { PDFDocument, PDFName } = await import("pdf-lib");
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const out = await PDFDocument.create();
   const pages = await out.copyPages(src, src.getPageIndices());
-  for (const p of pages) out.addPage(p);
+  const sel = parsePageRange(opts.pages ?? "all", pages.length);
+  pages.forEach((p, i) => {
+    out.addPage(p);
+    if (!sel.has(i + 1)) return;
+    if (opts.removeAnnotations) p.node.delete(PDFName.of("Annots"));
+    if (opts.removeJavaScript) p.node.delete(PDFName.of("AA"));
+  });
+  if (opts.stripMetadata) {
+    out.setTitle("");
+    out.setAuthor("");
+    out.setSubject("");
+    out.setKeywords([]);
+    out.setProducer("");
+    out.setCreator("");
+    try {
+      out.catalog.delete(PDFName.of("Metadata"));
+    } catch {
+    }
+  }
   return out.save({ useObjectStreams: true });
+}
+function colorEffectsFilter(o) {
+  const p = [];
+  p.push(`brightness(${(o.brightness ?? 100) / 100})`);
+  p.push(`contrast(${(o.contrast ?? 100) / 100})`);
+  p.push(`saturate(${(o.saturation ?? 100) / 100})`);
+  if (o.grayscale) p.push(`grayscale(${o.grayscale / 100})`);
+  if (o.warmTone) p.push(`sepia(${o.warmTone / 100})`);
+  if (o.invert) p.push(`invert(${o.invert / 100})`);
+  if (o.hueRotate) p.push(`hue-rotate(${o.hueRotate}deg)`);
+  return p.join(" ");
+}
+function colorEffectsIsIdentity(o) {
+  return (o.brightness ?? 100) === 100 && (o.contrast ?? 100) === 100 && (o.saturation ?? 100) === 100 && !o.grayscale && !o.warmTone && !o.invert && !o.hueRotate;
+}
+async function applyColorEffects(bytes, opts) {
+  if (typeof document === "undefined") throw new Error("Colour Effects needs a browser (canvas rasterisation).");
+  const { PDFDocument } = await import("pdf-lib");
+  const pdfjs = await import("pdfjs-dist");
+  try {
+    pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  } catch {
+  }
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = src.getPageCount();
+  const sel = parsePageRange(opts.pages ?? "all", n);
+  const dpi = opts.dpi ?? 300;
+  const filter = colorEffectsFilter(opts);
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const out = await PDFDocument.create();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) {
+      const [cp] = await out.copyPages(src, [i]);
+      out.addPage(cp);
+      continue;
+    }
+    const page = await doc.getPage(i + 1);
+    const vp = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(vp.width);
+    canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const fcanvas = document.createElement("canvas");
+    fcanvas.width = canvas.width;
+    fcanvas.height = canvas.height;
+    const fctx = fcanvas.getContext("2d");
+    fctx.filter = filter || "none";
+    fctx.drawImage(canvas, 0, 0);
+    const dataUrl = fcanvas.toDataURL("image/png");
+    const bin = atob(dataUrl.split(",")[1]);
+    const arr = new Uint8Array(bin.length);
+    for (let k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+    const emb = await out.embedPng(arr);
+    const { width: pw, height: ph } = src.getPage(i).getSize();
+    const pg = out.addPage([pw, ph]);
+    pg.drawImage(emb, { x: 0, y: 0, width: pw, height: ph });
+  }
+  return out.save();
+}
+function rgbToCmyk(r, g, b) {
+  const k = 1 - Math.max(r, g, b);
+  if (k >= 1 - 1e-6) return [0, 0, 0, 1];
+  return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k];
+}
+const NEUG = [
+  [1, 1, 1],
+  // white
+  [0, 0.68, 0.94],
+  // C
+  [0.9, 0.1, 0.54],
+  // M
+  [0.99, 0.95, 0.13],
+  // Y
+  [0.16, 0.1, 0.45],
+  // C+M  (blue)
+  [0, 0.62, 0.3],
+  // C+Y  (green)
+  [0.92, 0.16, 0.18],
+  // M+Y  (red)
+  [0.2, 0.18, 0.16]
+  // C+M+Y (near-black)
+];
+function cmykToRgb(c, m, y, k) {
+  const w = [
+    (1 - c) * (1 - m) * (1 - y),
+    c * (1 - m) * (1 - y),
+    (1 - c) * m * (1 - y),
+    (1 - c) * (1 - m) * y,
+    c * m * (1 - y),
+    c * (1 - m) * y,
+    (1 - c) * m * y,
+    c * m * y
+  ];
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < 8; i++) {
+    r += w[i] * NEUG[i][0];
+    g += w[i] * NEUG[i][1];
+    b += w[i] * NEUG[i][2];
+  }
+  const kf = 1 - 0.9 * k;
+  return [r * kf, g * kf, b * kf];
+}
+function cmykRoundTrip(r, g, b) {
+  const [c, m, y, k] = rgbToCmyk(r, g, b);
+  return cmykToRgb(c, m, y, k);
+}
+function isOutOfCmykGamut(r, g, b, thresh = 0.12) {
+  const [r2, g2, b2] = cmykRoundTrip(r, g, b);
+  return Math.max(Math.abs(r - r2), Math.abs(g - g2), Math.abs(b - b2)) > thresh;
+}
+function mapPixelCmyk(r, g, b, intent) {
+  let R = r, G = g, B = b;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (intent === "perceptual") {
+    const f = 0.9;
+    R = lum + (r - lum) * f;
+    G = lum + (g - lum) * f;
+    B = lum + (b - lum) * f;
+  } else if (intent === "saturation") {
+    const f = 1.1;
+    R = Math.min(1, Math.max(0, lum + (r - lum) * f));
+    G = Math.min(1, Math.max(0, lum + (g - lum) * f));
+    B = Math.min(1, Math.max(0, lum + (b - lum) * f));
+  }
+  return cmykRoundTrip(R, G, B);
+}
+async function assignOutputIntent(baseBytes, iccBytes, conditionName) {
+  const { PDFDocument, PDFName, PDFString } = await import("pdf-lib");
+  const doc = await PDFDocument.load(baseBytes, { ignoreEncryption: true });
+  const ctx = doc.context;
+  const cs = String.fromCharCode(...iccBytes.slice(16, 20));
+  const N = cs.startsWith("CMYK") ? 4 : cs.startsWith("GRAY") ? 1 : 3;
+  const iccRef = ctx.register(ctx.stream(iccBytes, { N }));
+  const oi = ctx.obj({
+    Type: "OutputIntent",
+    S: "GTS_PDFX",
+    OutputConditionIdentifier: PDFString.of(conditionName || "Custom"),
+    Info: PDFString.of(conditionName || "Custom"),
+    DestOutputProfile: iccRef
+  });
+  doc.catalog.set(PDFName.of("OutputIntents"), ctx.obj([ctx.register(oi)]));
+  return doc.save();
+}
+async function applyColorManagement(bytes, opts) {
+  if (typeof document === "undefined") throw new Error("Colour Management needs a browser (canvas rasterisation).");
+  const { PDFDocument } = await import("pdf-lib");
+  const pdfjs = await import("pdfjs-dist");
+  try {
+    pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  } catch {
+  }
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = src.getPageCount();
+  const sel = parsePageRange(opts.pages ?? "all", n);
+  const dpi = opts.dpi ?? 300;
+  const intent = opts.intent ?? "perceptual";
+  const warn = opts.warningColor ?? { r: 0, g: 1, b: 0 };
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const out = await PDFDocument.create();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) {
+      const [cp] = await out.copyPages(src, [i]);
+      out.addPage(cp);
+      continue;
+    }
+    const page = await doc.getPage(i + 1);
+    const vp = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(vp.width);
+    canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = img.data;
+    for (let p = 0; p < d.length; p += 4) {
+      const r = d[p] / 255, g = d[p + 1] / 255, b = d[p + 2] / 255;
+      if (opts.gamutWarning && isOutOfCmykGamut(r, g, b)) {
+        d[p] = warn.r * 255;
+        d[p + 1] = warn.g * 255;
+        d[p + 2] = warn.b * 255;
+        continue;
+      }
+      const [nr, ng, nb] = mapPixelCmyk(r, g, b, intent);
+      d[p] = Math.round(nr * 255);
+      d[p + 1] = Math.round(ng * 255);
+      d[p + 2] = Math.round(nb * 255);
+    }
+    ctx.putImageData(img, 0, 0);
+    const dataUrl = canvas.toDataURL("image/png");
+    const bin = atob(dataUrl.split(",")[1]);
+    const arr = new Uint8Array(bin.length);
+    for (let k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+    const emb = await out.embedPng(arr);
+    const { width: pw, height: ph } = src.getPage(i).getSize();
+    out.addPage([pw, ph]).drawImage(emb, { x: 0, y: 0, width: pw, height: ph });
+  }
+  return out.save();
 }
 async function addBackdrop(bytes, opts) {
   const { PDFDocument, rgb } = await import("pdf-lib");
@@ -2405,6 +2625,13 @@ export {
   addRegistrationMarks,
   addTextWatermark,
   addWhiteVarnish,
+  applyColorEffects,
+  applyColorManagement,
+  assignOutputIntent,
+  cmykRoundTrip,
+  cmykToRgb,
+  colorEffectsFilter,
+  colorEffectsIsIdentity,
   computeNUpGrid,
   cropPdf,
   distortFactorFromCylinder,
@@ -2424,8 +2651,10 @@ export {
   imposeTickets,
   imposeTiledPoster,
   insertPages,
+  isOutOfCmykGamut,
   makeDieline,
   makeZip,
+  mapPixelCmyk,
   mergePdfs,
   mixPdfs,
   nestPdf,
@@ -2435,6 +2664,7 @@ export {
   preflight,
   repairPdf,
   resizePdf,
+  rgbToCmyk,
   rotatePdf,
   shufflePages,
   splitPdf,

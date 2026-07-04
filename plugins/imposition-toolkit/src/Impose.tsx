@@ -5,7 +5,7 @@ import {
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks,
-  addCutContour, addWhiteVarnish, addBraille, addBarcodeStamp, addBackdropFile, preflight,
+  addCutContour, addWhiteVarnish, addBraille, addBarcodeStamp, addBackdropFile, applyColorEffects, applyColorManagement, assignOutputIntent, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
@@ -17,6 +17,7 @@ import type {
   RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
   CollatingOptions, OmrOptions, GatheringOptions, FoldMarksOptions, LayMarksOptions,
   CutContourOptions, WhiteVarnishOptions, BrailleOptions, BarcodeStampOptions, BackdropFileOptions,
+  ColorEffectsOptions, ColorManageOptions, RepairOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ type ToolEngine =
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
   | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks'
-  | 'cutcontour' | 'whitevarnish' | 'braille' | 'barcode' | 'backdropfile';
+  | 'cutcontour' | 'whitevarnish' | 'braille' | 'barcode' | 'backdropfile' | 'coloreffects' | 'colormanage';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -366,6 +367,20 @@ const QrThumb = () => (
   <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
     {([[64,34],[64,52],[82,34],[110,34],[128,34],[110,52],[64,82],[64,100],[82,100],[110,82],[128,100],[110,100]] as [number,number][]).map(([x,y],i)=>(
       <rect key={i} x={x} y={y} width="14" height="14" fill={A} />))}
+  </svg>
+);
+const ColorEffectsThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <defs><linearGradient id="ceg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f472b6" /><stop offset="0.5" stopColor="#a78bfa" /><stop offset="1" stopColor="#38bdf8" /></linearGradient></defs>
+    <rect x="62" y="34" width="76" height="80" rx="4" fill="url(#ceg)" />
+    <circle cx="100" cy="74" r="16" fill="#fff" opacity="0.85" /><circle cx="100" cy="74" r="16" fill="none" stroke="#fff" />
+  </svg>
+);
+const ColorManageThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <circle cx="86" cy="66" r="24" fill="#f87171" opacity="0.8" />
+    <circle cx="114" cy="66" r="24" fill="#34d399" opacity="0.8" />
+    <circle cx="100" cy="90" r="24" fill="#60a5fa" opacity="0.8" />
   </svg>
 );
 const DimThumb = () => (
@@ -908,8 +923,18 @@ const TOOLS: ToolDef[] = [
   },
   {
     id: 'repair', name: 'PDF Repair', preset: 'PDF Repair', category: 'Page & PDF tools', engine: 'repair',
-    desc: 'Rebuild a PDF from scratch — drops broken cross-references and dead objects.',
+    desc: 'Rebuild a PDF from scratch — drops broken cross-references and dead objects, and optionally strips metadata, annotations and JavaScript.',
     tags: ['normalize', 'rebuild', 'fix xref'], Thumb: RepairThumb,
+  },
+  {
+    id: 'coloreffects', name: 'Color Effects', preset: 'Color Effects', category: 'Page & PDF tools', engine: 'coloreffects',
+    desc: 'Apply brightness / contrast / saturation and grayscale / warm / invert / hue effects by rasterising the targeted pages. Runs in the browser.',
+    tags: ['colour grade', 'grayscale / sepia', 'rasterise'], Thumb: ColorEffectsThumb,
+  },
+  {
+    id: 'colormanage', name: 'Color Management', preset: 'Color Management', category: 'Large & specialty', engine: 'colormanage',
+    desc: 'Embed a destination ICC profile as a PDF/X OutputIntent, and/or convert pages to the CMYK-reproducible gamut with an out-of-gamut warning.',
+    tags: ['ICC / OutputIntent', 'RGB→CMYK', 'gamut warning'], Thumb: ColorManageThumb,
   },
   {
     id: 'registration', name: 'Registration Marks', preset: 'Registration Marks', category: 'Marks & prepress', engine: 'registration',
@@ -2092,6 +2117,15 @@ const DEFAULT_BARCODE: BarcodeStampOptions = {
 const DEFAULT_BACKDROPFILE: BackdropFileOptions = {
   offsetXPt: 0, offsetYPt: 0, scalePct: 100, opacity: 100, repeat: true, pages: 'all',
 };
+const DEFAULT_COLOREFFECTS: ColorEffectsOptions = {
+  brightness: 100, contrast: 100, saturation: 100, grayscale: 0, warmTone: 0, invert: 0, hueRotate: 0, dpi: 300, pages: 'all',
+};
+const DEFAULT_REPAIR: RepairOptions = {
+  reserialize: true, stripMetadata: false, removeAnnotations: false, removeJavaScript: true, pages: 'all',
+};
+const DEFAULT_COLORMANAGE: ColorManageOptions = {
+  sourceProfile: 'sRGB', destProfile: '', intent: 'perceptual', dpi: 300, gamutWarning: false, pages: 'all',
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2586,6 +2620,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [qrStampOpts, setQrStampOpts] = useState<QrStampOptions>(DEFAULT_QRSTAMP);
   const [barcodeOpts, setBarcodeOpts] = useState<BarcodeStampOptions>(DEFAULT_BARCODE);
   const [backdropFileOpts, setBackdropFileOpts] = useState<BackdropFileOptions>(DEFAULT_BACKDROPFILE);
+  const [colorEffectsOpts, setColorEffectsOpts] = useState<ColorEffectsOptions>(DEFAULT_COLOREFFECTS);
+  const [repairOpts, setRepairOpts] = useState<RepairOptions>(DEFAULT_REPAIR);
+  const [colorManageOpts, setColorManageOpts] = useState<ColorManageOptions>(DEFAULT_COLORMANAGE);
   const [mixReverse, setMixReverse] = useState(false);
   // Initialise order-list tools from the (possibly already-loaded) file so they
   // are correct even when this tool was reached by switching in the rail.
@@ -2677,7 +2714,15 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
         case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
         case 'nudge': out = await nudgePdf(file.bytes, nudgeOpts); outName = `${base}-nudged.pdf`; break;
-        case 'repair': out = await repairPdf(file.bytes); outName = `${base}-repaired.pdf`; break;
+        case 'repair': out = await repairPdf(file.bytes, repairOpts); outName = `${base}-repaired.pdf`; break;
+        case 'coloreffects': out = await applyColorEffects(file.bytes, colorEffectsOpts); outName = `${base}-graded.pdf`; break;
+        case 'colormanage': {
+          let res = file.bytes;
+          if (colorManageOpts.convert || colorManageOpts.gamutWarning) res = await applyColorManagement(res, colorManageOpts);
+          if (stampFile) res = await assignOutputIntent(res, stampFile.bytes, colorManageOpts.destProfile || 'Custom');
+          else if (!colorManageOpts.convert && !colorManageOpts.gamutWarning) throw new Error('Upload an ICC profile to assign, or enable Convert / Gamut warning.');
+          out = res; outName = `${base}-color.pdf`; break;
+        }
         case 'backdrop': out = await addBackdrop(file.bytes, backdropOpts); outName = `${base}-backdrop.pdf`; break;
         case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
         case 'barcode': out = await addBarcodeStamp(file.bytes, barcodeOpts); outName = `${base}-barcode.pdf`; break;
@@ -2851,24 +2896,25 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'mix' && (
                   <Row><input type="checkbox" checked={mixReverse} onChange={e => setMixReverse(e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Reverse the second file (backs scanned in reverse)</span></Row>
                 )}
-                {(tool.engine === 'repair' || tool.engine === 'dimensions') && (
+                {tool.engine === 'repair' && <RepairSettings opts={repairOpts} onChange={setRepairOpts} />}
+                {tool.engine === 'coloreffects' && <ColorEffectsSettings opts={colorEffectsOpts} onChange={setColorEffectsOpts} />}
+                {tool.engine === 'colormanage' && <ColorManageSettings opts={colorManageOpts} onChange={setColorManageOpts} />}
+                {tool.engine === 'dimensions' && (
                   <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--muted)', lineHeight: 1.5 }}>
-                    {tool.engine === 'repair'
-                      ? 'Rebuilds the file from scratch — drops broken cross-references and dead objects, then writes a clean PDF. No options needed.'
-                      : 'Stamps each page with its exact trim size (inches + points) along the bottom and left edges. No options needed.'}
+                    Stamps each page with its exact trim and bleed size (inches + points) along the edges. No options needed.
                   </p>
                 )}
               </div>
 
-              {(tool.engine === 'overlay' || tool.engine === 'mix' || tool.engine === 'backdropfile') && (
+              {(tool.engine === 'overlay' || tool.engine === 'mix' || tool.engine === 'backdropfile' || tool.engine === 'colormanage') && (
                 <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
-                  <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'mix' ? 'Second PDF (interleave)' : tool.engine === 'backdropfile' ? 'Backdrop file (PDF / image)' : 'Overlay / watermark PDF'}</h4>
+                  <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'mix' ? 'Second PDF (interleave)' : tool.engine === 'backdropfile' ? 'Backdrop file (PDF / image)' : tool.engine === 'colormanage' ? 'ICC profile (.icc / .icm) — optional' : 'Overlay / watermark PDF'}</h4>
                   {stampFile
                     ? <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                         <span style={{ fontSize: '.85rem', flex: 1 }}>📄 {stampFile.name}</span>
                         <button className="btn secondary" style={{ padding: '.3rem .65rem', fontSize: '.8rem' }} onClick={() => setStampFile(null)}>Change</button>
                       </div>
-                    : <FileDrop onFile={loadStamp} label={tool.engine === 'mix' ? 'Drop the second PDF (the backs)' : tool.engine === 'backdropfile' ? 'Drop the backdrop PDF or image' : 'Drop the watermark / stamp PDF'} />}
+                    : <FileDrop onFile={loadStamp} label={tool.engine === 'mix' ? 'Drop the second PDF (the backs)' : tool.engine === 'backdropfile' ? 'Drop the backdrop PDF or image' : tool.engine === 'colormanage' ? 'Drop the ICC profile to embed as an OutputIntent' : 'Drop the watermark / stamp PDF'} />}
                 </div>
               )}
 
@@ -3099,6 +3145,92 @@ function BackdropFileSettings({ opts, onChange }: { opts: BackdropFileOptions; o
       <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
       <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
         Places the uploaded PDF or image <strong>behind</strong> your page content (the opposite of Overlay). Upload it in the <em>Backdrop file</em> box below. Good for pre-printed stationery, textured stock and brand frames — match or exceed the page size to avoid white edges.
+      </div>
+    </Grid>
+  );
+}
+
+function ColorEffectsSettings({ opts, onChange }: { opts: ColorEffectsOptions; onChange: (o: ColorEffectsOptions) => void }) {
+  const set = <K extends keyof ColorEffectsOptions>(k: K, v: ColorEffectsOptions[K]) => onChange({ ...opts, [k]: v });
+  const slider = (label: string, k: keyof ColorEffectsOptions, min: number, max: number, val: number, suffix = '') => (
+    <Field label={`${label}: ${val}${suffix}`}><input type="range" min={min} max={max} value={val} onChange={e => set(k, +e.target.value)} style={{ width: '100%', marginTop: '.4rem' }} /></Field>
+  );
+  return (
+    <Grid>
+      {slider('Brightness', 'brightness', 0, 200, opts.brightness ?? 100)}
+      {slider('Contrast', 'contrast', 0, 200, opts.contrast ?? 100)}
+      {slider('Saturation', 'saturation', 0, 200, opts.saturation ?? 100)}
+      {slider('Grayscale', 'grayscale', 0, 100, opts.grayscale ?? 0, '%')}
+      {slider('Warm tone', 'warmTone', 0, 100, opts.warmTone ?? 0, '%')}
+      {slider('Invert', 'invert', 0, 100, opts.invert ?? 0, '%')}
+      {slider('Hue rotate', 'hueRotate', 0, 360, opts.hueRotate ?? 0, '°')}
+      <Field label="Rasterize DPI">
+        <select value={opts.dpi ?? 300} onChange={e => set('dpi', +e.target.value)} style={iStyle}>
+          {[150, 300, 600].map(d => <option key={d} value={d}>{d} DPI</option>)}
+        </select>
+      </Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <Row><button className="btn secondary" style={{ padding: '.3rem .7rem', fontSize: '.8rem' }} onClick={() => onChange({ ...DEFAULT_COLOREFFECTS })}>Reset all</button></Row>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Applies brightness / contrast / saturation and creative effects by <strong>rasterising</strong> the targeted pages (vector text/paths become a bitmap at the chosen DPI). For press-accurate colour-space conversion use <em>Color Management</em> instead. Runs in the browser.
+      </div>
+    </Grid>
+  );
+}
+
+function RepairSettings({ opts, onChange }: { opts: RepairOptions; onChange: (o: RepairOptions) => void }) {
+  const set = <K extends keyof RepairOptions>(k: K, v: RepairOptions[K]) => onChange({ ...opts, [k]: v });
+  const chk = (label: string, k: keyof RepairOptions, note: string, disabled = false) => (
+    <Field label={label}><Row><input type="checkbox" disabled={disabled} checked={disabled ? true : !!opts[k]} onChange={e => set(k, e.target.checked as RepairOptions[typeof k])} /><span style={{ fontSize: '.85rem' }}>{note}</span></Row></Field>
+  );
+  return (
+    <Grid>
+      {chk('Re-serialize', 'reserialize', 'Rebuild xref + streams (always on)', true)}
+      {chk('Strip metadata', 'stripMetadata', 'Remove title / author / dates + XMP')}
+      {chk('Remove annotations', 'removeAnnotations', 'Flatten out comments / stamps / links')}
+      {chk('Remove JavaScript', 'removeJavaScript', 'Strip embedded scripts & page actions')}
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Re-writes the PDF from scratch — fixes broken cross-references, stream lengths and object numbering that make RIPs reject a file. The rebuild alone already drops dead objects, document-level JavaScript and source metadata.
+      </div>
+    </Grid>
+  );
+}
+
+const ICC_DEST = ['', 'FOGRA39 (EU coated)', 'GRACoL 2006 (US sheetfed)', 'SWOP (US web)', 'Japan Color 2001 Coated'];
+
+function ColorManageSettings({ opts, onChange }: { opts: ColorManageOptions; onChange: (o: ColorManageOptions) => void }) {
+  const set = <K extends keyof ColorManageOptions>(k: K, v: ColorManageOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Source profile">
+        <select value={opts.sourceProfile} onChange={e => set('sourceProfile', e.target.value)} style={iStyle}>
+          <option value="sRGB">sRGB (built-in)</option><option value="CMYK">CMYK (already device)</option>
+        </select>
+      </Field>
+      <Field label="Destination profile">
+        <select value={opts.destProfile} onChange={e => set('destProfile', e.target.value)} style={iStyle}>
+          {ICC_DEST.map(p => <option key={p} value={p}>{p || 'None (RGB→CMYK model)'}</option>)}
+        </select>
+      </Field>
+      <Field label="Rendering intent">
+        <select value={opts.intent} onChange={e => set('intent', e.target.value as ColorManageOptions['intent'])} style={iStyle}>
+          <option value="perceptual">Perceptual (photos)</option>
+          <option value="relative">Relative colorimetric (logos)</option>
+          <option value="saturation">Saturation (charts)</option>
+          <option value="absolute">Absolute colorimetric (proof)</option>
+        </select>
+      </Field>
+      <Field label="Rasterize DPI">
+        <select value={opts.dpi ?? 300} onChange={e => set('dpi', +e.target.value)} style={iStyle}>
+          {[150, 300, 600].map(d => <option key={d} value={d}>{d} DPI</option>)}
+        </select>
+      </Field>
+      <Field label="Convert to CMYK"><Row><input type="checkbox" checked={!!opts.convert} onChange={e => set('convert', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Rasterise + map to CMYK gamut</span></Row></Field>
+      <Field label="Gamut warning"><Row><input type="checkbox" checked={!!opts.gamutWarning} onChange={e => set('gamutWarning', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Flag out-of-gamut colours (green)</span></Row></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Two independent actions: <strong>assign a profile</strong> — upload an ICC below and it is embedded as a PDF/X <em>OutputIntent</em> (lossless, vectors intact, what a RIP reads); and <strong>convert / gamut-check</strong> — rasterise and map to the CMYK-reproducible gamut (RGB→CMYK→RGB via an 8-primary ink model), optionally flagging out-of-gamut colours. A device-exact ICC transform needs a full CMM; the pixel conversion uses a standard CMYK model — genuine for gamut checking and RGB→CMYK normalisation.
       </div>
     </Grid>
   );

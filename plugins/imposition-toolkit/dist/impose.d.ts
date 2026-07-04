@@ -412,7 +412,49 @@ export interface NudgeOptions {
     pages?: string;
 }
 export declare function nudgePdf(bytes: Uint8Array, opts: NudgeOptions): Promise<Uint8Array>;
-export declare function repairPdf(bytes: Uint8Array): Promise<Uint8Array>;
+export interface RepairOptions {
+    reserialize?: boolean;
+    stripMetadata?: boolean;
+    removeAnnotations?: boolean;
+    removeJavaScript?: boolean;
+    pages?: string;
+}
+export declare function repairPdf(bytes: Uint8Array, opts?: RepairOptions): Promise<Uint8Array>;
+export interface ColorEffectsOptions {
+    brightness?: number;
+    contrast?: number;
+    saturation?: number;
+    grayscale?: number;
+    warmTone?: number;
+    invert?: number;
+    hueRotate?: number;
+    dpi?: number;
+    pages?: string;
+}
+export declare function colorEffectsFilter(o: ColorEffectsOptions): string;
+export declare function colorEffectsIsIdentity(o: ColorEffectsOptions): boolean;
+export declare function applyColorEffects(bytes: Uint8Array, opts: ColorEffectsOptions): Promise<Uint8Array>;
+export declare function rgbToCmyk(r: number, g: number, b: number): [number, number, number, number];
+export declare function cmykToRgb(c: number, m: number, y: number, k: number): [number, number, number];
+export declare function cmykRoundTrip(r: number, g: number, b: number): [number, number, number];
+export declare function isOutOfCmykGamut(r: number, g: number, b: number, thresh?: number): boolean;
+export declare function mapPixelCmyk(r: number, g: number, b: number, intent: string): [number, number, number];
+export declare function assignOutputIntent(baseBytes: Uint8Array, iccBytes: Uint8Array, conditionName: string): Promise<Uint8Array>;
+export interface ColorManageOptions {
+    sourceProfile?: string;
+    destProfile?: string;
+    intent?: 'perceptual' | 'relative' | 'saturation' | 'absolute';
+    dpi?: number;
+    convert?: boolean;
+    gamutWarning?: boolean;
+    warningColor?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
+}
+export declare function applyColorManagement(bytes: Uint8Array, opts: ColorManageOptions): Promise<Uint8Array>;
 export interface BackdropOptions {
     r: number;
     g: number;

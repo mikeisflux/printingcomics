@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.12
+
+- **Color Effects** — rasterise targeted pages (pdf.js) and apply a CSS-filter
+  stack: brightness / contrast / saturation + grayscale / warm (sepia) / invert
+  / hue-rotate, at 150/300/600 DPI, page range. Browser-only.
+- **Color Management** — (1) embed an uploaded ICC profile as a PDF/X
+  `/OutputIntent` (`assignOutputIntent`; lossless, vectors intact, `/N` read
+  from the ICC header), and (2) convert pages to the CMYK-reproducible gamut via
+  an 8-primary Neugebauer ink model (`applyColorManagement`) with rendering
+  intents and an out-of-gamut warning overlay. A device-exact ICC transform
+  still needs a full CMM; the pixel path is a standard CMYK model.
+- **PDF Repair** gains strip-metadata / remove-annotations / remove-JavaScript /
+  page-range options.
+- New `applyColorEffects`, `applyColorManagement`, `assignOutputIntent` engine
+  functions; `repairPdf` takes an options object.
+
 ## 1.2.11
 
 - **DataMatrix (ECC200)** barcode encoder — GF(256) with 0x12d, Reed-Solomon
