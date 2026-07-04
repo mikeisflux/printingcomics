@@ -1415,6 +1415,151 @@ function NUpPreview({ opts, pageCount }: { opts: NUpOptions; pageCount: number }
   );
 }
 
+// ── Live imposition canvas (pdfpress-style preview) ───────────────────────────
+
+const CELL_COLORS = ['#e5484d', '#22c55e', '#3b82f6', '#f5d90a', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#64748b', '#14b8a6', '#a855f7', '#ef4444'];
+const MM_PER_IN = 25.4;
+function fmtDim(inch: number, unit: 'in' | 'mm' | 'pt'): string {
+  return unit === 'mm' ? (inch * MM_PER_IN).toFixed(1) : unit === 'pt' ? String(Math.round(inch * 72)) : inch.toFixed(2);
+}
+
+// A single numbered/coloured cell.
+function Cell({ x, y, w, h, n, blank }: { x: number; y: number; w: number; h: number; n: number; blank: boolean }) {
+  const fs = Math.min(w, h) * 0.42;
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} fill={blank ? '#ffffff' : CELL_COLORS[(n - 1) % CELL_COLORS.length]} stroke={blank ? '#e2e8f0' : 'none'} strokeWidth={blank ? 0.01 : 0} />
+      {!blank && <text x={x + w / 2} y={y + h / 2} fontSize={fs} fontWeight={800} fill="#fff" textAnchor="middle" dominantBaseline="central" fontFamily="system-ui, sans-serif">{n}</text>}
+    </g>
+  );
+}
+
+// Corner crop-mark ticks (+ optional center marks) around a cell, in inches.
+function CellMarks({ x, y, w, h, off, len, center }: { x: number; y: number; w: number; h: number; off: number; len: number; center?: boolean }) {
+  const L: [number, number, number, number][] = [
+    [x - off - len, y, x - off, y], [x, y - off - len, x, y - off],
+    [x + w + off, y, x + w + off + len, y], [x + w, y - off - len, x + w, y - off],
+    [x - off - len, y + h, x - off, y + h], [x, y + h + off, x, y + h + off + len],
+    [x + w + off, y + h, x + w + off + len, y + h], [x + w, y + h + off, x + w, y + h + off + len],
+  ];
+  if (center) {
+    const cx = x + w / 2, cy = y + h / 2;
+    L.push([cx, y - off - len, cx, y - off], [cx, y + h + off, cx, y + h + off + len], [x - off - len, cy, x - off, cy], [x + w + off, cy, x + w + off + len, cy]);
+  }
+  return <>{L.map(([x1, y1, x2, y2], i) => <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#111" strokeWidth={0.01} />)}</>;
+}
+
+// The imposition preview for a given engine + settings + current output sheet.
+function ImpositionCanvas({
+  engine, nupOpts, bookletOpts, posterOpts, ticketOpts, pageCount, unit, sheetLabel, sheetIndex, onSheetCount, zoom,
+}: {
+  engine: ToolEngine; nupOpts: NUpOptions; bookletOpts: BookletOptions; posterOpts: PosterOptions; ticketOpts: TicketOptions;
+  pageCount: number; unit: 'in' | 'mm' | 'pt'; sheetLabel: string; sheetIndex: number; onSheetCount: (n: number) => void; zoom: number;
+}) {
+  // Build the geometry for the CURRENT output sheet.
+  let shW = 8.5, shH = 11, cells: { x: number; y: number; w: number; h: number; n: number; blank: boolean }[] = [];
+  let marks: { x: number; y: number; w: number; h: number }[] = [];
+  let sheetCount = 1, addMarks = false, centerMarks = false, off = 0.06, len = 0.12, bleed = 0;
+
+  if (engine === 'nup' || engine === 'tickets' || engine === 'datamerge') {
+    const o = nupOpts;
+    shW = o.sheetWIn; shH = o.sheetHIn;
+    const g = computeNUpGrid(o);
+    const perSheet = g.cols * g.rows;
+    const duplex = !!o.duplex;
+    const total = engine === 'tickets' ? ticketOpts.count : duplex ? Math.ceil(pageCount / 2) : pageCount;
+    const frontSheets = o.repeatFirst ? 1 : Math.max(1, Math.ceil(total / perSheet));
+    sheetCount = duplex ? frontSheets * 2 : frontSheets;
+    addMarks = !!o.addMarks; centerMarks = !!o.centerMarks; off = o.markOffIn; len = o.markLenIn; bleed = o.bleedIn ?? 0;
+    const si = Math.min(sheetIndex, sheetCount - 1);
+    const isBack = duplex && si % 2 === 1;
+    const fsi = duplex ? Math.floor(si / 2) : si;
+    const lg = g.leftGapPt / 72, tg = g.topGapPt / 72, cw = g.cellWPt / 72, ch = g.cellHPt / 72, gx = g.gxPt / 72, gy = g.gyPt / 72;
+    for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
+      const cellIdx = r * g.cols + c;
+      const itemIdx = o.repeatFirst ? 0 : o.cutStack ? cellIdx * frontSheets + fsi : fsi * perSheet + cellIdx;
+      let n: number, blank = false;
+      if (engine === 'tickets') { n = itemIdx < total ? ticketOpts.startNumber + itemIdx : 0; blank = itemIdx >= total; }
+      else { const pg = duplex ? itemIdx * 2 + (isBack ? 1 : 0) + 1 : itemIdx + 1; n = pg; blank = pg > pageCount; }
+      let cc = c; if (isBack) cc = (o.duplexFlip === 'short') ? c : g.cols - 1 - c;
+      const x = lg + cc * (cw + gx), y = tg + r * (ch + gy);
+      cells.push({ x, y, w: cw, h: ch, n: n || 1, blank });
+      if (addMarks) marks.push({ x: x + bleed, y: y + bleed, w: cw - 2 * bleed, h: ch - 2 * bleed });
+    }
+  } else if (engine === 'booklet') {
+    const o = bookletOpts;
+    // A booklet output sheet-side is a 2-up spread. Show the current spread.
+    const N = Math.max(1, pageCount);
+    const sig = o.signatureSheets && o.signatureSheets > 0 ? o.signatureSheets * 4 : Math.ceil(N / 4) * 4;
+    const sigs = Math.ceil(N / sig);
+    sheetCount = sigs * (sig / 4) * 2; // 2 sides per sheet
+    const si = Math.min(sheetIndex, sheetCount - 1);
+    const sidesPerSig = (sig / 4) * 2;
+    const sigNo = Math.floor(si / sidesPerSig), sideInSig = si % sidesPerSig;
+    const sheetNo = Math.floor(sideInSig / 2), isBack = sideInSig % 2 === 1;
+    let aL: number, aR: number;
+    if (!o.rtl) { if (!isBack) { aL = sig - sheetNo * 2; aR = sheetNo * 2 + 1; } else { aL = sheetNo * 2 + 2; aR = sig - sheetNo * 2 - 1; } }
+    else { if (!isBack) { aL = sheetNo * 2 + 1; aR = sig - sheetNo * 2; } else { aL = sig - sheetNo * 2 - 1; aR = sheetNo * 2 + 2; } }
+    const start = sigNo * sig;
+    const pw = pageCount ? 1 : 1;
+    // spread = 2 pages side by side; each page uses source page aspect (assume 3:4-ish -> use square-ish)
+    shW = 2 * 4.25 + 0.25; shH = 6.5;
+    addMarks = !!o.addMarks; centerMarks = !!o.centerMarks; off = o.markOffIn; len = o.markLenIn;
+    const cw = 4.25, ch = 6.0, m = 0.25, gut = o.gutterIn;
+    void pw;
+    const pairs: [number, number][] = [[start + aL, m], [start + aR, m + cw + gut]];
+    for (const [gp, x] of pairs) {
+      const blank = gp > pageCount || gp < 1;
+      cells.push({ x, y: 0.25, w: cw, h: ch, n: gp, blank });
+      if (addMarks) marks.push({ x, y: 0.25, w: cw, h: ch });
+    }
+  } else if (engine === 'poster') {
+    const o = posterOpts;
+    shW = o.sheetWIn; shH = o.sheetHIn;
+    sheetCount = o.tilesAcross * o.tilesDown;
+    const si = Math.min(sheetIndex, sheetCount - 1);
+    cells.push({ x: 0.15, y: 0.15, w: shW - 0.3, h: shH - 0.3, n: si + 1, blank: false });
+  } else {
+    // Generic single-page representation for transform/marks tools.
+    shW = 5; shH = 6.5; sheetCount = Math.max(1, pageCount || 1);
+    cells.push({ x: 0.2, y: 0.2, w: shW - 0.4, h: shH - 0.4, n: Math.min(sheetIndex + 1, sheetCount), blank: false });
+  }
+
+  useEffect(() => { onSheetCount(sheetCount); }, [sheetCount, onSheetCount]);
+
+  // Fit into a sensible pixel box; zoom scales it.
+  const pad = 0.35;
+  const vbW = shW + pad * 2, vbH = shH + pad * 2;
+  const basePx = 460 * zoom;
+  const aspect = vbW / vbH;
+  const pxW = aspect >= 1 ? basePx : basePx * aspect;
+  const pxH = aspect >= 1 ? basePx / aspect : basePx;
+
+  return (
+    <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--canvas-bg)', borderRadius: 12, overflow: 'auto', minHeight: 420 }}>
+      <svg width={pxW} height={pxH} viewBox={`${-pad} ${-pad} ${vbW} ${vbH}`} style={{ display: 'block', filter: 'drop-shadow(0 6px 20px rgba(0,0,0,0.28))' }}>
+        <rect x={0} y={0} width={shW} height={shH} fill="#ffffff" stroke="#cbd5e1" strokeWidth={0.012} />
+        {cells.map((c, i) => <Cell key={i} {...c} />)}
+        {marks.map((m, i) => <CellMarks key={i} {...m} off={off} len={len} center={centerMarks} />)}
+      </svg>
+      <SheetStepper index={sheetIndex} count={sheetCount} label={sheetLabel} wIn={shW} hIn={shH} unit={unit} />
+    </div>
+  );
+}
+
+function SheetStepper({ index, count, label, wIn, hIn, unit }: { index: number; count: number; label: string; wIn: number; hIn: number; unit: 'in' | 'mm' | 'pt' }) {
+  return (
+    <div style={{ position: 'absolute', right: 14, bottom: 14, display: 'flex', alignItems: 'center', gap: '.55rem', padding: '.35rem .6rem', borderRadius: 999, background: 'rgba(17,17,24,0.86)', color: '#e5e7eb', fontSize: '.72rem', fontWeight: 600, boxShadow: '0 4px 14px rgba(0,0,0,.3)' }}>
+      <span style={{ opacity: .8 }}>SHEET {index + 1}</span>
+      <span style={{ padding: '.05rem .4rem', borderRadius: 4, background: 'rgba(255,255,255,.12)', letterSpacing: '.04em' }}>{count} total</span>
+      <span style={{ opacity: .55 }}>·</span>
+      <span style={{ color: VIOLET }}>◱</span>
+      <span>{fmtDim(wIn, unit)} × {fmtDim(hIn, unit)} <span style={{ opacity: .6 }}>{unit}</span></span>
+      <span style={{ opacity: .5, marginLeft: '.15rem', fontSize: '.62rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</span>
+    </div>
+  );
+}
+
 // ── Poster settings ───────────────────────────────────────────────────────────
 
 const DEFAULT_POSTER: PosterOptions = {
@@ -1975,15 +2120,21 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
     setStampFile({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
   }, []);
 
-  const process = async () => {
-    if (!file) return;
-    setStatus('processing'); setErrMsg('');
-    try {
-      const base = file.name.replace(/\.pdf$/i, '');
-      let out: Uint8Array | null = null;
-      let outName = `${base}-imposed.pdf`;
+  // Sheet-navigation + canvas state
+  const [sheetIndex, setSheetIndex] = useState(0);
+  const [sheetCount, setSheetCount] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [unit, setUnit] = useState<'in' | 'mm' | 'pt'>('in');
+  useEffect(() => { setSheetIndex(0); }, [tool.id]);
 
-      switch (tool.engine) {
+  // Run the active engine and return the produced PDF (or 'multi' for Split which
+  // downloads its own parts, or null if it bailed with an error).
+  const generate = async (): Promise<{ bytes: Uint8Array; name: string } | 'multi' | null> => {
+    if (!file) return null;
+    const base = file.name.replace(/\.pdf$/i, '');
+    let out: Uint8Array | null = null;
+    let outName = `${base}-imposed.pdf`;
+    switch (tool.engine) {
         case 'booklet': out = await imposeBooklet(file.bytes, bookletOpts); outName = `${base}-booklet.pdf`; break;
         case 'nup':
           out = await imposeNUp(file.bytes, nupOpts);
@@ -1991,7 +2142,7 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
         case 'poster': out = await imposeTiledPoster(file.bytes, posterOpts); outName = `${base}-poster.pdf`; break;
         case 'cropmarks': out = await addCropMarksOnly(file.bytes, cropOpts); outName = `${base}-marks.pdf`; break;
         case 'bleed': out = await generateBleed(file.bytes, bleedOpts); outName = `${base}-bleed.pdf`; break;
-        case 'preflight': setStatus('idle'); return; // inspection only — no output
+        case 'preflight': return null; // inspection only — no output
         case 'colorbar': out = await addColorBar(file.bytes, colorBarOpts); outName = `${base}-colorbar.pdf`; break;
         case 'pagenumbers': out = await addPageNumbers(file.bytes, pageNumOpts); outName = `${base}-numbered.pdf`; break;
         case 'tickets': out = await imposeTickets(file.bytes, ticketOpts); outName = `${base}-tickets.pdf`; break;
@@ -2001,7 +2152,7 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
         case 'resize': out = await resizePdf(file.bytes, resizeOpts); outName = `${base}-resized.pdf`; break;
         case 'shuffle': out = await shufflePages(file.bytes, shuffleOrder); outName = `${base}-reordered.pdf`; break;
         case 'overlay':
-          if (!stampFile) { setStatus('error'); setErrMsg('Add a watermark / overlay PDF first.'); return; }
+          if (!stampFile) throw new Error('Add a watermark / overlay PDF first.');
           out = await overlayPdf(file.bytes, stampFile.bytes, overlayOpts); outName = `${base}-overlay.pdf`; break;
         case 'watermark': out = await addTextWatermark(file.bytes, watermarkOpts); outName = `${base}-watermark.pdf`; break;
         case 'headerfooter': out = await addHeaderFooter(file.bytes, headerFooterOpts); outName = `${base}-headerfooter.pdf`; break;
@@ -2015,21 +2166,46 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
         case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
         case 'dimensions': out = await addDimensions(file.bytes); outName = `${base}-dimensions.pdf`; break;
         case 'mix':
-          if (!stampFile) { setStatus('error'); setErrMsg('Add the second PDF to interleave first.'); return; }
+          if (!stampFile) throw new Error('Add the second PDF to interleave first.');
           out = await mixPdfs(file.bytes, stampFile.bytes, mixReverse); outName = `${base}-interleaved.pdf`; break;
         case 'split': {
           const parts = await splitPdf(file.bytes, splitRanges);
-          if (!parts.length) { setStatus('error'); setErrMsg('No valid ranges. Use a format like 1-3, 4-6, 7.'); return; }
+          if (!parts.length) throw new Error('No valid ranges. Use a format like 1-3, 4-6, 7.');
           downloadMultiple(parts, base);
-          setStatus('done'); setTimeout(() => setStatus('idle'), 3000); return;
+          return 'multi';
         }
         default: break;
       }
+      return out ? { bytes: out, name: outName } : null;
+  };
 
-      if (out) downloadPdf(out, outName);
+  const process = async () => {
+    if (!file) return;
+    setStatus('processing'); setErrMsg('');
+    try {
+      const r = await generate();
+      if (r === null) { setStatus('idle'); return; }
+      if (r !== 'multi') downloadPdf(r.bytes, r.name);
       setStatus('done'); setTimeout(() => setStatus('idle'), 3000);
     } catch (e) {
       setStatus('error'); setErrMsg(e instanceof Error ? e.message : 'Processing failed');
+    }
+  };
+
+  // Print: generate the output and open it in a new tab for the browser print dialog.
+  const printOut = async () => {
+    if (!file) return;
+    setStatus('processing'); setErrMsg('');
+    try {
+      const r = await generate();
+      if (!r || r === 'multi') { setStatus('idle'); return; }
+      const url = URL.createObjectURL(new Blob([r.bytes as BlobPart], { type: 'application/pdf' }));
+      const w = window.open(url);
+      if (w) w.addEventListener('load', () => { try { w.print(); } catch { /* popup blocked */ } });
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setStatus('idle');
+    } catch (e) {
+      setStatus('error'); setErrMsg(e instanceof Error ? e.message : 'Print failed');
     }
   };
 
@@ -2091,7 +2267,9 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
           {!file ? (
             <FileDrop onFile={fs => { if (fs[0]) loadFile(fs[0]); }} />
           ) : (
-            <>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {/* LEFT — options sidebar */}
+              <aside style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 300 }}>
               <FileBar file={file} onClear={clearFile} />
 
               <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
@@ -2154,26 +2332,68 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
                 </div>
               )}
 
-              {tool.engine === 'booklet' && <BookletPreview pageCount={file.info.count} opts={bookletOpts} />}
-              {tool.engine === 'nup' && <NUpPreview opts={nupOpts} pageCount={file.info.count} />}
-
               {tool.engine !== 'preflight' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <button className="btn" onClick={process} disabled={isBusy} style={{ fontSize: '1rem', padding: '.65rem 1.5rem' }}>
-                    {status === 'processing' ? 'Processing…' : status === 'done' ? '✓ Downloaded' : processLabel}
-                  </button>
-                  {status === 'done' && <button className="btn secondary" onClick={process}>Download again</button>}
-                </div>
+                <button className="btn" onClick={process} disabled={isBusy} style={{ fontSize: '1rem', padding: '.7rem 1.5rem' }}>
+                  {status === 'processing' ? 'Processing…' : status === 'done' ? '✓ Downloaded' : processLabel}
+                </button>
               )}
-
               {status === 'error' && <div style={{ color: '#dc2626', fontSize: '.85rem' }}>{errMsg || 'Processing failed. Try again.'}</div>}
-            </>
+              </aside>
+
+              {/* RIGHT — live preview canvas + toolbar */}
+              <main style={{ flex: 1, minWidth: 340, display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
+                <CanvasToolbar
+                  unit={unit} onUnit={setUnit} zoom={zoom} onZoom={setZoom}
+                  sheetIndex={sheetIndex} sheetCount={sheetCount} onSheet={setSheetIndex}
+                  onPrint={printOut} onDownload={process} busy={isBusy} status={status}
+                />
+                <ImpositionCanvas
+                  engine={tool.engine} nupOpts={nupOpts} bookletOpts={bookletOpts} posterOpts={posterOpts}
+                  ticketOpts={ticketOpts} pageCount={file.info.count} unit={unit}
+                  sheetLabel={tool.engine === 'nup' || tool.engine === 'tickets'
+                    ? `${nupOpts.sheetWIn}×${nupOpts.sheetHIn}` : tool.engine === 'poster' ? `${posterOpts.sheetWIn}×${posterOpts.sheetHIn}` : 'sheet'}
+                  sheetIndex={sheetIndex} onSheetCount={setSheetCount} zoom={zoom}
+                />
+              </main>
+            </div>
           )}
 
           {status === 'loading' && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Reading PDF…</div>}
           {status === 'error' && !file && <div style={{ color: '#dc2626', fontSize: '.85rem', marginTop: '-0.5rem' }}>{errMsg}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+// Top toolbar over the preview canvas: unit selector, zoom, sheet navigation,
+// Print + Download — mirrors the pdfpress workspace bar.
+function CanvasToolbar({ unit, onUnit, zoom, onZoom, sheetIndex, sheetCount, onSheet, onPrint, onDownload, busy, status }: {
+  unit: 'in' | 'mm' | 'pt'; onUnit: (u: 'in' | 'mm' | 'pt') => void; zoom: number; onZoom: (z: number) => void;
+  sheetIndex: number; sheetCount: number; onSheet: (i: number) => void;
+  onPrint: () => void; onDownload: () => void; busy: boolean; status: Status;
+}) {
+  const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-alt)', color: 'var(--ink)', cursor: 'pointer', fontSize: '.9rem' };
+  const SQRT2 = Math.SQRT2;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '.25rem', padding: 3, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-alt)' }}>
+        {(['in', 'mm', 'pt'] as const).map(u => (
+          <button key={u} onClick={() => onUnit(u)} style={{ padding: '.2rem .55rem', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: 700, background: unit === u ? VIOLET : 'transparent', color: unit === u ? '#fff' : 'var(--muted)' }}>{u}</button>
+        ))}
+      </div>
+      <button style={btn} title="Zoom out" onClick={() => onZoom(Math.max(0.4, zoom / SQRT2))}>−</button>
+      <span style={{ fontSize: '.78rem', color: 'var(--muted)', minWidth: 42, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+      <button style={btn} title="Zoom in" onClick={() => onZoom(Math.min(4, zoom * SQRT2))}>+</button>
+      <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 .15rem' }} />
+      <button style={btn} title="Previous sheet" disabled={sheetIndex <= 0} onClick={() => onSheet(Math.max(0, sheetIndex - 1))}>‹</button>
+      <span style={{ fontSize: '.78rem', color: 'var(--muted)', minWidth: 70, textAlign: 'center' }}>Sheet {sheetIndex + 1}/{sheetCount}</span>
+      <button style={btn} title="Next sheet" disabled={sheetIndex >= sheetCount - 1} onClick={() => onSheet(Math.min(sheetCount - 1, sheetIndex + 1))}>›</button>
+      <div style={{ flex: 1 }} />
+      <button className="btn secondary" onClick={onPrint} disabled={busy} style={{ padding: '.4rem .9rem', fontSize: '.82rem' }}>🖨 Print</button>
+      <button className="btn" onClick={onDownload} disabled={busy} style={{ padding: '.4rem 1rem', fontSize: '.82rem' }}>
+        {status === 'processing' ? '…' : status === 'done' ? '✓ Saved' : '↓ Download'}
+      </button>
     </div>
   );
 }
@@ -2188,8 +2408,8 @@ const VIOLET = '#7c3aed';
 // every child (and the .btn/.admin-card classes) adapts. Default is dark, to
 // match the reference gallery.
 const THEMES: Record<'light' | 'dark', React.CSSProperties> = {
-  light: { '--bg': '#ffffff', '--bg-alt': '#f7f5f2', '--ink': '#1a1a1a', '--muted': '#5a5a5a', '--border': '#e6e3df', '--accent-soft': '#f3f0ff' } as React.CSSProperties,
-  dark: { '--bg': '#0b0b12', '--bg-alt': '#15151f', '--ink': '#f3f4f6', '--muted': '#9ca3af', '--border': '#2a2a37', '--accent-soft': 'rgba(139,92,246,0.18)' } as React.CSSProperties,
+  light: { '--bg': '#ffffff', '--bg-alt': '#f7f5f2', '--ink': '#1a1a1a', '--muted': '#5a5a5a', '--border': '#e6e3df', '--accent-soft': '#f3f0ff', '--canvas-bg': '#eef0f3' } as React.CSSProperties,
+  dark: { '--bg': '#0b0b12', '--bg-alt': '#15151f', '--ink': '#f3f4f6', '--muted': '#9ca3af', '--border': '#2a2a37', '--accent-soft': 'rgba(139,92,246,0.18)', '--canvas-bg': '#0f1017' } as React.CSSProperties,
 };
 
 const DEFAULT_HEADERFOOTER: HeaderFooterOptions = { header: 'Document Title', footer: '', fontSizePt: 10, marginPt: 24, align: 'center' };

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1
+
+- **Studio workspace** — the React UI's tool view is now a two-zone pdfpress-style
+  workspace: an options sidebar plus a live SVG imposition **preview canvas**
+  (white sheet, colour-numbered cells, crop/center marks), a toolbar with an
+  in/mm/pt unit selector, √2 zoom, sheet navigation, and Print + Download.
+
+
 ## 1.2.0
 
 Feature-parity pass against the full pdfpress tool guide + template library.
