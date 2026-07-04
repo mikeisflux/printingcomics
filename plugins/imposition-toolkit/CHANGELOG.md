@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5
+
+- Closed the documented option gaps: page-range on Flip/Rotate/Crop/Resize;
+  Rotate custom angle; Split chunk mode + .zip; Grid S-pattern + RTL; BleedMaker
+  solid/mirror; Header/Footer/Slug variable tokens; Overlay 9-point anchor;
+  Cutter-mark cut-type/knockout/overshoot/key; Code 128 + EAN-13 barcodes.
+
 ## 1.2.4
 
 - **N-up Book** now does real signature imposition: 2-up folio (saddle/perfect)

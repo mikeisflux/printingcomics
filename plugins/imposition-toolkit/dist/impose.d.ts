@@ -10,6 +10,7 @@ export interface MarkStyle {
     weight?: number;
     center?: boolean;
     color?: any;
+    dash?: number[];
 }
 export interface BookletOptions {
     rtl: boolean;
@@ -60,6 +61,8 @@ export interface NUpOptions {
     bleedIn?: number;
     duplex?: boolean;
     duplexFlip?: 'long' | 'short';
+    snake?: boolean;
+    rtl?: boolean;
 }
 export interface NUpGrid {
     cols: number;
@@ -100,17 +103,29 @@ export interface CropMarksOptions {
     markOffIn: number;
     centerMarks?: boolean;
     markWeightPt?: number;
+    cutType?: 'thru' | 'kiss' | 'crease' | 'perf';
+    knockout?: boolean;
+    overshootIn?: number;
+    keyMark?: boolean;
 }
 export declare function addCropMarksOnly(bytes: Uint8Array, opts: CropMarksOptions): Promise<Uint8Array>;
 export declare function mergePdfs(files: Uint8Array[]): Promise<Uint8Array>;
-export declare function rotatePdf(bytes: Uint8Array, angleDeg: 90 | 180 | 270): Promise<Uint8Array>;
-export declare function flipPdf(bytes: Uint8Array, direction: 'h' | 'v'): Promise<Uint8Array>;
+export declare function parsePageRange(expr: string, n: number): Set<number>;
+export declare function rotatePdf(bytes: Uint8Array, angleDeg: number, pages?: string): Promise<Uint8Array>;
+export declare function flipPdf(bytes: Uint8Array, direction: 'h' | 'v', pages?: string): Promise<Uint8Array>;
 export declare function splitPdf(bytes: Uint8Array, ranges: string): Promise<Uint8Array[]>;
+export declare function splitPdfChunks(bytes: Uint8Array, size: number): Promise<Uint8Array[]>;
+export declare function makeZip(files: {
+    name: string;
+    data: Uint8Array;
+}[]): Uint8Array;
 export interface OverlayOptions {
     opacity: number;
     mode: 'center' | 'fill' | 'tile';
     tileRows?: number;
     tileCols?: number;
+    anchor?: 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br';
+    paddingPt?: number;
 }
 export declare function overlayPdf(baseBytes: Uint8Array, stampBytes: Uint8Array, opts: OverlayOptions): Promise<Uint8Array>;
 interface ShufInstr {
@@ -124,14 +139,14 @@ export declare function cropPdf(bytes: Uint8Array, opts: {
     right: number;
     bottom: number;
     left: number;
-}): Promise<Uint8Array>;
+}, pages?: string): Promise<Uint8Array>;
 export interface ResizeOptions {
     mode: 'scale' | 'fit' | 'stretch';
     scalePct: number;
     targetWIn: number;
     targetHIn: number;
 }
-export declare function resizePdf(bytes: Uint8Array, opts: ResizeOptions): Promise<Uint8Array>;
+export declare function resizePdf(bytes: Uint8Array, opts: ResizeOptions, pages?: string): Promise<Uint8Array>;
 export interface PageNumberOptions {
     position: 'bottom-center' | 'bottom-right' | 'bottom-left' | 'top-center' | 'top-right' | 'top-left';
     startAt: number;
@@ -157,15 +172,24 @@ export declare function imposeTiledPoster(bytes: Uint8Array, opts: {
     centerMarks?: boolean;
     markWeightPt?: number;
 }): Promise<Uint8Array>;
-export declare function generateBleed(bytes: Uint8Array, opts: {
+export interface BleedOptions {
     bleedIn: number;
-}): Promise<Uint8Array>;
+    mode?: 'scale' | 'solid' | 'mirror';
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+}
+export declare function generateBleed(bytes: Uint8Array, opts: BleedOptions): Promise<Uint8Array>;
 export interface HeaderFooterOptions {
     header: string;
     footer: string;
     fontSizePt: number;
     marginPt: number;
     align: 'left' | 'center' | 'right';
+    fileName?: string;
+    alternate?: boolean;
 }
 export declare function addHeaderFooter(bytes: Uint8Array, opts: HeaderFooterOptions): Promise<Uint8Array>;
 export interface WatermarkOptions {
@@ -179,6 +203,7 @@ export interface JobSlugOptions {
     text: string;
     position: 'top' | 'bottom';
     fontSizePt: number;
+    fileName?: string;
 }
 export declare function addJobSlug(bytes: Uint8Array, opts: JobSlugOptions): Promise<Uint8Array>;
 export interface CollatingOptions {
@@ -222,6 +247,7 @@ export interface DataMergeOptions {
     markWeightPt?: number;
     qrColumn: string;
     qrSizePt: number;
+    symbology?: 'qr' | 'code128' | 'ean13';
 }
 export interface DataMergeResult {
     pdf: Uint8Array;
@@ -261,6 +287,7 @@ export interface QrStampOptions {
     sizePt: number;
     position: 'br' | 'bl' | 'tr' | 'tl' | 'center';
     marginPt: number;
+    symbology?: 'qr' | 'code128' | 'ean13';
 }
 export declare function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Promise<Uint8Array>;
 export declare function addDimensions(bytes: Uint8Array): Promise<Uint8Array>;

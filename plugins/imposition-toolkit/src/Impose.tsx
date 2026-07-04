@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import type { DragEvent, ChangeEvent } from 'react';
 import {
   getPdfInfo, imposeBooklet, imposeNUpBook, imposeNUp, computeNUpGrid, addCropMarksOnly,
-  mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf, resizePdf,
+  mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
@@ -12,7 +12,7 @@ import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
-  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -1404,6 +1404,15 @@ function NUpSettings({ opts, onChange, cardMode }: { opts: NUpOptions; onChange:
           <option value="cutstack">Cut &amp; stack</option>
         </select>
       </Field>
+      <Field label="Fill pattern" note="Z = all rows L→R; S = snake">
+        <select value={opts.snake ? 's' : 'z'} onChange={e => set('snake', e.target.value === 's')} style={iStyle}>
+          <option value="z">Z-pattern</option>
+          <option value="s">S-pattern (snake)</option>
+        </select>
+      </Field>
+      <Field label="Direction">
+        <Row><input type="checkbox" checked={!!opts.rtl} onChange={e => set('rtl', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Right-to-left columns</span></Row>
+      </Field>
       <Field label="Sides" note="Duplex reads source as front,back,front,back…">
         <select value={opts.duplex ? (opts.duplexFlip === 'short' ? 'short' : 'long') : 'single'} onChange={e => onChange({ ...opts, duplex: e.target.value !== 'single', duplexFlip: e.target.value === 'short' ? 'short' : 'long' })} style={iStyle}>
           <option value="single">Single-sided</option>
@@ -1662,13 +1671,24 @@ function PosterSettings({ opts, onChange }: { opts: PosterOptions; onChange: (o:
 const DEFAULT_CROP: CropMarksOptions = { bleedIn: 0.125, marginIn: 0.5, markLenIn: 0.25, markOffIn: 0.125 };
 
 function CropSettings({ opts, onChange }: { opts: CropMarksOptions; onChange: (o: CropMarksOptions) => void }) {
-  const set = <K extends keyof CropMarksOptions>(k: K, v: number) => onChange({ ...opts, [k]: v });
+  const set = <K extends keyof CropMarksOptions>(k: K, v: CropMarksOptions[K]) => onChange({ ...opts, [k]: v });
   return (
     <Grid>
       <Field label="Existing bleed (in)" note="Bleed already in the file"><input type="number" min={0} max={0.5} step={0.0625} value={opts.bleedIn} onChange={e => set('bleedIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Added margin (in)" note="Blank area added for marks"><input type="number" min={0.25} max={1.5} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Mark length (in)"><input type="number" min={0.1} max={0.5} step={0.0625} value={opts.markLenIn} onChange={e => set('markLenIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Mark offset (in)" note="Gap between trim and mark"><input type="number" min={0.05} max={0.25} step={0.0625} value={opts.markOffIn} onChange={e => set('markOffIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Cut type" note="Colour / line style">
+        <select value={opts.cutType ?? 'thru'} onChange={e => set('cutType', e.target.value as CropMarksOptions['cutType'])} style={iStyle}>
+          <option value="thru">Thru-cut (black)</option>
+          <option value="kiss">Kiss-cut (magenta)</option>
+          <option value="crease">Crease (blue dashed)</option>
+          <option value="perf">Perf (red dashed)</option>
+        </select>
+      </Field>
+      <Field label="Overshoot (in)" note="Extend marks past the corner"><input type="number" min={0} max={0.25} step={0.01} value={opts.overshootIn ?? 0} onChange={e => set('overshootIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Knockout"><Row><input type="checkbox" checked={!!opts.knockout} onChange={e => set('knockout', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>White halo (dark stock)</span></Row></Field>
+      <Field label="Key mark"><Row><input type="checkbox" checked={!!opts.keyMark} onChange={e => set('keyMark', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Orientation key</span></Row></Field>
       <MarkExtras opts={{ ...opts, addMarks: true }} onChange={o => onChange({ ...opts, centerMarks: o.centerMarks, markWeightPt: o.markWeightPt })} />
     </Grid>
   );
@@ -1763,15 +1783,20 @@ function TicketSettings({ opts, onChange }: { opts: TicketOptions; onChange: (o:
 
 // ── Rotate / Flip / Shuffle / Split / Crop-box settings ──────────────────────
 
-function RotateSettings({ angle, onChange }: { angle: 90 | 180 | 270; onChange: (a: 90 | 180 | 270) => void }) {
+function RotateSettings({ angle, onChange }: { angle: number; onChange: (a: number) => void }) {
   return (
-    <Field label="Rotation">
-      <div style={{ display: 'flex', gap: '.5rem' }}>
-        {([90, 180, 270] as const).map(a => (
-          <button key={a} className={`btn${angle === a ? '' : ' secondary'}`} onClick={() => onChange(a)} style={{ flex: 1 }}>{a}°</button>
-        ))}
-      </div>
-    </Field>
+    <Grid>
+      <Field label="Quick rotate">
+        <div style={{ display: 'flex', gap: '.5rem' }}>
+          {([90, 180, 270] as const).map(a => (
+            <button key={a} className={`btn${angle === a ? '' : ' secondary'}`} onClick={() => onChange(a)} style={{ flex: 1 }}>{a}°</button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Custom angle (deg)" note="Non-90° grows the page box to fit">
+        <input type="number" min={-360} max={360} step={1} value={angle} onChange={e => onChange(+e.target.value)} style={iStyle} />
+      </Field>
+    </Grid>
   );
 }
 
@@ -1809,11 +1834,26 @@ function ShuffleSettings({ order, onChange, count }: { order: string; onChange: 
   );
 }
 
-function SplitSettings({ ranges, onChange, count }: { ranges: string; onChange: (s: string) => void; count: number }) {
+function SplitSettings({ ranges, onChange, count, mode, onMode, chunk, onChunk, zip, onZip }: {
+  ranges: string; onChange: (s: string) => void; count: number;
+  mode: 'ranges' | 'chunk'; onMode: (m: 'ranges' | 'chunk') => void; chunk: number; onChunk: (n: number) => void; zip: boolean; onZip: (b: boolean) => void;
+}) {
+  const files = mode === 'chunk' ? Math.max(1, Math.ceil(count / Math.max(1, chunk))) : ranges.split(',').filter(s => s.trim()).length;
   return (
-    <Field label="Split ranges" note={`This PDF has ${count} page${count !== 1 ? 's' : ''}. Each comma-separated range becomes its own file.`}>
-      <input type="text" value={ranges} onChange={e => onChange(e.target.value)} placeholder="e.g. 1-3, 4-6, 7" style={iStyle} />
-    </Field>
+    <Grid>
+      <Field label="Split mode">
+        <select value={mode} onChange={e => onMode(e.target.value as 'ranges' | 'chunk')} style={iStyle}>
+          <option value="ranges">By ranges</option>
+          <option value="chunk">Fixed chunk size</option>
+        </select>
+      </Field>
+      {mode === 'ranges'
+        ? <Field label="Ranges" note={`${count} pages — each comma range = one file`}><input type="text" value={ranges} onChange={e => onChange(e.target.value)} placeholder="e.g. 1-3, 4-6, 7" style={iStyle} /></Field>
+        : <Field label="Pages per file" note={`${count} pages → ${files} file${files !== 1 ? 's' : ''}`}><input type="number" min={1} max={Math.max(1, count)} step={1} value={chunk} onChange={e => onChunk(+e.target.value)} style={iStyle} /></Field>}
+      <Field label="Output">
+        <Row><input type="checkbox" checked={zip} onChange={e => onZip(e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Download as one .zip archive</span></Row>
+      </Field>
+    </Grid>
   );
 }
 
@@ -1933,7 +1973,16 @@ function QrStampSettings({ opts, onChange }: { opts: QrStampOptions; onChange: (
   const set = <K extends keyof QrStampOptions>(k: K, v: QrStampOptions[K]) => onChange({ ...opts, [k]: v });
   return (
     <Grid>
-      <Field label="Encoded text / URL"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} placeholder="https://example.com" style={iStyle} /></Field>
+      <Field label="Symbology">
+        <select value={opts.symbology ?? 'qr'} onChange={e => set('symbology', e.target.value as QrStampOptions['symbology'])} style={iStyle}>
+          <option value="qr">QR code</option>
+          <option value="code128">Code 128</option>
+          <option value="ean13">EAN-13</option>
+        </select>
+      </Field>
+      <Field label={(opts.symbology ?? 'qr') === 'ean13' ? 'Digits (12–13)' : 'Encoded text / URL'}>
+        <input type="text" value={opts.text} onChange={e => set('text', e.target.value)} placeholder={(opts.symbology ?? 'qr') === 'ean13' ? '5901234123457' : 'https://example.com'} style={iStyle} />
+      </Field>
       <Field label="Position">
         <select value={opts.position} onChange={e => set('position', e.target.value as QrStampOptions['position'])} style={iStyle}>
           <option value="br">Bottom right</option><option value="bl">Bottom left</option>
@@ -1964,6 +2013,18 @@ function OverlaySettings({ opts, onChange }: { opts: OverlayOptions; onChange: (
       <Field label={`Opacity: ${Math.round(opts.opacity * 100)}%`}>
         <input type="range" min={5} max={100} step={5} value={opts.opacity * 100} onChange={e => set('opacity', +e.target.value / 100)} style={{ width: '100%', marginTop: '.5rem' }} />
       </Field>
+      {opts.mode === 'center' && (
+        <>
+          <Field label="Anchor (9-point)">
+            <select value={opts.anchor ?? 'mc'} onChange={e => set('anchor', e.target.value as OverlayOptions['anchor'])} style={iStyle}>
+              <option value="tl">Top left</option><option value="tc">Top center</option><option value="tr">Top right</option>
+              <option value="ml">Middle left</option><option value="mc">Center</option><option value="mr">Middle right</option>
+              <option value="bl">Bottom left</option><option value="bc">Bottom center</option><option value="br">Bottom right</option>
+            </select>
+          </Field>
+          <Field label="Padding (pt)"><input type="number" min={0} max={144} step={2} value={opts.paddingPt ?? 0} onChange={e => set('paddingPt', +e.target.value)} style={iStyle} /></Field>
+        </>
+      )}
       {opts.mode === 'tile' && (
         <>
           <Field label="Tile columns"><input type="number" min={1} max={8} step={1} value={opts.tileCols ?? 2} onChange={e => set('tileCols', +e.target.value)} style={iStyle} /></Field>
@@ -2096,13 +2157,18 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
           <Field label="Gutter (in)"><input type="number" min={0} max={1} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
           <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
           <Field label="Number prefix"><input type="text" value={opts.numberPrefix} onChange={e => set('numberPrefix', e.target.value)} style={iStyle} /></Field>
-          <Field label="QR code from column" note="Encodes each row's value as a scannable QR">
+          <Field label="Barcode from column" note="Encodes each row's value">
             <select value={opts.qrColumn} onChange={e => set('qrColumn', e.target.value)} style={iStyle}>
               <option value="">— none —</option>
               {headers.map(h => <option key={h} value={h}>{h}</option>)}
             </select>
           </Field>
-          {opts.qrColumn && <Field label="QR size (pt)"><input type="number" min={28} max={200} step={2} value={opts.qrSizePt} onChange={e => set('qrSizePt', +e.target.value)} style={iStyle} /></Field>}
+          {opts.qrColumn && <Field label="Symbology">
+            <select value={opts.symbology ?? 'qr'} onChange={e => set('symbology', e.target.value as DataMergeOptions['symbology'])} style={iStyle}>
+              <option value="qr">QR code</option><option value="code128">Code 128</option><option value="ean13">EAN-13</option>
+            </select>
+          </Field>}
+          {opts.qrColumn && <Field label="Barcode size (pt)"><input type="number" min={28} max={200} step={2} value={opts.qrSizePt} onChange={e => set('qrSizePt', +e.target.value)} style={iStyle} /></Field>}
           <Field label="Options">
             <Row>
               <input type="checkbox" checked={opts.autoNumber} onChange={e => set('autoNumber', e.target.checked)} /><span style={{ fontSize: '.82rem' }}>Number</span>
@@ -2196,12 +2262,16 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   });
   const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster, ...preset?.poster });
   const [cropOpts, setCropOpts] = useState<CropMarksOptions>(DEFAULT_CROP);
-  const [bleedOpts, setBleedOpts] = useState<{ bleedIn: number }>({ bleedIn: 0.125 });
+  const [bleedOpts, setBleedOpts] = useState<BleedOptions>({ bleedIn: 0.125, mode: 'scale', color: { r: 1, g: 1, b: 1 } });
   const [colorBarOpts, setColorBarOpts] = useState<ColorBarOptions>(DEFAULT_COLORBAR);
   const [pageNumOpts, setPageNumOpts] = useState<PageNumberOptions>(DEFAULT_PAGENUM);
   const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket, ...preset?.ticket });
-  const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
+  const [rotateAngle, setRotateAngle] = useState<number>(90);
   const [flipDir, setFlipDir] = useState<'h' | 'v'>('h');
+  const [pageRange, setPageRange] = useState('all');
+  const [splitMode, setSplitMode] = useState<'ranges' | 'chunk'>('ranges');
+  const [splitChunk, setSplitChunk] = useState(4);
+  const [splitZip, setSplitZip] = useState(true);
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
   const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
@@ -2281,17 +2351,17 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'colorbar': out = await addColorBar(file.bytes, colorBarOpts); outName = `${base}-colorbar.pdf`; break;
         case 'pagenumbers': out = await addPageNumbers(file.bytes, pageNumOpts); outName = `${base}-numbered.pdf`; break;
         case 'tickets': out = await imposeTickets(file.bytes, ticketOpts); outName = `${base}-tickets.pdf`; break;
-        case 'rotate': out = await rotatePdf(file.bytes, rotateAngle); outName = `${base}-rotated${rotateAngle}.pdf`; break;
-        case 'flip': out = await flipPdf(file.bytes, flipDir); outName = `${base}-flipped.pdf`; break;
-        case 'crop': out = await cropPdf(file.bytes, cropBoxOpts); outName = `${base}-cropped.pdf`; break;
-        case 'resize': out = await resizePdf(file.bytes, resizeOpts); outName = `${base}-resized.pdf`; break;
+        case 'rotate': out = await rotatePdf(file.bytes, rotateAngle, pageRange); outName = `${base}-rotated${rotateAngle}.pdf`; break;
+        case 'flip': out = await flipPdf(file.bytes, flipDir, pageRange); outName = `${base}-flipped.pdf`; break;
+        case 'crop': out = await cropPdf(file.bytes, cropBoxOpts, pageRange); outName = `${base}-cropped.pdf`; break;
+        case 'resize': out = await resizePdf(file.bytes, resizeOpts, pageRange); outName = `${base}-resized.pdf`; break;
         case 'shuffle': out = await shufflePages(file.bytes, shuffleOrder); outName = `${base}-reordered.pdf`; break;
         case 'overlay':
           if (!stampFile) throw new Error('Add a watermark / overlay PDF first.');
           out = await overlayPdf(file.bytes, stampFile.bytes, overlayOpts); outName = `${base}-overlay.pdf`; break;
         case 'watermark': out = await addTextWatermark(file.bytes, watermarkOpts); outName = `${base}-watermark.pdf`; break;
-        case 'headerfooter': out = await addHeaderFooter(file.bytes, headerFooterOpts); outName = `${base}-headerfooter.pdf`; break;
-        case 'slug': out = await addJobSlug(file.bytes, slugOpts); outName = `${base}-slug.pdf`; break;
+        case 'headerfooter': out = await addHeaderFooter(file.bytes, { ...headerFooterOpts, fileName: file.name }); outName = `${base}-headerfooter.pdf`; break;
+        case 'slug': out = await addJobSlug(file.bytes, { ...slugOpts, fileName: file.name }); outName = `${base}-slug.pdf`; break;
         case 'collating': out = await addCollatingMarks(file.bytes, collatingOpts); outName = `${base}-collated.pdf`; break;
         case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
         case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
@@ -2304,9 +2374,14 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
           if (!stampFile) throw new Error('Add the second PDF to interleave first.');
           out = await mixPdfs(file.bytes, stampFile.bytes, mixReverse); outName = `${base}-interleaved.pdf`; break;
         case 'split': {
-          const parts = await splitPdf(file.bytes, splitRanges);
+          const parts = splitMode === 'chunk' ? await splitPdfChunks(file.bytes, splitChunk) : await splitPdf(file.bytes, splitRanges);
           if (!parts.length) throw new Error('No valid ranges. Use a format like 1-3, 4-6, 7.');
-          downloadMultiple(parts, base);
+          if (splitZip && parts.length > 1) {
+            const zip = makeZip(parts.map((p, i) => ({ name: `${base}-part${i + 1}.pdf`, data: p })));
+            downloadPdf(zip, `${base}-split.zip`);
+          } else {
+            downloadMultiple(parts, base);
+          }
           return 'multi';
         }
         default: break;
@@ -2425,8 +2500,15 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'flip' && <FlipSettings dir={flipDir} onChange={setFlipDir} />}
                 {tool.engine === 'crop' && <CropBoxSettings opts={cropBoxOpts} onChange={setCropBoxOpts} />}
                 {tool.engine === 'resize' && <ResizeSettings opts={resizeOpts} onChange={setResizeOpts} />}
+                {(tool.engine === 'rotate' || tool.engine === 'flip' || tool.engine === 'crop' || tool.engine === 'resize') && (
+                  <div style={{ marginTop: '.75rem' }}>
+                    <Field label="Pages" note="all · 1-5 · odd · even · last · last-2">
+                      <input type="text" value={pageRange} onChange={e => setPageRange(e.target.value)} placeholder="all" style={iStyle} />
+                    </Field>
+                  </div>
+                )}
                 {tool.engine === 'shuffle' && <ShuffleSettings order={shuffleOrder} onChange={setShuffleOrder} count={file.info.count} />}
-                {tool.engine === 'split' && <SplitSettings ranges={splitRanges} onChange={setSplitRanges} count={file.info.count} />}
+                {tool.engine === 'split' && <SplitSettings ranges={splitRanges} onChange={setSplitRanges} count={file.info.count} mode={splitMode} onMode={setSplitMode} chunk={splitChunk} onChunk={setSplitChunk} zip={splitZip} onZip={setSplitZip} />}
                 {tool.engine === 'overlay' && <OverlaySettings opts={overlayOpts} onChange={setOverlayOpts} />}
                 {tool.engine === 'watermark' && <WatermarkSettings opts={watermarkOpts} onChange={setWatermarkOpts} />}
                 {tool.engine === 'headerfooter' && <HeaderFooterSettings opts={headerFooterOpts} onChange={setHeaderFooterOpts} />}
@@ -2555,12 +2637,27 @@ const DEFAULT_HEADERFOOTER: HeaderFooterOptions = { header: 'Document Title', fo
 const DEFAULT_WATERMARK: WatermarkOptions = { text: 'PROOF', opacity: 0.22, angleDeg: 45, fontSizePt: 96 };
 const DEFAULT_JOBSLUG: JobSlugOptions = { text: 'Job name · client · date', position: 'bottom', fontSizePt: 9 };
 
-function BleedSettings({ opts, onChange }: { opts: { bleedIn: number }; onChange: (o: { bleedIn: number }) => void }) {
+function BleedSettings({ opts, onChange }: { opts: BleedOptions; onChange: (o: BleedOptions) => void }) {
+  const set = <K extends keyof BleedOptions>(k: K, v: BleedOptions[K]) => onChange({ ...opts, [k]: v });
+  const col = opts.color ?? { r: 1, g: 1, b: 1 };
+  const hex = '#' + [col.r, col.g, col.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
   return (
     <Grid>
-      <Field label="Bleed per edge (in)" note="Content is scaled to overflow the trim">
-        <input type="number" min={0.0625} max={0.5} step={0.0625} value={opts.bleedIn} onChange={e => onChange({ bleedIn: +e.target.value })} style={iStyle} />
+      <Field label="Bleed per edge (in)">
+        <input type="number" min={0.0625} max={0.5} step={0.0625} value={opts.bleedIn} onChange={e => set('bleedIn', +e.target.value)} style={iStyle} />
       </Field>
+      <Field label="Method">
+        <select value={opts.mode ?? 'scale'} onChange={e => set('mode', e.target.value as BleedOptions['mode'])} style={iStyle}>
+          <option value="scale">Scale (enlarge content)</option>
+          <option value="mirror">Mirror edge</option>
+          <option value="solid">Solid colour</option>
+        </select>
+      </Field>
+      {opts.mode === 'solid' && (
+        <Field label="Bleed colour">
+          <input type="color" value={hex} onChange={e => { const m = /#(..)(..)(..)/.exec(e.target.value)!; set('color', { r: parseInt(m[1]!, 16) / 255, g: parseInt(m[2]!, 16) / 255, b: parseInt(m[3]!, 16) / 255 }); }} style={{ ...iStyle, height: 38, padding: 2 }} />
+        </Field>
+      )}
     </Grid>
   );
 }
@@ -2578,6 +2675,10 @@ function HeaderFooterSettings({ opts, onChange }: { opts: HeaderFooterOptions; o
       </Field>
       <Field label="Font size (pt)"><input type="number" min={6} max={36} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
       <Field label="Edge margin (pt)"><input type="number" min={6} max={96} step={1} value={opts.marginPt} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Alternate sides"><Row><input type="checkbox" checked={!!opts.alternate} onChange={e => set('alternate', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Mirror on odd pages (book heads)</span></Row></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.75rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Tokens: <code>[page-number]</code> · <code>[page-number:0001]</code> · <code>[page-count]</code> · <code>[file-name]</code> · <code>[timestamp:%Y-%m-%d]</code>
+      </div>
     </Grid>
   );
 }
@@ -2605,6 +2706,9 @@ function JobSlugSettings({ opts, onChange }: { opts: JobSlugOptions; onChange: (
         </select>
       </Field>
       <Field label="Font size (pt)"><input type="number" min={6} max={24} step={1} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.75rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Tokens: <code>[page-number]</code> · <code>[file-name]</code> · <code>[timestamp:%Y-%m-%d]</code>
+      </div>
     </Grid>
   );
 }
