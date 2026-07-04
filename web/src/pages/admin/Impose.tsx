@@ -6,11 +6,13 @@ import {
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
+  addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
 } from '../../lib/impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -52,7 +54,9 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
-  | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize';
+  | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
+  | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -309,6 +313,79 @@ const ResizeThumb = () => (
     <polygon points="156,118 146,116 152,108" fill="#64748b" />
     <path d="M58 48 L34 30" stroke="#64748b" strokeWidth="2" />
     <polygon points="34,30 44,32 38,40" fill="#64748b" />
+  </svg>
+);
+
+const A = '#7c3aed';
+const frame = <rect x="52" y="22" width="96" height="104" rx="3" fill="#f1f5f9" stroke="#94a3b8" />;
+const RegThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {([[70,40],[130,40],[70,108],[130,108]] as [number,number][]).map(([x,y],i)=>(<g key={i}>
+      <line x1={x-9} y1={y} x2={x+9} y2={y} stroke={A} strokeWidth="1.4" /><line x1={x} y1={y-9} x2={x} y2={y+9} stroke={A} strokeWidth="1.4" />
+      <circle cx={x} cy={y} r="5" stroke={A} strokeWidth="1.4" fill="none" /></g>))}
+  </svg>
+);
+const InsertThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="34" y="34" width="52" height="80" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <rect x="114" y="34" width="52" height="80" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <rect x="90" y="34" width="20" height="80" rx="2" fill="#ede9fe" stroke={A} strokeDasharray="3,3" />
+    <path d="M100 58 v32 M90 74 h20" stroke={A} strokeWidth="2" />
+  </svg>
+);
+const MixThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    {[30,64,98,132].map((y,i)=>(<rect key={i} x="60" y={y-6} width="80" height="20" rx="2" fill={i%2?'#ede9fe':'#f1f5f9'} stroke={i%2?A:'#94a3b8'} />))}
+  </svg>
+);
+const NudgeThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="60" y="34" width="80" height="80" rx="2" fill="#f8fafc" stroke="#cbd5e1" strokeDasharray="3,3" />
+    <rect x="74" y="44" width="80" height="80" rx="2" fill="#ede9fe" stroke={A} strokeWidth="2" />
+    <path d="M50 74 h18 M120 128 v-18" stroke={A} strokeWidth="2" />
+  </svg>
+);
+const RepairThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <path d="M118 52 l14 14 -8 8 -14-14 a10 10 0 0 1 8-8z" fill="#ede9fe" stroke={A} strokeWidth="1.6" />
+    <path d="M116 66 l-30 30 8 8 30-30" stroke={A} strokeWidth="3" />
+  </svg>
+);
+const BackdropThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="46" y="26" width="108" height="96" rx="3" fill="#ede9fe" stroke={A} />
+    <rect x="66" y="44" width="68" height="60" rx="2" fill="#fff" stroke="#94a3b8" />
+  </svg>
+);
+const QrThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {([[64,34],[64,52],[82,34],[110,34],[128,34],[110,52],[64,82],[64,100],[82,100],[110,82],[128,100],[110,100]] as [number,number][]).map(([x,y],i)=>(
+      <rect key={i} x={x} y={y} width="14" height="14" fill={A} />))}
+  </svg>
+);
+const DimThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="56" y="34" width="88" height="72" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <path d="M56 118 h88 M56 114 v8 M144 114 v8" stroke={A} strokeWidth="1.4" />
+    <path d="M40 34 v72 M36 34 h8 M36 106 h8" stroke={A} strokeWidth="1.4" />
+  </svg>
+);
+const CollateThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {[34,52,70,88].map((y,i)=>(<rect key={i} x="52" y={y} width="10" height="12" fill={A} transform={`translate(${i*3},0)`} />))}
+  </svg>
+);
+const HFThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <rect x="64" y="32" width="72" height="8" rx="2" fill={A} /><rect x="64" y="108" width="72" height="8" rx="2" fill={A} />
+    <rect x="64" y="58" width="72" height="6" rx="1" fill="#cbd5e1" /><rect x="64" y="72" width="52" height="6" rx="1" fill="#e2e8f0" />
+  </svg>
+);
+const SlugThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="46" y="26" width="108" height="88" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <rect x="46" y="114" width="108" height="14" fill="#ede9fe" stroke={A} />
+    <rect x="52" y="118" width="60" height="5" rx="1" fill={A} />
   </svg>
 );
 
@@ -723,6 +800,66 @@ const TOOLS: ToolDef[] = [
     id: 'resize', name: 'Resize / Scale', preset: 'Resize', category: 'Page & PDF tools', engine: 'resize',
     desc: 'Scale pages by a percentage, or drop them onto a fixed paper size (fit or stretch).',
     tags: ['scale %', 'fit to paper', 'stretch'], Thumb: ResizeThumb,
+  },
+  {
+    id: 'insertpages', name: 'Insert Pages', preset: 'Insert Pages', category: 'Page & PDF tools', engine: 'insert',
+    desc: 'Insert blank pages before a chosen page, or after every N pages (slip-sheets).',
+    tags: ['blank pages', 'slip-sheets', 'every N'], Thumb: InsertThumb,
+  },
+  {
+    id: 'mix', name: 'Mix / Interleave', preset: 'Mix', category: 'Page & PDF tools', engine: 'mix',
+    desc: 'Weave two PDFs together (A1, B1, A2, B2…) — combine single-sided front & back scans.',
+    tags: ['interleave', 'two files', 'ABAB'], Thumb: MixThumb,
+  },
+  {
+    id: 'nudge', name: 'Nudge', preset: 'Nudge', category: 'Page & PDF tools', engine: 'nudge',
+    desc: 'Shift page content by a small offset and/or rotate it about the centre — fix mis-registration.',
+    tags: ['shift', 'micro-rotate', 'press fudge'], Thumb: NudgeThumb,
+  },
+  {
+    id: 'repair', name: 'PDF Repair', preset: 'PDF Repair', category: 'Page & PDF tools', engine: 'repair',
+    desc: 'Rebuild a PDF from scratch — drops broken cross-references and dead objects.',
+    tags: ['normalize', 'rebuild', 'fix xref'], Thumb: RepairThumb,
+  },
+  {
+    id: 'registration', name: 'Registration Marks', preset: 'Registration Marks', category: 'Marks & prepress', engine: 'registration',
+    desc: 'Add press registration targets (bullseye + crosshair) at the corners and edge midpoints.',
+    tags: ['target', 'crosshair', 'colour align'], Thumb: RegThumb,
+  },
+  {
+    id: 'watermark', name: 'Watermark', preset: 'Watermark', category: 'Marks & prepress', engine: 'watermark',
+    desc: 'Stamp a diagonal text watermark (PROOF, DRAFT, CONFIDENTIAL) across every page.',
+    tags: ['proof', 'draft', 'diagonal text'], Thumb: OverlayThumb,
+  },
+  {
+    id: 'headerfooter', name: 'Header / Footer', preset: 'Header / Footer', category: 'Marks & prepress', engine: 'headerfooter',
+    desc: 'Add a running header and/or footer line to every page, aligned left, centre or right.',
+    tags: ['running head', 'footer', 'title'], Thumb: HFThumb,
+  },
+  {
+    id: 'slug', name: 'Slugline', preset: 'Slugline', category: 'Marks & prepress', engine: 'slug',
+    desc: 'Add a thin job-info strip (name, date, notes) along the top or bottom edge.',
+    tags: ['job info', 'slug strip', 'metadata'], Thumb: SlugThumb,
+  },
+  {
+    id: 'collating', name: 'Collating Marks', preset: 'Collating Marks', category: 'Marks & prepress', engine: 'collating',
+    desc: 'Stepped spine ticks that form a descending staircase so mis-gathered signatures show at a glance.',
+    tags: ['gather marks', 'spine', 'signatures'], Thumb: CollateThumb,
+  },
+  {
+    id: 'qrstamp', name: 'QR / Barcode', preset: 'QR Stamp', category: 'Marks & prepress', engine: 'qrstamp',
+    desc: 'Stamp a scannable QR code (URL, vCard, code) on every page at your chosen corner.',
+    tags: ['QR code', 'scannable', 'URL / vCard'], Thumb: QrThumb,
+  },
+  {
+    id: 'backdrop', name: 'Backdrop', preset: 'Backdrop', category: 'Marks & prepress', engine: 'backdrop',
+    desc: 'Paint a solid colour behind every page — put borderless art onto a coloured stock.',
+    tags: ['background', 'flatten', 'coloured stock'], Thumb: BackdropThumb,
+  },
+  {
+    id: 'dimensions', name: 'Dimensions', preset: 'Dimensions', category: 'Marks & prepress', engine: 'dimensions',
+    desc: 'Annotate each page with its exact trim size in inches and points — a quick pre-impose check.',
+    tags: ['measure', 'trim size', 'inspect'], Thumb: DimThumb,
   },
 ];
 
@@ -1497,6 +1634,93 @@ function ResizeSettings({ opts, onChange }: { opts: ResizeOptions; onChange: (o:
   );
 }
 
+// ── Registration / Insert / Nudge / Backdrop / QR settings ────────────────────
+
+const DEFAULT_REGMARK: RegMarkOptions = { marginIn: 0.25, sizeIn: 0.18, style: 'target' };
+const DEFAULT_INSERT: InsertOptions = { mode: 'at', position: 1, everyN: 1, count: 1 };
+const DEFAULT_NUDGE: NudgeOptions = { dxIn: 0, dyIn: 0, rotateDeg: 0 };
+const DEFAULT_BACKDROP: BackdropOptions = { r: 1, g: 1, b: 1 };
+const DEFAULT_QRSTAMP: QrStampOptions = { text: 'https://', sizePt: 72, position: 'br', marginPt: 18 };
+const DEFAULT_COLLATING: { edge: 'left' | 'right' } = { edge: 'left' };
+
+const hexToRgb = (hex: string) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  return m ? { r: parseInt(m[1]!, 16) / 255, g: parseInt(m[2]!, 16) / 255, b: parseInt(m[3]!, 16) / 255 } : { r: 1, g: 1, b: 1 };
+};
+const rgbToHex = (c: BackdropOptions) => '#' + [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+
+function RegistrationSettings({ opts, onChange }: { opts: RegMarkOptions; onChange: (o: RegMarkOptions) => void }) {
+  const set = <K extends keyof RegMarkOptions>(k: K, v: RegMarkOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Mark style">
+        <select value={opts.style} onChange={e => set('style', e.target.value as RegMarkOptions['style'])} style={iStyle}>
+          <option value="target">Target (bullseye + crosshair)</option>
+          <option value="crosshair">Crosshair only</option>
+        </select>
+      </Field>
+      <Field label="Distance from edge (in)"><input type="number" min={0.1} max={1} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark size (in)"><input type="number" min={0.08} max={0.5} step={0.01} value={opts.sizeIn} onChange={e => set('sizeIn', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function InsertSettings({ opts, onChange }: { opts: InsertOptions; onChange: (o: InsertOptions) => void }) {
+  const set = <K extends keyof InsertOptions>(k: K, v: InsertOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Where">
+        <select value={opts.mode} onChange={e => set('mode', e.target.value as InsertOptions['mode'])} style={iStyle}>
+          <option value="at">Before a specific page</option>
+          <option value="everyN">After every N pages</option>
+        </select>
+      </Field>
+      {opts.mode === 'at'
+        ? <Field label="Before page #"><input type="number" min={1} step={1} value={opts.position} onChange={e => set('position', +e.target.value)} style={iStyle} /></Field>
+        : <Field label="Every N pages"><input type="number" min={1} step={1} value={opts.everyN} onChange={e => set('everyN', +e.target.value)} style={iStyle} /></Field>}
+      <Field label="Blank pages to insert"><input type="number" min={1} max={20} step={1} value={opts.count} onChange={e => set('count', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function NudgeSettings({ opts, onChange }: { opts: NudgeOptions; onChange: (o: NudgeOptions) => void }) {
+  const set = <K extends keyof NudgeOptions>(k: K, v: NudgeOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Shift right (in)" note="Negative = left"><input type="number" min={-2} max={2} step={0.01} value={opts.dxIn} onChange={e => set('dxIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Shift up (in)" note="Negative = down"><input type="number" min={-2} max={2} step={0.01} value={opts.dyIn} onChange={e => set('dyIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Rotate (deg)" note="About page centre"><input type="number" min={-15} max={15} step={0.1} value={opts.rotateDeg} onChange={e => set('rotateDeg', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function BackdropSettings({ opts, onChange }: { opts: BackdropOptions; onChange: (o: BackdropOptions) => void }) {
+  return (
+    <Grid>
+      <Field label="Backdrop colour" note="Painted behind every page">
+        <input type="color" value={rgbToHex(opts)} onChange={e => onChange(hexToRgb(e.target.value))} style={{ ...iStyle, height: 38, padding: 2 }} />
+      </Field>
+    </Grid>
+  );
+}
+
+function QrStampSettings({ opts, onChange }: { opts: QrStampOptions; onChange: (o: QrStampOptions) => void }) {
+  const set = <K extends keyof QrStampOptions>(k: K, v: QrStampOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Encoded text / URL"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} placeholder="https://example.com" style={iStyle} /></Field>
+      <Field label="Position">
+        <select value={opts.position} onChange={e => set('position', e.target.value as QrStampOptions['position'])} style={iStyle}>
+          <option value="br">Bottom right</option><option value="bl">Bottom left</option>
+          <option value="tr">Top right</option><option value="tl">Top left</option><option value="center">Center</option>
+        </select>
+      </Field>
+      <Field label="Size (pt)"><input type="number" min={24} max={288} step={4} value={opts.sizePt} onChange={e => set('sizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge margin (pt)"><input type="number" min={0} max={96} step={2} value={opts.marginPt} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
 // ── Overlay settings ──────────────────────────────────────────────────────────
 
 const DEFAULT_OVERLAY: OverlayOptions = { opacity: 0.3, mode: 'center' };
@@ -1704,6 +1928,16 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
   const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
+  const [watermarkOpts, setWatermarkOpts] = useState<WatermarkOptions>(DEFAULT_WATERMARK);
+  const [headerFooterOpts, setHeaderFooterOpts] = useState<HeaderFooterOptions>(DEFAULT_HEADERFOOTER);
+  const [slugOpts, setSlugOpts] = useState<JobSlugOptions>({ text: 'Job • ' + new Date().toISOString().slice(0, 10), position: 'bottom', fontSizePt: 8 });
+  const [collatingOpts, setCollatingOpts] = useState<{ edge: 'left' | 'right' }>(DEFAULT_COLLATING);
+  const [regOpts, setRegOpts] = useState<RegMarkOptions>(DEFAULT_REGMARK);
+  const [insertOpts, setInsertOpts] = useState<InsertOptions>(DEFAULT_INSERT);
+  const [nudgeOpts, setNudgeOpts] = useState<NudgeOptions>(DEFAULT_NUDGE);
+  const [backdropOpts, setBackdropOpts] = useState<BackdropOptions>(DEFAULT_BACKDROP);
+  const [qrStampOpts, setQrStampOpts] = useState<QrStampOptions>(DEFAULT_QRSTAMP);
+  const [mixReverse, setMixReverse] = useState(false);
   const [shuffleOrder, setShuffleOrder] = useState('');
   const [splitRanges, setSplitRanges] = useState('');
   const [stampFile, setStampFile] = useState<MergeFile | null>(null);
@@ -1769,6 +2003,20 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
         case 'overlay':
           if (!stampFile) { setStatus('error'); setErrMsg('Add a watermark / overlay PDF first.'); return; }
           out = await overlayPdf(file.bytes, stampFile.bytes, overlayOpts); outName = `${base}-overlay.pdf`; break;
+        case 'watermark': out = await addTextWatermark(file.bytes, watermarkOpts); outName = `${base}-watermark.pdf`; break;
+        case 'headerfooter': out = await addHeaderFooter(file.bytes, headerFooterOpts); outName = `${base}-headerfooter.pdf`; break;
+        case 'slug': out = await addJobSlug(file.bytes, slugOpts); outName = `${base}-slug.pdf`; break;
+        case 'collating': out = await addCollatingMarks(file.bytes, collatingOpts); outName = `${base}-collated.pdf`; break;
+        case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
+        case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
+        case 'nudge': out = await nudgePdf(file.bytes, nudgeOpts); outName = `${base}-nudged.pdf`; break;
+        case 'repair': out = await repairPdf(file.bytes); outName = `${base}-repaired.pdf`; break;
+        case 'backdrop': out = await addBackdrop(file.bytes, backdropOpts); outName = `${base}-backdrop.pdf`; break;
+        case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
+        case 'dimensions': out = await addDimensions(file.bytes); outName = `${base}-dimensions.pdf`; break;
+        case 'mix':
+          if (!stampFile) { setStatus('error'); setErrMsg('Add the second PDF to interleave first.'); return; }
+          out = await mixPdfs(file.bytes, stampFile.bytes, mixReverse); outName = `${base}-interleaved.pdf`; break;
         case 'split': {
           const parts = await splitPdf(file.bytes, splitRanges);
           if (!parts.length) { setStatus('error'); setErrMsg('No valid ranges. Use a format like 1-3, 4-6, 7.'); return; }
@@ -1864,17 +2112,36 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
                 {tool.engine === 'shuffle' && <ShuffleSettings order={shuffleOrder} onChange={setShuffleOrder} count={file.info.count} />}
                 {tool.engine === 'split' && <SplitSettings ranges={splitRanges} onChange={setSplitRanges} count={file.info.count} />}
                 {tool.engine === 'overlay' && <OverlaySettings opts={overlayOpts} onChange={setOverlayOpts} />}
+                {tool.engine === 'watermark' && <WatermarkSettings opts={watermarkOpts} onChange={setWatermarkOpts} />}
+                {tool.engine === 'headerfooter' && <HeaderFooterSettings opts={headerFooterOpts} onChange={setHeaderFooterOpts} />}
+                {tool.engine === 'slug' && <JobSlugSettings opts={slugOpts} onChange={setSlugOpts} />}
+                {tool.engine === 'collating' && <CollatingSettings opts={collatingOpts} onChange={setCollatingOpts} />}
+                {tool.engine === 'registration' && <RegistrationSettings opts={regOpts} onChange={setRegOpts} />}
+                {tool.engine === 'insert' && <InsertSettings opts={insertOpts} onChange={setInsertOpts} />}
+                {tool.engine === 'nudge' && <NudgeSettings opts={nudgeOpts} onChange={setNudgeOpts} />}
+                {tool.engine === 'backdrop' && <BackdropSettings opts={backdropOpts} onChange={setBackdropOpts} />}
+                {tool.engine === 'qrstamp' && <QrStampSettings opts={qrStampOpts} onChange={setQrStampOpts} />}
+                {tool.engine === 'mix' && (
+                  <Row><input type="checkbox" checked={mixReverse} onChange={e => setMixReverse(e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Reverse the second file (backs scanned in reverse)</span></Row>
+                )}
+                {(tool.engine === 'repair' || tool.engine === 'dimensions') && (
+                  <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    {tool.engine === 'repair'
+                      ? 'Rebuilds the file from scratch — drops broken cross-references and dead objects, then writes a clean PDF. No options needed.'
+                      : 'Stamps each page with its exact trim size (inches + points) along the bottom and left edges. No options needed.'}
+                  </p>
+                )}
               </div>
 
-              {tool.engine === 'overlay' && (
+              {(tool.engine === 'overlay' || tool.engine === 'mix') && (
                 <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
-                  <h4 style={{ margin: '0 0 .75rem' }}>Overlay / watermark PDF</h4>
+                  <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'mix' ? 'Second PDF (interleave)' : 'Overlay / watermark PDF'}</h4>
                   {stampFile
                     ? <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                         <span style={{ fontSize: '.85rem', flex: 1 }}>📄 {stampFile.name}</span>
                         <button className="btn secondary" style={{ padding: '.3rem .65rem', fontSize: '.8rem' }} onClick={() => setStampFile(null)}>Change</button>
                       </div>
-                    : <FileDrop onFile={loadStamp} label="Drop the watermark / stamp PDF" />}
+                    : <FileDrop onFile={loadStamp} label={tool.engine === 'mix' ? 'Drop the second PDF (the backs)' : 'Drop the watermark / stamp PDF'} />}
                 </div>
               )}
 

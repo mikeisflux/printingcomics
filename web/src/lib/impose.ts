@@ -1011,6 +1011,180 @@ export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): 
 // ── Zine (4 panels per side, 2 sides = 8-page booklet from 2 sheets) ────────
 // Same as saddle stitch; the "zine" label and preset distinguish the use case.
 
+// ── Registration Marks ──────────────────────────────────────────────────────
+// Standalone press registration targets (crosshair or bullseye) at the corners
+// and edge midpoints — used to align colour separations on press.
+
+export interface RegMarkOptions { marginIn: number; sizeIn: number; style: 'target' | 'crosshair'; }
+
+export async function addRegistrationMarks(bytes: Uint8Array, opts: RegMarkOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const black = rgb(0, 0, 0);
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const m = opts.marginIn * PT, r = (opts.sizeIn * PT) / 2;
+    const spots: [number, number][] = [
+      [m, m], [w - m, m], [m, h - m], [w - m, h - m],
+      [w / 2, m], [w / 2, h - m], [m, h / 2], [w - m, h / 2],
+    ];
+    for (const [cx, cy] of spots) {
+      pg.drawLine({ start: { x: cx - r * 1.5, y: cy }, end: { x: cx + r * 1.5, y: cy }, thickness: 0.5, color: black });
+      pg.drawLine({ start: { x: cx, y: cy - r * 1.5 }, end: { x: cx, y: cy + r * 1.5 }, thickness: 0.5, color: black });
+      if (opts.style === 'target') {
+        pg.drawEllipse({ x: cx, y: cy, xScale: r, yScale: r, borderColor: black, borderWidth: 0.5 });
+        pg.drawEllipse({ x: cx, y: cy, xScale: r * 0.5, yScale: r * 0.5, borderColor: black, borderWidth: 0.5 });
+      }
+    }
+  }
+  return doc.save();
+}
+
+// ── Insert Pages ────────────────────────────────────────────────────────────
+// Insert blank pages (page-1 size) either before a given page, or after every
+// N pages (e.g. to interleave slip-sheets).
+
+export interface InsertOptions { mode: 'at' | 'everyN'; position: number; everyN: number; count: number; }
+
+export async function insertPages(bytes: Uint8Array, opts: InsertOptions): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = src.getPageCount();
+  const { width, height } = src.getPage(0).getSize();
+  const out = await PDFDocument.create();
+  const copied = await out.copyPages(src, src.getPageIndices());
+  const blanks = Math.max(1, opts.count);
+  const addBlanks = () => { for (let b = 0; b < blanks; b++) out.addPage([width, height]); };
+  if (opts.mode === 'everyN') {
+    const N = Math.max(1, opts.everyN);
+    for (let i = 0; i < n; i++) { out.addPage(copied[i]!); if ((i + 1) % N === 0 && i < n - 1) addBlanks(); }
+  } else {
+    const pos = Math.min(Math.max(1, opts.position), n + 1); // insert before this 1-indexed page
+    for (let i = 0; i < n; i++) { if (i === pos - 1) addBlanks(); out.addPage(copied[i]!); }
+    if (pos - 1 >= n) addBlanks();
+  }
+  return out.save();
+}
+
+// ── Mix / Interleave two PDFs ───────────────────────────────────────────────
+// Weave pages from two documents: A1,B1,A2,B2… Ideal for combining single-sided
+// front & back scans into one duplex-ordered file. reverseB flips the back stack.
+
+export async function mixPdfs(aBytes: Uint8Array, bBytes: Uint8Array, reverseB = false): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const A = await PDFDocument.load(aBytes, { ignoreEncryption: true });
+  const B = await PDFDocument.load(bBytes, { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  const ca = await out.copyPages(A, A.getPageIndices());
+  let cb = await out.copyPages(B, B.getPageIndices());
+  if (reverseB) cb = cb.reverse();
+  const max = Math.max(ca.length, cb.length);
+  for (let i = 0; i < max; i++) { if (i < ca.length) out.addPage(ca[i]!); if (i < cb.length) out.addPage(cb[i]!); }
+  return out.save();
+}
+
+// ── Nudge ───────────────────────────────────────────────────────────────────
+// Shift every page's content by a small offset and/or rotate it about its centre
+// — a press fudge for plate mis-registration or trim drift.
+
+export interface NudgeOptions { dxIn: number; dyIn: number; rotateDeg: number; }
+
+export async function nudgePdf(bytes: Uint8Array, opts: NudgeOptions): Promise<Uint8Array> {
+  const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = src.getPages();
+  const out = await PDFDocument.create();
+  const embeds = await out.embedPages(pages);
+  const dx = opts.dxIn * PT, dy = opts.dyIn * PT, rad = (opts.rotateDeg * Math.PI) / 180;
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = pages[i]!.getSize();
+    const pg = out.addPage([w, h]);
+    const cos = Math.cos(rad), sin = Math.sin(rad), cx = w / 2, cy = h / 2;
+    // Combined matrix: translate(cx+dx,cy+dy) · rotate · translate(-cx,-cy)
+    const a = cos, b = sin, c = -sin, d = cos;
+    const e = cx + dx - (a * cx + c * cy), f = cy + dy - (b * cx + d * cy);
+    pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(a, b, c, d, e, f));
+    pg.drawPage(embeds[i]!, { x: 0, y: 0, width: w, height: h });
+    pg.pushOperators(popGraphicsState());
+  }
+  return out.save();
+}
+
+// ── PDF Repair / Normalize ──────────────────────────────────────────────────
+// Rebuild the document from scratch — drops broken incremental-update cruft and
+// dead objects, and re-writes a clean cross-reference table.
+
+export async function repairPdf(bytes: Uint8Array): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  const pages = await out.copyPages(src, src.getPageIndices());
+  for (const p of pages) out.addPage(p);
+  return out.save({ useObjectStreams: true });
+}
+
+// ── Backdrop ────────────────────────────────────────────────────────────────
+// Paint a solid colour behind every page's content — turns transparent /
+// borderless art onto a coloured stock, or flattens knockouts to a base.
+
+export interface BackdropOptions { r: number; g: number; b: number; }
+
+export async function addBackdrop(bytes: Uint8Array, opts: BackdropOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = src.getPages();
+  const out = await PDFDocument.create();
+  const embeds = await out.embedPages(pages);
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = pages[i]!.getSize();
+    const pg = out.addPage([w, h]);
+    pg.drawRectangle({ x: 0, y: 0, width: w, height: h, color: rgb(opts.r, opts.g, opts.b) });
+    pg.drawPage(embeds[i]!, { x: 0, y: 0, width: w, height: h });
+  }
+  return out.save();
+}
+
+// ── QR / Barcode stamp (standalone) ─────────────────────────────────────────
+// Stamp a scannable QR encoding a fixed string (URL, vCard, code) on every page.
+
+export interface QrStampOptions { text: string; sizePt: number; position: 'br' | 'bl' | 'tr' | 'tl' | 'center'; marginPt: number; }
+
+export async function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const mod = await import('qrcode-generator');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const qrcode = (mod as unknown as { default?: any }).default ?? mod;
+  const s = opts.sizePt, m = opts.marginPt;
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const x = opts.position === 'center' ? (w - s) / 2 : opts.position.includes('l') ? m : w - s - m;
+    const y = opts.position === 'center' ? (h - s) / 2 : opts.position.includes('t') ? h - s - m : m;
+    drawQrCode(pg, rgb, qrcode, opts.text || ' ', x, y, s);
+  }
+  return doc.save();
+}
+
+// ── Dimensions ──────────────────────────────────────────────────────────────
+// Annotate each page with its trim size (inches + points) along the bottom and
+// left edges — a quick check tool before imposing.
+
+export async function addDimensions(bytes: Uint8Array): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const col = rgb(0.85, 0.11, 0.14);
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const wl = `${(w / PT).toFixed(2)}in - ${Math.round(w)} pt`;
+    const hl = `${(h / PT).toFixed(2)}in - ${Math.round(h)} pt`;
+    const ww = font.widthOfTextAtSize(wl, 8);
+    pg.drawText(wl, { x: (w - ww) / 2, y: 5, font, size: 8, color: col });
+    pg.drawText(hl, { x: 11, y: h / 2 - font.widthOfTextAtSize(hl, 8) / 2, font, size: 8, color: col, rotate: degrees(90) });
+  }
+  return doc.save();
+}
+
 // ── Download helper ─────────────────────────────────────────────────────────
 
 export function downloadPdf(bytes: Uint8Array, filename: string) {
