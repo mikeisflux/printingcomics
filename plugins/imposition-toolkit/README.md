@@ -1,6 +1,6 @@
 # Imposition Toolkit
 
-A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **75
+A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **76
 print-production tools + 156 ready-made industry templates + 6 chained
 workflows** plus 5 planning calculators, extracted from the Printing Comics
 storefront so it can be dropped into any other website.
@@ -31,7 +31,7 @@ component, and there are no network calls during processing.
 | **Folding** | Trifold · Folded (Z-fold) · Greeting Card · Menu · Wedding Invitation · Presentation Folder (dieline) |
 | **Large & specialty** | Tiled Poster · Banner · Feather Flags · Roller Banner · Packaging Dieline · Box/Carton |
 | **Tickets & data** | Variable Data (CSV+QR) · Raffle Tickets · Coupons · Name Badges |
-| **Marks & prepress** | Bleed & Crop Marks · Cutter Marks · Color Bar & Header · Page Numbering & Bates · Preflight Inspector |
+| **Marks & prepress** | Bleed & Crop Marks · Cutter Marks · Color Bar & Header · Page Numbering & Bates · Registration · Collating Marks · **OMR Marks** · Preflight Inspector |
 | **Page & PDF tools** | Merge · Split · Rotate · Flip/Mirror · Overlay/Watermark · Shuffle · Crop |
 
 Highlights new in 1.1: a **real dieline generator** (box net with cut/crease/glue

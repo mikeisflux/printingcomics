@@ -260,8 +260,12 @@ Diagonal proof/draft stamp. `{ text, opacity, angleDeg, fontSizePt }`.
 ### `addJobSlug(bytes, opts): Promise<Uint8Array>`
 A thin job-info strip along an edge. `{ text, position: 'top'|'bottom', fontSizePt }`.
 
-### `addCollatingMarks(bytes, { edge: 'left'|'right' }): Promise<Uint8Array>`
-Stepped black spine ticks (a descending staircase) so mis-gathered signatures are obvious.
+### `addCollatingMarks(bytes, opts: CollatingOptions): Promise<Uint8Array>`
+Per-**signature** spine marks forming a descending staircase so mis-gathered
+signatures are obvious. `{ edge, startOffsetPt?, markWpt?, markHpt?, smallMarks?,
+pagesPerSig?, sigsPerSet?, stepPt?, color?, color2?, opacity?, pages? }` — one
+mark per `pagesPerSig` pages, stepped by `stepPt`; the staircase resets after
+`sigsPerSet` signatures and draws the next pass in `color2` (contrasting).
 
 ### `preflight(bytes): Promise<PreflightReport>`
 Non-destructive inspection → `{ pages, uniformSize, widthIn, heightIn, warnings[] }`.
@@ -375,6 +379,32 @@ artwork's alpha outline (via `pdfjs-dist`, an optional peer) into an occupancy
 grid and nests items into each other's concave negative space — best for
 irregular contours. If a rasteriser isn't available (e.g. a non-DOM host), it
 transparently falls back to the skyline pack.
+
+### `addOmrMarks(bytes, opts: OmrOptions): Promise<Uint8Array>`
+Add optical machine-readable (OMR) bars along a sheet edge for automated
+bindery equipment (fold / collate / cut / stack).
+
+```ts
+interface OmrOptions {
+  edge: 'top' | 'bottom' | 'left' | 'right';
+  encoding: 'binary' | 'barheight';   // present/absent, or long/short bars
+  program: number;                      // 0 … 2^bitCount − 1 (MSB first)
+  bitCount: number;                     // 4 | 8 | 12 | 16
+  repeats?: number;                     // repeat the pattern down the track
+  widthPt?: number;                     // readable bar length ⟂ to feed (5 mm)
+  heightPt?: number;                    // thin dimension along feed (1 mm)
+  spacingPt?: number;                   // pitch between bars
+  startOffsetPt?: number;               // offset along the track
+  edgeOffsetPt?: number;                // inward offset from the paper edge
+  sync?: boolean;                       // leading always-on sync/clock bar
+  color?: { r: number; g: number; b: number };
+  opacity?: number; pages?: string;
+}
+```
+
+Marks must be solid black at 100% density and the edge must match the
+machine's sensor position — patterns are manufacturer-specific, so confirm the
+spec with your finishing vendor.
 
 ## Error handling
 

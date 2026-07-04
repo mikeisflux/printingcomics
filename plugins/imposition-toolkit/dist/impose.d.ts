@@ -233,8 +233,48 @@ export interface JobSlugOptions {
 export declare function addJobSlug(bytes: Uint8Array, opts: JobSlugOptions): Promise<Uint8Array>;
 export interface CollatingOptions {
     edge: 'left' | 'right';
+    startOffsetPt?: number;
+    markWpt?: number;
+    markHpt?: number;
+    smallMarks?: boolean;
+    pagesPerSig?: number;
+    sigsPerSet?: number;
+    stepPt?: number;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    color2?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    opacity?: number;
+    pages?: string;
 }
 export declare function addCollatingMarks(bytes: Uint8Array, opts: CollatingOptions): Promise<Uint8Array>;
+export interface OmrOptions {
+    edge: 'top' | 'bottom' | 'left' | 'right';
+    encoding: 'binary' | 'barheight';
+    program: number;
+    bitCount: number;
+    repeats?: number;
+    widthPt?: number;
+    heightPt?: number;
+    spacingPt?: number;
+    startOffsetPt?: number;
+    edgeOffsetPt?: number;
+    sync?: boolean;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    opacity?: number;
+    pages?: string;
+}
+export declare function addOmrMarks(bytes: Uint8Array, opts: OmrOptions): Promise<Uint8Array>;
 export interface PreflightReport {
     pages: number;
     uniformSize: boolean;

@@ -916,14 +916,82 @@ async function addCollatingMarks(bytes, opts) {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = doc.getPages();
   const n = pages.length;
-  const markW = 9, markH = 14;
+  const startOff = opts.startOffsetPt ?? 20;
+  const mw = opts.markWpt ?? 9;
+  const baseH = opts.markHpt ?? 14;
+  const mh = opts.smallMarks ? baseH / 2 : baseH;
+  const pps = Math.max(1, Math.round(opts.pagesPerSig ?? 16));
+  const sps = Math.max(1, Math.round(opts.sigsPerSet ?? 12));
+  const step = opts.stepPt ?? baseH;
+  const c1 = opts.color ?? { r: 0, g: 0, b: 0 };
+  const c2 = opts.color2 ?? c1;
+  const op = opts.opacity ?? 1;
+  const sel = parsePageRange(opts.pages ?? "all", n);
   for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
     const pg = pages[i];
     const { width: w, height: h } = pg.getSize();
-    const step = n > 1 ? (h - 40 - markH) / (n - 1) : 0;
-    const y = h - 20 - markH - i * step;
-    const x = opts.edge === "right" ? w - markW : 0;
-    pg.drawRectangle({ x, y, width: markW, height: markH, color: rgb(0, 0, 0) });
+    const sig = Math.floor(i / pps);
+    const slot = sig % sps;
+    const pass = Math.floor(sig / sps);
+    const col = pass % 2 === 0 ? c1 : c2;
+    const y = h - startOff - mh - slot * step;
+    const x = opts.edge === "right" ? w - mw : 0;
+    pg.drawRectangle({ x, y, width: mw, height: mh, color: rgb(col.r, col.g, col.b), opacity: op });
+  }
+  return doc.save();
+}
+async function addOmrMarks(bytes, opts) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const bitCount = Math.max(1, Math.round(opts.bitCount || 8));
+  const maxVal = Math.pow(2, bitCount) - 1;
+  const prog = Math.max(0, Math.min(maxVal, Math.round(opts.program || 0)));
+  const bits = [];
+  for (let b = bitCount - 1; b >= 0; b--) bits.push(prog >> b & 1);
+  const repeats = Math.max(1, Math.round(opts.repeats ?? 1));
+  const length = opts.widthPt ?? 14.17;
+  const thick = opts.heightPt ?? 2.83;
+  const pitch = opts.spacingPt ?? length;
+  const startOff = opts.startOffsetPt ?? 40;
+  const edgeOff = opts.edgeOffsetPt ?? 8.5;
+  const sync = opts.sync !== false;
+  const c = opts.color ?? { r: 0, g: 0, b: 0 };
+  const op = opts.opacity ?? 1;
+  const horiz = opts.edge === "top" || opts.edge === "bottom";
+  const sel = parsePageRange(opts.pages ?? "all", n);
+  const slots = [];
+  for (let r = 0; r < repeats; r++) {
+    if (sync) slots.push({ on: true, full: true });
+    for (const bit of bits) {
+      if (opts.encoding === "barheight") slots.push({ on: true, full: bit === 1 });
+      else slots.push({ on: bit === 1, full: true });
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i];
+    const { width: w, height: h } = pg.getSize();
+    slots.forEach((s, k) => {
+      if (!s.on) return;
+      const len = s.full ? length : length * 0.45;
+      const pos = startOff + k * pitch;
+      let x, y, rw, rh;
+      if (horiz) {
+        rw = thick;
+        rh = len;
+        x = pos;
+        y = opts.edge === "bottom" ? edgeOff : h - edgeOff - len;
+      } else {
+        rw = len;
+        rh = thick;
+        y = pos;
+        x = opts.edge === "left" ? edgeOff : w - edgeOff - len;
+      }
+      pg.drawRectangle({ x, y, width: rw, height: rh, color: rgb(c.r, c.g, c.b), opacity: op });
+    });
   }
   return doc.save();
 }
@@ -1570,6 +1638,7 @@ export {
   addDimensions,
   addHeaderFooter,
   addJobSlug,
+  addOmrMarks,
   addPageNumbers,
   addQrStamp,
   addRegistrationMarks,

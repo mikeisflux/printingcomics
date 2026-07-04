@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.8
+
+- **Collating Marks** rewritten to model real signature gathering: one mark per
+  *signature* (page ÷ pages-per-signature), stepped down the spine; the
+  staircase resets after *signatures-per-set* and switches to a contrasting
+  wrap colour so the two passes stay distinct. Adds start offset, mark W/H,
+  half-height marks, opacity and page range.
+- New **OMR Marks** tool: a row of black bars along a chosen sheet edge that
+  automated bindery equipment reads to trigger fold / collate / cut / stack.
+  Encodes a program number (0…2^bits-1, MSB first) as present/absent (binary)
+  or long/short (bar-height) bars, with a leading sync bar, 4/8/12/16-bit
+  widths, repeats, configurable bar length/width/pitch and start + edge
+  offsets. New `addOmrMarks` engine function.
+
 ## 1.2.7
 
 - New **Nesting / Stickers** tool: packs mixed-size die-cut artwork onto a
