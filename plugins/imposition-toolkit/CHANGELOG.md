@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.11
+
+- **DataMatrix (ECC200)** barcode encoder — GF(256) with 0x12d, Reed-Solomon
+  (first consecutive root α¹), ASCII encodation, ISO 16022 Annex F module
+  placement, square sizes 10×10…26×26. Verified by RS-syndrome vanishing.
+- **Barcode / QR** is now a full stamp tool (`addBarcodeStamp`): QR / Code 128 /
+  DataMatrix / EAN-13 with scale, quiet zone, bar height, 9-point position,
+  X/Y offset, 0/90/180/270 rotation, bar + background colour, transparent
+  background and human-readable text. (Replaces the QR-only stamp.)
+- **Backdrop** is now file-based (`addBackdropFile`): composites an uploaded PDF
+  or image behind the page content, with scale / offset / opacity / repeat /
+  range. The old solid-colour fill remains as **Background Fill**.
+- **Watermark** gains a colour picker, one-click presets and a page range.
+
 ## 1.2.10
 
 - Real **Separation (spot-colour)** support, and three tools built on it:

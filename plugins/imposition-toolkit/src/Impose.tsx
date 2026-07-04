@@ -5,7 +5,7 @@ import {
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks,
-  addCutContour, addWhiteVarnish, addBraille, preflight,
+  addCutContour, addWhiteVarnish, addBraille, addBarcodeStamp, addBackdropFile, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
@@ -16,7 +16,7 @@ import type {
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
   RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
   CollatingOptions, OmrOptions, GatheringOptions, FoldMarksOptions, LayMarksOptions,
-  CutContourOptions, WhiteVarnishOptions, BrailleOptions,
+  CutContourOptions, WhiteVarnishOptions, BrailleOptions, BarcodeStampOptions, BackdropFileOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ type ToolEngine =
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
   | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks'
-  | 'cutcontour' | 'whitevarnish' | 'braille';
+  | 'cutcontour' | 'whitevarnish' | 'braille' | 'barcode' | 'backdropfile';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -972,12 +972,17 @@ const TOOLS: ToolDef[] = [
     tags: ['Grade-1 braille', 'ADA', 'raised dots'], Thumb: BrailleThumb,
   },
   {
-    id: 'qrstamp', name: 'QR / Barcode', preset: 'QR Stamp', category: 'Marks & prepress', engine: 'qrstamp',
-    desc: 'Stamp a scannable QR code (URL, vCard, code) on every page at your chosen corner.',
-    tags: ['QR code', 'scannable', 'URL / vCard'], Thumb: QrThumb,
+    id: 'qrstamp', name: 'Barcode / QR', preset: 'Barcode / QR', category: 'Marks & prepress', engine: 'barcode',
+    desc: 'Stamp a QR, Code 128, DataMatrix (ECC200) or EAN-13 barcode — scale, quiet zone, 9-point position, rotation, colours and human-readable text.',
+    tags: ['QR / DataMatrix', 'Code 128 / EAN-13', 'scannable'], Thumb: QrThumb,
   },
   {
-    id: 'backdrop', name: 'Backdrop', preset: 'Backdrop', category: 'Marks & prepress', engine: 'backdrop',
+    id: 'backdropfile', name: 'Backdrop', preset: 'Backdrop', category: 'Marks & prepress', engine: 'backdropfile',
+    desc: 'Place an uploaded PDF or image behind your page content — pre-printed stationery, textured stock or a brand frame — with scale, offset, opacity and repeat.',
+    tags: ['background layer', 'stationery', 'underlay'], Thumb: BackdropThumb,
+  },
+  {
+    id: 'backdrop', name: 'Background Fill', preset: 'Background Fill', category: 'Marks & prepress', engine: 'backdrop',
     desc: 'Paint a solid colour behind every page — put borderless art onto a coloured stock.',
     tags: ['background', 'flatten', 'coloured stock'], Thumb: BackdropThumb,
   },
@@ -2079,6 +2084,14 @@ const DEFAULT_BRAILLE: BrailleOptions = {
   text: 'hello', xPt: 72, dotDiaPt: 4.25, dotPitchPt: 7.09, cellSpacePt: 17, lineSpacePt: 28.35,
   previewColor: { r: 0.55, g: 0.55, b: 0.6 }, pages: 'all',
 };
+const DEFAULT_BARCODE: BarcodeStampOptions = {
+  text: 'Hello World', symbology: 'qr', scale: 3, quietZone: 4, barHeightMm: 15,
+  position: 'br', marginPt: 18, xOffsetPt: 0, yOffsetPt: 0, rotationDeg: 0,
+  barColor: { r: 0, g: 0, b: 0 }, bgColor: { r: 1, g: 1, b: 1 }, transparent: false, showText: true, pages: 'all',
+};
+const DEFAULT_BACKDROPFILE: BackdropFileOptions = {
+  offsetXPt: 0, offsetYPt: 0, scalePct: 100, opacity: 100, repeat: true, pages: 'all',
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2571,6 +2584,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [nudgeOpts, setNudgeOpts] = useState<NudgeOptions>(DEFAULT_NUDGE);
   const [backdropOpts, setBackdropOpts] = useState<BackdropOptions>(DEFAULT_BACKDROP);
   const [qrStampOpts, setQrStampOpts] = useState<QrStampOptions>(DEFAULT_QRSTAMP);
+  const [barcodeOpts, setBarcodeOpts] = useState<BarcodeStampOptions>(DEFAULT_BARCODE);
+  const [backdropFileOpts, setBackdropFileOpts] = useState<BackdropFileOptions>(DEFAULT_BACKDROPFILE);
   const [mixReverse, setMixReverse] = useState(false);
   // Initialise order-list tools from the (possibly already-loaded) file so they
   // are correct even when this tool was reached by switching in the rail.
@@ -2665,6 +2680,11 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'repair': out = await repairPdf(file.bytes); outName = `${base}-repaired.pdf`; break;
         case 'backdrop': out = await addBackdrop(file.bytes, backdropOpts); outName = `${base}-backdrop.pdf`; break;
         case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
+        case 'barcode': out = await addBarcodeStamp(file.bytes, barcodeOpts); outName = `${base}-barcode.pdf`; break;
+        case 'backdropfile':
+          if (!stampFile) throw new Error('Upload the backdrop PDF / image first.');
+          out = await addBackdropFile(file.bytes, stampFile.bytes, { ...backdropFileOpts, opacity: (backdropFileOpts.opacity ?? 100) / 100 });
+          outName = `${base}-backdrop.pdf`; break;
         case 'dimensions': out = await addDimensions(file.bytes); outName = `${base}-dimensions.pdf`; break;
         case 'distort': out = await distortPdf(file.bytes, { factorPct: distortFactor(distortOpts), direction: distortOpts.direction, pages: pageRange }); outName = `${base}-distort.pdf`; break;
         case 'mix':
@@ -2826,6 +2846,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'nudge' && <NudgeSettings opts={nudgeOpts} onChange={setNudgeOpts} />}
                 {tool.engine === 'backdrop' && <BackdropSettings opts={backdropOpts} onChange={setBackdropOpts} />}
                 {tool.engine === 'qrstamp' && <QrStampSettings opts={qrStampOpts} onChange={setQrStampOpts} />}
+                {tool.engine === 'barcode' && <BarcodeSettings opts={barcodeOpts} onChange={setBarcodeOpts} />}
+                {tool.engine === 'backdropfile' && <BackdropFileSettings opts={backdropFileOpts} onChange={setBackdropFileOpts} />}
                 {tool.engine === 'mix' && (
                   <Row><input type="checkbox" checked={mixReverse} onChange={e => setMixReverse(e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Reverse the second file (backs scanned in reverse)</span></Row>
                 )}
@@ -2838,15 +2860,15 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 )}
               </div>
 
-              {(tool.engine === 'overlay' || tool.engine === 'mix') && (
+              {(tool.engine === 'overlay' || tool.engine === 'mix' || tool.engine === 'backdropfile') && (
                 <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
-                  <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'mix' ? 'Second PDF (interleave)' : 'Overlay / watermark PDF'}</h4>
+                  <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'mix' ? 'Second PDF (interleave)' : tool.engine === 'backdropfile' ? 'Backdrop file (PDF / image)' : 'Overlay / watermark PDF'}</h4>
                   {stampFile
                     ? <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                         <span style={{ fontSize: '.85rem', flex: 1 }}>📄 {stampFile.name}</span>
                         <button className="btn secondary" style={{ padding: '.3rem .65rem', fontSize: '.8rem' }} onClick={() => setStampFile(null)}>Change</button>
                       </div>
-                    : <FileDrop onFile={loadStamp} label={tool.engine === 'mix' ? 'Drop the second PDF (the backs)' : 'Drop the watermark / stamp PDF'} />}
+                    : <FileDrop onFile={loadStamp} label={tool.engine === 'mix' ? 'Drop the second PDF (the backs)' : tool.engine === 'backdropfile' ? 'Drop the backdrop PDF or image' : 'Drop the watermark / stamp PDF'} />}
                 </div>
               )}
 
@@ -2941,7 +2963,7 @@ const THEMES: Record<'light' | 'dark', React.CSSProperties> = {
 };
 
 const DEFAULT_HEADERFOOTER: HeaderFooterOptions = { header: 'Document Title', footer: '', fontSizePt: 10, marginPt: 24, align: 'center' };
-const DEFAULT_WATERMARK: WatermarkOptions = { text: 'PROOF', opacity: 0.22, angleDeg: 45, fontSizePt: 96 };
+const DEFAULT_WATERMARK: WatermarkOptions = { text: 'DRAFT', opacity: 0.15, angleDeg: 45, fontSizePt: 72, color: { r: 0.53, g: 0.53, b: 0.53 }, pages: 'all' };
 const DEFAULT_JOBSLUG: JobSlugOptions = { text: 'Job name · client · date', position: 'bottom', fontSizePt: 9 };
 
 function BleedSettings({ opts, onChange }: { opts: BleedOptions; onChange: (o: BleedOptions) => void }) {
@@ -3006,10 +3028,78 @@ function WatermarkSettings({ opts, onChange }: { opts: WatermarkOptions; onChang
   const set = <K extends keyof WatermarkOptions>(k: K, v: WatermarkOptions[K]) => onChange({ ...opts, [k]: v });
   return (
     <Grid>
+      <Field label="Presets">
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {['DRAFT', 'CONFIDENTIAL', 'PROOF', 'COPY', 'SAMPLE', 'DO NOT COPY'].map(p => (
+            <button key={p} className="btn secondary" style={{ padding: '.25rem .5rem', fontSize: '.72rem' }} onClick={() => set('text', p)}>{p}</button>
+          ))}
+        </div>
+      </Field>
       <Field label="Watermark text"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
-      <Field label={`Opacity: ${Math.round(opts.opacity * 100)}%`}><input type="range" min={5} max={80} step={5} value={opts.opacity * 100} onChange={e => set('opacity', +e.target.value / 100)} style={{ width: '100%', marginTop: '.5rem' }} /></Field>
-      <Field label="Angle (°)"><input type="number" min={-90} max={90} step={5} value={opts.angleDeg} onChange={e => set('angleDeg', +e.target.value)} style={iStyle} /></Field>
       <Field label="Font size (pt)"><input type="number" min={24} max={200} step={4} value={opts.fontSizePt} onChange={e => set('fontSizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Colour"><input type="color" value={rgbToHex(opts.color ?? { r: 0.53, g: 0.53, b: 0.53 })} onChange={e => set('color', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label={`Opacity: ${Math.round(opts.opacity * 100)}%`}><input type="range" min={5} max={80} step={5} value={opts.opacity * 100} onChange={e => set('opacity', +e.target.value / 100)} style={{ width: '100%', marginTop: '.5rem' }} /></Field>
+      <Field label="Angle (°)" note="45 diagonal · 0 horizontal · 90 vertical"><input type="number" min={-90} max={360} step={5} value={opts.angleDeg} onChange={e => set('angleDeg', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function BarcodeSettings({ opts, onChange }: { opts: BarcodeStampOptions; onChange: (o: BarcodeStampOptions) => void }) {
+  const set = <K extends keyof BarcodeStampOptions>(k: K, v: BarcodeStampOptions[K]) => onChange({ ...opts, [k]: v });
+  const is2D = opts.symbology === 'qr' || opts.symbology === 'datamatrix';
+  return (
+    <Grid>
+      <Field label="Symbology">
+        <select value={opts.symbology} onChange={e => set('symbology', e.target.value as BarcodeStampOptions['symbology'])} style={iStyle}>
+          <option value="qr">QR Code — URLs, text</option>
+          <option value="code128">Code 128 — alphanumeric IDs</option>
+          <option value="datamatrix">DataMatrix — compact 2D</option>
+          <option value="ean13">EAN-13 — retail (12 digits)</option>
+        </select>
+      </Field>
+      <Field label="Data" note={opts.symbology === 'ean13' ? '12 digits (check auto)' : 'value to encode'}><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} style={iStyle} /></Field>
+      <Field label="Scale (module pt)" note="module size / bar width"><input type="number" min={1} max={12} step={0.5} value={opts.scale ?? 3} onChange={e => set('scale', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Quiet zone (modules)"><input type="number" min={0} max={12} step={1} value={opts.quietZone ?? 4} onChange={e => set('quietZone', +e.target.value)} style={iStyle} /></Field>
+      {!is2D && <Field label="Bar height (mm)"><input type="number" min={3} max={40} step={1} value={opts.barHeightMm ?? 15} onChange={e => set('barHeightMm', +e.target.value)} style={iStyle} /></Field>}
+      {!is2D && <Field label="Human-readable text"><Row><input type="checkbox" checked={!!opts.showText} onChange={e => set('showText', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Show value under bars</span></Row></Field>}
+      <Field label="Position">
+        <select value={opts.position} onChange={e => set('position', e.target.value as BarcodeStampOptions['position'])} style={iStyle}>
+          {[['tl', 'Top-left'], ['tc', 'Top-centre'], ['tr', 'Top-right'], ['ml', 'Mid-left'], ['mc', 'Centre'], ['mr', 'Mid-right'], ['bl', 'Bottom-left'], ['bc', 'Bottom-centre'], ['br', 'Bottom-right']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </Field>
+      <Field label="Margin (pt)"><input type="number" min={0} max={144} step={1} value={opts.marginPt ?? 18} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="X offset (pt)"><input type="number" step={1} value={opts.xOffsetPt ?? 0} onChange={e => set('xOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Y offset (pt)"><input type="number" step={1} value={opts.yOffsetPt ?? 0} onChange={e => set('yOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Rotation">
+        <select value={opts.rotationDeg ?? 0} onChange={e => set('rotationDeg', +e.target.value as BarcodeStampOptions['rotationDeg'])} style={iStyle}>
+          {[0, 90, 180, 270].map(d => <option key={d} value={d}>{d}°</option>)}
+        </select>
+      </Field>
+      <Field label="Bar colour"><input type="color" value={rgbToHex(opts.barColor ?? { r: 0, g: 0, b: 0 })} onChange={e => set('barColor', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Background"><input type="color" value={rgbToHex(opts.bgColor ?? { r: 1, g: 1, b: 1 })} onChange={e => set('bgColor', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Transparent bg"><Row><input type="checkbox" checked={!!opts.transparent} onChange={e => set('transparent', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>No background panel</span></Row></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Stamps the same barcode on every page (or a page range). <strong>DataMatrix</strong> is a real ECC200 encode (Reed-Solomon + Annex F placement). Print black on white and don't scale after generating. For a unique barcode per CSV row, use the <em>Variable Data</em> tool.
+      </div>
+    </Grid>
+  );
+}
+
+function BackdropFileSettings({ opts, onChange }: { opts: BackdropFileOptions; onChange: (o: BackdropFileOptions) => void }) {
+  const set = <K extends keyof BackdropFileOptions>(k: K, v: BackdropFileOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Repeat"><Row><input type="checkbox" checked={opts.repeat !== false} onChange={e => set('repeat', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Across all pages (else page 1 only)</span></Row></Field>
+      <Field label="Offset X (pt)" note="+ right"><input type="number" step={1} value={opts.offsetXPt ?? 0} onChange={e => set('offsetXPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Offset Y (pt)" note="+ down"><input type="number" step={1} value={opts.offsetYPt ?? 0} onChange={e => set('offsetYPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Scale (%)"><input type="number" min={10} max={400} step={1} value={opts.scalePct ?? 100} onChange={e => set('scalePct', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Opacity (%)"><input type="number" min={0} max={100} step={1} value={opts.opacity ?? 100} onChange={e => set('opacity', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Places the uploaded PDF or image <strong>behind</strong> your page content (the opposite of Overlay). Upload it in the <em>Backdrop file</em> box below. Good for pre-printed stationery, textured stock and brand frames — match or exceed the page size to avoid white edges.
+      </div>
     </Grid>
   );
 }

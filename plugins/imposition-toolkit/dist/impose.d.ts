@@ -222,6 +222,12 @@ export interface WatermarkOptions {
     opacity: number;
     angleDeg: number;
     fontSizePt: number;
+    color?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    pages?: string;
 }
 export declare function addTextWatermark(bytes: Uint8Array, opts: WatermarkOptions): Promise<Uint8Array>;
 export interface JobSlugOptions {
@@ -377,6 +383,13 @@ export interface DataMergeResult {
     records: number;
     columns: string[];
 }
+export interface DataMatrixResult {
+    size: number;
+    matrix: boolean[][];
+    codewords: number[];
+    ecc: number[];
+}
+export declare function encodeDataMatrix(text: string): DataMatrixResult;
 export declare function imposeDataMerge(csvText: string, opts: DataMergeOptions): Promise<DataMergeResult>;
 export interface RegMarkOptions {
     marginIn: number;
@@ -406,6 +419,15 @@ export interface BackdropOptions {
     b: number;
 }
 export declare function addBackdrop(bytes: Uint8Array, opts: BackdropOptions): Promise<Uint8Array>;
+export interface BackdropFileOptions {
+    offsetXPt?: number;
+    offsetYPt?: number;
+    scalePct?: number;
+    opacity?: number;
+    repeat?: boolean;
+    pages?: string;
+}
+export declare function addBackdropFile(baseBytes: Uint8Array, backdropBytes: Uint8Array, opts: BackdropFileOptions): Promise<Uint8Array>;
 export interface QrStampOptions {
     text: string;
     sizePt: number;
@@ -414,6 +436,32 @@ export interface QrStampOptions {
     symbology?: 'qr' | 'code128' | 'ean13';
 }
 export declare function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Promise<Uint8Array>;
+export interface BarcodeStampOptions {
+    text: string;
+    symbology: 'qr' | 'code128' | 'datamatrix' | 'ean13';
+    scale?: number;
+    quietZone?: number;
+    barHeightMm?: number;
+    position: 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br';
+    marginPt?: number;
+    xOffsetPt?: number;
+    yOffsetPt?: number;
+    rotationDeg?: 0 | 90 | 180 | 270;
+    barColor?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    bgColor?: {
+        r: number;
+        g: number;
+        b: number;
+    };
+    transparent?: boolean;
+    showText?: boolean;
+    pages?: string;
+}
+export declare function addBarcodeStamp(bytes: Uint8Array, opts: BarcodeStampOptions): Promise<Uint8Array>;
 export declare function addDimensions(bytes: Uint8Array): Promise<Uint8Array>;
 export interface CutContourOptions {
     shape: 'rectangle' | 'rounded' | 'ellipse';

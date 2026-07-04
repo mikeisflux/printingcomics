@@ -875,7 +875,12 @@ async function addTextWatermark(bytes, opts) {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
   const rad = opts.angleDeg * Math.PI / 180;
-  for (const pg of doc.getPages()) {
+  const c = opts.color ?? { r: 0.5, g: 0.5, b: 0.5 };
+  const pages = doc.getPages();
+  const sel = parsePageRange(opts.pages ?? "all", pages.length);
+  for (let i = 0; i < pages.length; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i];
     const { width: w, height: h } = pg.getSize();
     const tw = font.widthOfTextAtSize(opts.text || "PROOF", opts.fontSizePt);
     const x = w / 2 - tw / 2 * Math.cos(rad);
@@ -885,7 +890,7 @@ async function addTextWatermark(bytes, opts) {
       y,
       font,
       size: opts.fontSizePt,
-      color: rgb(0.5, 0.5, 0.5),
+      color: rgb(c.r, c.g, c.b),
       opacity: opts.opacity,
       rotate: degrees(opts.angleDeg)
     });
@@ -1343,7 +1348,188 @@ function drawEan13(page, rgb, text, x, y, w, h) {
 function drawBarcode(page, rgb, qrcode, symbology, text, x, y, w, h) {
   if (symbology === "code128") drawCode128(page, rgb, text, x, y, w, h);
   else if (symbology === "ean13") drawEan13(page, rgb, text, x, y, w, h);
-  else drawQrCode(page, rgb, qrcode, text, x, y, Math.min(w, h));
+  else if (symbology === "datamatrix") {
+    const dm = encodeDataMatrix(text);
+    const cell = Math.min(w, h) / (dm.size + 4);
+    drawModuleGrid(page, rgb, dm.matrix, x, y, cell, 2);
+  } else drawQrCode(page, rgb, qrcode, text, x, y, Math.min(w, h));
+}
+const GF_EXP = new Uint8Array(512);
+const GF_LOG = new Uint8Array(256);
+(() => {
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    GF_EXP[i] = x;
+    GF_LOG[x] = i;
+    x <<= 1;
+    if (x & 256) x ^= 301;
+  }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+})();
+const gfMul = (a, b) => a === 0 || b === 0 ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]];
+function dmReedSolomon(data, nc) {
+  const gen = new Array(nc + 1).fill(0);
+  gen[0] = 1;
+  for (let i = 1; i <= nc; i++) {
+    gen[i] = 1;
+    for (let j = i - 1; j > 0; j--) gen[j] = gen[j - 1] ^ gfMul(gen[j], GF_EXP[i]);
+    gen[0] = gfMul(gen[0], GF_EXP[i]);
+  }
+  const ecc = new Array(nc).fill(0);
+  for (const d of data) {
+    const k = d ^ ecc[0];
+    for (let j = 0; j < nc - 1; j++) ecc[j] = ecc[j + 1] ^ gfMul(k, gen[nc - 1 - j]);
+    ecc[nc - 1] = gfMul(k, gen[0]);
+  }
+  return ecc;
+}
+function dmEncodeAscii(text) {
+  const b = Array.from(text, (c) => c.charCodeAt(0) & 255);
+  const cw = [];
+  for (let i = 0; i < b.length; ) {
+    const c = b[i];
+    if (c >= 48 && c <= 57 && i + 1 < b.length && b[i + 1] >= 48 && b[i + 1] <= 57) {
+      cw.push((c - 48) * 10 + (b[i + 1] - 48) + 130);
+      i += 2;
+    } else if (c < 128) {
+      cw.push(c + 1);
+      i++;
+    } else {
+      cw.push(235);
+      cw.push(c - 128 + 1);
+      i++;
+    }
+  }
+  return cw;
+}
+const DM_SIZES = [[10, 3, 5], [12, 5, 7], [14, 8, 10], [16, 12, 12], [18, 18, 14], [20, 22, 18], [22, 30, 20], [24, 36, 24], [26, 44, 28]];
+function dmPlacement(nrow, ncol) {
+  const arr = new Int32Array(nrow * ncol).fill(-1);
+  const mod = (r2, c5, chr2, bit) => {
+    if (r2 < 0) {
+      r2 += nrow;
+      c5 += 4 - (nrow + 4) % 8;
+    }
+    if (c5 < 0) {
+      c5 += ncol;
+      r2 += 4 - (ncol + 4) % 8;
+    }
+    arr[r2 * ncol + c5] = chr2 * 8 + bit;
+  };
+  const utah = (r2, c5, chr2) => {
+    mod(r2 - 2, c5 - 2, chr2, 0);
+    mod(r2 - 2, c5 - 1, chr2, 1);
+    mod(r2 - 1, c5 - 2, chr2, 2);
+    mod(r2 - 1, c5 - 1, chr2, 3);
+    mod(r2 - 1, c5, chr2, 4);
+    mod(r2, c5 - 2, chr2, 5);
+    mod(r2, c5 - 1, chr2, 6);
+    mod(r2, c5, chr2, 7);
+  };
+  const c1 = (chr2) => {
+    mod(nrow - 1, 0, chr2, 0);
+    mod(nrow - 1, 1, chr2, 1);
+    mod(nrow - 1, 2, chr2, 2);
+    mod(0, ncol - 2, chr2, 3);
+    mod(0, ncol - 1, chr2, 4);
+    mod(1, ncol - 1, chr2, 5);
+    mod(2, ncol - 1, chr2, 6);
+    mod(3, ncol - 1, chr2, 7);
+  };
+  const c2 = (chr2) => {
+    mod(nrow - 3, 0, chr2, 0);
+    mod(nrow - 2, 0, chr2, 1);
+    mod(nrow - 1, 0, chr2, 2);
+    mod(0, ncol - 4, chr2, 3);
+    mod(0, ncol - 3, chr2, 4);
+    mod(0, ncol - 2, chr2, 5);
+    mod(0, ncol - 1, chr2, 6);
+    mod(1, ncol - 1, chr2, 7);
+  };
+  const c3 = (chr2) => {
+    mod(nrow - 3, 0, chr2, 0);
+    mod(nrow - 2, 0, chr2, 1);
+    mod(nrow - 1, 0, chr2, 2);
+    mod(0, ncol - 2, chr2, 3);
+    mod(0, ncol - 1, chr2, 4);
+    mod(1, ncol - 1, chr2, 5);
+    mod(2, ncol - 1, chr2, 6);
+    mod(3, ncol - 1, chr2, 7);
+  };
+  const c4 = (chr2) => {
+    mod(nrow - 1, 0, chr2, 0);
+    mod(nrow - 1, ncol - 1, chr2, 1);
+    mod(0, ncol - 3, chr2, 2);
+    mod(0, ncol - 2, chr2, 3);
+    mod(0, ncol - 1, chr2, 4);
+    mod(1, ncol - 3, chr2, 5);
+    mod(1, ncol - 2, chr2, 6);
+    mod(1, ncol - 1, chr2, 7);
+  };
+  let chr = 0, r = 4, c = 0;
+  do {
+    if (r === nrow && c === 0) c1(chr++);
+    else if (r === nrow - 2 && c === 0 && ncol % 4) c2(chr++);
+    else if (r === nrow - 2 && c === 0 && ncol % 8 === 4) c3(chr++);
+    else if (r === nrow + 4 && c === 2 && ncol % 8 === 0) c4(chr++);
+    do {
+      if (r < nrow && c >= 0 && arr[r * ncol + c] === -1) utah(r, c, chr++);
+      r -= 2;
+      c += 2;
+    } while (r >= 0 && c < ncol);
+    r += 1;
+    c += 3;
+    do {
+      if (r >= 0 && c < ncol && arr[r * ncol + c] === -1) utah(r, c, chr++);
+      r += 2;
+      c -= 2;
+    } while (r < nrow && c >= 0);
+    r += 3;
+    c += 1;
+  } while (r < nrow || c < ncol);
+  if (arr[(nrow - 1) * ncol + ncol - 1] === -1) {
+    arr[(nrow - 1) * ncol + ncol - 1] = arr[(nrow - 2) * ncol + ncol - 2] = -2;
+  }
+  return arr;
+}
+function encodeDataMatrix(text) {
+  let data = dmEncodeAscii(text || " ");
+  const spec = DM_SIZES.find((s) => data.length <= s[1]);
+  if (!spec) throw new Error("DataMatrix: data too long (max 44 codewords / 26\xD726)");
+  const [D, cap, nc] = spec;
+  if (data.length < cap) {
+    data.push(129);
+    while (data.length < cap) {
+      const pos = data.length + 1;
+      let v = 149 * pos % 253 + 1 + 129;
+      if (v > 254) v -= 254;
+      data.push(v);
+    }
+  }
+  const all = data.concat(dmReedSolomon(data, nc));
+  const nrow = D - 2, ncol = D - 2;
+  const place = dmPlacement(nrow, ncol);
+  const m = Array.from({ length: D }, () => new Array(D).fill(false));
+  for (let row = 0; row < D; row++) for (let col = 0; col < D; col++) {
+    if (col === 0) m[row][col] = true;
+    else if (row === D - 1) m[row][col] = true;
+    else if (row === 0) m[row][col] = col % 2 === 0;
+    else if (col === D - 1) m[row][col] = (D - 1 - row) % 2 === 0;
+    else {
+      const idx = place[(row - 1) * ncol + (col - 1)];
+      m[row][col] = idx === -2 ? true : idx >= 0 && (all[Math.floor(idx / 8)] >> 7 - idx % 8 & 1) === 1;
+    }
+  }
+  return { size: D, matrix: m, codewords: data, ecc: all.slice(data.length) };
+}
+function drawModuleGrid(page, rgb, matrix, x, y, cell, quiet) {
+  const n = matrix.length, total = n + quiet * 2, size = total * cell;
+  page.drawRectangle({ x, y, width: size, height: size, color: rgb(1, 1, 1) });
+  const black = rgb(0, 0, 0);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (!matrix[r][c]) continue;
+    page.drawRectangle({ x: x + (quiet + c) * cell, y: y + size - (quiet + r + 1) * cell, width: cell + 0.3, height: cell + 0.3, color: black });
+  }
 }
 async function imposeDataMerge(csvText, opts) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
@@ -1524,6 +1710,40 @@ async function addBackdrop(bytes, opts) {
   }
   return out.save();
 }
+async function addBackdropFile(baseBytes, backdropBytes, opts) {
+  const { PDFDocument } = await import("pdf-lib");
+  const src = await PDFDocument.load(baseBytes, { ignoreEncryption: true });
+  const pages = src.getPages();
+  const out = await PDFDocument.create();
+  const srcEmbeds = await out.embedPages(pages);
+  const sig = String.fromCharCode(...backdropBytes.slice(0, 4));
+  let bw0, bh0;
+  let place;
+  if (sig === "%PDF") {
+    const [bd] = await out.embedPdf(backdropBytes, [0]);
+    bw0 = bd.width;
+    bh0 = bd.height;
+    place = (pg, x, y, w, h, op2) => pg.drawPage(bd, { x, y, width: w, height: h, opacity: op2 });
+  } else {
+    const isPng = backdropBytes[0] === 137 && backdropBytes[1] === 80;
+    const img = isPng ? await out.embedPng(backdropBytes) : await out.embedJpg(backdropBytes);
+    bw0 = img.width;
+    bh0 = img.height;
+    place = (pg, x, y, w, h, op2) => pg.drawImage(img, { x, y, width: w, height: h, opacity: op2 });
+  }
+  const scale = (opts.scalePct ?? 100) / 100;
+  const op = opts.opacity ?? 1;
+  const bw = bw0 * scale, bh = bh0 * scale;
+  const sel = parsePageRange(opts.pages ?? "all", pages.length);
+  for (let i = 0; i < pages.length; i++) {
+    const { width: w, height: h } = pages[i].getSize();
+    const pg = out.addPage([w, h]);
+    const applies = opts.repeat === false ? i === 0 : sel.has(i + 1);
+    if (applies) place(pg, opts.offsetXPt ?? 0, h - bh - (opts.offsetYPt ?? 0), bw, bh, op);
+    pg.drawPage(srcEmbeds[i], { x: 0, y: 0, width: w, height: h });
+  }
+  return out.save();
+}
 async function addQrStamp(bytes, opts) {
   const { PDFDocument, rgb } = await import("pdf-lib");
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -1540,6 +1760,112 @@ async function addQrStamp(bytes, opts) {
     const x = opts.position === "center" ? (w - bw) / 2 : opts.position.includes("l") ? m : w - bw - m;
     const y = opts.position === "center" ? (h - bh) / 2 : opts.position.includes("t") ? h - bh - m : m;
     drawBarcode(pg, rgb, qrcode, sym, opts.text || " ", x, y, bw, bh);
+  }
+  return doc.save();
+}
+function code128Bits(text) {
+  const data = (text || " ").replace(/[^\x20-\x7e]/g, "");
+  const vals = [104];
+  for (const ch of data) vals.push(ch.charCodeAt(0) - 32);
+  let sum = 104;
+  for (let i = 1; i < vals.length; i++) sum += vals[i] * i;
+  vals.push(sum % 103, 106);
+  let bits = "";
+  for (const v of vals) {
+    let bar = true;
+    for (const d of C128[v]) {
+      bits += (bar ? "1" : "0").repeat(+d);
+      bar = !bar;
+    }
+  }
+  return bits;
+}
+function ean13Bits(text) {
+  let d = (text || "").replace(/\D/g, "").slice(0, 13);
+  while (d.length < 12) d = "0" + d;
+  if (d.length === 12) {
+    let s = 0;
+    for (let i = 0; i < 12; i++) s += +d[i] * (i % 2 ? 3 : 1);
+    d += String((10 - s % 10) % 10);
+  }
+  const parity = EAN_PARITY[+d[0]];
+  let bits = "101";
+  for (let i = 1; i <= 6; i++) bits += (parity[i - 1] === "L" ? EAN_L : EAN_G)[+d[i]];
+  bits += "01010";
+  for (let i = 7; i <= 12; i++) bits += EAN_R[+d[i]];
+  return bits + "101";
+}
+function rotateRect(deg, W, H, lx, ly, w, h) {
+  switch ((deg % 360 + 360) % 360) {
+    case 90:
+      return { x: H - (ly + h), y: lx, w: h, h: w };
+    case 180:
+      return { x: W - (lx + w), y: H - (ly + h), w, h };
+    case 270:
+      return { x: ly, y: W - (lx + w), w: h, h: w };
+    default:
+      return { x: lx, y: ly, w, h };
+  }
+}
+async function addBarcodeStamp(bytes, opts) {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const scale = opts.scale ?? 3;
+  const q = opts.quietZone ?? 4;
+  const rot = opts.rotationDeg ?? 0;
+  const bar = opts.barColor ?? { r: 0, g: 0, b: 0 };
+  const bg = opts.bgColor ?? { r: 1, g: 1, b: 1 };
+  const barCol = rgb(bar.r, bar.g, bar.b), bgCol = rgb(bg.r, bg.g, bg.b);
+  const is2D = opts.symbology === "qr" || opts.symbology === "datamatrix";
+  const sel = parsePageRange(opts.pages ?? "all", doc.getPageCount());
+  const margin = opts.marginPt ?? 18;
+  const cells = [];
+  let W = 0, H = 0, label = "";
+  if (is2D) {
+    let grid;
+    if (opts.symbology === "datamatrix") grid = encodeDataMatrix(opts.text || " ").matrix;
+    else {
+      const mod = await import("qrcode-generator");
+      const qrcode = mod.default ?? mod;
+      const qr = qrcode(0, "M");
+      qr.addData(opts.text || " ");
+      qr.make();
+      const n2 = qr.getModuleCount();
+      grid = Array.from({ length: n2 }, (_, r) => Array.from({ length: n2 }, (_2, c) => qr.isDark(r, c)));
+    }
+    const n = grid.length, tot = n + 2 * q;
+    W = H = tot * scale;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (grid[r][c]) cells.push({ x: (q + c) * scale, y: H - (q + r + 1) * scale, w: scale + 0.3, h: scale + 0.3 });
+  } else {
+    const bits = opts.symbology === "ean13" ? ean13Bits(opts.text) : code128Bits(opts.text);
+    label = opts.symbology === "ean13" ? (opts.text || "").replace(/\D/g, "").slice(0, 13) : opts.text || "";
+    const barH = (opts.barHeightMm ?? 15) * 2.83465;
+    const textGap = opts.showText ? 11 : 0;
+    W = (bits.length + 2 * q) * scale;
+    H = barH + textGap;
+    for (let i = 0; i < bits.length; i++) if (bits[i] === "1") cells.push({ x: (q + i) * scale, y: textGap, w: scale + 0.15, h: barH });
+  }
+  const swap = rot === 90 || rot === 270;
+  const fw = swap ? H : W, fh = swap ? W : H;
+  for (let p = 0; p < doc.getPageCount(); p++) {
+    if (!sel.has(p + 1)) continue;
+    const pg = doc.getPage(p);
+    const { width: pw, height: ph } = pg.getSize();
+    const hz = opts.position[1], vt = opts.position[0];
+    let ax = hz === "l" ? margin : hz === "c" ? (pw - fw) / 2 : pw - fw - margin;
+    let ay = vt === "t" ? ph - fh - margin : vt === "m" ? (ph - fh) / 2 : margin;
+    ax += opts.xOffsetPt ?? 0;
+    ay -= opts.yOffsetPt ?? 0;
+    if (!opts.transparent) pg.drawRectangle({ x: ax, y: ay, width: fw, height: fh, color: bgCol });
+    for (const c of cells) {
+      const r = rotateRect(rot, W, H, c.x, c.y, c.w, c.h);
+      pg.drawRectangle({ x: ax + r.x, y: ay + r.y, width: r.w, height: r.h, color: barCol });
+    }
+    if (opts.showText && !is2D && rot === 0 && label) {
+      const ts = 8, tw = font.widthOfTextAtSize(label, ts);
+      pg.drawText(label, { x: ax + (fw - tw) / 2, y: ay + 1, font, size: ts, color: barCol });
+    }
   }
   return doc.save();
 }
@@ -2060,6 +2386,8 @@ function downloadMultiple(files, baseName) {
 }
 export {
   addBackdrop,
+  addBackdropFile,
+  addBarcodeStamp,
   addBraille,
   addCollatingMarks,
   addColorBar,
@@ -2083,6 +2411,7 @@ export {
   distortPdf,
   downloadMultiple,
   downloadPdf,
+  encodeDataMatrix,
   expandShuffle,
   flipPdf,
   generateBleed,

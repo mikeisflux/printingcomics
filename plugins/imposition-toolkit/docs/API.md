@@ -466,6 +466,24 @@ tint?, previewColor?, pages? }`. Digits get an automatic number sign; set
 `spotName` to place the dots on an emboss / varnish spot channel, or leave it
 off to draw visible ink.
 
+### `addBarcodeStamp(bytes, opts: BarcodeStampOptions): Promise<Uint8Array>`
+Stamp a barcode on every page (or a range). `{ text, symbology:'qr'|'code128'|
+'datamatrix'|'ean13', scale?, quietZone?, barHeightMm?, position (9-point:
+tl…br), marginPt?, xOffsetPt?, yOffsetPt?, rotationDeg?:0|90|180|270,
+barColor?, bgColor?, transparent?, showText?, pages? }`. **DataMatrix** is a
+real ECC200 encode (`encodeDataMatrix` — GF(256)/0x12d Reed-Solomon with first
+consecutive root α¹, ISO 16022 Annex F placement, sizes 10–26). QR needs the
+optional `qrcode-generator` peer.
+
+### `addBackdropFile(baseBytes, backdropBytes, opts: BackdropFileOptions): Promise<Uint8Array>`
+Composite an uploaded PDF or image **behind** the page content (the opposite of
+overlay). `{ offsetXPt?, offsetYPt?, scalePct?, opacity? (0–1), repeat?, pages? }`.
+`repeat:false` places the backdrop on page 1 only. `backdropBytes` may be a PDF
+(page 1 used), PNG or JPEG.
+
+`addTextWatermark` also accepts `color?` and `pages?` for coloured, ranged
+watermarks.
+
 ## Error handling
 
 Functions throw on invalid input (empty PDF, no valid ranges, unreadable file).
