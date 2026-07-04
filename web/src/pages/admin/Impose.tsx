@@ -2,14 +2,14 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import type { DragEvent, ChangeEvent } from 'react';
 import {
   getPdfInfo, imposeBooklet, imposeNUp, computeNUpGrid, addCropMarksOnly,
-  mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf,
+  mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
 } from '../../lib/impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
-  OverlayOptions, PageNumberOptions, TicketOptions,
+  OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
 } from '../../lib/impose';
 
@@ -42,6 +42,7 @@ interface PosterOptions {
   tilesAcross: number; tilesDown: number;
   sheetWIn: number; sheetHIn: number;
   overlapIn: number; addMarks: boolean; markLenIn: number; markOffIn: number;
+  centerMarks?: boolean; markWeightPt?: number;
 }
 interface ColorBarOptions { position: 'bottom' | 'top'; heightIn: number; }
 interface CropBoxOptions { top: number; right: number; bottom: number; left: number; }
@@ -51,7 +52,7 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
-  | 'bleed' | 'preflight' | 'dieline' | 'datamerge';
+  | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -297,6 +298,17 @@ const CropToolThumb = () => (
     <line x1="142" y1="14" x2="142" y2="134" stroke="#334155" strokeWidth="1" />
     <line x1="22" y1="42" x2="178" y2="42" stroke="#334155" strokeWidth="1" />
     <line x1="22" y1="106" x2="178" y2="106" stroke="#334155" strokeWidth="1" />
+  </svg>
+);
+
+const ResizeThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="34" y="30" width="132" height="88" rx="2" fill="#f8fafc" stroke="#cbd5e1" strokeDasharray="3,3" />
+    <rect x="58" y="48" width="70" height="52" rx="2" fill="#f1f5f9" stroke="#334155" strokeWidth="2" />
+    <path d="M128 100 L156 118" stroke="#64748b" strokeWidth="2" />
+    <polygon points="156,118 146,116 152,108" fill="#64748b" />
+    <path d="M58 48 L34 30" stroke="#64748b" strokeWidth="2" />
+    <polygon points="34,30 44,32 38,40" fill="#64748b" />
   </svg>
 );
 
@@ -707,6 +719,102 @@ const TOOLS: ToolDef[] = [
     desc: 'Trim margins off every page by setting a crop inset per edge.',
     tags: ['trim edges', 'crop box'], Thumb: CropToolThumb,
   },
+  {
+    id: 'resize', name: 'Resize / Scale', preset: 'Resize', category: 'Page & PDF tools', engine: 'resize',
+    desc: 'Scale pages by a percentage, or drop them onto a fixed paper size (fit or stretch).',
+    tags: ['scale %', 'fit to paper', 'stretch'], Thumb: ResizeThumb,
+  },
+];
+
+// ── Templates ─────────────────────────────────────────────────────────────────
+// Named, industry-organized presets. Each opens one of the tools above with a
+// specific set of option overrides pre-applied — the pdfpress "Templates" idea.
+
+interface TemplatePreset {
+  nup?: Partial<NUpOptions>;
+  booklet?: Partial<BookletOptions>;
+  poster?: Partial<PosterOptions>;
+  ticket?: Partial<TicketOptions>;
+  resize?: Partial<ResizeOptions>;
+}
+
+interface TemplateDef {
+  id: string;
+  name: string;
+  industry: string;
+  toolId: string;      // which tool this template opens
+  specs: string;       // one-line size/finish summary
+  preset?: TemplatePreset;
+}
+
+const TEMPLATE_INDUSTRIES = [
+  'Commercial Print', 'Packaging', 'Publishing', 'Large Format', 'Office', 'Variable Data', 'Real Estate',
+];
+
+const TEMPLATES: TemplateDef[] = [
+  // ── Commercial Print ──
+  { id: 't-bc-10up', name: '10-Up Business Cards', industry: 'Commercial Print', toolId: 'business', specs: '3.5×2″ · Letter · ⅛″ bleed · duplex', preset: { nup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, duplex: true, duplexFlip: 'long', addMarks: true } } },
+  { id: 't-bc-21up', name: '21-Up Business Cards (SRA3)', industry: 'Commercial Print', toolId: 'business', specs: '3.5×2″ · SRA3 gang · ⅛″ bleed', preset: { nup: { cellWIn: 3.5, cellHIn: 2, sheetWIn: 12.6, sheetHIn: 17.72, bleedIn: 0.125, addMarks: true, centerMarks: true } } },
+  { id: 't-postcard-46', name: 'Postcards 4×6 (4-Up)', industry: 'Commercial Print', toolId: 'postcard', specs: '4×6″ · Tabloid · ⅛″ bleed · duplex', preset: { nup: { cellWIn: 6, cellHIn: 4, sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125, duplex: true } } },
+  { id: 't-postcard-57', name: 'Postcards 5×7 Jumbo', industry: 'Commercial Print', toolId: 'postcard', specs: '5×7″ · Tabloid · ⅛″ bleed', preset: { nup: { cellWIn: 7, cellHIn: 5, sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125 } } },
+  { id: 't-greeting', name: 'Greeting Card (A2 Fold)', industry: 'Commercial Print', toolId: 'greeting', specs: '4.25×5.5″ folded · saddle spread' },
+  { id: 't-flyer-a5', name: 'A5 Flyer 2-Up', industry: 'Commercial Print', toolId: 'flyer', specs: 'A5 · 2-up on A4 · duplex' },
+  { id: 't-letterhead', name: 'Letterhead Gang Run', industry: 'Commercial Print', toolId: 'letterhead', specs: '8.5×11″ · 2-up on Tabloid' },
+  { id: 't-comp-slip', name: 'Compliment Slips (DL 3-Up)', industry: 'Commercial Print', toolId: 'complimentslip', specs: 'DL · 3-up on A4' },
+  { id: 't-bookmark', name: 'Bookmarks (6-Up)', industry: 'Commercial Print', toolId: 'bookmark', specs: '2×6″ · 6-up · Letter · crop marks' },
+
+  // ── Packaging ──
+  { id: 't-carton-ste', name: 'Straight-Tuck-End Carton', industry: 'Packaging', toolId: 'boxcarton', specs: 'Folding carton dieline · cut + crease' },
+  { id: 't-carton', name: 'Folding Carton Dieline', industry: 'Packaging', toolId: 'packaging', specs: 'Auto net · glue + dust flaps' },
+  { id: 't-folder', name: 'Presentation Folder (A4 Pocket)', industry: 'Packaging', toolId: 'presfolder', specs: 'Twin-pocket folder dieline' },
+  { id: 't-stickers', name: 'Kiss-Cut Sticker Sheet', industry: 'Packaging', toolId: 'stickers', specs: '2×2″ · step & repeat · kiss cut', preset: { nup: { cellWIn: 2, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.0625 } } },
+  { id: 't-stickers-die', name: 'Die-Cut Sticker Gang', industry: 'Packaging', toolId: 'stickers', specs: '3×3″ · gang · bleed', preset: { nup: { cellWIn: 3, cellHIn: 3, sheetWIn: 12, sheetHIn: 18, bleedIn: 0.125 } } },
+  { id: 't-labels-prod', name: 'Product Labels (2.5×2.5)', industry: 'Packaging', toolId: 'labels', specs: 'Square labels · gang · Letter', preset: { nup: { cellWIn: 2.5, cellHIn: 2.5, sheetWIn: 8.5, sheetHIn: 11, gutterIn: 0.125, gutterYIn: 0.125 } } },
+  { id: 't-coasters', name: 'Square Coasters (4-Up)', industry: 'Packaging', toolId: 'coasters', specs: '3.5×3.5″ · 4-up · bleed' },
+  { id: 't-hangtag', name: 'Hang Tags (8-Up)', industry: 'Packaging', toolId: 'hangtag', specs: '2.5×4″ · 8-up · Letter' },
+
+  // ── Publishing ──
+  { id: 't-mag-a4', name: 'Saddle-Stitch A4 Magazine', industry: 'Publishing', toolId: 'magazine', specs: 'A4 spreads · creep · duplex tumble' },
+  { id: 't-booklet', name: 'Saddle-Stitch Booklet', industry: 'Publishing', toolId: 'booklet', specs: 'Half-Letter spreads · auto shuffle' },
+  { id: 't-perfect', name: 'Perfect-Bound Paperback', industry: 'Publishing', toolId: 'perfectbound', specs: '4-up A5 · 16-pg signatures', preset: { booklet: { signatureSheets: 4 } } },
+  { id: 't-comic', name: 'Comic Book (US)', industry: 'Publishing', toolId: 'comic', specs: '6.625×10.25″ · saddle-stitch' },
+  { id: 't-catalog', name: 'Digest Catalog (5.5×8.5)', industry: 'Publishing', toolId: 'catalog', specs: '4-up nested · Tabloid · inward creep' },
+  { id: 't-zine', name: 'One-Sheet 8-Page Zine', industry: 'Publishing', toolId: 'zine', specs: '8-page fold from a single sheet' },
+  { id: 't-program', name: 'Playbill / Event Program', industry: 'Publishing', toolId: 'program', specs: 'Saddle-stitch program' },
+  { id: 't-notebook', name: 'A5 Pocket Notebook', industry: 'Publishing', toolId: 'notebook', specs: 'A5 · signatures · duplex', preset: { booklet: { signatureSheets: 2 } } },
+  { id: 't-childrens', name: "Children's Book (8×8)", industry: 'Publishing', toolId: 'booklet', specs: '8×8″ square · saddle-stitch', preset: { booklet: { marginIn: 0.375, creepIn: 0.0625 } } },
+
+  // ── Large Format ──
+  { id: 't-poster-a0', name: 'Poster Tiling (A4→A0)', industry: 'Large Format', toolId: 'poster', specs: 'Tile large art across A4 sheets' },
+  { id: 't-banner', name: 'Banner Panels (4-Up)', industry: 'Large Format', toolId: 'banner', specs: '24×36″ panels · overlap seams' },
+  { id: 't-feather', name: 'Feather Flag', industry: 'Large Format', toolId: 'featherflag', specs: '27.5×90.5″ soft-signage panel' },
+  { id: 't-roller', name: 'Retractable Roller Banner', industry: 'Large Format', toolId: 'rollerbanner', specs: '33×80″ single panel' },
+  { id: 't-tradeshow', name: 'Trade-Show Backdrop Tiles', industry: 'Large Format', toolId: 'poster', specs: 'Tile to 8×8ft · 1″ overlap', preset: { poster: { tilesAcross: 3, tilesDown: 3, overlapIn: 1, sheetWIn: 33, sheetHIn: 33 } } },
+
+  // ── Office ──
+  { id: 't-pagenum', name: 'Page Numbering / Bates', industry: 'Office', toolId: 'pagenumbers', specs: 'Add running page numbers' },
+  { id: 't-merge', name: 'Merge PDFs', industry: 'Office', toolId: 'merge', specs: 'Combine files in order' },
+  { id: 't-split', name: 'Split PDF', industry: 'Office', toolId: 'split', specs: 'Break into ranges' },
+  { id: 't-duplex-shuffle', name: 'Duplex Interleave', industry: 'Office', toolId: 'shuffle', specs: 'Weave fronts & backs into one file' },
+  { id: 't-resize-letter', name: 'Fit to US Letter', industry: 'Office', toolId: 'resize', specs: 'Scale any page to fit 8.5×11″', preset: { resize: { mode: 'fit', targetWIn: 8.5, targetHIn: 11 } } },
+  { id: 't-resize-2x', name: 'Enlarge 2×', industry: 'Office', toolId: 'resize', specs: 'Scale content to 200%', preset: { resize: { mode: 'scale', scalePct: 200 } } },
+  { id: 't-rotate-land', name: 'Rotate to Landscape', industry: 'Office', toolId: 'rotate', specs: 'Turn every page 90°' },
+  { id: 't-proof', name: 'Watermarked Proof', industry: 'Office', toolId: 'overlay', specs: 'Stamp a DRAFT / PROOF overlay' },
+  { id: 't-preflight', name: 'Preflight Inspector', industry: 'Office', toolId: 'preflight', specs: 'Check size, pages & warnings' },
+
+  // ── Variable Data ──
+  { id: 't-tickets-qr', name: 'Event Tickets (CSV + QR)', industry: 'Variable Data', toolId: 'tickets', specs: 'Personalize from CSV · scannable QR' },
+  { id: 't-raffle', name: 'Numbered Raffle Tickets', industry: 'Variable Data', toolId: 'raffle', specs: 'Sequential numbering · gang' },
+  { id: 't-vouchers', name: 'Gift Vouchers (CSV)', industry: 'Variable Data', toolId: 'coupons', specs: 'Data-merge codes & values' },
+  { id: 't-badges', name: 'Conference Badges (CSV)', industry: 'Variable Data', toolId: 'namebadge', specs: 'Names & orgs from CSV' },
+  { id: 't-avery', name: 'Mailing Labels (Avery 5160)', industry: 'Variable Data', toolId: 'labels', specs: '2.625×1″ · 30-up · Letter' },
+
+  // ── Real Estate ──
+  { id: 't-re-trifold', name: 'Property Trifold Brochure', industry: 'Real Estate', toolId: 'trifold', specs: 'Tri-fold · front + back flats · duplex' },
+  { id: 't-re-postcard', name: 'Open-House Postcards', industry: 'Real Estate', toolId: 'postcard', specs: '6×4.25″ EDDM · Tabloid gang', preset: { nup: { cellWIn: 6, cellHIn: 4.25, sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125, duplex: true } } },
+  { id: 't-re-card', name: 'Agent Business Cards', industry: 'Real Estate', toolId: 'business', specs: '3.5×2″ · 10-up · duplex', preset: { nup: { cellWIn: 3.5, cellHIn: 2, bleedIn: 0.125, duplex: true } } },
+  { id: 't-re-rack', name: 'Property Rack Cards', industry: 'Real Estate', toolId: 'postcard', specs: '3.5×8.5″ rack card · 3-up', preset: { nup: { cellWIn: 3.5, cellHIn: 8.5, sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125 } } },
+  { id: 't-re-yard', name: 'Yard / Rider Sign', industry: 'Real Estate', toolId: 'rollerbanner', specs: '24×18″ single panel', preset: { nup: { sheetWIn: 24, sheetHIn: 18 } } },
 ];
 
 // ── Shared UI primitives ─────────────────────────────────────────────────────
@@ -829,6 +937,27 @@ function FileBar({ file, onClear, label = 'Change' }: { file: LoadedFile; onClea
   );
 }
 
+// Shared "extra marks" controls — center marks + line weight. Appears wherever
+// crop/trim marks are enabled, driven by the engine's MarkStyle.
+function MarkExtras<T extends { addMarks: boolean; centerMarks?: boolean; markWeightPt?: number }>(
+  { opts, onChange }: { opts: T; onChange: (o: T) => void },
+) {
+  if (!opts.addMarks) return null;
+  return (
+    <>
+      <Field label="Center marks" note="Ticks at each edge midpoint">
+        <Row>
+          <input type="checkbox" checked={!!opts.centerMarks} onChange={e => onChange({ ...opts, centerMarks: e.target.checked })} />
+          <span style={{ fontSize: '.85rem' }}>Add center marks</span>
+        </Row>
+      </Field>
+      <Field label="Mark weight (pt)" note="Stroke thickness">
+        <input type="number" min={0.25} max={3} step={0.25} value={opts.markWeightPt ?? 0.5} onChange={e => onChange({ ...opts, markWeightPt: +e.target.value })} style={iStyle} />
+      </Field>
+    </>
+  );
+}
+
 // ── Booklet settings + preview ────────────────────────────────────────────────
 
 const DEFAULT_BOOKLET: BookletOptions = {
@@ -855,12 +984,22 @@ function BookletSettings({ opts, onChange }: { opts: BookletOptions; onChange: (
       <Field label="Creep compensation (in)" note="Total shift across all sheets">
         <input type="number" min={0} max={0.5} step={0.0625} value={opts.creepIn} onChange={e => set('creepIn', +e.target.value)} style={iStyle} />
       </Field>
+      <Field label="Binding / signatures" note="How the book is gathered">
+        <select value={opts.signatureSheets && opts.signatureSheets > 0 ? String(opts.signatureSheets) : '0'} onChange={e => set('signatureSheets', +e.target.value)} style={iStyle}>
+          <option value="0">Single saddle-stitch</option>
+          <option value="1">Perfect-bound — 4-pg signatures</option>
+          <option value="2">Perfect-bound — 8-pg signatures</option>
+          <option value="4">Perfect-bound — 16-pg signatures</option>
+          <option value="8">Perfect-bound — 32-pg signatures</option>
+        </select>
+      </Field>
       <Field label="Crop marks">
         <Row>
           <input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} />
           <span style={{ fontSize: '.85rem' }}>Add crop marks</span>
         </Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -982,12 +1121,25 @@ function NUpSettings({ opts, onChange, cardMode }: { opts: NUpOptions; onChange:
           <option value="cutstack">Cut &amp; stack</option>
         </select>
       </Field>
+      <Field label="Sides" note="Duplex reads source as front,back,front,back…">
+        <select value={opts.duplex ? (opts.duplexFlip === 'short' ? 'short' : 'long') : 'single'} onChange={e => onChange({ ...opts, duplex: e.target.value !== 'single', duplexFlip: e.target.value === 'short' ? 'short' : 'long' })} style={iStyle}>
+          <option value="single">Single-sided</option>
+          <option value="long">Double-sided — long-edge flip</option>
+          <option value="short">Double-sided — short-edge flip</option>
+        </select>
+      </Field>
+      {cardMode && (
+        <Field label="Bleed (in)" note="Art fills cell; marks drawn at trim">
+          <input type="number" min={0} max={0.5} step={0.0625} value={opts.bleedIn ?? 0} onChange={e => set('bleedIn', +e.target.value)} style={iStyle} />
+        </Field>
+      )}
       <Field label="Crop marks">
         <Row>
           <input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} />
           <span style={{ fontSize: '.85rem' }}>Add crop marks</span>
         </Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -1044,6 +1196,7 @@ function PosterSettings({ opts, onChange }: { opts: PosterOptions; onChange: (o:
       <Field label="Trim marks">
         <Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add trim marks</span></Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -1060,6 +1213,7 @@ function CropSettings({ opts, onChange }: { opts: CropMarksOptions; onChange: (o
       <Field label="Added margin (in)" note="Blank area added for marks"><input type="number" min={0.25} max={1.5} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Mark length (in)"><input type="number" min={0.1} max={0.5} step={0.0625} value={opts.markLenIn} onChange={e => set('markLenIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Mark offset (in)" note="Gap between trim and mark"><input type="number" min={0.05} max={0.25} step={0.0625} value={opts.markOffIn} onChange={e => set('markOffIn', +e.target.value)} style={iStyle} /></Field>
+      <MarkExtras opts={{ ...opts, addMarks: true }} onChange={o => onChange({ ...opts, centerMarks: o.centerMarks, markWeightPt: o.markWeightPt })} />
     </Grid>
   );
 }
@@ -1146,6 +1300,7 @@ function TicketSettings({ opts, onChange }: { opts: TicketOptions; onChange: (o:
       <Field label="Crop marks">
         <Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add crop marks</span></Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -1177,9 +1332,18 @@ function FlipSettings({ dir, onChange }: { dir: 'h' | 'v'; onChange: (d: 'h' | '
 
 function ShuffleSettings({ order, onChange, count }: { order: string; onChange: (s: string) => void; count: number }) {
   return (
-    <Field label="Page order" note={`This PDF has ${count} page${count !== 1 ? 's' : ''}. List 1-based page numbers in the order you want. Repeat to duplicate, omit to drop.`}>
-      <input type="text" value={order} onChange={e => onChange(e.target.value)} placeholder="e.g. 3, 1, 2, 2, 4" style={iStyle} />
-    </Field>
+    <div>
+      <Field label="Page order" note={`This PDF has ${count} page${count !== 1 ? 's' : ''}.`}>
+        <input type="text" value={order} onChange={e => onChange(e.target.value)} placeholder="e.g. 1, 2>, B, 5-3" style={iStyle} />
+      </Field>
+      <div style={{ marginTop: '.6rem', fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+        <strong style={{ color: 'var(--ink)' }}>Expression syntax</strong><br />
+        <code>3,1,2</code> — reorder · repeat a number to duplicate, omit to drop<br />
+        <code>1-5</code> ascending range · <code>5-1</code> descending (reverse)<br />
+        <code>4&gt;</code> rotate 90° cw · <code>3&lt;</code> 90° ccw · <code>2^</code> 180°<br />
+        <code>B</code> · <code>X</code> · <code>_</code> — insert a blank page
+      </div>
+    </div>
   );
 }
 
@@ -1199,6 +1363,36 @@ function CropBoxSettings({ opts, onChange }: { opts: CropBoxOptions; onChange: (
       <Field label="Right inset (in)"><input type="number" min={0} max={10} step={0.0625} value={opts.right} onChange={e => set('right', +e.target.value)} style={iStyle} /></Field>
       <Field label="Bottom inset (in)"><input type="number" min={0} max={10} step={0.0625} value={opts.bottom} onChange={e => set('bottom', +e.target.value)} style={iStyle} /></Field>
       <Field label="Left inset (in)"><input type="number" min={0} max={10} step={0.0625} value={opts.left} onChange={e => set('left', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+// ── Resize settings ───────────────────────────────────────────────────────────
+
+const DEFAULT_RESIZE: ResizeOptions = { mode: 'scale', scalePct: 100, targetWIn: 8.5, targetHIn: 11 };
+
+function ResizeSettings({ opts, onChange }: { opts: ResizeOptions; onChange: (o: ResizeOptions) => void }) {
+  const set = <K extends keyof ResizeOptions>(k: K, v: ResizeOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Resize mode">
+        <select value={opts.mode} onChange={e => set('mode', e.target.value as ResizeOptions['mode'])} style={iStyle}>
+          <option value="scale">Scale by percentage</option>
+          <option value="fit">Fit to paper (keep aspect)</option>
+          <option value="stretch">Stretch to paper (fill)</option>
+        </select>
+      </Field>
+      {opts.mode === 'scale' ? (
+        <Field label="Scale (%)" note="100 = unchanged">
+          <input type="number" min={1} max={800} step={1} value={opts.scalePct} onChange={e => set('scalePct', +e.target.value)} style={iStyle} />
+        </Field>
+      ) : (
+        <>
+          <SheetPicker opts={{ sheetWIn: opts.targetWIn, sheetHIn: opts.targetHIn }} set={(k, v) => set(k === 'sheetWIn' ? 'targetWIn' : 'targetHIn', v)} />
+          <Field label="Target width (in)"><input type="number" min={0.5} max={60} step={0.0625} value={opts.targetWIn} onChange={e => set('targetWIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Target height (in)"><input type="number" min={0.5} max={60} step={0.0625} value={opts.targetHIn} onChange={e => set('targetHIn', +e.target.value)} style={iStyle} /></Field>
+        </>
+      )}
     </Grid>
   );
 }
@@ -1380,26 +1574,28 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
   );
 }
 
-function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) {
+function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: TemplatePreset; onBack: () => void }) {
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [errMsg, setErrMsg] = useState('');
 
-  const cardMode = tool.engine === 'nup' && !!(tool.defaultNup?.cellWIn || tool.fitSource);
+  const cardMode = tool.engine === 'nup' && !!(tool.defaultNup?.cellWIn || preset?.nup?.cellWIn || tool.fitSource);
 
-  // Per-engine settings state (initialised from the tool's presets)
-  const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet });
-  const [nupOpts, setNupOpts] = useState<NUpOptions>({ ...DEFAULT_NUP, ...tool.defaultNup });
-  const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster });
+  // Per-engine settings state (initialised from the tool's presets, then any
+  // template overrides layered on top).
+  const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet, ...preset?.booklet });
+  const [nupOpts, setNupOpts] = useState<NUpOptions>({ ...DEFAULT_NUP, ...tool.defaultNup, ...preset?.nup });
+  const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster, ...preset?.poster });
   const [cropOpts, setCropOpts] = useState<CropMarksOptions>(DEFAULT_CROP);
   const [bleedOpts, setBleedOpts] = useState<{ bleedIn: number }>({ bleedIn: 0.125 });
   const [colorBarOpts, setColorBarOpts] = useState<ColorBarOptions>(DEFAULT_COLORBAR);
   const [pageNumOpts, setPageNumOpts] = useState<PageNumberOptions>(DEFAULT_PAGENUM);
-  const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket });
+  const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket, ...preset?.ticket });
   const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
   const [flipDir, setFlipDir] = useState<'h' | 'v'>('h');
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
+  const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
   const [shuffleOrder, setShuffleOrder] = useState('');
   const [splitRanges, setSplitRanges] = useState('');
   const [stampFile, setStampFile] = useState<MergeFile | null>(null);
@@ -1460,6 +1656,7 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
         case 'rotate': out = await rotatePdf(file.bytes, rotateAngle); outName = `${base}-rotated${rotateAngle}.pdf`; break;
         case 'flip': out = await flipPdf(file.bytes, flipDir); outName = `${base}-flipped.pdf`; break;
         case 'crop': out = await cropPdf(file.bytes, cropBoxOpts); outName = `${base}-cropped.pdf`; break;
+        case 'resize': out = await resizePdf(file.bytes, resizeOpts); outName = `${base}-resized.pdf`; break;
         case 'shuffle': out = await shufflePages(file.bytes, shuffleOrder); outName = `${base}-reordered.pdf`; break;
         case 'overlay':
           if (!stampFile) { setStatus('error'); setErrMsg('Add a watermark / overlay PDF first.'); return; }
@@ -1555,6 +1752,7 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
                 {tool.engine === 'rotate' && <RotateSettings angle={rotateAngle} onChange={setRotateAngle} />}
                 {tool.engine === 'flip' && <FlipSettings dir={flipDir} onChange={setFlipDir} />}
                 {tool.engine === 'crop' && <CropBoxSettings opts={cropBoxOpts} onChange={setCropBoxOpts} />}
+                {tool.engine === 'resize' && <ResizeSettings opts={resizeOpts} onChange={setResizeOpts} />}
                 {tool.engine === 'shuffle' && <ShuffleSettings order={shuffleOrder} onChange={setShuffleOrder} count={file.info.count} />}
                 {tool.engine === 'split' && <SplitSettings ranges={splitRanges} onChange={setSplitRanges} count={file.info.count} />}
                 {tool.engine === 'overlay' && <OverlaySettings opts={overlayOpts} onChange={setOverlayOpts} />}
@@ -2067,6 +2265,76 @@ function ToolGallery({ query, filter, onSelect }: { query: string; filter: strin
   );
 }
 
+// ── Template gallery ──────────────────────────────────────────────────────────
+
+function TemplateGallery({ query, onSelect }: { query: string; onSelect: (tpl: TemplateDef) => void }) {
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const match = (t: TemplateDef) => !q || t.name.toLowerCase().includes(q)
+      || t.specs.toLowerCase().includes(q) || t.industry.toLowerCase().includes(q);
+    const map = new Map<string, TemplateDef[]>();
+    for (const t of TEMPLATES) {
+      if (!match(t)) continue;
+      if (!map.has(t.industry)) map.set(t.industry, []);
+      map.get(t.industry)!.push(t);
+    }
+    return TEMPLATE_INDUSTRIES.filter(i => map.has(i)).map(i => [i, map.get(i)!] as const);
+  }, [query]);
+
+  if (!groups.length) {
+    return <div style={{ color: 'var(--muted)', padding: '2rem 0' }}>No templates match {query ? `“${query}”` : 'this filter'}.</div>;
+  }
+
+  return (
+    <section>
+      <SectionHeading title="Templates" count={TEMPLATES.length} />
+      <p style={{ margin: '-.5rem 0 1.75rem', color: 'var(--muted)', fontSize: '.9rem', maxWidth: 640 }}>
+        Ready-made, industry-grouped presets. Pick one and it opens the matching tool with the sheet,
+        bleed, gutters and finishing marks already dialled in — just drop your file and export.
+      </p>
+      <div style={{ display: 'grid', gap: '2.25rem' }}>
+        {groups.map(([industry, items]) => (
+          <div key={industry}>
+            <div style={{ fontSize: '.7rem', fontWeight: 800, letterSpacing: '.09em', color: VIOLET, textTransform: 'uppercase', marginBottom: '.85rem' }}>
+              {industry} <span style={{ color: 'var(--muted)', fontWeight: 600 }}>· {items.length}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px,1fr))', gap: '.75rem' }}>
+              {items.map(t => <TemplateCard key={t.id} tpl={t} onSelect={() => onSelect(t)} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TemplateCard({ tpl, onSelect }: { tpl: TemplateDef; onSelect: () => void }) {
+  const [hover, setHover] = useState(false);
+  const tool = TOOLS.find(t => t.id === tpl.toolId);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onSelect}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '.55rem', padding: '.85rem .9rem', cursor: 'pointer',
+        borderRadius: 10, border: `1px solid ${hover ? VIOLET : 'var(--border)'}`, background: 'var(--bg-alt)',
+        boxShadow: hover ? '0 6px 18px rgba(124,58,237,0.14)' : 'none', transition: 'all .13s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+        <div style={{ width: 40, height: 30, flexShrink: 0, borderRadius: 5, overflow: 'hidden', background: 'var(--bg-alt)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {tool ? <tool.Thumb /> : null}
+        </div>
+        <div style={{ fontWeight: 700, fontSize: '.88rem', color: 'var(--ink)', lineHeight: 1.2 }}>{tpl.name}</div>
+      </div>
+      <div style={{ fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.4 }}>{tpl.specs}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '.35rem' }}>
+        <span style={{ fontSize: '.68rem', color: 'var(--muted)' }}>via {tool?.name ?? tpl.toolId}</span>
+        <span style={{ fontSize: '.76rem', fontWeight: 700, color: VIOLET }}>{hover ? 'Open →' : 'Use'}</span>
+      </div>
+    </div>
+  );
+}
+
 // Generic "how to make this" steps shown on every ready-to-use tool card.
 function toolHowTo(tool: ToolDef): string[] {
   return [
@@ -2454,7 +2722,7 @@ function Calculators() {
 
 // ── Page root ─────────────────────────────────────────────────────────────────
 
-const GALLERY_CHIPS = ['All', 'Chained workflows', ...CATEGORY_ORDER, 'Workflow', 'Calculators'];
+const GALLERY_CHIPS = ['All', 'Templates', 'Chained workflows', ...CATEGORY_ORDER, 'Workflow', 'Calculators'];
 
 const HOW_TO_STEPS: [string, string][] = [
   ['01', 'Drop or select your PDF'],
@@ -2465,13 +2733,15 @@ const HOW_TO_STEPS: [string, string][] = [
 
 export function AdminImpose() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<TemplateDef | null>(null);
   const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
-  const handleSelect = (id: string) => setActiveTool(id);
+  const handleSelect = (id: string) => { setActiveTemplate(null); setActiveTool(id); };
+  const handleSelectTemplate = (tpl: TemplateDef) => { setActiveTemplate(tpl); setActiveTool(tpl.toolId); };
 
   const shell = (node: React.ReactNode) => (
     <div style={{ ...THEMES[theme], background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh' } as React.CSSProperties}>
@@ -2481,7 +2751,15 @@ export function AdminImpose() {
 
   // A tool or workflow workspace takes over the whole page.
   if (activeTool && toolDef) {
-    return shell(<ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} />);
+    const preset = activeTemplate && activeTemplate.toolId === toolDef.id ? activeTemplate.preset : undefined;
+    return shell(
+      <ToolWorkspace
+        key={toolDef.id + (activeTemplate?.id ?? '')}
+        tool={toolDef}
+        preset={preset}
+        onBack={() => { setActiveTool(null); setActiveTemplate(null); }}
+      />,
+    );
   }
   if (activeWorkflow) {
     return shell(
@@ -2496,9 +2774,16 @@ export function AdminImpose() {
   const searching = query.trim().length > 0;
   let content: React.ReactNode;
   if (searching) {
-    content = <ToolGallery query={query} filter={null} onSelect={handleSelect} />;
+    content = (
+      <div style={{ display: 'grid', gap: '2.75rem' }}>
+        <ToolGallery query={query} filter={null} onSelect={handleSelect} />
+        <TemplateGallery query={query} onSelect={handleSelectTemplate} />
+      </div>
+    );
   } else if (filter === 'Calculators') {
     content = <Calculators />;
+  } else if (filter === 'Templates') {
+    content = <TemplateGallery query="" onSelect={handleSelectTemplate} />;
   } else if (filter === 'Chained workflows') {
     content = <WorkflowChains onSelect={setActiveWorkflow} />;
   } else if (filter === 'Workflow') {
@@ -2507,6 +2792,7 @@ export function AdminImpose() {
     content = (
       <div style={{ display: 'grid', gap: '2.75rem' }}>
         <WorkflowChains onSelect={setActiveWorkflow} />
+        <TemplateGallery query="" onSelect={handleSelectTemplate} />
         <ToolGallery query="" filter={null} onSelect={handleSelect} />
         <WorkflowBuilderSection onSelect={setActiveWorkflow} />
       </div>
@@ -2530,14 +2816,15 @@ export function AdminImpose() {
         <div style={{ color: VIOLET, fontSize: '.7rem', fontWeight: 800, letterSpacing: '.14em', marginBottom: '.75rem' }}>IMPOSITION GALLERY</div>
         <h1 style={{ fontSize: '2.1rem', margin: '0 0 .75rem', lineHeight: 1.15 }}>See what you can make — and exactly how</h1>
         <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: '0 0 1.35rem' }}>
-          Browse {TOOLS.length} real imposition and prepress layouts plus {WORKFLOWS.length} chained workflows.
-          Each one shows the result and the exact steps to create it — right in your browser, never uploaded.
+          Browse {TOOLS.length} real imposition and prepress tools, {TEMPLATES.length} ready-made templates,
+          and {WORKFLOWS.length} chained workflows. Each shows the result and the exact steps to create it —
+          right in your browser, never uploaded.
         </p>
         <button
-          onClick={() => { setFilter('All'); setQuery(''); }}
+          onClick={() => { setFilter('Templates'); setQuery(''); }}
           style={{ padding: '.6rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: 'var(--accent-soft)', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
         >
-          Browse all {TOOLS.length + WORKFLOWS.length} templates →
+          Browse all {TEMPLATES.length} templates →
         </button>
       </div>
 
