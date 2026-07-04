@@ -126,8 +126,16 @@ export interface OverlayOptions {
     tileCols?: number;
     anchor?: 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br';
     paddingPt?: number;
+    blend?: 'normal' | 'multiply';
 }
 export declare function overlayPdf(baseBytes: Uint8Array, stampBytes: Uint8Array, opts: OverlayOptions): Promise<Uint8Array>;
+export interface DistortOptions {
+    factorPct: number;
+    direction: 'circ' | 'cross' | 'both';
+    pages?: string;
+}
+export declare function distortPdf(bytes: Uint8Array, opts: DistortOptions): Promise<Uint8Array>;
+export declare function distortFactorFromCylinder(cylinderDiaMm: number, plateThickMm: number): number;
 interface ShufInstr {
     page: number | null;
     rot: number;

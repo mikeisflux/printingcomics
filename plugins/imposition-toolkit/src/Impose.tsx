@@ -7,12 +7,13 @@ import {
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
+  distortPdf, distortFactorFromCylinder,
 } from './impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
-  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -386,6 +387,14 @@ const SlugThumb = () => (
     <rect x="46" y="26" width="108" height="88" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
     <rect x="46" y="114" width="108" height="14" fill="#ede9fe" stroke={A} />
     <rect x="52" y="118" width="60" height="5" rx="1" fill={A} />
+  </svg>
+);
+const DistortThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="60" y="24" width="80" height="100" rx="2" fill="#f8fafc" stroke="#cbd5e1" strokeDasharray="3,3" />
+    <rect x="62" y="40" width="76" height="68" rx="2" fill="#ede9fe" stroke={A} strokeWidth="2" />
+    <path d="M100 20 v-8 M100 128 v8" stroke={A} strokeWidth="2" />
+    <path d="M92 16 l8 -6 8 6 M92 132 l8 6 8 -6" stroke={A} strokeWidth="2" fill="none" />
   </svg>
 );
 
@@ -815,6 +824,11 @@ const TOOLS: ToolDef[] = [
     id: 'nudge', name: 'Nudge', preset: 'Nudge', category: 'Page & PDF tools', engine: 'nudge',
     desc: 'Shift page content by a small offset and/or rotate it about the centre — fix mis-registration.',
     tags: ['shift', 'micro-rotate', 'press fudge'], Thumb: NudgeThumb,
+  },
+  {
+    id: 'distort', name: 'Distortion Comp.', preset: 'Distortion Compensation', category: 'Large & specialty', engine: 'distort',
+    desc: 'Pre-shrink artwork for flexo / gravure cylinder stretch so it prints at the right size.',
+    tags: ['flexo / gravure', 'cylinder pre-distort', 'circumferential'], Thumb: DistortThumb,
   },
   {
     id: 'repair', name: 'PDF Repair', preset: 'PDF Repair', category: 'Page & PDF tools', engine: 'repair',
@@ -1995,6 +2009,47 @@ function QrStampSettings({ opts, onChange }: { opts: QrStampOptions; onChange: (
   );
 }
 
+// ── Distortion Compensation settings ──────────────────────────────────────────
+
+interface DistortUi { mode: 'cylinder' | 'custom'; cylinderDiaMm: number; plateThickMm: number; customPct: number; direction: 'circ' | 'cross' | 'both'; }
+const DEFAULT_DISTORT: DistortUi = { mode: 'cylinder', cylinderDiaMm: 150, plateThickMm: 1.7, customPct: 97.5, direction: 'circ' };
+function distortFactor(ui: DistortUi): number {
+  return ui.mode === 'custom' ? ui.customPct : distortFactorFromCylinder(ui.cylinderDiaMm, ui.plateThickMm);
+}
+
+function DistortSettings({ opts, onChange }: { opts: DistortUi; onChange: (o: DistortUi) => void }) {
+  const set = <K extends keyof DistortUi>(k: K, v: DistortUi[K]) => onChange({ ...opts, [k]: v });
+  const pct = distortFactor(opts);
+  return (
+    <Grid>
+      <Field label="Calculation mode">
+        <select value={opts.mode} onChange={e => set('mode', e.target.value as DistortUi['mode'])} style={iStyle}>
+          <option value="cylinder">From cylinder geometry</option>
+          <option value="custom">Known factor (%)</option>
+        </select>
+      </Field>
+      {opts.mode === 'cylinder' ? (
+        <>
+          <Field label="Cylinder diameter (mm)"><input type="number" min={10} max={800} step={1} value={opts.cylinderDiaMm} onChange={e => set('cylinderDiaMm', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Plate thickness (mm)" note="Common: 1.14 / 1.70 / 2.84"><input type="number" min={0.1} max={5} step={0.01} value={opts.plateThickMm} onChange={e => set('plateThickMm', +e.target.value)} style={iStyle} /></Field>
+        </>
+      ) : (
+        <Field label="Distortion factor (%)" note="Below 100 shrinks"><input type="number" min={80} max={100} step={0.1} value={opts.customPct} onChange={e => set('customPct', +e.target.value)} style={iStyle} /></Field>
+      )}
+      <Field label="Direction">
+        <select value={opts.direction} onChange={e => set('direction', e.target.value as DistortUi['direction'])} style={iStyle}>
+          <option value="circ">Circumferential (height)</option>
+          <option value="cross">Cross-web (width)</option>
+          <option value="both">Both axes</option>
+        </select>
+      </Field>
+      <div style={{ gridColumn: '1 / -1', padding: '.5rem .75rem', borderRadius: 8, background: 'var(--accent-soft)', fontSize: '.82rem', color: VIOLET, fontWeight: 700 }}>
+        Compensation factor: {pct.toFixed(3)}% <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(artwork pre-shrunk to this on the {opts.direction === 'cross' ? 'width' : opts.direction === 'both' ? 'both axes' : 'height'})</span>
+      </div>
+    </Grid>
+  );
+}
+
 // ── Overlay settings ──────────────────────────────────────────────────────────
 
 const DEFAULT_OVERLAY: OverlayOptions = { opacity: 0.3, mode: 'center' };
@@ -2008,6 +2063,12 @@ function OverlaySettings({ opts, onChange }: { opts: OverlayOptions; onChange: (
           <option value="center">Centered</option>
           <option value="fill">Fill page</option>
           <option value="tile">Tiled</option>
+        </select>
+      </Field>
+      <Field label="Blend mode" note="Multiply drops white areas">
+        <select value={opts.blend ?? 'normal'} onChange={e => set('blend', e.target.value as OverlayOptions['blend'])} style={iStyle}>
+          <option value="normal">Normal</option>
+          <option value="multiply">Multiply</option>
         </select>
       </Field>
       <Field label={`Opacity: ${Math.round(opts.opacity * 100)}%`}>
@@ -2272,6 +2333,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [splitMode, setSplitMode] = useState<'ranges' | 'chunk'>('ranges');
   const [splitChunk, setSplitChunk] = useState(4);
   const [splitZip, setSplitZip] = useState(true);
+  const [distortOpts, setDistortOpts] = useState<DistortUi>(DEFAULT_DISTORT);
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
   const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
@@ -2370,6 +2432,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'backdrop': out = await addBackdrop(file.bytes, backdropOpts); outName = `${base}-backdrop.pdf`; break;
         case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
         case 'dimensions': out = await addDimensions(file.bytes); outName = `${base}-dimensions.pdf`; break;
+        case 'distort': out = await distortPdf(file.bytes, { factorPct: distortFactor(distortOpts), direction: distortOpts.direction, pages: pageRange }); outName = `${base}-distort.pdf`; break;
         case 'mix':
           if (!stampFile) throw new Error('Add the second PDF to interleave first.');
           out = await mixPdfs(file.bytes, stampFile.bytes, mixReverse); outName = `${base}-interleaved.pdf`; break;
@@ -2500,7 +2563,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'flip' && <FlipSettings dir={flipDir} onChange={setFlipDir} />}
                 {tool.engine === 'crop' && <CropBoxSettings opts={cropBoxOpts} onChange={setCropBoxOpts} />}
                 {tool.engine === 'resize' && <ResizeSettings opts={resizeOpts} onChange={setResizeOpts} />}
-                {(tool.engine === 'rotate' || tool.engine === 'flip' || tool.engine === 'crop' || tool.engine === 'resize') && (
+                {tool.engine === 'distort' && <DistortSettings opts={distortOpts} onChange={setDistortOpts} />}
+                {(tool.engine === 'rotate' || tool.engine === 'flip' || tool.engine === 'crop' || tool.engine === 'resize' || tool.engine === 'distort') && (
                   <div style={{ marginTop: '.75rem' }}>
                     <Field label="Pages" note="all · 1-5 · odd · even · last · last-2">
                       <input type="text" value={pageRange} onChange={e => setPageRange(e.target.value)} placeholder="all" style={iStyle} />

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.6
+
+- New **Distortion Comp.** tool (flexo/gravure cylinder pre-shrink) and an
+  Overlay **Multiply** blend mode.
+
 ## 1.2.5
 
 - Closed the documented option gaps: page-range on Flip/Rotate/Crop/Resize;

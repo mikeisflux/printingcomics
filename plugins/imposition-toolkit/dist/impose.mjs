@@ -441,11 +441,12 @@ function concatBytes(arrs) {
   return out;
 }
 async function overlayPdf(baseBytes, stampBytes, opts) {
-  const { PDFDocument } = await import("pdf-lib");
+  const { PDFDocument, BlendMode } = await import("pdf-lib");
   const baseDoc = await PDFDocument.load(baseBytes, { ignoreEncryption: true });
   const stampDoc = await PDFDocument.load(stampBytes, { ignoreEncryption: true });
   const stampPages = stampDoc.getPages();
   const basePages = baseDoc.getPages();
+  const blendMode = opts.blend === "multiply" ? BlendMode.Multiply : void 0;
   for (let i = 0; i < basePages.length; i++) {
     const pg = basePages[i];
     const { width: w, height: h } = pg.getSize();
@@ -453,22 +454,46 @@ async function overlayPdf(baseBytes, stampBytes, opts) {
     const { width: sw, height: sh } = stamp.getSize();
     const [emb] = await baseDoc.embedPages([stamp]);
     if (!emb) continue;
+    const bm = blendMode ? { blendMode } : {};
     if (opts.mode === "fill") {
-      pg.drawPage(emb, { x: 0, y: 0, width: w, height: h, opacity: opts.opacity });
+      pg.drawPage(emb, { x: 0, y: 0, width: w, height: h, opacity: opts.opacity, ...bm });
     } else if (opts.mode === "center") {
       const scale = Math.min(w / sw, h / sh) * 0.85;
       const dw = sw * scale, dh = sh * scale, pad = opts.paddingPt ?? 0, a = opts.anchor ?? "mc";
       const hx = a[1] === "l" ? pad : a[1] === "r" ? w - dw - pad : (w - dw) / 2;
       const vy = a[0] === "b" ? pad : a[0] === "t" ? h - dh - pad : (h - dh) / 2;
-      pg.drawPage(emb, { x: hx, y: vy, width: dw, height: dh, opacity: opts.opacity });
+      pg.drawPage(emb, { x: hx, y: vy, width: dw, height: dh, opacity: opts.opacity, ...bm });
     } else {
       const tC = opts.tileCols ?? 2, tR = opts.tileRows ?? 2;
       const tw = w / tC, th = h / tR;
       for (let r = 0; r < tR; r++) for (let c = 0; c < tC; c++)
-        pg.drawPage(emb, { x: c * tw, y: r * th, width: tw, height: th, opacity: opts.opacity });
+        pg.drawPage(emb, { x: c * tw, y: r * th, width: tw, height: th, opacity: opts.opacity, ...bm });
     }
   }
   return baseDoc.save();
+}
+async function distortPdf(bytes, opts) {
+  const { PDFDocument } = await import("pdf-lib");
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  const sel = parsePageRange(opts.pages ?? "all", srcPages.length);
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(srcPages);
+  const f = Math.max(0.5, Math.min(1.5, opts.factorPct / 100));
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = srcPages[i].getSize();
+    const on = sel.has(i + 1);
+    const fw = on && (opts.direction === "cross" || opts.direction === "both") ? f : 1;
+    const fh = on && (opts.direction === "circ" || opts.direction === "both") ? f : 1;
+    const nw = w * fw, nh = h * fh;
+    const pg = outDoc.addPage([nw, nh]);
+    pg.drawPage(embeds[i], { x: 0, y: 0, width: nw, height: nh });
+  }
+  return outDoc.save();
+}
+function distortFactorFromCylinder(cylinderDiaMm, plateThickMm) {
+  if (cylinderDiaMm <= 0) return 100;
+  return cylinderDiaMm / (cylinderDiaMm + 2 * plateThickMm) * 100;
 }
 function splitTopLevel(s) {
   const parts = [];
@@ -1264,6 +1289,8 @@ export {
   addTextWatermark,
   computeNUpGrid,
   cropPdf,
+  distortFactorFromCylinder,
+  distortPdf,
   downloadMultiple,
   downloadPdf,
   expandShuffle,
