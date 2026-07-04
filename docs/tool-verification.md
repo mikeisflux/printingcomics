@@ -61,10 +61,9 @@ guide lists:
   booklet engine. True N-up signature imposition (4 quarto / 8 octavo / 16 / 32
   pages per sheet side with the correct fold rotations — e.g. the top row flipped
   180°) and creep-direction inward/outward are **not** implemented.
-- **Shuffle** — has ranges, rotation (`>` `^` `<`) and blanks (`X`); missing
-  `all`, `odd`/`even`, `first`/`last`, `last-1` reverse, `N*(…)` repeats,
-  `[a,b]` interleave, `group N:` groups, and the one-click quick actions.
 - **Grid / Cards** — Z-pattern only (no S-pattern / snake fill).
+- **Cut and Stack** — LTR strip order only (no RTL strip reversal or a
+  double-sided cut-and-stack back arrangement).
 - **Rotate** — 90/180/270 only (no custom angle).
 - **Split** — range mode only (no fixed-chunk mode or zip output).
 - **Overlay** — center/fill/tile + opacity (no blend modes / 9-point anchor).

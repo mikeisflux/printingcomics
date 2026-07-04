@@ -1713,17 +1713,23 @@ function FlipSettings({ dir, onChange }: { dir: 'h' | 'v'; onChange: (d: 'h' | '
 }
 
 function ShuffleSettings({ order, onChange, count }: { order: string; onChange: (s: string) => void; count: number }) {
+  const chip: React.CSSProperties = { padding: '.28rem .6rem', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-alt)', color: 'var(--ink)', cursor: 'pointer', fontSize: '.76rem', fontWeight: 600 };
+  const quick: [string, string][] = [['Reverse all', 'reverse'], ['Odd only', 'odd'], ['Even only', 'even'], ['Interleave', '[odd,even]'], ['All', 'all']];
   return (
     <div>
       <Field label="Page order" note={`This PDF has ${count} page${count !== 1 ? 's' : ''}.`}>
         <input type="text" value={order} onChange={e => onChange(e.target.value)} placeholder="e.g. 1, 2>, B, 5-3" style={iStyle} />
       </Field>
-      <div style={{ marginTop: '.6rem', fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginTop: '.55rem' }}>
+        <span style={{ fontSize: '.68rem', fontWeight: 800, letterSpacing: '.06em', color: 'var(--muted)', textTransform: 'uppercase', alignSelf: 'center' }}>Quick:</span>
+        {quick.map(([label, expr]) => <button key={label} style={chip} onClick={() => onChange(expr)}>{label}</button>)}
+      </div>
+      <div style={{ marginTop: '.7rem', fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.7 }}>
         <strong style={{ color: 'var(--ink)' }}>Expression syntax</strong><br />
-        <code>3,1,2</code> — reorder · repeat a number to duplicate, omit to drop<br />
-        <code>1-5</code> ascending range · <code>5-1</code> descending (reverse)<br />
-        <code>4&gt;</code> rotate 90° cw · <code>3&lt;</code> 90° ccw · <code>2^</code> 180°<br />
-        <code>B</code> · <code>X</code> · <code>_</code> — insert a blank page
+        <code>3,1,2</code> reorder · <code>all</code> · <code>odd</code> · <code>even</code> · <code>first</code> · <code>last</code><br />
+        <code>1-5</code> range · <code>5-1</code> / <code>reverse</code> / <code>last-1</code> descending<br />
+        <code>4&gt;</code> 90°cw · <code>3&lt;</code> 90°ccw · <code>2^</code> 180° · <code>B</code>/<code>X</code>/<code>_</code> blank<br />
+        <code>5*(1)</code> repeat · <code>[odd,even]</code> interleave · <code>group 3: 3 2 1</code> per-group
       </div>
     </div>
   );
