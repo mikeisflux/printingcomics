@@ -1665,6 +1665,197 @@ export async function addDimensions(bytes: Uint8Array): Promise<Uint8Array> {
   return doc.save();
 }
 
+// ── Nesting (Stickers): bin-packing + optional true-shape ───────────────────
+// Packs the source pages (which may be different sizes = different stickers)
+// onto sheets or a roll, minimising waste. Bounding-box mode uses a skyline
+// bottom-left packer with optional 90° rotation. True-shape mode rasterises each
+// item's alpha outline (via pdf.js) and packs into each other's negative space.
+
+export interface NestOptions {
+  sheetWIn: number; sheetHIn: number;
+  roll: boolean;            // roll media: fixed width, variable (grown) length
+  paddingIn: number;        // gap between items
+  marginIn: number;         // keep-away from sheet edges
+  allowRotate: boolean;     // allow 90° rotation
+  copies: number;           // copies per source page
+  fillSheet: boolean;       // fill a sheet with copies (ignores `copies`)
+  trueShape?: boolean;      // rasterise outlines + pack into negative space
+  dpi?: number;             // rasterisation DPI for true-shape (default 36)
+}
+
+interface NestItem { page: number; w: number; h: number; }
+interface NestPlaced { page: number; x: number; y: number; w: number; h: number; rot: boolean; }
+
+// Skyline bottom-left: find the lowest, then leftmost, spot for a w×h box.
+function skylineFind(sky: { x: number; y: number; w: number }[], w: number, h: number, sheetW: number, sheetH: number): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  for (let i = 0; i < sky.length; i++) {
+    const x = sky[i]!.x;
+    if (x + w > sheetW + 1e-6) continue;
+    // max skyline height over [x, x+w]
+    let y = 0, covered = 0, j = i;
+    while (j < sky.length && covered < w - 1e-6) { y = Math.max(y, sky[j]!.y); covered += sky[j]!.w; j++; }
+    if (covered < w - 1e-6) continue;                 // ran off the edge
+    if (y + h > sheetH + 1e-6) continue;
+    if (!best || y < best.y - 1e-6 || (Math.abs(y - best.y) < 1e-6 && x < best.x)) best = { x, y };
+  }
+  return best;
+}
+function skylinePlace(sky: { x: number; y: number; w: number }[], x: number, y: number, w: number, h: number) {
+  const top = y + h;
+  const out: { x: number; y: number; w: number }[] = [];
+  for (const s of sky) {
+    const sx0 = s.x, sx1 = s.x + s.w;
+    if (sx1 <= x + 1e-6 || sx0 >= x + w - 1e-6) { out.push(s); continue; }   // untouched
+    if (sx0 < x - 1e-6) out.push({ x: sx0, y: s.y, w: x - sx0 });            // left remainder
+    if (sx1 > x + w + 1e-6) out.push({ x: x + w, y: s.y, w: sx1 - (x + w) });// right remainder
+  }
+  out.push({ x, y: top, w });
+  out.sort((a, b) => a.x - b.x);
+  // merge equal-height neighbours
+  const merged: { x: number; y: number; w: number }[] = [];
+  for (const s of out) { const last = merged[merged.length - 1]; if (last && Math.abs(last.y - s.y) < 1e-6 && Math.abs(last.x + last.w - s.x) < 1e-6) last.w += s.w; else merged.push({ ...s }); }
+  return merged;
+}
+
+// Rasterise a page to a coarse boolean occupancy grid via pdf.js (browser only).
+// grid[row][col] = true where the artwork is non-transparent. cellPt = grid cell
+// size in points. Returns null if pdf.js / canvas is unavailable.
+async function rasterizeOccupancy(bytes: Uint8Array, pageIndex: number, cellPt: number): Promise<boolean[][] | null> {
+  try {
+    if (typeof document === 'undefined') return null;   // no DOM (e.g. Node) → skip
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfjs: any = await import('pdfjs-dist');
+    try { pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default; } catch { /* bundler resolves worker */ }
+    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const page = await doc.getPage(pageIndex + 1);
+    const scale = 72 / cellPt;                            // one output pixel ≈ one grid cell
+    const vp = page.getViewport({ scale });
+    const cols = Math.max(1, Math.ceil(vp.width)), rows = Math.max(1, Math.ceil(vp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = cols; canvas.height = rows;
+    const ctx = canvas.getContext('2d')!;
+    await page.render({ canvasContext: ctx, viewport: vp, background: 'rgba(0,0,0,0)' }).promise;
+    const data = ctx.getImageData(0, 0, cols, rows).data;
+    const grid: boolean[][] = [];
+    for (let r = 0; r < rows; r++) { const row: boolean[] = []; for (let c = 0; c < cols; c++) row.push(data[(r * cols + c) * 4 + 3]! > 16); grid.push(row); }
+    return grid;
+  } catch { return null; }
+}
+
+// True-shape pack: place each item's solid cells into the sheet's free cells
+// (bottom-left-first), so shapes nest into each other's negative space.
+async function nestTrueShape(bytes: Uint8Array, srcPages: any[], items: NestItem[], opts: NestOptions): Promise<NestPlaced[][] | null> {
+  const cellPt = Math.max(2, 72 / (opts.dpi ?? 36));     // grid resolution
+  const occ: (boolean[][] | null)[] = [];
+  for (let i = 0; i < srcPages.length; i++) occ[i] = await rasterizeOccupancy(bytes, i, cellPt);
+  if (occ.some(o => !o)) return null;                    // rasterisation unavailable → fall back
+  const pad = Math.round((opts.paddingIn * PT) / cellPt);
+  const m = Math.round((opts.marginIn * PT) / cellPt);
+  const SW = Math.floor((opts.sheetWIn * PT) / cellPt) - 2 * m;
+  const SH = opts.roll ? 100000 : Math.floor((opts.sheetHIn * PT) / cellPt) - 2 * m;
+  const rot90 = (g: boolean[][]) => { const R = g.length, C = g[0]!.length; const o: boolean[][] = Array.from({ length: C }, () => new Array(R).fill(false)); for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (g[r]![c]) o[C - 1 - c]![r] = true; return o; };
+  const sheets: NestPlaced[][] = [];
+  let grid: Uint8Array = new Uint8Array(SW * (opts.roll ? 4000 : SH));
+  let gridH = opts.roll ? 4000 : SH;
+  let placed: NestPlaced[] = [];
+  const fits = (shape: boolean[][], px: number, py: number) => {
+    const R = shape.length, C = shape[0]!.length;
+    if (px + C > SW || py + R > gridH) return false;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (shape[r]![c]) { const gy = py + r, gx = px + c; if (grid[gy * SW + gx]) return false; }
+    return true;
+  };
+  const stamp = (shape: boolean[][], px: number, py: number) => { const R = shape.length, C = shape[0]!.length; for (let r = -pad; r < R + pad; r++) for (let c = -pad; c < C + pad; c++) { const sr = Math.min(Math.max(r, 0), R - 1), sc = Math.min(Math.max(c, 0), C - 1); if (shape[sr]![sc]) { const gy = py + r, gx = px + c; if (gy >= 0 && gy < gridH && gx >= 0 && gx < SW) grid[gy * SW + gx] = 1; } } };
+  const flush = () => { if (placed.length) sheets.push(placed); placed = []; grid = new Uint8Array(SW * gridH); };
+  for (const it of items) {
+    const shapes: [boolean[][], boolean][] = [[occ[it.page]!, false]];
+    if (opts.allowRotate) shapes.push([rot90(occ[it.page]!), true]);
+    let done = false;
+    for (let attempt = 0; attempt < 2 && !done; attempt++) {
+      let best: { x: number; y: number; shape: boolean[][]; rot: boolean } | null = null;
+      for (const [shape, rot] of shapes) {
+        outer: for (let py = 0; py <= gridH - shape.length; py++) for (let px = 0; px <= SW - shape[0]!.length; px++) {
+          if (fits(shape, px, py)) { if (!best || py < best.y || (py === best.y && px < best.x)) best = { x: px, y: py, shape, rot }; break outer; }
+        }
+      }
+      if (best) { stamp(best.shape, best.x, best.y); const w = (best.rot ? it.h : it.w), h = (best.rot ? it.w : it.h); placed.push({ page: it.page, x: (m + best.x) * cellPt, y: best.y * cellPt, w, h, rot: best.rot }); done = true; }
+      else if (opts.fillSheet) { done = true; }
+      else flush();
+    }
+    if (opts.fillSheet && !done) break;
+  }
+  if (placed.length) sheets.push(placed);
+  return sheets.length ? sheets : null;
+}
+
+export async function nestPdf(bytes: Uint8Array, opts: NestOptions): Promise<Uint8Array> {
+  const { PDFDocument, degrees } = await import('pdf-lib');
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  if (!srcPages.length) throw new Error('Empty PDF');
+  const pad = opts.paddingIn * PT, m = opts.marginIn * PT;
+  const sheetW = opts.sheetWIn * PT - 2 * m;
+  const sheetH = (opts.roll ? Infinity : opts.sheetHIn * PT - 2 * m);
+  // Build the item list.
+  const base: NestItem[] = srcPages.map((p, i) => { const s = p.getSize(); return { page: i, w: s.width, h: s.height }; });
+  const items: NestItem[] = [];
+  if (opts.fillSheet) { const per = 400; for (let c = 0; c < per; c++) for (const b of base) items.push({ ...b }); }
+  else { for (let c = 0; c < Math.max(1, opts.copies); c++) for (const b of base) items.push({ ...b }); }
+  // Sort tallest-first for better skyline packing.
+  items.sort((a, b) => b.h - a.h);
+
+  // True-shape nesting (pdf.js) when requested; falls back to bounding-box if the
+  // rasteriser is unavailable (e.g. non-browser) or nothing rasterised.
+  if (opts.trueShape) {
+    const ts = await nestTrueShape(bytes, srcPages, items, opts);
+    if (ts) return renderNest(await PDFDocument.create(), srcPages, ts, opts, degrees);
+  }
+
+  const sheets: NestPlaced[][] = [];
+  let sky: { x: number; y: number; w: number }[] = [{ x: 0, y: 0, w: sheetW }];
+  let placed: NestPlaced[] = [];
+  let maxTop = 0;
+  const newSheet = () => { if (placed.length) sheets.push(placed); placed = []; sky = [{ x: 0, y: 0, w: sheetW }]; maxTop = 0; };
+  for (const it of items) {
+    const tryOrient: [number, number, boolean][] = opts.allowRotate ? [[it.w, it.h, false], [it.h, it.w, true]] : [[it.w, it.h, false]];
+    let done = false;
+    for (let attempt = 0; attempt < 2 && !done; attempt++) {
+      let bestPos: { x: number; y: number; w: number; h: number; rot: boolean } | null = null;
+      for (const [w, h, rot] of tryOrient) {
+        const wp = w + pad, hp = h + pad;
+        const pos = skylineFind(sky, wp, hp, sheetW, sheetH);
+        if (pos && (!bestPos || pos.y < bestPos.y)) bestPos = { x: pos.x, y: pos.y, w: wp, h: hp, rot };
+      }
+      if (bestPos) { placed.push({ page: it.page, x: m + bestPos.x, y: bestPos.y, w: bestPos.w - pad, h: bestPos.h - pad, rot: bestPos.rot }); sky = skylinePlace(sky, bestPos.x, bestPos.y, bestPos.w, bestPos.h); maxTop = Math.max(maxTop, bestPos.y + bestPos.h); done = true; }
+      else if (opts.fillSheet) { done = true; }   // sheet full — stop adding for fill mode on this size
+      else { newSheet(); }                          // start a fresh sheet and retry once
+    }
+    if (opts.fillSheet && !done) break;
+  }
+  if (placed.length) sheets.push(placed);
+  if (!sheets.length) throw new Error('Nothing fit — increase sheet size or reduce item size.');
+  return renderNest(await PDFDocument.create(), srcPages, sheets, opts, degrees);
+}
+
+// Render packed sheets to a PDF (shared by bounding-box + true-shape paths).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function renderNest(outDoc: any, srcPages: any[], sheets: NestPlaced[][], opts: NestOptions, degrees: any): Promise<Uint8Array> {
+  const m = opts.marginIn * PT;
+  const embeds = await outDoc.embedPages(srcPages);
+  for (const sheet of sheets) {
+    const usedTop = Math.max(...sheet.map(p => p.y + p.h));
+    const pageH = opts.roll ? usedTop + 2 * m : opts.sheetHIn * PT;
+    const pg = outDoc.addPage([opts.sheetWIn * PT, pageH]);
+    for (const it of sheet) {
+      const emb = embeds[it.page]!;
+      const yTop = pageH - m - (it.y + it.h);   // convert top-down pack coords to PDF (bottom-up)
+      if (it.rot) pg.drawPage(emb, { x: it.x + it.w, y: yTop, width: it.h, height: it.w, rotate: degrees(90) });
+      else pg.drawPage(emb, { x: it.x, y: yTop, width: it.w, height: it.h });
+    }
+  }
+  return outDoc.save();
+}
+
 // ── Download helper ─────────────────────────────────────────────────────────
 
 export function downloadPdf(bytes: Uint8Array, filename: string) {

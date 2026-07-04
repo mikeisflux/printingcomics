@@ -74,12 +74,21 @@ These documented options are now implemented and verified:
   both the standalone stamp tool and the data-merge (one code per CSV row).
 - **Distortion Comp.** — flexo/gravure cylinder pre-shrink: factor from cylinder
   geometry (D/(D+2t)) or a custom %, applied circumferential / cross-web / both.
+- **Nesting / Stickers** — mixed-size gang packing: skyline bottom-left
+  bin-packing (fast rectangular) plus optional **true-shape** mode that
+  rasterises each artwork's alpha outline (pdf.js occupancy grid) and drops
+  items into each other's negative space. Sheet or continuous-roll media,
+  90° auto-rotate, fill-sheet or fixed copy count. Verified: 20 cards → 2
+  sheets, mixed 5 items on one sheet, roll grows to fit, fill-sheet packs 15;
+  true-shape gracefully falls back to skyline when the rasteriser is
+  unavailable (headless Node).
 
 ## Remaining option gaps (bigger builds)
 
 - **N-up Book** — 8-up octavo / 16 / 32 fall back to folio saddle/perfect.
 - **Barcode** — DataMatrix (needs Reed-Solomon + matrix placement).
-- **Gang Sheet** — uniform gang (no true mixed-size bin-packing).
+- **Gang Sheet** — the *classic* Gang Sheet tool still lays out a uniform grid;
+  mixed-size bin-packing now lives in the dedicated **Nesting / Stickers** tool.
 - **Preflight** — size/uniformity only (no fonts / DPI / ink-coverage).
 - **Die Lines** — carton + folder presets (no arbitrary spot-colour layers).
 

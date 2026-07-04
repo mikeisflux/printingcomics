@@ -7,13 +7,13 @@ import {
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
-  distortPdf, distortFactorFromCylinder,
+  distortPdf, distortFactorFromCylinder, nestPdf,
 } from '../../lib/impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
-  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -417,6 +417,20 @@ const TicketThumb = () => (
         <text x="153" y={y + 20} textAnchor="middle" fill="#c2410c" fontSize="11" fontWeight="700">{`00${i + 1}`}</text>
       </g>
     ))}
+  </svg>
+);
+
+const NestThumb = () => (
+  <svg viewBox="0 0 200 148" width="100%" height="100%">
+    <Sheet>
+      {/* irregular shapes packed tight to show true-shape nesting */}
+      <circle cx={48} cy={46} r={22} fill="#ecfeff" stroke="#22d3ee" />
+      <polygon points="88,26 118,34 112,66 82,62" fill="#f0fdfa" stroke="#2dd4bf" />
+      <path d="M138 28 l26 6 -6 26 -22 -4 z" fill="#f5f3ff" stroke="#a78bfa" />
+      <polygon points="26,78 54,72 62,102 34,110" fill="#fef2f2" stroke="#fb7185" />
+      <circle cx={92} cy={98} r={20} fill="#fefce8" stroke="#facc15" />
+      <path d="M128 76 l34 4 4 30 -30 6 -10 -22 z" fill="#eff6ff" stroke="#60a5fa" />
+    </Sheet>
   </svg>
 );
 
@@ -874,6 +888,11 @@ const TOOLS: ToolDef[] = [
     id: 'dimensions', name: 'Dimensions', preset: 'Dimensions', category: 'Marks & prepress', engine: 'dimensions',
     desc: 'Annotate each page with its exact trim size in inches and points — a quick pre-impose check.',
     tags: ['measure', 'trim size', 'inspect'], Thumb: DimThumb,
+  },
+  {
+    id: 'nest', name: 'Nesting / Stickers', preset: 'True-Shape Nesting', category: 'Cards & labels', engine: 'nest',
+    desc: 'Pack many die-cut shapes onto a sheet or roll with the least waste — skyline bin-packing, optional true-shape (contour-aware) mode.',
+    tags: ['sticker gang', 'bin-pack', 'true-shape nest', 'roll or sheet'], Thumb: NestThumb,
   },
 ];
 
@@ -2057,6 +2076,40 @@ function DistortSettings({ opts, onChange }: { opts: DistortUi; onChange: (o: Di
   );
 }
 
+// ── Nesting settings ──────────────────────────────────────────────────────────
+
+const DEFAULT_NEST: NestOptions = { sheetWIn: 8.5, sheetHIn: 11, roll: false, paddingIn: 0.08, marginIn: 0.25, allowRotate: true, copies: 20, fillSheet: true, trueShape: false, dpi: 36 };
+
+function NestSettings({ opts, onChange }: { opts: NestOptions; onChange: (o: NestOptions) => void }) {
+  const set = <K extends keyof NestOptions>(k: K, v: NestOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Media">
+        <select value={opts.roll ? 'roll' : 'sheet'} onChange={e => set('roll', e.target.value === 'roll')} style={iStyle}>
+          <option value="sheet">Stacked sheets</option>
+          <option value="roll">Roll (variable length)</option>
+        </select>
+      </Field>
+      <SheetPicker opts={opts} set={set} />
+      <Field label="Quantity">
+        <select value={opts.fillSheet ? 'fill' : 'copies'} onChange={e => set('fillSheet', e.target.value === 'fill')} style={iStyle}>
+          <option value="fill">Fill the sheet</option>
+          <option value="copies">Copy count</option>
+        </select>
+      </Field>
+      {!opts.fillSheet && <Field label="Copies (per design)"><input type="number" min={1} max={2000} step={1} value={opts.copies} onChange={e => set('copies', +e.target.value)} style={iStyle} /></Field>}
+      <Field label="Item padding (in)"><input type="number" min={0} max={0.5} step={0.01} value={opts.paddingIn} onChange={e => set('paddingIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Sheet margin (in)"><input type="number" min={0} max={1} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Rotation"><Row><input type="checkbox" checked={opts.allowRotate} onChange={e => set('allowRotate', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Allow 90° rotation</span></Row></Field>
+      <Field label="Nesting"><Row><input type="checkbox" checked={!!opts.trueShape} onChange={e => set('trueShape', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>True-shape (pack into negative space)</span></Row></Field>
+      {opts.trueShape && <Field label="Detail (DPI)" note="Higher = tighter but slower"><input type="number" min={12} max={150} step={6} value={opts.dpi ?? 36} onChange={e => set('dpi', +e.target.value)} style={iStyle} /></Field>}
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Packs each source page (different sizes = different stickers) as tightly as it can. <strong>True-shape</strong> rasterises the artwork outline and nests items into each other's negative space (best for irregular die-cut shapes); leave it off for fast rectangular bin-packing.
+      </div>
+    </Grid>
+  );
+}
+
 // ── Calendar settings ─────────────────────────────────────────────────────────
 
 const DEFAULT_CALENDAR: CalendarOptions = { halfSheet: false, rotateBack: true, addMarks: false, markLenIn: 0.2, markOffIn: 0.1 };
@@ -2365,6 +2418,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [splitZip, setSplitZip] = useState(true);
   const [distortOpts, setDistortOpts] = useState<DistortUi>(DEFAULT_DISTORT);
   const [calendarOpts, setCalendarOpts] = useState<CalendarOptions>(DEFAULT_CALENDAR);
+  const [nestOpts, setNestOpts] = useState<NestOptions>(DEFAULT_NEST);
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
   const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
@@ -2435,6 +2489,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'booklet': out = await imposeBooklet(file.bytes, bookletOpts); outName = `${base}-booklet.pdf`; break;
         case 'nupbook': out = await imposeNUpBook(file.bytes, nupBookOpts); outName = `${base}-nupbook-${nupBookOpts.nUp}up.pdf`; break;
         case 'calendar': out = await imposeCalendar(file.bytes, calendarOpts); outName = `${base}-calendar.pdf`; break;
+        case 'nest': out = await nestPdf(file.bytes, nestOpts); outName = `${base}-nested.pdf`; break;
         case 'nup':
           out = await imposeNUp(file.bytes, nupOpts);
           outName = `${base}-${nupOpts.repeatFirst ? 'repeat' : `${tool.id}`}.pdf`; break;
@@ -2584,6 +2639,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'booklet' && <BookletSettings opts={bookletOpts} onChange={setBookletOpts} />}
                 {tool.engine === 'nupbook' && <NUpBookSettings opts={nupBookOpts} onChange={setNupBookOpts} />}
                 {tool.engine === 'calendar' && <CalendarSettings opts={calendarOpts} onChange={setCalendarOpts} />}
+                {tool.engine === 'nest' && <NestSettings opts={nestOpts} onChange={setNestOpts} />}
                 {tool.engine === 'nup' && <NUpSettings opts={nupOpts} onChange={setNupOpts} cardMode={cardMode} />}
                 {tool.engine === 'poster' && <PosterSettings opts={posterOpts} onChange={setPosterOpts} />}
                 {tool.engine === 'cropmarks' && <CropSettings opts={cropOpts} onChange={setCropOpts} />}

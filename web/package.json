@@ -23,6 +23,7 @@
     "canvas-confetti": "^1.9.3",
     "lucide-react": "^1.23.0",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.1.200",
     "postprocessing": "^6.36.0",
     "qrcode-generator": "^2.0.4",
     "react": "^19.0.0",
