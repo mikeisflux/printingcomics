@@ -2043,8 +2043,59 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
   );
 }
 
-function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: TemplatePreset; onBack: () => void }) {
-  const [file, setFile] = useState<LoadedFile | null>(null);
+// Persistent left tool rail — the four pdfpress groups, searchable, with the
+// tool thumbnails as icons. Switching does not lose the loaded file.
+type RailGroup = 'Layout' | 'Transform' | 'Enhance' | 'Advanced';
+const GROUP_OF: Record<string, RailGroup> = {
+  'Imposition & layout': 'Layout', 'Booklets & books': 'Layout', 'Cards & labels': 'Layout', 'Folding': 'Layout',
+  'Page & PDF tools': 'Transform',
+  'Marks & prepress': 'Enhance', 'Tickets & data': 'Enhance',
+  'Large & specialty': 'Advanced',
+};
+const RAIL_ORDER: RailGroup[] = ['Layout', 'Transform', 'Enhance', 'Advanced'];
+
+function ToolRail({ activeId, onSelect }: { activeId: string; onSelect: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const groups = useMemo(() => {
+    const ql = q.trim().toLowerCase();
+    const m = new Map<RailGroup, ToolDef[]>();
+    for (const t of TOOLS) {
+      if (ql && !t.name.toLowerCase().includes(ql) && !t.tags.some(tag => tag.toLowerCase().includes(ql))) continue;
+      const g = GROUP_OF[t.category] ?? 'Layout';
+      if (!m.has(g)) m.set(g, []);
+      m.get(g)!.push(t);
+    }
+    return RAIL_ORDER.filter(g => m.has(g)).map(g => [g, m.get(g)!] as const);
+  }, [q]);
+
+  return (
+    <nav style={{ width: 232, flexShrink: 0, position: 'sticky', top: '1rem', alignSelf: 'flex-start', maxHeight: 'calc(100vh - 2rem)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '.9rem', padding: '.85rem .75rem', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderRadius: 12 }}>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search tools…" style={{ ...iStyle, padding: '.4rem .6rem', fontSize: '.82rem' }} />
+      {groups.map(([g, tools]) => (
+        <div key={g}>
+          <div style={{ fontSize: '.6rem', fontWeight: 800, letterSpacing: '.09em', color: 'var(--muted)', textTransform: 'uppercase', margin: '0 0 .35rem .25rem' }}>{g}</div>
+          <div style={{ display: 'grid', gap: 2 }}>
+            {tools.map(t => {
+              const active = t.id === activeId;
+              return (
+                <button key={t.id} onClick={() => onSelect(t.id)} title={t.desc} style={{
+                  display: 'flex', alignItems: 'center', gap: '.5rem', padding: '.32rem .45rem', borderRadius: 7, cursor: 'pointer', textAlign: 'left', width: '100%',
+                  border: '1px solid ' + (active ? VIOLET : 'transparent'), background: active ? 'var(--accent-soft)' : 'transparent', color: active ? VIOLET : 'var(--ink)',
+                  fontSize: '.8rem', fontWeight: active ? 700 : 500,
+                }}>
+                  <span style={{ width: 22, height: 17, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: 'var(--bg)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><t.Thumb /></span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { tool: ToolDef; preset?: TemplatePreset; file: LoadedFile | null; onFile: (f: LoadedFile | null) => void; onSelectTool: (id: string) => void; onBack: () => void }) {
   const [status, setStatus] = useState<Status>('idle');
   const [errMsg, setErrMsg] = useState('');
 
@@ -2083,8 +2134,10 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
   const [backdropOpts, setBackdropOpts] = useState<BackdropOptions>(DEFAULT_BACKDROP);
   const [qrStampOpts, setQrStampOpts] = useState<QrStampOptions>(DEFAULT_QRSTAMP);
   const [mixReverse, setMixReverse] = useState(false);
-  const [shuffleOrder, setShuffleOrder] = useState('');
-  const [splitRanges, setSplitRanges] = useState('');
+  // Initialise order-list tools from the (possibly already-loaded) file so they
+  // are correct even when this tool was reached by switching in the rail.
+  const [shuffleOrder, setShuffleOrder] = useState(() => file ? Array.from({ length: file.info.count }, (_, i) => i + 1).join(', ') : '');
+  const [splitRanges, setSplitRanges] = useState(() => file ? `1-${file.info.count}` : '');
   const [stampFile, setStampFile] = useState<MergeFile | null>(null);
 
   // Merge tool has its own multi-file state
@@ -2096,7 +2149,7 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
       const info = await getPdfInfo(bytes);
-      setFile({ name: f.name, bytes, info });
+      onFile({ name: f.name, bytes, info });
       // Prefill order-list tools and derive fit-to-source cell sizes.
       const seq = Array.from({ length: info.count }, (_, i) => i + 1).join(', ');
       setShuffleOrder(seq);
@@ -2106,9 +2159,9 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
     } catch {
       setStatus('error'); setErrMsg('Could not read PDF. Make sure it is a valid, unencrypted PDF.');
     }
-  }, [tool.fitSource]);
+  }, [tool.fitSource, onFile]);
 
-  const clearFile = () => { setFile(null); setStatus('idle'); setErrMsg(''); };
+  const clearFile = () => { onFile(null); setStatus('idle'); setErrMsg(''); };
 
   const addMergeFiles = useCallback(async (files: File[]) => {
     const loaded = await Promise.all(files.map(async f => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
@@ -2228,9 +2281,11 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
       : 'Process & Download';
 
   return (
-    <div>
+    <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+      <ToolRail activeId={tool.id} onSelect={onSelectTool} />
+      <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-        <button className="btn secondary" onClick={onBack} style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>← Back</button>
+        <button className="btn secondary" onClick={onBack} style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>← Gallery</button>
         <div>
           <h2 style={{ margin: 0, fontSize: '1.3rem' }}>{tool.badge ? `${tool.name} ${tool.badge}` : tool.name}</h2>
           <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>{tool.desc}</div>
@@ -2362,6 +2417,7 @@ function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: Templ
           {status === 'error' && !file && <div style={{ color: '#dc2626', fontSize: '.85rem', marginTop: '-0.5rem' }}>{errMsg}</div>}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -3333,18 +3389,20 @@ export function AdminImpose() {
   const [filter, setFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  // Loaded file lives here so it survives switching tools via the rail.
+  const [file, setFile] = useState<LoadedFile | null>(null);
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
   const handleSelect = (id: string) => { setActiveTemplate(null); setActiveTool(id); };
   const handleSelectTemplate = (tpl: TemplateDef) => { setActiveTemplate(tpl); setActiveTool(tpl.toolId); };
 
-  const shell = (node: React.ReactNode) => (
+  const shell = (node: React.ReactNode, wide = false) => (
     <div style={{ ...THEMES[theme], background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh' } as React.CSSProperties}>
-      <div style={{ padding: '2rem 2rem 4rem', maxWidth: 1120, margin: '0 auto' }}>{node}</div>
+      <div style={{ padding: wide ? '1.25rem 1.5rem 3rem' : '2rem 2rem 4rem', maxWidth: wide ? 1680 : 1120, margin: '0 auto' }}>{node}</div>
     </div>
   );
 
-  // A tool or workflow workspace takes over the whole page.
+  // A tool or workflow workspace takes over the whole page (full desktop width).
   if (activeTool && toolDef) {
     const preset = activeTemplate && activeTemplate.toolId === toolDef.id ? activeTemplate.preset : undefined;
     return shell(
@@ -3352,8 +3410,12 @@ export function AdminImpose() {
         key={toolDef.id + (activeTemplate?.id ?? '')}
         tool={toolDef}
         preset={preset}
+        file={file}
+        onFile={setFile}
+        onSelectTool={handleSelect}
         onBack={() => { setActiveTool(null); setActiveTemplate(null); }}
       />,
+      true,
     );
   }
   if (activeWorkflow) {

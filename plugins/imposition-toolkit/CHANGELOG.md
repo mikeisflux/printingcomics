@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2
+
+- **Persistent tool rail + full-width layout** — the studio is now a three-column
+  desktop workspace: a searchable left tool rail (Layout/Transform/Enhance/
+  Advanced) that switches tools without losing the loaded file, the options
+  sidebar, and the live preview canvas.
+
 ## 1.2.1
 
 - **Studio workspace** — the React UI's tool view is now a two-zone pdfpress-style
