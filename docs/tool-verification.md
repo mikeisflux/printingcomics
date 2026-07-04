@@ -67,11 +67,13 @@ These documented options are now implemented and verified:
 - **Header/Footer & Slugline** — variable tokens `[page-number]`,
   `[page-number:0001]`, `[page-count]`, `[file-name]`, `[timestamp:%Y-%m-%d]`,
   plus alternate-sides for running heads.
-- **Overlay** — 9-point anchor + padding for centred stamps.
+- **Overlay** — 9-point anchor + padding + **Multiply blend mode**.
 - **Cutter Marks** — cut type (thru/kiss/crease/perf), knockout halo, overshoot,
   orientation key mark.
 - **Barcode/QR** — **Code 128** and **EAN-13** (with check digit) alongside QR, on
   both the standalone stamp tool and the data-merge (one code per CSV row).
+- **Distortion Comp.** — flexo/gravure cylinder pre-shrink: factor from cylinder
+  geometry (D/(D+2t)) or a custom %, applied circumferential / cross-web / both.
 
 ## Remaining option gaps (bigger builds)
 
@@ -83,6 +85,6 @@ These documented options are now implemented and verified:
 
 ## Not implemented (deep specialty)
 
-Edit PDF, Distortion Compensation, Folding/OMR/Gathering/Lay marks,
+Edit PDF, Folding/OMR/Gathering/Lay marks,
 White/Varnish, Braille, Color Effects, Color Management (ICC), Layers (OCG),
 PDF Optimizer (linearize/encrypt), JDF/CIP4 export.
