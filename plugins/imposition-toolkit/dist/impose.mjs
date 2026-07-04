@@ -13,8 +13,9 @@ async function getPdfInfo(bytes) {
     heightIn: Math.round(height / PT * 1e3) / 1e3
   };
 }
-function drawCropMarks(page, rgb, tx, ty, tw, th, off, len) {
-  const c = rgb(0, 0, 0);
+function drawCropMarks(page, rgb, tx, ty, tw, th, off, len, style) {
+  const c = style?.color ?? rgb(0, 0, 0);
+  const thickness = style?.weight ?? 0.5;
   const segs = [
     [tx - off - len, ty, tx - off, ty],
     [tx, ty - off - len, tx, ty - off],
@@ -25,47 +26,64 @@ function drawCropMarks(page, rgb, tx, ty, tw, th, off, len) {
     [tx + tw + off, ty + th, tx + tw + off + len, ty + th],
     [tx + tw, ty + th + off, tx + tw, ty + th + off + len]
   ];
+  if (style?.center) {
+    const cx = tx + tw / 2, cy = ty + th / 2;
+    segs.push(
+      [cx, ty - off - len, cx, ty - off],
+      // bottom-centre
+      [cx, ty + th + off, cx, ty + th + off + len],
+      // top-centre
+      [tx - off - len, cy, tx - off, cy],
+      // left-centre
+      [tx + tw + off, cy, tx + tw + off + len, cy]
+      // right-centre
+    );
+  }
   for (const [x1, y1, x2, y2] of segs)
-    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.5, color: c });
+    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: c });
 }
 async function imposeBooklet(bytes, opts) {
   const { PDFDocument, rgb } = await import("pdf-lib");
   const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const srcPages = srcDoc.getPages();
   const N = srcPages.length;
-  const paddedN = Math.ceil(N / 4) * 4;
-  const numSheets = paddedN / 4;
   const { width: pw, height: ph } = srcPages[0].getSize();
   const mPt = opts.marginIn * PT, gPt = opts.gutterIn * PT, offPt = opts.markOffIn * PT, lenPt = opts.markLenIn * PT;
   const spreadW = mPt * 2 + pw * 2 + gPt, spreadH = mPt * 2 + ph;
   const outDoc = await PDFDocument.create();
   const embeds = await outDoc.embedPages(srcPages);
+  const markStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
   function emb(n) {
     return n >= 1 && n <= N ? embeds[n - 1] : null;
   }
-  for (let s = 0; s < numSheets; s++) {
-    const creepPt = numSheets > 1 ? s / (numSheets - 1) * opts.creepIn * PT : 0;
-    const xL = mPt - creepPt, xR = mPt + pw + gPt + creepPt, yB = mPt;
-    let aL, aR, bL, bR;
-    if (!opts.rtl) {
-      aL = paddedN - s * 2;
-      aR = s * 2 + 1;
-      bL = s * 2 + 2;
-      bR = paddedN - s * 2 - 1;
-    } else {
-      aL = s * 2 + 1;
-      aR = paddedN - s * 2;
-      bL = paddedN - s * 2 - 1;
-      bR = s * 2 + 2;
-    }
-    for (const [left, right] of [[aL, aR], [bL, bR]]) {
-      const pg = outDoc.addPage([spreadW, spreadH]);
-      const eL = emb(left), eR = emb(right);
-      if (eL) pg.drawPage(eL, { x: xL, y: yB, width: pw, height: ph });
-      if (eR) pg.drawPage(eR, { x: xR, y: yB, width: pw, height: ph });
-      if (opts.addMarks) {
-        drawCropMarks(pg, rgb, xL, yB, pw, ph, offPt, lenPt);
-        drawCropMarks(pg, rgb, xR, yB, pw, ph, offPt, lenPt);
+  const sigPages = opts.signatureSheets && opts.signatureSheets > 0 ? opts.signatureSheets * 4 : Math.ceil(Math.max(1, N) / 4) * 4;
+  for (let start = 1; start <= Math.max(1, N); start += sigPages) {
+    const numSheets = sigPages / 4;
+    for (let s = 0; s < numSheets; s++) {
+      const creepPt = numSheets > 1 ? s / (numSheets - 1) * opts.creepIn * PT : 0;
+      const xL = mPt - creepPt, xR = mPt + pw + gPt + creepPt, yB = mPt;
+      let aL, aR, bL, bR;
+      if (!opts.rtl) {
+        aL = sigPages - s * 2;
+        aR = s * 2 + 1;
+        bL = s * 2 + 2;
+        bR = sigPages - s * 2 - 1;
+      } else {
+        aL = s * 2 + 1;
+        aR = sigPages - s * 2;
+        bL = sigPages - s * 2 - 1;
+        bR = s * 2 + 2;
+      }
+      const g = (loc) => start - 1 + loc;
+      for (const [left, right] of [[aL, aR], [bL, bR]]) {
+        const pg = outDoc.addPage([spreadW, spreadH]);
+        const eL = emb(g(left)), eR = emb(g(right));
+        if (eL) pg.drawPage(eL, { x: xL, y: yB, width: pw, height: ph });
+        if (eR) pg.drawPage(eR, { x: xR, y: yB, width: pw, height: ph });
+        if (opts.addMarks) {
+          drawCropMarks(pg, rgb, xL, yB, pw, ph, offPt, lenPt, markStyle);
+          drawCropMarks(pg, rgb, xR, yB, pw, ph, offPt, lenPt, markStyle);
+        }
       }
     }
   }
@@ -95,26 +113,39 @@ async function imposeNUp(bytes, opts) {
   const shW = opts.sheetWIn * PT, shH = opts.sheetHIn * PT;
   const { cols, rows, cellWPt: cellW, cellHPt: cellH, leftGapPt, topGapPt, gxPt, gyPt } = computeNUpGrid(opts);
   const perSheet = cols * rows;
-  const numSheets = opts.repeatFirst ? 1 : Math.max(1, Math.ceil(N / perSheet));
+  const duplex = !!opts.duplex;
+  const totalItems = duplex ? Math.ceil(N / 2) : N;
+  const numSheets = opts.repeatFirst ? 1 : Math.max(1, Math.ceil(totalItems / perSheet));
   const outDoc = await PDFDocument.create();
   const embeds = await outDoc.embedPages(srcPages);
-  const off = opts.markOffIn * PT, len = opts.markLenIn * PT;
+  const off = opts.markOffIn * PT, len = opts.markLenIn * PT, bl = (opts.bleedIn ?? 0) * PT;
+  const markStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
+  const shortEdge = opts.duplexFlip === "short";
+  const itemAt = (si, cellIdx) => {
+    if (opts.repeatFirst) return 0;
+    if (opts.cutStack) return cellIdx * numSheets + si;
+    return si * perSheet + cellIdx;
+  };
+  const place = (sheet, itemIdx, r, c, isBack) => {
+    const pi = duplex ? itemIdx * 2 + (isBack ? 1 : 0) : itemIdx;
+    if (pi >= N) return;
+    const emb = embeds[pi];
+    if (!emb) return;
+    let cc = c, rr = r;
+    if (isBack) {
+      if (shortEdge) rr = rows - 1 - r;
+      else cc = cols - 1 - c;
+    }
+    const x = leftGapPt + cc * (cellW + gxPt), y = shH - topGapPt - cellH - rr * (cellH + gyPt);
+    sheet.drawPage(emb, { x, y, width: cellW, height: cellH });
+    if (opts.addMarks) drawCropMarks(sheet, rgb, x + bl, y + bl, cellW - 2 * bl, cellH - 2 * bl, off, len, markStyle);
+  };
   for (let si = 0; si < numSheets; si++) {
-    const sheet = outDoc.addPage([shW, shH]);
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const cellIdx = r * cols + c;
-        let pi;
-        if (opts.repeatFirst) pi = 0;
-        else if (opts.cutStack) pi = cellIdx * numSheets + si;
-        else pi = si * perSheet + cellIdx;
-        if (pi >= N) continue;
-        const emb = embeds[pi];
-        if (!emb) continue;
-        const x = leftGapPt + c * (cellW + gxPt), y = shH - topGapPt - cellH - r * (cellH + gyPt);
-        sheet.drawPage(emb, { x, y, width: cellW, height: cellH });
-        if (opts.addMarks) drawCropMarks(sheet, rgb, x, y, cellW, cellH, off, len);
-      }
+    const front = outDoc.addPage([shW, shH]);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) place(front, itemAt(si, r * cols + c), r, c, false);
+    if (duplex) {
+      const back = outDoc.addPage([shW, shH]);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) place(back, itemAt(si, r * cols + c), r, c, true);
     }
   }
   return outDoc.save();
@@ -134,6 +165,7 @@ async function imposeTickets(bytes, opts) {
   const [emb] = await outDoc.embedPages([srcPages[0]]);
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
   const off = opts.markOffIn * PT, len = opts.markLenIn * PT, inset = 4;
+  const markStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
   let ticket = 0;
   for (let si = 0; si < numSheets; si++) {
     const sheet = outDoc.addPage([shW, shH]);
@@ -149,7 +181,7 @@ async function imposeTickets(bytes, opts) {
         const tx = opts.position.includes("right") ? x + cellW - tw - inset : opts.position.includes("left") ? x + inset : x + (cellW - tw) / 2;
         const ty = opts.position.startsWith("top") ? y + cellH - opts.fontSizePt - inset : y + inset;
         sheet.drawText(label, { x: tx, y: ty, font, size: opts.fontSizePt, color: rgb(0, 0, 0) });
-        if (opts.addMarks) drawCropMarks(sheet, rgb, x, y, cellW, cellH, off, len);
+        if (opts.addMarks) drawCropMarks(sheet, rgb, x, y, cellW, cellH, off, len, markStyle);
       }
     }
   }
@@ -161,12 +193,13 @@ async function addCropMarksOnly(bytes, opts) {
   const srcPages = srcDoc.getPages();
   const outDoc = await PDFDocument.create();
   const embeds = await outDoc.embedPages(srcPages);
+  const markStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
   for (let i = 0; i < embeds.length; i++) {
     const { width: pw, height: ph } = srcPages[i].getSize();
     const mPt = opts.marginIn * PT, bPt = opts.bleedIn * PT;
     const pg = outDoc.addPage([pw + mPt * 2, ph + mPt * 2]);
     pg.drawPage(embeds[i], { x: mPt, y: mPt, width: pw, height: ph });
-    drawCropMarks(pg, rgb, mPt + bPt, mPt + bPt, pw - bPt * 2, ph - bPt * 2, opts.markOffIn * PT, opts.markLenIn * PT);
+    drawCropMarks(pg, rgb, mPt + bPt, mPt + bPt, pw - bPt * 2, ph - bPt * 2, opts.markOffIn * PT, opts.markLenIn * PT, markStyle);
   }
   return outDoc.save();
 }
@@ -253,14 +286,47 @@ async function overlayPdf(baseBytes, stampBytes, opts) {
   return baseDoc.save();
 }
 async function shufflePages(bytes, orderStr) {
-  const { PDFDocument } = await import("pdf-lib");
+  const { PDFDocument, degrees } = await import("pdf-lib");
   const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const n = srcDoc.getPageCount();
-  const order = orderStr.split(",").map((s) => parseInt(s.trim()) - 1).filter((i) => i >= 0 && i < n);
-  if (!order.length) throw new Error("No valid page numbers");
+  const ref = srcDoc.getPage(0).getSize();
+  const instr = [];
+  for (const raw of orderStr.split(",")) {
+    let tok = raw.trim();
+    if (!tok) continue;
+    let rot = 0;
+    while (/[><^]$/.test(tok)) {
+      const ch = tok[tok.length - 1];
+      rot = (rot + (ch === ">" ? 90 : ch === "<" ? 270 : 180)) % 360;
+      tok = tok.slice(0, -1).trim();
+    }
+    if (/^[bxBX_]$/.test(tok) || tok === "0") {
+      instr.push({ page: null, rot });
+      continue;
+    }
+    const m = tok.match(/^(\d+)-(\d+)$/);
+    if (m) {
+      const a = parseInt(m[1]), b = parseInt(m[2]);
+      if (a <= b) for (let p2 = a; p2 <= b; p2++) instr.push({ page: p2, rot });
+      else for (let p2 = a; p2 >= b; p2--) instr.push({ page: p2, rot });
+      continue;
+    }
+    const p = parseInt(tok);
+    if (!isNaN(p)) instr.push({ page: p, rot });
+  }
+  const valid = instr.filter((x) => x.page === null || x.page >= 1 && x.page <= n);
+  if (!valid.length) throw new Error("No valid page numbers");
   const outDoc = await PDFDocument.create();
-  const pages = await outDoc.copyPages(srcDoc, order);
-  for (const pg of pages) outDoc.addPage(pg);
+  for (const it of valid) {
+    if (it.page === null) {
+      const pg = outDoc.addPage([ref.width, ref.height]);
+      if (it.rot) pg.setRotation(degrees(it.rot));
+    } else {
+      const [pg] = await outDoc.copyPages(srcDoc, [it.page - 1]);
+      if (it.rot && pg) pg.setRotation(degrees((pg.getRotation().angle + it.rot) % 360));
+      if (pg) outDoc.addPage(pg);
+    }
+  }
   return outDoc.save();
 }
 async function cropPdf(bytes, opts) {
@@ -273,6 +339,32 @@ async function cropPdf(bytes, opts) {
     pg.setTrimBox(lPt, bPt, w - lPt - rPt, h - tPt - bPt);
   }
   return doc.save();
+}
+async function resizePdf(bytes, opts) {
+  const { PDFDocument } = await import("pdf-lib");
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(srcPages);
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = srcPages[i].getSize();
+    if (opts.mode === "scale") {
+      const f = Math.max(0.01, opts.scalePct / 100);
+      const nw = w * f, nh = h * f;
+      const pg = outDoc.addPage([nw, nh]);
+      pg.drawPage(embeds[i], { x: 0, y: 0, width: nw, height: nh });
+    } else {
+      const tw = opts.targetWIn * PT, th = opts.targetHIn * PT;
+      const pg = outDoc.addPage([tw, th]);
+      if (opts.mode === "stretch") {
+        pg.drawPage(embeds[i], { x: 0, y: 0, width: tw, height: th });
+      } else {
+        const s = Math.min(tw / w, th / h), dw = w * s, dh = h * s;
+        pg.drawPage(embeds[i], { x: (tw - dw) / 2, y: (th - dh) / 2, width: dw, height: dh });
+      }
+    }
+  }
+  return outDoc.save();
 }
 async function addPageNumbers(bytes, opts) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
@@ -358,7 +450,7 @@ async function imposeTiledPoster(bytes, opts) {
       pg.drawPage(embed, { x: -offsetX, y: -offsetY, width: scaledW, height: scaledH });
       if (opts.addMarks) {
         const off = opts.markOffIn * PT, len = opts.markLenIn * PT;
-        drawCropMarks(pg, rgb, 0, 0, shW, shH, off, len);
+        drawCropMarks(pg, rgb, 0, 0, shW, shH, off, len, { center: !!opts.centerMarks, weight: opts.markWeightPt });
       }
     }
   }
@@ -638,10 +730,150 @@ async function imposeDataMerge(csvText, opts) {
         const tw = font.widthOfTextAtSize(label, opts.fontSizePt);
         pg.drawText(label, { x: qrOn ? x + 8 : x + cellW - tw - 8, y: y + 8, font, size: opts.fontSizePt, color: rgb(0.42, 0.42, 0.45) });
       }
-      if (opts.addMarks) drawCropMarks(pg, rgb, x, y, cellW, cellH, off, len);
+      if (opts.addMarks) drawCropMarks(pg, rgb, x, y, cellW, cellH, off, len, { center: !!opts.centerMarks, weight: opts.markWeightPt });
     }
   }
   return { pdf: await doc.save(), records: records.length, columns: headers };
+}
+async function addRegistrationMarks(bytes, opts) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const black = rgb(0, 0, 0);
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const m = opts.marginIn * PT, r = opts.sizeIn * PT / 2;
+    const spots = [
+      [m, m],
+      [w - m, m],
+      [m, h - m],
+      [w - m, h - m],
+      [w / 2, m],
+      [w / 2, h - m],
+      [m, h / 2],
+      [w - m, h / 2]
+    ];
+    for (const [cx, cy] of spots) {
+      pg.drawLine({ start: { x: cx - r * 1.5, y: cy }, end: { x: cx + r * 1.5, y: cy }, thickness: 0.5, color: black });
+      pg.drawLine({ start: { x: cx, y: cy - r * 1.5 }, end: { x: cx, y: cy + r * 1.5 }, thickness: 0.5, color: black });
+      if (opts.style === "target") {
+        pg.drawEllipse({ x: cx, y: cy, xScale: r, yScale: r, borderColor: black, borderWidth: 0.5 });
+        pg.drawEllipse({ x: cx, y: cy, xScale: r * 0.5, yScale: r * 0.5, borderColor: black, borderWidth: 0.5 });
+      }
+    }
+  }
+  return doc.save();
+}
+async function insertPages(bytes, opts) {
+  const { PDFDocument } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = src.getPageCount();
+  const { width, height } = src.getPage(0).getSize();
+  const out = await PDFDocument.create();
+  const copied = await out.copyPages(src, src.getPageIndices());
+  const blanks = Math.max(1, opts.count);
+  const addBlanks = () => {
+    for (let b = 0; b < blanks; b++) out.addPage([width, height]);
+  };
+  if (opts.mode === "everyN") {
+    const N = Math.max(1, opts.everyN);
+    for (let i = 0; i < n; i++) {
+      out.addPage(copied[i]);
+      if ((i + 1) % N === 0 && i < n - 1) addBlanks();
+    }
+  } else {
+    const pos = Math.min(Math.max(1, opts.position), n + 1);
+    for (let i = 0; i < n; i++) {
+      if (i === pos - 1) addBlanks();
+      out.addPage(copied[i]);
+    }
+    if (pos - 1 >= n) addBlanks();
+  }
+  return out.save();
+}
+async function mixPdfs(aBytes, bBytes, reverseB = false) {
+  const { PDFDocument } = await import("pdf-lib");
+  const A = await PDFDocument.load(aBytes, { ignoreEncryption: true });
+  const B = await PDFDocument.load(bBytes, { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  const ca = await out.copyPages(A, A.getPageIndices());
+  let cb = await out.copyPages(B, B.getPageIndices());
+  if (reverseB) cb = cb.reverse();
+  const max = Math.max(ca.length, cb.length);
+  for (let i = 0; i < max; i++) {
+    if (i < ca.length) out.addPage(ca[i]);
+    if (i < cb.length) out.addPage(cb[i]);
+  }
+  return out.save();
+}
+async function nudgePdf(bytes, opts) {
+  const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = src.getPages();
+  const out = await PDFDocument.create();
+  const embeds = await out.embedPages(pages);
+  const dx = opts.dxIn * PT, dy = opts.dyIn * PT, rad = opts.rotateDeg * Math.PI / 180;
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = pages[i].getSize();
+    const pg = out.addPage([w, h]);
+    const cos = Math.cos(rad), sin = Math.sin(rad), cx = w / 2, cy = h / 2;
+    const a = cos, b = sin, c = -sin, d = cos;
+    const e = cx + dx - (a * cx + c * cy), f = cy + dy - (b * cx + d * cy);
+    pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(a, b, c, d, e, f));
+    pg.drawPage(embeds[i], { x: 0, y: 0, width: w, height: h });
+    pg.pushOperators(popGraphicsState());
+  }
+  return out.save();
+}
+async function repairPdf(bytes) {
+  const { PDFDocument } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  const pages = await out.copyPages(src, src.getPageIndices());
+  for (const p of pages) out.addPage(p);
+  return out.save({ useObjectStreams: true });
+}
+async function addBackdrop(bytes, opts) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = src.getPages();
+  const out = await PDFDocument.create();
+  const embeds = await out.embedPages(pages);
+  for (let i = 0; i < embeds.length; i++) {
+    const { width: w, height: h } = pages[i].getSize();
+    const pg = out.addPage([w, h]);
+    pg.drawRectangle({ x: 0, y: 0, width: w, height: h, color: rgb(opts.r, opts.g, opts.b) });
+    pg.drawPage(embeds[i], { x: 0, y: 0, width: w, height: h });
+  }
+  return out.save();
+}
+async function addQrStamp(bytes, opts) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const mod = await import("qrcode-generator");
+  const qrcode = mod.default ?? mod;
+  const s = opts.sizePt, m = opts.marginPt;
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const x = opts.position === "center" ? (w - s) / 2 : opts.position.includes("l") ? m : w - s - m;
+    const y = opts.position === "center" ? (h - s) / 2 : opts.position.includes("t") ? h - s - m : m;
+    drawQrCode(pg, rgb, qrcode, opts.text || " ", x, y, s);
+  }
+  return doc.save();
+}
+async function addDimensions(bytes) {
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const col = rgb(0.85, 0.11, 0.14);
+  for (const pg of doc.getPages()) {
+    const { width: w, height: h } = pg.getSize();
+    const wl = `${(w / PT).toFixed(2)}in - ${Math.round(w)} pt`;
+    const hl = `${(h / PT).toFixed(2)}in - ${Math.round(h)} pt`;
+    const ww = font.widthOfTextAtSize(wl, 8);
+    pg.drawText(wl, { x: (w - ww) / 2, y: 5, font, size: 8, color: col });
+    pg.drawText(hl, { x: 11, y: h / 2 - font.widthOfTextAtSize(hl, 8) / 2, font, size: 8, color: col, rotate: degrees(90) });
+  }
+  return doc.save();
 }
 function downloadPdf(bytes, filename) {
   const blob = new Blob([bytes], { type: "application/pdf" });
@@ -658,12 +890,16 @@ function downloadMultiple(files, baseName) {
   files.forEach((bytes, i) => downloadPdf(bytes, `${baseName}-part${i + 1}.pdf`));
 }
 export {
+  addBackdrop,
   addCollatingMarks,
   addColorBar,
   addCropMarksOnly,
+  addDimensions,
   addHeaderFooter,
   addJobSlug,
   addPageNumbers,
+  addQrStamp,
+  addRegistrationMarks,
   addTextWatermark,
   computeNUpGrid,
   cropPdf,
@@ -677,10 +913,15 @@ export {
   imposeNUp,
   imposeTickets,
   imposeTiledPoster,
+  insertPages,
   makeDieline,
   mergePdfs,
+  mixPdfs,
+  nudgePdf,
   overlayPdf,
   preflight,
+  repairPdf,
+  resizePdf,
   rotatePdf,
   shufflePages,
   splitPdf

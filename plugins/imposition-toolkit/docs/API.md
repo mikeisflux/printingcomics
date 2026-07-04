@@ -1,6 +1,6 @@
 # API Reference — `impose.ts`
 
-The engine is a single ES module exporting 18 functions. Every processing
+The engine is a single ES module exporting 35 functions. Every processing
 function is `async` and returns a `Uint8Array` of PDF bytes (or an array of
 them), except the two download helpers. `pdf-lib` is imported dynamically inside
 each function, so importing the module costs nothing until you actually call a
@@ -14,7 +14,11 @@ flagged files still work.
 import {
   getPdfInfo, imposeBooklet, computeNUpGrid, imposeNUp, imposeTickets,
   addCropMarksOnly, mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf,
-  shufflePages, cropPdf, addPageNumbers, addColorBar, imposeTiledPoster,
+  shufflePages, cropPdf, resizePdf, addPageNumbers, addColorBar, imposeTiledPoster,
+  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks,
+  preflight, makeDieline, imposeDataMerge,
+  addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf,
+  addBackdrop, addQrStamp, addDimensions,
   downloadPdf, downloadMultiple,
 } from './impose';
 ```
@@ -298,6 +302,52 @@ Trigger a browser download of one PDF.
 Download each file as `${baseName}-part${n}.pdf` (used by Split).
 
 ---
+
+## v1.2 additions
+
+### `resizePdf(bytes, { mode, scalePct, targetWIn, targetHIn }): Promise<Uint8Array>`
+`mode`: `'scale'` (× `scalePct`%), `'fit'` (onto `targetWIn×targetHIn`, aspect
+preserved + centred), or `'stretch'` (fill the target exactly).
+
+### `addRegistrationMarks(bytes, { marginIn, sizeIn, style }): Promise<Uint8Array>`
+Press registration targets at the four corners + edge midpoints. `style`:
+`'target'` (bullseye + crosshair) or `'crosshair'`.
+
+### `insertPages(bytes, { mode, position, everyN, count }): Promise<Uint8Array>`
+Insert `count` blank pages (page-1 size). `mode:'at'` → before 1-indexed
+`position`; `mode:'everyN'` → after every `everyN` pages.
+
+### `mixPdfs(aBytes, bBytes, reverseB?): Promise<Uint8Array>`
+Interleave two documents `A1,B1,A2,B2…`. `reverseB` flips the B stack (backs
+scanned in reverse). Great for merging single-sided front/back scans.
+
+### `nudgePdf(bytes, { dxIn, dyIn, rotateDeg }): Promise<Uint8Array>`
+Shift every page's content by `dx/dy` and/or rotate it about the page centre.
+
+### `repairPdf(bytes): Promise<Uint8Array>`
+Rebuild the document from scratch — drops broken incremental-update cruft and
+dead objects, writes a clean xref.
+
+### `addBackdrop(bytes, { r, g, b }): Promise<Uint8Array>`
+Paint a solid colour (`0..1` channels) behind every page's content.
+
+### `addQrStamp(bytes, { text, sizePt, position, marginPt }): Promise<Uint8Array>`
+Stamp a scannable QR (`position`: `br|bl|tr|tl|center`) on every page. Requires
+the optional `qrcode-generator` peer.
+
+### `addDimensions(bytes): Promise<Uint8Array>`
+Annotate each page with its trim size (inches + points) on the bottom + left.
+
+## Enhanced options (v1.2)
+
+- **`MarkStyle`** — `drawCropMarks` callers accept `centerMarks?: boolean` and
+  `markWeightPt?: number` (booklet, n-up, tickets, crop-marks, poster, data-merge).
+- **`NUpOptions`** — `duplex?` + `duplexFlip?: 'long'|'short'` (double-sided,
+  mirrored backs) and `bleedIn?` (art fills the cell, marks drawn at the trim).
+- **`BookletOptions`** — `signatureSheets?: number` folds the book into N-sheet
+  signatures (perfect binding) instead of a single saddle.
+- **`shufflePages(bytes, expr)`** — `expr` is now an expression language: ranges
+  (`1-5` / `5-1`), rotation suffixes (`>` `<` `^`), and blank tokens (`B`/`X`/`_`).
 
 ## Error handling
 

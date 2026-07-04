@@ -2,15 +2,17 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import type { DragEvent, ChangeEvent } from 'react';
 import {
   getPdfInfo, imposeBooklet, imposeNUp, computeNUpGrid, addCropMarksOnly,
-  mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf,
+  mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
+  addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
 } from './impose';
 import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
-  OverlayOptions, PageNumberOptions, TicketOptions,
+  OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ interface PosterOptions {
   tilesAcross: number; tilesDown: number;
   sheetWIn: number; sheetHIn: number;
   overlapIn: number; addMarks: boolean; markLenIn: number; markOffIn: number;
+  centerMarks?: boolean; markWeightPt?: number;
 }
 interface ColorBarOptions { position: 'bottom' | 'top'; heightIn: number; }
 interface CropBoxOptions { top: number; right: number; bottom: number; left: number; }
@@ -51,7 +54,9 @@ interface CropBoxOptions { top: number; right: number; bottom: number; left: num
 type ToolEngine =
   | 'booklet' | 'nup' | 'poster' | 'cropmarks' | 'colorbar' | 'pagenumbers'
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
-  | 'bleed' | 'preflight' | 'dieline' | 'datamerge';
+  | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
+  | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -297,6 +302,90 @@ const CropToolThumb = () => (
     <line x1="142" y1="14" x2="142" y2="134" stroke="#334155" strokeWidth="1" />
     <line x1="22" y1="42" x2="178" y2="42" stroke="#334155" strokeWidth="1" />
     <line x1="22" y1="106" x2="178" y2="106" stroke="#334155" strokeWidth="1" />
+  </svg>
+);
+
+const ResizeThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="34" y="30" width="132" height="88" rx="2" fill="#f8fafc" stroke="#cbd5e1" strokeDasharray="3,3" />
+    <rect x="58" y="48" width="70" height="52" rx="2" fill="#f1f5f9" stroke="#334155" strokeWidth="2" />
+    <path d="M128 100 L156 118" stroke="#64748b" strokeWidth="2" />
+    <polygon points="156,118 146,116 152,108" fill="#64748b" />
+    <path d="M58 48 L34 30" stroke="#64748b" strokeWidth="2" />
+    <polygon points="34,30 44,32 38,40" fill="#64748b" />
+  </svg>
+);
+
+const A = '#7c3aed';
+const frame = <rect x="52" y="22" width="96" height="104" rx="3" fill="#f1f5f9" stroke="#94a3b8" />;
+const RegThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {([[70,40],[130,40],[70,108],[130,108]] as [number,number][]).map(([x,y],i)=>(<g key={i}>
+      <line x1={x-9} y1={y} x2={x+9} y2={y} stroke={A} strokeWidth="1.4" /><line x1={x} y1={y-9} x2={x} y2={y+9} stroke={A} strokeWidth="1.4" />
+      <circle cx={x} cy={y} r="5" stroke={A} strokeWidth="1.4" fill="none" /></g>))}
+  </svg>
+);
+const InsertThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="34" y="34" width="52" height="80" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <rect x="114" y="34" width="52" height="80" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <rect x="90" y="34" width="20" height="80" rx="2" fill="#ede9fe" stroke={A} strokeDasharray="3,3" />
+    <path d="M100 58 v32 M90 74 h20" stroke={A} strokeWidth="2" />
+  </svg>
+);
+const MixThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    {[30,64,98,132].map((y,i)=>(<rect key={i} x="60" y={y-6} width="80" height="20" rx="2" fill={i%2?'#ede9fe':'#f1f5f9'} stroke={i%2?A:'#94a3b8'} />))}
+  </svg>
+);
+const NudgeThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="60" y="34" width="80" height="80" rx="2" fill="#f8fafc" stroke="#cbd5e1" strokeDasharray="3,3" />
+    <rect x="74" y="44" width="80" height="80" rx="2" fill="#ede9fe" stroke={A} strokeWidth="2" />
+    <path d="M50 74 h18 M120 128 v-18" stroke={A} strokeWidth="2" />
+  </svg>
+);
+const RepairThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <path d="M118 52 l14 14 -8 8 -14-14 a10 10 0 0 1 8-8z" fill="#ede9fe" stroke={A} strokeWidth="1.6" />
+    <path d="M116 66 l-30 30 8 8 30-30" stroke={A} strokeWidth="3" />
+  </svg>
+);
+const BackdropThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="46" y="26" width="108" height="96" rx="3" fill="#ede9fe" stroke={A} />
+    <rect x="66" y="44" width="68" height="60" rx="2" fill="#fff" stroke="#94a3b8" />
+  </svg>
+);
+const QrThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {([[64,34],[64,52],[82,34],[110,34],[128,34],[110,52],[64,82],[64,100],[82,100],[110,82],[128,100],[110,100]] as [number,number][]).map(([x,y],i)=>(
+      <rect key={i} x={x} y={y} width="14" height="14" fill={A} />))}
+  </svg>
+);
+const DimThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="56" y="34" width="88" height="72" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <path d="M56 118 h88 M56 114 v8 M144 114 v8" stroke={A} strokeWidth="1.4" />
+    <path d="M40 34 v72 M36 34 h8 M36 106 h8" stroke={A} strokeWidth="1.4" />
+  </svg>
+);
+const CollateThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {[34,52,70,88].map((y,i)=>(<rect key={i} x="52" y={y} width="10" height="12" fill={A} transform={`translate(${i*3},0)`} />))}
+  </svg>
+);
+const HFThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    <rect x="64" y="32" width="72" height="8" rx="2" fill={A} /><rect x="64" y="108" width="72" height="8" rx="2" fill={A} />
+    <rect x="64" y="58" width="72" height="6" rx="1" fill="#cbd5e1" /><rect x="64" y="72" width="52" height="6" rx="1" fill="#e2e8f0" />
+  </svg>
+);
+const SlugThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">
+    <rect x="46" y="26" width="108" height="88" rx="2" fill="#f1f5f9" stroke="#94a3b8" />
+    <rect x="46" y="114" width="108" height="14" fill="#ede9fe" stroke={A} />
+    <rect x="52" y="118" width="60" height="5" rx="1" fill={A} />
   </svg>
 );
 
@@ -707,6 +796,262 @@ const TOOLS: ToolDef[] = [
     desc: 'Trim margins off every page by setting a crop inset per edge.',
     tags: ['trim edges', 'crop box'], Thumb: CropToolThumb,
   },
+  {
+    id: 'resize', name: 'Resize / Scale', preset: 'Resize', category: 'Page & PDF tools', engine: 'resize',
+    desc: 'Scale pages by a percentage, or drop them onto a fixed paper size (fit or stretch).',
+    tags: ['scale %', 'fit to paper', 'stretch'], Thumb: ResizeThumb,
+  },
+  {
+    id: 'insertpages', name: 'Insert Pages', preset: 'Insert Pages', category: 'Page & PDF tools', engine: 'insert',
+    desc: 'Insert blank pages before a chosen page, or after every N pages (slip-sheets).',
+    tags: ['blank pages', 'slip-sheets', 'every N'], Thumb: InsertThumb,
+  },
+  {
+    id: 'mix', name: 'Mix / Interleave', preset: 'Mix', category: 'Page & PDF tools', engine: 'mix',
+    desc: 'Weave two PDFs together (A1, B1, A2, B2…) — combine single-sided front & back scans.',
+    tags: ['interleave', 'two files', 'ABAB'], Thumb: MixThumb,
+  },
+  {
+    id: 'nudge', name: 'Nudge', preset: 'Nudge', category: 'Page & PDF tools', engine: 'nudge',
+    desc: 'Shift page content by a small offset and/or rotate it about the centre — fix mis-registration.',
+    tags: ['shift', 'micro-rotate', 'press fudge'], Thumb: NudgeThumb,
+  },
+  {
+    id: 'repair', name: 'PDF Repair', preset: 'PDF Repair', category: 'Page & PDF tools', engine: 'repair',
+    desc: 'Rebuild a PDF from scratch — drops broken cross-references and dead objects.',
+    tags: ['normalize', 'rebuild', 'fix xref'], Thumb: RepairThumb,
+  },
+  {
+    id: 'registration', name: 'Registration Marks', preset: 'Registration Marks', category: 'Marks & prepress', engine: 'registration',
+    desc: 'Add press registration targets (bullseye + crosshair) at the corners and edge midpoints.',
+    tags: ['target', 'crosshair', 'colour align'], Thumb: RegThumb,
+  },
+  {
+    id: 'watermark', name: 'Watermark', preset: 'Watermark', category: 'Marks & prepress', engine: 'watermark',
+    desc: 'Stamp a diagonal text watermark (PROOF, DRAFT, CONFIDENTIAL) across every page.',
+    tags: ['proof', 'draft', 'diagonal text'], Thumb: OverlayThumb,
+  },
+  {
+    id: 'headerfooter', name: 'Header / Footer', preset: 'Header / Footer', category: 'Marks & prepress', engine: 'headerfooter',
+    desc: 'Add a running header and/or footer line to every page, aligned left, centre or right.',
+    tags: ['running head', 'footer', 'title'], Thumb: HFThumb,
+  },
+  {
+    id: 'slug', name: 'Slugline', preset: 'Slugline', category: 'Marks & prepress', engine: 'slug',
+    desc: 'Add a thin job-info strip (name, date, notes) along the top or bottom edge.',
+    tags: ['job info', 'slug strip', 'metadata'], Thumb: SlugThumb,
+  },
+  {
+    id: 'collating', name: 'Collating Marks', preset: 'Collating Marks', category: 'Marks & prepress', engine: 'collating',
+    desc: 'Stepped spine ticks that form a descending staircase so mis-gathered signatures show at a glance.',
+    tags: ['gather marks', 'spine', 'signatures'], Thumb: CollateThumb,
+  },
+  {
+    id: 'qrstamp', name: 'QR / Barcode', preset: 'QR Stamp', category: 'Marks & prepress', engine: 'qrstamp',
+    desc: 'Stamp a scannable QR code (URL, vCard, code) on every page at your chosen corner.',
+    tags: ['QR code', 'scannable', 'URL / vCard'], Thumb: QrThumb,
+  },
+  {
+    id: 'backdrop', name: 'Backdrop', preset: 'Backdrop', category: 'Marks & prepress', engine: 'backdrop',
+    desc: 'Paint a solid colour behind every page — put borderless art onto a coloured stock.',
+    tags: ['background', 'flatten', 'coloured stock'], Thumb: BackdropThumb,
+  },
+  {
+    id: 'dimensions', name: 'Dimensions', preset: 'Dimensions', category: 'Marks & prepress', engine: 'dimensions',
+    desc: 'Annotate each page with its exact trim size in inches and points — a quick pre-impose check.',
+    tags: ['measure', 'trim size', 'inspect'], Thumb: DimThumb,
+  },
+];
+
+// ── Templates ─────────────────────────────────────────────────────────────────
+// Named, industry-organized presets. Each opens one of the tools above with a
+// specific set of option overrides pre-applied — the pdfpress "Templates" idea.
+
+interface TemplatePreset {
+  nup?: Partial<NUpOptions>;
+  booklet?: Partial<BookletOptions>;
+  poster?: Partial<PosterOptions>;
+  ticket?: Partial<TicketOptions>;
+  resize?: Partial<ResizeOptions>;
+}
+
+interface TemplateDef {
+  id: string;
+  name: string;
+  industry: string;
+  toolId: string;      // which tool this template opens
+  specs: string;       // one-line size/finish summary
+  preset?: TemplatePreset;
+}
+
+const TEMPLATE_INDUSTRIES = [
+  'Commercial Print', 'Packaging', 'Publishing', 'Large Format', 'Office', 'Variable Data', 'Real Estate',
+];
+
+const TEMPLATES: TemplateDef[] = [
+  // ── Commercial Print ──
+  { id: "t000-10-up-business-cards", name: "10-Up Business Cards", industry: "Commercial Print", toolId: "business", specs: "Standard US business cards (3.5×2\") ganged 10-up on Letter with bleeds and crop marks.", preset: { nup: { cellWIn: 3.5, cellHIn: 2.0, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, addMarks: true } } },
+  { id: "t001-14-up-business-cards-tabloid", name: "14-Up Business Cards (Tabloid)", industry: "Commercial Print", toolId: "business", specs: "Production-run business cards ganged 14-up on 11×17\" tabloid for commercial offset.", preset: { nup: { cols: 2, rows: 7, sheetWIn: 11.0, sheetHIn: 17.0, addMarks: true } } },
+  { id: "t002-2-up-door-hangers", name: "2-Up Door Hangers", industry: "Commercial Print", toolId: "gangsheet", specs: "Standard door hangers (3.875×8.75\") ganged 2-up on Letter with trim marks.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t003-2-up-gift-certificates-5-7", name: "2-Up Gift Certificates (5×7\")", industry: "Commercial Print", toolId: "coupons", specs: "5×7\" gift certificates, 2-up on Letter stock with crop marks." },
+  { id: "t004-2-up-invitation-cards-5-7", name: "2-Up Invitation Cards (5×7\")", industry: "Commercial Print", toolId: "wedding", specs: "Wedding/event invitations (5×7\") printed 2-up on Letter with premium bleeds.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, addMarks: true } } },
+  { id: "t005-2-up-notepad-sheets", name: "2-Up Notepad Sheets", industry: "Commercial Print", toolId: "ncrpads", specs: "Half-letter notepads (5.5×8.5\") printed 2-up on Letter (laid landscape) for padding.", preset: { nup: { cols: 2, rows: 1, sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t006-2-up-postcards-4-6", name: "2-Up Postcards (4×6\")", industry: "Commercial Print", toolId: "postcard", specs: "USPS-standard 4×6\" postcards, 2-up on Letter for desktop or short-run digital.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t007-2-up-rack-cards-4-9", name: "2-Up Rack Cards (4×9\")", industry: "Commercial Print", toolId: "postcard", specs: "Standard rack cards for brochure holders, 2-up on tabloid stock.", preset: { nup: { cellWIn: 4.0, cellHIn: 9.0, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t008-3-up-door-hangers", name: "3-Up Door Hangers", industry: "Commercial Print", toolId: "gangsheet", specs: "3.5×8.5\" door hangers ganged 3-up across on Tabloid for die-cutting.", preset: { nup: { cols: 1, rows: 3, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t009-4-up-rack-cards-3-5-7", name: "4-Up Rack Cards (3.5×7\")", industry: "Commercial Print", toolId: "postcard", specs: "Vertical rack cards ganged 4-up on Tabloid. Standard tourism and retail display size (Letter cannot h…", preset: { nup: { cellWIn: 3.5, cellHIn: 7.0, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t010-4-up-ticket-strips", name: "4-Up Ticket Strips", industry: "Commercial Print", toolId: "raffle", specs: "Event/raffle tickets (8×2.5\") stacked 4-up on Letter with perforation marks." },
+  { id: "t011-bi-fold-restaurant-menu", name: "Bi-Fold Restaurant Menu", industry: "Commercial Print", toolId: "menu", specs: "Standard bi-fold menu on Tabloid. Print both sides, fold in half for 4-panel menu." },
+  { id: "t012-business-card-8-up-step-repeat", name: "Business Card 8-Up (Step & Repeat)", industry: "Commercial Print", toolId: "business", specs: "8-up step-and-repeat business cards using Expert Grid. All slots print the same card for maximum thro…", preset: { nup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11, repeatFirst: true, addMarks: true } } },
+  { id: "t013-business-cards-with-qr-code", name: "Business Cards with QR Code", industry: "Commercial Print", toolId: "business", specs: "10-up business cards on Letter with a QR code on the back — links to website or vCard.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t014-business-checks-3-up", name: "Business Checks (3-Up)", industry: "Commercial Print", toolId: "ncrpads", specs: "Standard 3-up business checks on Letter stock. MICR-safe layout with perforation marks.", preset: { nup: { cols: 1, rows: 3, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t015-cd-tray-card-2-up", name: "CD Tray Card 2-Up", industry: "Commercial Print", toolId: "gangsheet", specs: "Standard CD jewel case tray cards (4.75×4.75\") ganged 2-up on Letter.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t016-certificate-2-up", name: "Certificate 2-Up", industry: "Commercial Print", toolId: "flyer", specs: "Award or training certificates 2-up on tabloid for desktop proofing or short-run printing.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t017-compliment-slips-dl-3-up", name: "Compliment Slips (DL 3-Up)", industry: "Commercial Print", toolId: "complimentslip", specs: "DL compliment slips (210×99 mm) ganged 3-up, centered on an oversized SRA4 sheet with crop marks in t…", preset: { nup: { cols: 1, rows: 3, sheetWIn: 8.86, sheetHIn: 12.6, addMarks: true } } },
+  { id: "t018-coupon-sheets-10-up", name: "Coupon Sheets (10-Up)", industry: "Commercial Print", toolId: "coupons", specs: "3.5×2\" coupons ganged 10-up on Letter with perforation-ready marks." },
+  { id: "t019-eddm-postcard-6-25-9", name: "EDDM Postcard (6.25×9\")", industry: "Commercial Print", toolId: "postcard", specs: "USPS Every Door Direct Mail oversized postcard on 13×19\" stock.", preset: { nup: { cellWIn: 6.25, cellHIn: 9.0, sheetWIn: 13.0, sheetHIn: 19.0, addMarks: true } } },
+  { id: "t020-folder-insert-tabloid", name: "Folder Insert (Tabloid)", industry: "Commercial Print", toolId: "presfolder", specs: "Presentation folder insert (9×12\") centered on tabloid with trim marks." },
+  { id: "t021-full-bleed-brochure-booklet", name: "Full-Bleed Brochure Booklet", industry: "Commercial Print", toolId: "gangsheet", specs: "Add 3mm bleed to brochure pages, then impose as saddle-stitch booklet on Tabloid.", preset: { nup: { sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125, addMarks: true } } },
+  { id: "t022-full-bleed-postcards-4-up-bleed", name: "Full-Bleed Postcards (4-Up + Bleed)", industry: "Commercial Print", toolId: "postcard", specs: "Add 1/8″ bleed to postcard artwork missing bleeds, then gang 4-up on Letter with crop marks.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, addMarks: true } } },
+  { id: "t023-gatefold-brochure-4-panel-letter", name: "Gatefold Brochure (4-Panel, Letter)", industry: "Commercial Print", toolId: "gangsheet", specs: "4-panel gatefold marketing brochure on Letter landscape. Two inner panels fold inward to meet at center.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t024-loyalty-punch-cards-10-up", name: "Loyalty/Punch Cards (10-Up)", industry: "Commercial Print", toolId: "business", specs: "Standard business-card-size loyalty/punch cards, 10-up on Letter with crop marks.", preset: { nup: { cellWIn: 3.5, cellHIn: 2.0, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t025-ncr-form-3-part-carbon", name: "NCR Form (3-Part Carbon)", industry: "Commercial Print", toolId: "ncrpads", specs: "3-part carbonless form on Letter. Each part prints on separate sheet for collating.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t026-perfect-bound-a5-signatures", name: "Perfect Bound A5 Signatures", industry: "Commercial Print", toolId: "perfectbound", specs: "4-up perfect-bound book signatures for A5 trade paperbacks on A4 landscape.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t027-photo-contact-sheet-8-up", name: "Photo Contact Sheet (8-Up)", industry: "Commercial Print", toolId: "contact", specs: "Photographer's proof sheet with 8 images (2×4) on Letter. Quick client review layout.", preset: { nup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t028-postcard-2-up-work-turn", name: "Postcard 2-Up (Work & Turn)", industry: "Commercial Print", toolId: "postcard", specs: "2-up work-and-turn postcard imposition. Front and back print on the same sheet – flip along the short…", preset: { nup: { cols: 1, rows: 2, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t029-proof-sheet-with-proof-watermark", name: "Proof Sheet with PROOF Watermark", industry: "Commercial Print", toolId: "contact", specs: "2-up proofing layout on Tabloid with a diagonal PROOF watermark — prevents client from using proofs a…", preset: { nup: { sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t030-rsvp-cards-4-up-3-5-5", name: "RSVP Cards (4-Up, 3.5×5\")", industry: "Commercial Print", toolId: "wedding", specs: "Response/RSVP cards (3.5×5\") printed 4-up on Letter with crop marks.", preset: { nup: { cellWIn: 3.5, cellHIn: 5.0, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t031-saddle-stitch-a4-magazine", name: "Saddle-Stitch A4 Magazine", industry: "Commercial Print", toolId: "magazine", specs: "32-page A4 magazine signatures on A3 landscape sheets for commercial offset.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t032-saddle-stitch-a5-booklet", name: "Saddle-Stitch A5 Booklet", industry: "Commercial Print", toolId: "booklet", specs: "Creates print-ready A5 saddle-stitched booklets from A5 source pages on A4 landscape sheets." },
+  { id: "t033-shingled-3-up-cut-stack", name: "Shingled 3-Up (Cut & Stack)", industry: "Commercial Print", toolId: "cutstack", specs: "Classic cut-and-stack imposition for sequentially ordered pieces. Cut the stack into 3 strips and the…", preset: { nup: { cols: 1, rows: 3, cutStack: true, addMarks: true } } },
+  { id: "t034-square-coasters-4-up", name: "Square Coasters (4-Up)", industry: "Commercial Print", toolId: "coasters", specs: "4\" square drink coasters printed 4-up on Tabloid stock with crop marks for die cutting.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t035-step-and-repeat-flyer", name: "Step-and-Repeat Flyer", industry: "Commercial Print", toolId: "flyer", specs: "Fill a sheet with sequential flyer pages, auto-scaled to fit. Ideal for different-content handouts.", preset: { nup: { repeatFirst: true, addMarks: true } } },
+  { id: "t036-tear-off-flyer-with-tabs", name: "Tear-Off Flyer with Tabs", industry: "Commercial Print", toolId: "magazine", specs: "Community bulletin flyer with tear-off contact tabs designed into the bottom of the artwork, placed 1…" },
+  { id: "t037-tent-card-2-up", name: "Tent Card 2-Up", industry: "Commercial Print", toolId: "gangsheet", specs: "Fold-in-half table tent cards (4.25×5.5\" finished), 2-up on Letter for double-sided printing.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t038-tri-fold-brochure-letter", name: "Tri-Fold Brochure (Letter)", industry: "Commercial Print", toolId: "gangsheet", specs: "Standard tri-fold brochure on Letter stock. 6 panels (3 front, 3 back) with fold marks.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t039-tri-fold-brochure-2-up", name: "Tri-Fold Brochure 2-Up", industry: "Commercial Print", toolId: "gangsheet", specs: "Imposes two copies of each finished tri-fold brochure side on tabloid/A3-style duplex sheets.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t040-tri-fold-event-program", name: "Tri-Fold Event Program", industry: "Commercial Print", toolId: "gangsheet", specs: "Tri-fold event or church program on Letter landscape. 6 panels with fold marks.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t041-wall-calendar-signatures", name: "Wall Calendar Signatures", industry: "Commercial Print", toolId: "perfectbound", specs: "Coil-bound wall calendar with back cover rotation on tabloid landscape.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t042-z-fold-accordion-6-panel-tabloid", name: "Z-Fold Accordion (6-Panel, Tabloid)", industry: "Commercial Print", toolId: "gangsheet", specs: "6-panel accordion-style brochure on 11×17\" tabloid. Zigzag folds, ~5.67\" per panel (17/3).", preset: { nup: { sheetWIn: 11.0, sheetHIn: 17.0, addMarks: true } } },
+  // ── Packaging ──
+  { id: "t043-bakery-tray-liner-1-up", name: "Bakery Tray Liner (1-Up)", industry: "Packaging", toolId: "packaging", specs: "Bakery/deli tray liners printed 1-up on Tabloid (two 10.5″ liners cannot stack on a 17″ sheet)." },
+  { id: "t044-blister-card-4-up", name: "Blister Card 4-Up", industry: "Packaging", toolId: "packaging", specs: "Retail blister packaging cards (3.5×5\") ganged 4-up on Tabloid with dieline paths." },
+  { id: "t045-box-flat-with-bleed-prep", name: "Box Flat with Bleed Prep", industry: "Packaging", toolId: "boxcarton", specs: "Add 5mm bleed to a box dieline flat, then resize to fit press sheet — ready for die-cutting." },
+  { id: "t046-cd-dvd-jewel-case-wrap", name: "CD/DVD Jewel Case Wrap", industry: "Packaging", toolId: "packaging", specs: "Optical disc jewel case wrap (9.5×4.72\") on Tabloid with trim marks." },
+  { id: "t047-candle-wraps-4-up", name: "Candle Wraps (4-Up)", industry: "Packaging", toolId: "labels", specs: "Candle label wraps (3×8\") printed 4-up on Tabloid for wrapping round candles.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t048-candy-bar-wrappers-3-up", name: "Candy Bar Wrappers (3-Up)", industry: "Packaging", toolId: "packaging", specs: "Candy bar wraps (7.5×5.5\") placed 3-up on a 13×19″ press sheet for wrapping and gluing." },
+  { id: "t049-envelope-flats-4-up-10", name: "Envelope Flats 4-Up (#10)", industry: "Packaging", toolId: "envelope", specs: "Standard #10 envelope flats (9.5×4.125\") ganged 4-up on Tabloid with dieline paths.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t050-hang-tags-8-up-2-5-4", name: "Hang Tags 8-Up (2.5×4\")", industry: "Packaging", toolId: "hangtag", specs: "Retail garment hang tags ganged 8-up on Tabloid with die-cut contour paths.", preset: { nup: { cols: 2, rows: 4, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t051-lp-record-sleeve-insert", name: "LP Record Sleeve Insert", industry: "Packaging", toolId: "stickers", specs: "12×12\" vinyl record sleeve insert, 1-up on 13×19\" stock (12″ square cannot fit 2-up on a 13×19″ sheet).", preset: { nup: { sheetWIn: 13.0, sheetHIn: 19.0, addMarks: true } } },
+  { id: "t052-pizza-box-lid-13-19", name: "Pizza Box Lid (13×19\")", industry: "Packaging", toolId: "boxcarton", specs: "10×10\" pizza box lid flat, 1-up on 13×19\" stock with trim marks (10″ square cannot fit 2-up)." },
+  { id: "t053-poly-bag-headers-6-up", name: "Poly Bag Headers (6-Up)", industry: "Packaging", toolId: "packaging", specs: "Retail poly bag header cards (4×2.5\") printed 6-up on Letter with hang-hole marks." },
+  { id: "t054-pouch-flats-2-up-tabloid", name: "Pouch Flats (2-Up Tabloid)", industry: "Packaging", toolId: "packaging", specs: "Stand-up pouch flats (6×9\") printed 2-up on landscape Tabloid for heat-seal pouches." },
+  { id: "t055-seed-packets-6-up", name: "Seed Packets (6-Up)", industry: "Packaging", toolId: "envelope", specs: "Small seed packets (3×4.5\") ganged 6-up on Tabloid with crop marks (Letter cannot hold 3 rows of 4.5″…", preset: { nup: { cols: 2, rows: 3, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t056-shopping-bag-flat-2-up", name: "Shopping Bag Flat 2-Up", industry: "Packaging", toolId: "packaging", specs: "Retail shopping bag flats 2-up on Tabloid with fold and die-cut paths." },
+  { id: "t057-soap-band-wraps-8-up", name: "Soap Band Wraps (8-Up)", industry: "Packaging", toolId: "packaging", specs: "Narrow soap bands (1.5×6\") ganged 8-up on Tabloid for bar soap wrapping (Letter cannot hold two 6″ ro…" },
+  { id: "t058-soap-bar-wrap-4-up", name: "Soap Bar Wrap 4-Up", industry: "Packaging", toolId: "packaging", specs: "Body care product wraps (3×4\") ganged 4-up on Letter." },
+  { id: "t059-tube-label-wrap-4-up", name: "Tube Label Wrap (4-Up)", industry: "Packaging", toolId: "labels", specs: "Cosmetic tube label wraps (6×2.5\") printed 4-up on a 13×19″ sheet for roll-on application.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 13.0, sheetHIn: 19.0, addMarks: true } } },
+  { id: "t060-wine-bottle-label-6-up", name: "Wine Bottle Label 6-Up", industry: "Packaging", toolId: "labels", specs: "Standard wine bottle labels (3.5×4\") ganged 6-up on Tabloid with trim marks.", preset: { nup: { cols: 2, rows: 3, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  // ── Publishing ──
+  { id: "t061-16-page-church-bulletin-a4", name: "16-Page Church Bulletin (A4)", industry: "Publishing", toolId: "magazine", specs: "Saddle-stitched A4 bulletin on A3 landscape. Standard for weekly church programs." },
+  { id: "t062-a5-pocket-book", name: "A5 Pocket Book", industry: "Publishing", toolId: "notebook", specs: "A5 (148×210mm) pocket paperback using saddle-stitch binding on A4 landscape." },
+  { id: "t063-a5-saddle-stitch-2-up-on-sra3", name: "A5 Saddle-Stitch 2-Up on SRA3", industry: "Publishing", toolId: "booklet", specs: "Commercial A5 saddle-stitch workflow: impose each booklet side on SRA4, then repeat two copies on SRA3." },
+  { id: "t064-children-s-book-8-5-square", name: "Children's Book (8.5\" Square)", industry: "Publishing", toolId: "booklet", specs: "Square-format picture book on Tabloid landscape with saddle-stitch binding." },
+  { id: "t065-coloring-book-letter", name: "Coloring Book (Letter)", industry: "Publishing", toolId: "zine", specs: "US Letter coloring book with saddle-stitch binding. Single-sided interior (back pages blank)." },
+  { id: "t066-concert-program-a5", name: "Concert Program (A5)", industry: "Publishing", toolId: "program", specs: "A5 saddle-stitched concert or theater program. 12-16 pages typical, fits in pocket." },
+  { id: "t067-desk-calendar-tent-style", name: "Desk Calendar (Tent Style)", industry: "Publishing", toolId: "calendar", specs: "Desk tent calendar on Letter landscape with half-sheet layout." },
+  { id: "t068-digest-magazine-5-5-8-5", name: "Digest Magazine (5.5×8.5\")", industry: "Publishing", toolId: "magazine", specs: "Reader's Digest-size magazine signatures. 4-up saddle-stitch on Tabloid.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t069-hymnal-songbook-a5", name: "Hymnal / Songbook (A5)", industry: "Publishing", toolId: "perfectbound", specs: "A5 hymnal or songbook with perfect binding on A4 stock. For churches and choirs.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t070-instruction-booklet-a6-4-up", name: "Instruction Booklet (A6 4-Up)", industry: "Publishing", toolId: "program", specs: "Small product instruction booklet. 4-up nested on A4 for cost-effective production." },
+  { id: "t071-instruction-manual-a5", name: "Instruction Manual (A5)", industry: "Publishing", toolId: "program", specs: "A5 product instruction booklet, saddle-stitched on A4. Compact format for product packaging." },
+  { id: "t072-landscape-wall-calendar", name: "Landscape Wall Calendar", industry: "Publishing", toolId: "calendar", specs: "Coil-bound wall calendar with back cover rotation on Tabloid landscape." },
+  { id: "t073-lay-flat-photo-book-12-12", name: "Lay-Flat Photo Book (12×12\")", industry: "Publishing", toolId: "perfectbound", specs: "Square photo album with zero creep for lay-flat binding on 24×12\" stock.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t074-manga-rtl-comic-booklet", name: "Manga / RTL Comic Booklet", industry: "Publishing", toolId: "comic", specs: "Right-to-left saddle-stitched booklet for manga, Arabic, and Hebrew comics on B5 landscape.", preset: { booklet: { rtl: true } } },
+  { id: "t075-memorial-funeral-program", name: "Memorial / Funeral Program", industry: "Publishing", toolId: "program", specs: "Half-letter memorial program, saddle-stitched on Letter landscape. Single fold, 4-8 pages." },
+  { id: "t076-memorial-service-program", name: "Memorial Service Program", industry: "Publishing", toolId: "program", specs: "Half-letter bi-fold memorial program. 4 pages — cover, obituary spread, back." },
+  { id: "t077-newsletter-4-page-single-fold", name: "Newsletter 4-Page (Single Fold)", industry: "Publishing", toolId: "gangsheet", specs: "Simple 4-page newsletter — one sheet folded in half on Letter landscape.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t078-one-sheet-8-page-zine", name: "One-Sheet 8-Page Zine", industry: "Publishing", toolId: "zine", specs: "Classic fold-and-cut mini zine from 8 panels on one sheet. Print one-sided, cut the center slit, and…" },
+  { id: "t079-perfect-bound-trade-paperback-4-up", name: "Perfect Bound Trade Paperback (4-Up)", industry: "Publishing", toolId: "perfectbound", specs: "4-up signatures for A5 perfect-bound trade paperbacks. Standard for novels, manuals, and catalogs.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t080-photo-book-landscape-a4", name: "Photo Book (Landscape A4)", industry: "Publishing", toolId: "perfectbound", specs: "Landscape A4 photo book with perfect binding. Full-bleed photo spreads.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t081-playbill-theater-program", name: "Playbill / Theater Program", industry: "Publishing", toolId: "program", specs: "A5 saddle-stitched theater program booklet on A4 stock." },
+  { id: "t082-pocket-book-a6-from-a5", name: "Pocket Book (A6 from A5)", industry: "Publishing", toolId: "notebook", specs: "Small-format pocket book in A6 with 2-up perfect binding." },
+  { id: "t083-pocket-digest-5-8", name: "Pocket Digest (5×8\")", industry: "Publishing", toolId: "perfectbound", specs: "5×8\" digest-size booklet using perfect binding. Common for literary journals and anthologies.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t084-quarter-letter-zine", name: "Quarter-Letter Zine", industry: "Publishing", toolId: "zine", specs: "Micro-zine at 4.25×5.5\" using 4-up saddle-stitch on Letter. Cut, fold, staple." },
+  { id: "t085-recipe-book-letter", name: "Recipe Book (Letter)", industry: "Publishing", toolId: "perfectbound", specs: "US Letter recipe book with perfect binding. Ideal for cookbooks and recipe collections.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t086-saddle-stitch-a6-mini-booklet-8-up", name: "Saddle-Stitch A6 Mini Booklet (8-Up)", industry: "Publishing", toolId: "zine", specs: "8-up mini booklet for A6 saddle-stitched inserts and leaflets on A4." },
+  { id: "t087-square-catalog-8-8", name: "Square Catalog (8×8\")", industry: "Publishing", toolId: "catalog", specs: "8×8\" square product catalog with saddle-stitch binding. Popular for retail and portfolio." },
+  { id: "t088-student-planner-4-up", name: "Student Planner (4-Up)", industry: "Publishing", toolId: "perfectbound", specs: "A6 student planner pages imposed 4-up on A4 for perfect binding. 52+ weeks.", preset: { booklet: { signatureSheets: 4 } } },
+  { id: "t089-us-comic-book-6-625-10-25", name: "US Comic Book (6.625×10.25\")", industry: "Publishing", toolId: "comic", specs: "Standard US comic book format on Tabloid with saddle-stitch binding." },
+  { id: "t090-wedding-program", name: "Wedding Program", industry: "Publishing", toolId: "wedding", specs: "Half-letter (5.5×8.5\") wedding program booklet, saddle-stitched on Letter landscape.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  // ── Large Format ──
+  { id: "t091-2-up-movie-posters-27-40", name: "2-Up Movie Posters (27×40\")", industry: "Large Format", toolId: "poster", specs: "Standard one-sheet cinema posters ganged 2-up on 54×40\" wide-format stock.", preset: { poster: { tilesAcross: 2, tilesDown: 1 } } },
+  { id: "t092-4-up-18-24-posters", name: "4-Up 18×24\" Posters", industry: "Large Format", toolId: "poster", specs: "Four 18×24\" posters ganged on a 36×48\" sheet for screen printing or large-format digital.", preset: { poster: { tilesAcross: 4, tilesDown: 1 } } },
+  { id: "t093-a-frame-sign-inserts", name: "A-Frame Sign Inserts", industry: "Large Format", toolId: "rollerbanner", specs: "Sidewalk A-frame sign inserts at 24×36\" with double-sided printing.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 24.0, sheetHIn: 36.0 } } },
+  { id: "t094-banner-tiles-4-up-24-36-panels", name: "Banner Tiles 4-Up (24×36\" panels)", industry: "Large Format", toolId: "banner", specs: "Four 24×36\" banner panels on a single 96×36\" wide-format sheet for trade show displays.", preset: { poster: { tilesAcross: 4, tilesDown: 1 } } },
+  { id: "t095-bus-shelter-poster-46-67", name: "Bus Shelter Poster (46×67\")", industry: "Large Format", toolId: "rollerbanner", specs: "Standard bus shelter/transit advertising poster at 46×67\" for backlit display.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 46.0, sheetHIn: 67.0 } } },
+  { id: "t096-canvas-wrap-print-tiling", name: "Canvas Wrap Print Tiling", industry: "Large Format", toolId: "poster", specs: "Gallery-wrap canvas tiles auto-scaled in a 2×2 grid for large art prints." },
+  { id: "t097-fabric-banner-24-72", name: "Fabric Banner (24×72\")", industry: "Large Format", toolId: "rollerbanner", specs: "Vertical fabric banner at 24×72\" for dye-sublimation printing.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 24.0, sheetHIn: 72.0 } } },
+  { id: "t098-feather-flag-soft-signage", name: "Feather Flag (Soft Signage)", industry: "Large Format", toolId: "featherflag", specs: "Single-panel feather / teardrop flag artwork scaled to a Medium print area (700×2300 mm) for dye-subl…", preset: { nup: { cols: 1, rows: 1, addMarks: false } } },
+  { id: "t099-floor-graphics-24-24", name: "Floor Graphics (24×24\")", industry: "Large Format", toolId: "stickers", specs: "Square floor decals at 24×24\" for retail wayfinding and promotional graphics.", preset: { nup: { cellWIn: 24.0, cellHIn: 24.0, addMarks: true } } },
+  { id: "t100-menu-board-tabloid", name: "Menu Board (Tabloid)", industry: "Large Format", toolId: "menu", specs: "Restaurant menu board at 11×17\" Tabloid with color bar for print verification." },
+  { id: "t101-real-estate-signs-24-36", name: "Real Estate Signs (24×36\")", industry: "Large Format", toolId: "rollerbanner", specs: "Large real estate signs at 24×36\" for property listings and open house signage.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 24.0, sheetHIn: 36.0 } } },
+  { id: "t102-retractable-banner-33-80", name: "Retractable Banner (33×80\")", industry: "Large Format", toolId: "rollerbanner", specs: "Standard retractable/roll-up banner at 33×80\" for trade shows and events.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 33.0, sheetHIn: 80.0 } } },
+  { id: "t103-step-and-repeat-photo-print", name: "Step-and-Repeat Photo Print", industry: "Large Format", toolId: "photo", specs: "Fill a sheet with identical photos. Perfect for passport photos, photo booth strips, and proofing.", preset: { nup: { repeatFirst: true, addMarks: true } } },
+  { id: "t104-street-pole-banner-24-60", name: "Street Pole Banner (24×60\")", industry: "Large Format", toolId: "rollerbanner", specs: "Standard street/light pole banner at 24×60\" with bleed for pole pocket.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 24.0, sheetHIn: 60.0 } } },
+  { id: "t105-table-runner-30-72", name: "Table Runner (30×72\")", industry: "Large Format", toolId: "rollerbanner", specs: "Conference table runner at 30×72\" for 6ft tables. Resized for large-format output.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 30.0, sheetHIn: 72.0 } } },
+  { id: "t106-tiled-poster-a4-tiles-to-a0", name: "Tiled Poster (A4 tiles to A0)", industry: "Large Format", toolId: "poster", specs: "Tiles a large poster across multiple sheets. Each source page fills one cell in an 4×2 grid." },
+  { id: "t107-trade-show-display-graphics", name: "Trade Show Display Graphics", industry: "Large Format", toolId: "poster", specs: "Exhibition pop-up display panels on 48×96\" wide-format with color bar for proofing." },
+  { id: "t108-window-clings-a3", name: "Window Clings (A3)", industry: "Large Format", toolId: "rollerbanner", specs: "A3 (297×420mm) window cling graphics for storefront and vehicle windows.", preset: { nup: { cols: 1, rows: 1, addMarks: false } } },
+  { id: "t109-yard-sign-24-18", name: "Yard Sign (24×18\")", industry: "Large Format", toolId: "rollerbanner", specs: "Standard coroplast yard sign at 24×18\" landscape for real estate, political, and event signage.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 24.0, sheetHIn: 18.0 } } },
+  { id: "t110-yard-signs-18-24", name: "Yard Signs (18×24\")", industry: "Large Format", toolId: "rollerbanner", specs: "Corrugated yard signs at 18×24\" for real estate, political campaigns, and event signage.", preset: { nup: { cols: 1, rows: 1, addMarks: false, sheetWIn: 18.0, sheetHIn: 24.0 } } },
+  // ── Office ──
+  { id: "t111-2-sided-a5-flyer", name: "2-Sided A5 Flyer", industry: "Office", toolId: "flyer", specs: "Quick double-sided A5 flyer from your desktop printer. No marks, no bleeds — just fold or cut.", preset: { nup: { sheetWIn: 5.83, sheetHIn: 8.27, duplex: true, bleedIn: 0.125, addMarks: false, duplexFlip: "long" } } },
+  { id: "t112-2-up-proofing-on-tabloid", name: "2-Up Proofing on Tabloid", industry: "Office", toolId: "overlay", specs: "Proof Letter-size artwork 2-up on Tabloid with crop marks to verify bleed and trim." },
+  { id: "t113-4-up-index-cards-3-5", name: "4-Up Index Cards (3×5\")", industry: "Office", toolId: "trading", specs: "Study flashcards or index cards, 4-up on Letter for cutting.", preset: { nup: { cellWIn: 3.0, cellHIn: 5.0, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t114-add-page-numbers", name: "Add Page Numbers", industry: "Office", toolId: "pagenumbers", specs: "Adds \"Page X of Y\" to every page. Simple and universal — works with any PDF." },
+  { id: "t115-binder-spine-labels-10-up", name: "Binder Spine Labels (10-Up)", industry: "Office", toolId: "labels", specs: "1\" binder spine labels printed 10-up on Letter. Standard 3-ring binder spine width.", preset: { nup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t116-bookmarks-6-up", name: "Bookmarks (6-Up)", industry: "Office", toolId: "bookmark", specs: "Standard bookmarks (2×6\") printed 6-up on Letter stock.", preset: { nup: { cols: 2, rows: 3, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t117-certificates-2-up", name: "Certificates (2-Up)", industry: "Office", toolId: "flyer", specs: "Half-letter classroom certificates printed 2-up on Letter for quick teacher printing.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t118-confidential-watermark", name: "Confidential Watermark", industry: "Office", toolId: "overlay", specs: "Red CONFIDENTIAL watermark for sensitive documents — visible but non-destructive." },
+  { id: "t119-desk-name-plates-4-up", name: "Desk Name Plates (4-Up)", industry: "Office", toolId: "gangsheet", specs: "Folding desk name plates (8×2\" flat) printed 4-up on Letter.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t120-door-signs-2-up", name: "Door Signs (2-Up)", industry: "Office", toolId: "gangsheet", specs: "Do Not Disturb / office door signs (4×10\") printed 2-up on Letter.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t121-draft-watermark", name: "Draft Watermark", industry: "Office", toolId: "overlay", specs: "Stamp a diagonal DRAFT watermark on every page — prevents accidental use of unfinished documents." },
+  { id: "t122-emergency-contact-cards-10-up", name: "Emergency Contact Cards (10-Up)", industry: "Office", toolId: "business", specs: "Wallet-size emergency contact cards (3.5×2\") printed 10-up on Letter.", preset: { nup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t123-flash-cards-12-up", name: "Flash Cards (12-Up)", industry: "Office", toolId: "trading", specs: "Study flash cards (3.5×2\") printed 12-up on Letter. Perfect for students and educators.", preset: { nup: { cols: 3, rows: 4, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t124-full-bleed-photo-cards-4-6", name: "Full-Bleed Photo Cards (4×6)", industry: "Office", toolId: "wedding", specs: "Add bleed to borderless photo cards, then print 2-up on Letter — perfect for holiday cards or invitat…", preset: { nup: { cellWIn: 4.0, cellHIn: 6.0, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, addMarks: true } } },
+  { id: "t125-greeting-card-a5-fold", name: "Greeting Card (A5 Fold)", industry: "Office", toolId: "greeting", specs: "Single-fold greeting card on Letter landscape. Print, fold in half, done." },
+  { id: "t126-half-sheet-handout-2-up", name: "Half-Sheet Handout 2-Up", industry: "Office", toolId: "flyer", specs: "Two half-letter handouts per sheet. Perfect for meeting agendas, sign-up sheets, and flyers.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 5.5, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t127-interleave-two-documents", name: "Interleave Two Documents", industry: "Office", toolId: "shuffle", specs: "Merges pages from two PDFs in alternating order (A1, B1, A2, B2...). Great for double-sided printing…" },
+  { id: "t128-luggage-tags-6-up", name: "Luggage Tags (6-Up)", industry: "Office", toolId: "hangtag", specs: "Luggage tags (2.5×4.25\") printed 6-up on Letter with crop marks for die cutting.", preset: { nup: { cols: 2, rows: 3, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t129-mailing-labels-avery-5160-style", name: "Mailing Labels (Avery 5160 Style)", industry: "Office", toolId: "labels", specs: "Address labels nested on Letter. Compatible with Avery 5160 and similar 30-up label sheets.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t130-mini-booklet-a7-zine", name: "Mini Booklet (A7 Zine)", industry: "Office", toolId: "zine", specs: "DIY mini zine using 4-up saddle-stitch on A4. Cut, fold, staple — instant pocket booklet." },
+  { id: "t131-name-badges-8-up", name: "Name Badges (8-Up)", industry: "Office", toolId: "namebadge", specs: "Conference name badges (3.5×2.25\") printed 8-up on Letter for badge holders." },
+  { id: "t132-parking-permits-4-up", name: "Parking Permits (4-Up)", industry: "Office", toolId: "hangtag", specs: "Parking permits / hang tags (3.5×5\") printed 4-up on Letter stock.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t133-place-cards-8-up", name: "Place Cards (8-Up)", industry: "Office", toolId: "wedding", specs: "Event place cards (3.5×2\") printed 8-up on Letter. Fold in half for tent-style seating cards.", preset: { nup: { cols: 2, rows: 4, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t134-proof-booklet-with-watermark", name: "Proof Booklet with Watermark", industry: "Office", toolId: "booklet", specs: "Saddle-stitch booklet on Letter with a PROOF watermark — for client review copies." },
+  { id: "t135-raffle-tickets-8-up", name: "Raffle Tickets (8-Up)", industry: "Office", toolId: "raffle", specs: "Numbered raffle tickets (2×5.5\") printed 8-up on Letter with perforation marks." },
+  { id: "t136-recipe-cards-4-6-4-up", name: "Recipe Cards (4×6\", 4-Up)", industry: "Office", toolId: "postcard", specs: "Standard recipe cards (4×6\") printed 4-up on Tabloid. Double-sided for ingredients + instructions.", preset: { nup: { cellWIn: 4.0, cellHIn: 6.0, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t137-rotate-all-pages-landscape", name: "Rotate All Pages Landscape", industry: "Office", toolId: "rotate", specs: "Rotates all pages 90° clockwise. Useful for converting portrait scans to landscape." },
+  { id: "t138-shipping-labels-6-up", name: "Shipping Labels (6-Up)", industry: "Office", toolId: "labels", specs: "Shipping/mailing labels (4×3.33\") printed 6-up on Letter. Fits standard label sheets.", preset: { nup: { cols: 2, rows: 3, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t139-tent-cards-4-up", name: "Tent Cards (4-Up)", industry: "Office", toolId: "gangsheet", specs: "Table tent cards (5×5\" flat, folds to 5×2.5\") printed 4-up on Letter.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t140-visitor-passes-10-up", name: "Visitor Passes (10-Up)", industry: "Office", toolId: "business", specs: "Business-card-size visitor passes (3.5×2\") printed 10-up on Letter stock.", preset: { nup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  // ── Variable Data ──
+  { id: "t141-asset-tags-datamatrix", name: "Asset Tags (DataMatrix)", industry: "Variable Data", toolId: "namebadge", specs: "Compact DataMatrix asset tags, 10-up on Letter for inventory tracking." },
+  { id: "t142-conference-badges-qr", name: "Conference Badges (QR)", industry: "Variable Data", toolId: "namebadge", specs: "Name badges with unique QR codes from CSV, 4-up on A4." },
+  { id: "t143-event-tickets-qr-code", name: "Event Tickets (QR Code)", industry: "Variable Data", toolId: "tickets", specs: "QR code tickets from CSV data, 2-up on Letter sheets for easy cutting." },
+  { id: "t144-gift-vouchers-qr-code", name: "Gift Vouchers (QR Code)", industry: "Variable Data", toolId: "coupons", specs: "Gift vouchers with unique QR redemption codes, 2-up on A4." },
+  { id: "t145-loyalty-cards-code-128", name: "Loyalty Cards (Code 128)", industry: "Variable Data", toolId: "gangsheet", specs: "Loyalty/membership cards with unique Code 128 barcodes, 10-up on Letter.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t146-parking-permits-qr-code", name: "Parking Permits (QR Code)", industry: "Variable Data", toolId: "hangtag", specs: "Parking permits with unique QR validation codes, 4-up on Letter.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t147-product-labels-ean-13", name: "Product Labels (EAN-13)", industry: "Variable Data", toolId: "labels", specs: "EAN-13 retail barcodes from CSV, 12-up on A4 for product labelling.", preset: { nup: { sheetWIn: 8.27, sheetHIn: 11.69, addMarks: true } } },
+  { id: "t148-raffle-tickets-numbered", name: "Raffle Tickets (Numbered)", industry: "Variable Data", toolId: "raffle", specs: "Code 128 barcode raffle tickets from CSV, 4-up on Letter." },
+  { id: "t149-shipping-labels-code-128", name: "Shipping Labels (Code 128)", industry: "Variable Data", toolId: "labels", specs: "Shipping labels with unique Code 128 barcodes, 10-up on Letter.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t150-wristbands-qr-code", name: "Wristbands (QR Code)", industry: "Variable Data", toolId: "coupons", specs: "Event wristbands with unique QR codes, 8-up on Letter." },
+  // ── Real Estate ──
+  { id: "t151-just-listed-flyer-2-up-8-5-5-5", name: "Just-Listed Flyer 2-Up (8.5×5.5\")", industry: "Real Estate", toolId: "flyer", specs: "Half-sheet landscape just-listed flyers, 2-up on Letter for feature sheets and open-house handouts.", preset: { nup: { cols: 2, rows: 1, sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t152-just-listed-flyer-4-up-4-25-5-5", name: "Just-Listed Flyer 4-Up (4.25×5.5\")", industry: "Real Estate", toolId: "flyer", specs: "Quarter-sheet just-listed flyers, 4-up on Letter — the cheapest way to print open-house handouts.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t153-just-sold-postcard-4-up-4-6", name: "Just-Sold Postcard 4-Up (4×6\")", industry: "Real Estate", toolId: "postcard", specs: "USPS-standard 4×6\" just-sold / farming postcards, 4-up on Tabloid for short-run direct mail.", preset: { nup: { cellWIn: 4.0, cellHIn: 6.0, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
+  { id: "t154-open-house-yard-sign-2-up-18-24", name: "Open-House Yard Sign 2-Up (18×24\")", industry: "Real Estate", toolId: "rollerbanner", specs: "Two 18×24\" open-house / for-sale yard signs ganged on a 36×24\" large-format sheet.", preset: { nup: { cols: 2, rows: 1, sheetWIn: 36.0, sheetHIn: 24.0, addMarks: false } } },
+  { id: "t155-property-brochure-tri-fold-2-up", name: "Property Brochure Tri-Fold 2-Up", industry: "Real Estate", toolId: "gangsheet", specs: "Imposes two copies of each finished property brochure side on tabloid duplex sheets with tri-fold cre…", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
 ];
 
 // ── Shared UI primitives ─────────────────────────────────────────────────────
@@ -829,6 +1174,27 @@ function FileBar({ file, onClear, label = 'Change' }: { file: LoadedFile; onClea
   );
 }
 
+// Shared "extra marks" controls — center marks + line weight. Appears wherever
+// crop/trim marks are enabled, driven by the engine's MarkStyle.
+function MarkExtras<T extends { addMarks: boolean; centerMarks?: boolean; markWeightPt?: number }>(
+  { opts, onChange }: { opts: T; onChange: (o: T) => void },
+) {
+  if (!opts.addMarks) return null;
+  return (
+    <>
+      <Field label="Center marks" note="Ticks at each edge midpoint">
+        <Row>
+          <input type="checkbox" checked={!!opts.centerMarks} onChange={e => onChange({ ...opts, centerMarks: e.target.checked })} />
+          <span style={{ fontSize: '.85rem' }}>Add center marks</span>
+        </Row>
+      </Field>
+      <Field label="Mark weight (pt)" note="Stroke thickness">
+        <input type="number" min={0.25} max={3} step={0.25} value={opts.markWeightPt ?? 0.5} onChange={e => onChange({ ...opts, markWeightPt: +e.target.value })} style={iStyle} />
+      </Field>
+    </>
+  );
+}
+
 // ── Booklet settings + preview ────────────────────────────────────────────────
 
 const DEFAULT_BOOKLET: BookletOptions = {
@@ -855,12 +1221,22 @@ function BookletSettings({ opts, onChange }: { opts: BookletOptions; onChange: (
       <Field label="Creep compensation (in)" note="Total shift across all sheets">
         <input type="number" min={0} max={0.5} step={0.0625} value={opts.creepIn} onChange={e => set('creepIn', +e.target.value)} style={iStyle} />
       </Field>
+      <Field label="Binding / signatures" note="How the book is gathered">
+        <select value={opts.signatureSheets && opts.signatureSheets > 0 ? String(opts.signatureSheets) : '0'} onChange={e => set('signatureSheets', +e.target.value)} style={iStyle}>
+          <option value="0">Single saddle-stitch</option>
+          <option value="1">Perfect-bound — 4-pg signatures</option>
+          <option value="2">Perfect-bound — 8-pg signatures</option>
+          <option value="4">Perfect-bound — 16-pg signatures</option>
+          <option value="8">Perfect-bound — 32-pg signatures</option>
+        </select>
+      </Field>
       <Field label="Crop marks">
         <Row>
           <input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} />
           <span style={{ fontSize: '.85rem' }}>Add crop marks</span>
         </Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -982,12 +1358,25 @@ function NUpSettings({ opts, onChange, cardMode }: { opts: NUpOptions; onChange:
           <option value="cutstack">Cut &amp; stack</option>
         </select>
       </Field>
+      <Field label="Sides" note="Duplex reads source as front,back,front,back…">
+        <select value={opts.duplex ? (opts.duplexFlip === 'short' ? 'short' : 'long') : 'single'} onChange={e => onChange({ ...opts, duplex: e.target.value !== 'single', duplexFlip: e.target.value === 'short' ? 'short' : 'long' })} style={iStyle}>
+          <option value="single">Single-sided</option>
+          <option value="long">Double-sided — long-edge flip</option>
+          <option value="short">Double-sided — short-edge flip</option>
+        </select>
+      </Field>
+      {cardMode && (
+        <Field label="Bleed (in)" note="Art fills cell; marks drawn at trim">
+          <input type="number" min={0} max={0.5} step={0.0625} value={opts.bleedIn ?? 0} onChange={e => set('bleedIn', +e.target.value)} style={iStyle} />
+        </Field>
+      )}
       <Field label="Crop marks">
         <Row>
           <input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} />
           <span style={{ fontSize: '.85rem' }}>Add crop marks</span>
         </Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -1044,6 +1433,7 @@ function PosterSettings({ opts, onChange }: { opts: PosterOptions; onChange: (o:
       <Field label="Trim marks">
         <Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add trim marks</span></Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -1060,6 +1450,7 @@ function CropSettings({ opts, onChange }: { opts: CropMarksOptions; onChange: (o
       <Field label="Added margin (in)" note="Blank area added for marks"><input type="number" min={0.25} max={1.5} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Mark length (in)"><input type="number" min={0.1} max={0.5} step={0.0625} value={opts.markLenIn} onChange={e => set('markLenIn', +e.target.value)} style={iStyle} /></Field>
       <Field label="Mark offset (in)" note="Gap between trim and mark"><input type="number" min={0.05} max={0.25} step={0.0625} value={opts.markOffIn} onChange={e => set('markOffIn', +e.target.value)} style={iStyle} /></Field>
+      <MarkExtras opts={{ ...opts, addMarks: true }} onChange={o => onChange({ ...opts, centerMarks: o.centerMarks, markWeightPt: o.markWeightPt })} />
     </Grid>
   );
 }
@@ -1146,6 +1537,7 @@ function TicketSettings({ opts, onChange }: { opts: TicketOptions; onChange: (o:
       <Field label="Crop marks">
         <Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add crop marks</span></Row>
       </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
     </Grid>
   );
 }
@@ -1177,9 +1569,18 @@ function FlipSettings({ dir, onChange }: { dir: 'h' | 'v'; onChange: (d: 'h' | '
 
 function ShuffleSettings({ order, onChange, count }: { order: string; onChange: (s: string) => void; count: number }) {
   return (
-    <Field label="Page order" note={`This PDF has ${count} page${count !== 1 ? 's' : ''}. List 1-based page numbers in the order you want. Repeat to duplicate, omit to drop.`}>
-      <input type="text" value={order} onChange={e => onChange(e.target.value)} placeholder="e.g. 3, 1, 2, 2, 4" style={iStyle} />
-    </Field>
+    <div>
+      <Field label="Page order" note={`This PDF has ${count} page${count !== 1 ? 's' : ''}.`}>
+        <input type="text" value={order} onChange={e => onChange(e.target.value)} placeholder="e.g. 1, 2>, B, 5-3" style={iStyle} />
+      </Field>
+      <div style={{ marginTop: '.6rem', fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+        <strong style={{ color: 'var(--ink)' }}>Expression syntax</strong><br />
+        <code>3,1,2</code> — reorder · repeat a number to duplicate, omit to drop<br />
+        <code>1-5</code> ascending range · <code>5-1</code> descending (reverse)<br />
+        <code>4&gt;</code> rotate 90° cw · <code>3&lt;</code> 90° ccw · <code>2^</code> 180°<br />
+        <code>B</code> · <code>X</code> · <code>_</code> — insert a blank page
+      </div>
+    </div>
   );
 }
 
@@ -1199,6 +1600,123 @@ function CropBoxSettings({ opts, onChange }: { opts: CropBoxOptions; onChange: (
       <Field label="Right inset (in)"><input type="number" min={0} max={10} step={0.0625} value={opts.right} onChange={e => set('right', +e.target.value)} style={iStyle} /></Field>
       <Field label="Bottom inset (in)"><input type="number" min={0} max={10} step={0.0625} value={opts.bottom} onChange={e => set('bottom', +e.target.value)} style={iStyle} /></Field>
       <Field label="Left inset (in)"><input type="number" min={0} max={10} step={0.0625} value={opts.left} onChange={e => set('left', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+// ── Resize settings ───────────────────────────────────────────────────────────
+
+const DEFAULT_RESIZE: ResizeOptions = { mode: 'scale', scalePct: 100, targetWIn: 8.5, targetHIn: 11 };
+
+function ResizeSettings({ opts, onChange }: { opts: ResizeOptions; onChange: (o: ResizeOptions) => void }) {
+  const set = <K extends keyof ResizeOptions>(k: K, v: ResizeOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Resize mode">
+        <select value={opts.mode} onChange={e => set('mode', e.target.value as ResizeOptions['mode'])} style={iStyle}>
+          <option value="scale">Scale by percentage</option>
+          <option value="fit">Fit to paper (keep aspect)</option>
+          <option value="stretch">Stretch to paper (fill)</option>
+        </select>
+      </Field>
+      {opts.mode === 'scale' ? (
+        <Field label="Scale (%)" note="100 = unchanged">
+          <input type="number" min={1} max={800} step={1} value={opts.scalePct} onChange={e => set('scalePct', +e.target.value)} style={iStyle} />
+        </Field>
+      ) : (
+        <>
+          <SheetPicker opts={{ sheetWIn: opts.targetWIn, sheetHIn: opts.targetHIn }} set={(k, v) => set(k === 'sheetWIn' ? 'targetWIn' : 'targetHIn', v)} />
+          <Field label="Target width (in)"><input type="number" min={0.5} max={60} step={0.0625} value={opts.targetWIn} onChange={e => set('targetWIn', +e.target.value)} style={iStyle} /></Field>
+          <Field label="Target height (in)"><input type="number" min={0.5} max={60} step={0.0625} value={opts.targetHIn} onChange={e => set('targetHIn', +e.target.value)} style={iStyle} /></Field>
+        </>
+      )}
+    </Grid>
+  );
+}
+
+// ── Registration / Insert / Nudge / Backdrop / QR settings ────────────────────
+
+const DEFAULT_REGMARK: RegMarkOptions = { marginIn: 0.25, sizeIn: 0.18, style: 'target' };
+const DEFAULT_INSERT: InsertOptions = { mode: 'at', position: 1, everyN: 1, count: 1 };
+const DEFAULT_NUDGE: NudgeOptions = { dxIn: 0, dyIn: 0, rotateDeg: 0 };
+const DEFAULT_BACKDROP: BackdropOptions = { r: 1, g: 1, b: 1 };
+const DEFAULT_QRSTAMP: QrStampOptions = { text: 'https://', sizePt: 72, position: 'br', marginPt: 18 };
+const DEFAULT_COLLATING: { edge: 'left' | 'right' } = { edge: 'left' };
+
+const hexToRgb = (hex: string) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  return m ? { r: parseInt(m[1]!, 16) / 255, g: parseInt(m[2]!, 16) / 255, b: parseInt(m[3]!, 16) / 255 } : { r: 1, g: 1, b: 1 };
+};
+const rgbToHex = (c: BackdropOptions) => '#' + [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+
+function RegistrationSettings({ opts, onChange }: { opts: RegMarkOptions; onChange: (o: RegMarkOptions) => void }) {
+  const set = <K extends keyof RegMarkOptions>(k: K, v: RegMarkOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Mark style">
+        <select value={opts.style} onChange={e => set('style', e.target.value as RegMarkOptions['style'])} style={iStyle}>
+          <option value="target">Target (bullseye + crosshair)</option>
+          <option value="crosshair">Crosshair only</option>
+        </select>
+      </Field>
+      <Field label="Distance from edge (in)"><input type="number" min={0.1} max={1} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark size (in)"><input type="number" min={0.08} max={0.5} step={0.01} value={opts.sizeIn} onChange={e => set('sizeIn', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function InsertSettings({ opts, onChange }: { opts: InsertOptions; onChange: (o: InsertOptions) => void }) {
+  const set = <K extends keyof InsertOptions>(k: K, v: InsertOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Where">
+        <select value={opts.mode} onChange={e => set('mode', e.target.value as InsertOptions['mode'])} style={iStyle}>
+          <option value="at">Before a specific page</option>
+          <option value="everyN">After every N pages</option>
+        </select>
+      </Field>
+      {opts.mode === 'at'
+        ? <Field label="Before page #"><input type="number" min={1} step={1} value={opts.position} onChange={e => set('position', +e.target.value)} style={iStyle} /></Field>
+        : <Field label="Every N pages"><input type="number" min={1} step={1} value={opts.everyN} onChange={e => set('everyN', +e.target.value)} style={iStyle} /></Field>}
+      <Field label="Blank pages to insert"><input type="number" min={1} max={20} step={1} value={opts.count} onChange={e => set('count', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function NudgeSettings({ opts, onChange }: { opts: NudgeOptions; onChange: (o: NudgeOptions) => void }) {
+  const set = <K extends keyof NudgeOptions>(k: K, v: NudgeOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Shift right (in)" note="Negative = left"><input type="number" min={-2} max={2} step={0.01} value={opts.dxIn} onChange={e => set('dxIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Shift up (in)" note="Negative = down"><input type="number" min={-2} max={2} step={0.01} value={opts.dyIn} onChange={e => set('dyIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Rotate (deg)" note="About page centre"><input type="number" min={-15} max={15} step={0.1} value={opts.rotateDeg} onChange={e => set('rotateDeg', +e.target.value)} style={iStyle} /></Field>
+    </Grid>
+  );
+}
+
+function BackdropSettings({ opts, onChange }: { opts: BackdropOptions; onChange: (o: BackdropOptions) => void }) {
+  return (
+    <Grid>
+      <Field label="Backdrop colour" note="Painted behind every page">
+        <input type="color" value={rgbToHex(opts)} onChange={e => onChange(hexToRgb(e.target.value))} style={{ ...iStyle, height: 38, padding: 2 }} />
+      </Field>
+    </Grid>
+  );
+}
+
+function QrStampSettings({ opts, onChange }: { opts: QrStampOptions; onChange: (o: QrStampOptions) => void }) {
+  const set = <K extends keyof QrStampOptions>(k: K, v: QrStampOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Encoded text / URL"><input type="text" value={opts.text} onChange={e => set('text', e.target.value)} placeholder="https://example.com" style={iStyle} /></Field>
+      <Field label="Position">
+        <select value={opts.position} onChange={e => set('position', e.target.value as QrStampOptions['position'])} style={iStyle}>
+          <option value="br">Bottom right</option><option value="bl">Bottom left</option>
+          <option value="tr">Top right</option><option value="tl">Top left</option><option value="center">Center</option>
+        </select>
+      </Field>
+      <Field label="Size (pt)"><input type="number" min={24} max={288} step={4} value={opts.sizePt} onChange={e => set('sizePt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge margin (pt)"><input type="number" min={0} max={96} step={2} value={opts.marginPt} onChange={e => set('marginPt', +e.target.value)} style={iStyle} /></Field>
     </Grid>
   );
 }
@@ -1380,26 +1898,46 @@ function DataMergeTool({ tool }: { tool: ToolDef }) {
   );
 }
 
-function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) {
+function ToolWorkspace({ tool, preset, onBack }: { tool: ToolDef; preset?: TemplatePreset; onBack: () => void }) {
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [errMsg, setErrMsg] = useState('');
 
-  const cardMode = tool.engine === 'nup' && !!(tool.defaultNup?.cellWIn || tool.fitSource);
+  // A preset that specifies an explicit column count means "grid mode" — the
+  // template wants an exact cols×rows, so any fixed cell size inherited from the
+  // tool default must be dropped (otherwise it would silently override the grid).
+  const gridPreset = preset?.nup?.cols != null;
+  const cardMode = tool.engine === 'nup' && !gridPreset && !!(tool.defaultNup?.cellWIn || preset?.nup?.cellWIn || tool.fitSource);
 
-  // Per-engine settings state (initialised from the tool's presets)
-  const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet });
-  const [nupOpts, setNupOpts] = useState<NUpOptions>({ ...DEFAULT_NUP, ...tool.defaultNup });
-  const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster });
+  // Per-engine settings state (initialised from the tool's presets, then any
+  // template overrides layered on top).
+  const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet, ...preset?.booklet });
+  const [nupOpts, setNupOpts] = useState<NUpOptions>(() => {
+    const merged = { ...DEFAULT_NUP, ...tool.defaultNup, ...preset?.nup };
+    if (gridPreset) { delete (merged as Partial<NUpOptions>).cellWIn; delete (merged as Partial<NUpOptions>).cellHIn; }
+    return merged;
+  });
+  const [posterOpts, setPosterOpts] = useState<PosterOptions>({ ...DEFAULT_POSTER, ...tool.defaultPoster, ...preset?.poster });
   const [cropOpts, setCropOpts] = useState<CropMarksOptions>(DEFAULT_CROP);
   const [bleedOpts, setBleedOpts] = useState<{ bleedIn: number }>({ bleedIn: 0.125 });
   const [colorBarOpts, setColorBarOpts] = useState<ColorBarOptions>(DEFAULT_COLORBAR);
   const [pageNumOpts, setPageNumOpts] = useState<PageNumberOptions>(DEFAULT_PAGENUM);
-  const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket });
+  const [ticketOpts, setTicketOpts] = useState<TicketOptions>({ ...DEFAULT_TICKET, ...tool.defaultTicket, ...preset?.ticket });
   const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
   const [flipDir, setFlipDir] = useState<'h' | 'v'>('h');
   const [overlayOpts, setOverlayOpts] = useState<OverlayOptions>(DEFAULT_OVERLAY);
   const [cropBoxOpts, setCropBoxOpts] = useState<CropBoxOptions>({ top: 0, right: 0, bottom: 0, left: 0 });
+  const [resizeOpts, setResizeOpts] = useState<ResizeOptions>({ ...DEFAULT_RESIZE, ...preset?.resize });
+  const [watermarkOpts, setWatermarkOpts] = useState<WatermarkOptions>(DEFAULT_WATERMARK);
+  const [headerFooterOpts, setHeaderFooterOpts] = useState<HeaderFooterOptions>(DEFAULT_HEADERFOOTER);
+  const [slugOpts, setSlugOpts] = useState<JobSlugOptions>({ text: 'Job • ' + new Date().toISOString().slice(0, 10), position: 'bottom', fontSizePt: 8 });
+  const [collatingOpts, setCollatingOpts] = useState<{ edge: 'left' | 'right' }>(DEFAULT_COLLATING);
+  const [regOpts, setRegOpts] = useState<RegMarkOptions>(DEFAULT_REGMARK);
+  const [insertOpts, setInsertOpts] = useState<InsertOptions>(DEFAULT_INSERT);
+  const [nudgeOpts, setNudgeOpts] = useState<NudgeOptions>(DEFAULT_NUDGE);
+  const [backdropOpts, setBackdropOpts] = useState<BackdropOptions>(DEFAULT_BACKDROP);
+  const [qrStampOpts, setQrStampOpts] = useState<QrStampOptions>(DEFAULT_QRSTAMP);
+  const [mixReverse, setMixReverse] = useState(false);
   const [shuffleOrder, setShuffleOrder] = useState('');
   const [splitRanges, setSplitRanges] = useState('');
   const [stampFile, setStampFile] = useState<MergeFile | null>(null);
@@ -1460,10 +1998,25 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
         case 'rotate': out = await rotatePdf(file.bytes, rotateAngle); outName = `${base}-rotated${rotateAngle}.pdf`; break;
         case 'flip': out = await flipPdf(file.bytes, flipDir); outName = `${base}-flipped.pdf`; break;
         case 'crop': out = await cropPdf(file.bytes, cropBoxOpts); outName = `${base}-cropped.pdf`; break;
+        case 'resize': out = await resizePdf(file.bytes, resizeOpts); outName = `${base}-resized.pdf`; break;
         case 'shuffle': out = await shufflePages(file.bytes, shuffleOrder); outName = `${base}-reordered.pdf`; break;
         case 'overlay':
           if (!stampFile) { setStatus('error'); setErrMsg('Add a watermark / overlay PDF first.'); return; }
           out = await overlayPdf(file.bytes, stampFile.bytes, overlayOpts); outName = `${base}-overlay.pdf`; break;
+        case 'watermark': out = await addTextWatermark(file.bytes, watermarkOpts); outName = `${base}-watermark.pdf`; break;
+        case 'headerfooter': out = await addHeaderFooter(file.bytes, headerFooterOpts); outName = `${base}-headerfooter.pdf`; break;
+        case 'slug': out = await addJobSlug(file.bytes, slugOpts); outName = `${base}-slug.pdf`; break;
+        case 'collating': out = await addCollatingMarks(file.bytes, collatingOpts); outName = `${base}-collated.pdf`; break;
+        case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
+        case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
+        case 'nudge': out = await nudgePdf(file.bytes, nudgeOpts); outName = `${base}-nudged.pdf`; break;
+        case 'repair': out = await repairPdf(file.bytes); outName = `${base}-repaired.pdf`; break;
+        case 'backdrop': out = await addBackdrop(file.bytes, backdropOpts); outName = `${base}-backdrop.pdf`; break;
+        case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
+        case 'dimensions': out = await addDimensions(file.bytes); outName = `${base}-dimensions.pdf`; break;
+        case 'mix':
+          if (!stampFile) { setStatus('error'); setErrMsg('Add the second PDF to interleave first.'); return; }
+          out = await mixPdfs(file.bytes, stampFile.bytes, mixReverse); outName = `${base}-interleaved.pdf`; break;
         case 'split': {
           const parts = await splitPdf(file.bytes, splitRanges);
           if (!parts.length) { setStatus('error'); setErrMsg('No valid ranges. Use a format like 1-3, 4-6, 7.'); return; }
@@ -1555,20 +2108,40 @@ function ToolWorkspace({ tool, onBack }: { tool: ToolDef; onBack: () => void }) 
                 {tool.engine === 'rotate' && <RotateSettings angle={rotateAngle} onChange={setRotateAngle} />}
                 {tool.engine === 'flip' && <FlipSettings dir={flipDir} onChange={setFlipDir} />}
                 {tool.engine === 'crop' && <CropBoxSettings opts={cropBoxOpts} onChange={setCropBoxOpts} />}
+                {tool.engine === 'resize' && <ResizeSettings opts={resizeOpts} onChange={setResizeOpts} />}
                 {tool.engine === 'shuffle' && <ShuffleSettings order={shuffleOrder} onChange={setShuffleOrder} count={file.info.count} />}
                 {tool.engine === 'split' && <SplitSettings ranges={splitRanges} onChange={setSplitRanges} count={file.info.count} />}
                 {tool.engine === 'overlay' && <OverlaySettings opts={overlayOpts} onChange={setOverlayOpts} />}
+                {tool.engine === 'watermark' && <WatermarkSettings opts={watermarkOpts} onChange={setWatermarkOpts} />}
+                {tool.engine === 'headerfooter' && <HeaderFooterSettings opts={headerFooterOpts} onChange={setHeaderFooterOpts} />}
+                {tool.engine === 'slug' && <JobSlugSettings opts={slugOpts} onChange={setSlugOpts} />}
+                {tool.engine === 'collating' && <CollatingSettings opts={collatingOpts} onChange={setCollatingOpts} />}
+                {tool.engine === 'registration' && <RegistrationSettings opts={regOpts} onChange={setRegOpts} />}
+                {tool.engine === 'insert' && <InsertSettings opts={insertOpts} onChange={setInsertOpts} />}
+                {tool.engine === 'nudge' && <NudgeSettings opts={nudgeOpts} onChange={setNudgeOpts} />}
+                {tool.engine === 'backdrop' && <BackdropSettings opts={backdropOpts} onChange={setBackdropOpts} />}
+                {tool.engine === 'qrstamp' && <QrStampSettings opts={qrStampOpts} onChange={setQrStampOpts} />}
+                {tool.engine === 'mix' && (
+                  <Row><input type="checkbox" checked={mixReverse} onChange={e => setMixReverse(e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Reverse the second file (backs scanned in reverse)</span></Row>
+                )}
+                {(tool.engine === 'repair' || tool.engine === 'dimensions') && (
+                  <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    {tool.engine === 'repair'
+                      ? 'Rebuilds the file from scratch — drops broken cross-references and dead objects, then writes a clean PDF. No options needed.'
+                      : 'Stamps each page with its exact trim size (inches + points) along the bottom and left edges. No options needed.'}
+                  </p>
+                )}
               </div>
 
-              {tool.engine === 'overlay' && (
+              {(tool.engine === 'overlay' || tool.engine === 'mix') && (
                 <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
-                  <h4 style={{ margin: '0 0 .75rem' }}>Overlay / watermark PDF</h4>
+                  <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'mix' ? 'Second PDF (interleave)' : 'Overlay / watermark PDF'}</h4>
                   {stampFile
                     ? <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                         <span style={{ fontSize: '.85rem', flex: 1 }}>📄 {stampFile.name}</span>
                         <button className="btn secondary" style={{ padding: '.3rem .65rem', fontSize: '.8rem' }} onClick={() => setStampFile(null)}>Change</button>
                       </div>
-                    : <FileDrop onFile={loadStamp} label="Drop the watermark / stamp PDF" />}
+                    : <FileDrop onFile={loadStamp} label={tool.engine === 'mix' ? 'Drop the second PDF (the backs)' : 'Drop the watermark / stamp PDF'} />}
                 </div>
               )}
 
@@ -2067,6 +2640,76 @@ function ToolGallery({ query, filter, onSelect }: { query: string; filter: strin
   );
 }
 
+// ── Template gallery ──────────────────────────────────────────────────────────
+
+function TemplateGallery({ query, onSelect }: { query: string; onSelect: (tpl: TemplateDef) => void }) {
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const match = (t: TemplateDef) => !q || t.name.toLowerCase().includes(q)
+      || t.specs.toLowerCase().includes(q) || t.industry.toLowerCase().includes(q);
+    const map = new Map<string, TemplateDef[]>();
+    for (const t of TEMPLATES) {
+      if (!match(t)) continue;
+      if (!map.has(t.industry)) map.set(t.industry, []);
+      map.get(t.industry)!.push(t);
+    }
+    return TEMPLATE_INDUSTRIES.filter(i => map.has(i)).map(i => [i, map.get(i)!] as const);
+  }, [query]);
+
+  if (!groups.length) {
+    return <div style={{ color: 'var(--muted)', padding: '2rem 0' }}>No templates match {query ? `“${query}”` : 'this filter'}.</div>;
+  }
+
+  return (
+    <section>
+      <SectionHeading title="Templates" count={TEMPLATES.length} />
+      <p style={{ margin: '-.5rem 0 1.75rem', color: 'var(--muted)', fontSize: '.9rem', maxWidth: 640 }}>
+        Ready-made, industry-grouped presets. Pick one and it opens the matching tool with the sheet,
+        bleed, gutters and finishing marks already dialled in — just drop your file and export.
+      </p>
+      <div style={{ display: 'grid', gap: '2.25rem' }}>
+        {groups.map(([industry, items]) => (
+          <div key={industry}>
+            <div style={{ fontSize: '.7rem', fontWeight: 800, letterSpacing: '.09em', color: VIOLET, textTransform: 'uppercase', marginBottom: '.85rem' }}>
+              {industry} <span style={{ color: 'var(--muted)', fontWeight: 600 }}>· {items.length}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px,1fr))', gap: '.75rem' }}>
+              {items.map(t => <TemplateCard key={t.id} tpl={t} onSelect={() => onSelect(t)} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TemplateCard({ tpl, onSelect }: { tpl: TemplateDef; onSelect: () => void }) {
+  const [hover, setHover] = useState(false);
+  const tool = TOOLS.find(t => t.id === tpl.toolId);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onSelect}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '.55rem', padding: '.85rem .9rem', cursor: 'pointer',
+        borderRadius: 10, border: `1px solid ${hover ? VIOLET : 'var(--border)'}`, background: 'var(--bg-alt)',
+        boxShadow: hover ? '0 6px 18px rgba(124,58,237,0.14)' : 'none', transition: 'all .13s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+        <div style={{ width: 40, height: 30, flexShrink: 0, borderRadius: 5, overflow: 'hidden', background: 'var(--bg-alt)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {tool ? <tool.Thumb /> : null}
+        </div>
+        <div style={{ fontWeight: 700, fontSize: '.88rem', color: 'var(--ink)', lineHeight: 1.2 }}>{tpl.name}</div>
+      </div>
+      <div style={{ fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.4 }}>{tpl.specs}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '.35rem' }}>
+        <span style={{ fontSize: '.68rem', color: 'var(--muted)' }}>via {tool?.name ?? tpl.toolId}</span>
+        <span style={{ fontSize: '.76rem', fontWeight: 700, color: VIOLET }}>{hover ? 'Open →' : 'Use'}</span>
+      </div>
+    </div>
+  );
+}
+
 // Generic "how to make this" steps shown on every ready-to-use tool card.
 function toolHowTo(tool: ToolDef): string[] {
   return [
@@ -2454,7 +3097,7 @@ function Calculators() {
 
 // ── Page root ─────────────────────────────────────────────────────────────────
 
-const GALLERY_CHIPS = ['All', 'Chained workflows', ...CATEGORY_ORDER, 'Workflow', 'Calculators'];
+const GALLERY_CHIPS = ['All', 'Templates', 'Chained workflows', ...CATEGORY_ORDER, 'Workflow', 'Calculators'];
 
 const HOW_TO_STEPS: [string, string][] = [
   ['01', 'Drop or select your PDF'],
@@ -2465,13 +3108,15 @@ const HOW_TO_STEPS: [string, string][] = [
 
 export function AdminImpose() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<TemplateDef | null>(null);
   const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const toolDef = TOOLS.find(t => t.id === activeTool);
 
-  const handleSelect = (id: string) => setActiveTool(id);
+  const handleSelect = (id: string) => { setActiveTemplate(null); setActiveTool(id); };
+  const handleSelectTemplate = (tpl: TemplateDef) => { setActiveTemplate(tpl); setActiveTool(tpl.toolId); };
 
   const shell = (node: React.ReactNode) => (
     <div style={{ ...THEMES[theme], background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh' } as React.CSSProperties}>
@@ -2481,7 +3126,15 @@ export function AdminImpose() {
 
   // A tool or workflow workspace takes over the whole page.
   if (activeTool && toolDef) {
-    return shell(<ToolWorkspace key={toolDef.id} tool={toolDef} onBack={() => setActiveTool(null)} />);
+    const preset = activeTemplate && activeTemplate.toolId === toolDef.id ? activeTemplate.preset : undefined;
+    return shell(
+      <ToolWorkspace
+        key={toolDef.id + (activeTemplate?.id ?? '')}
+        tool={toolDef}
+        preset={preset}
+        onBack={() => { setActiveTool(null); setActiveTemplate(null); }}
+      />,
+    );
   }
   if (activeWorkflow) {
     return shell(
@@ -2496,9 +3149,16 @@ export function AdminImpose() {
   const searching = query.trim().length > 0;
   let content: React.ReactNode;
   if (searching) {
-    content = <ToolGallery query={query} filter={null} onSelect={handleSelect} />;
+    content = (
+      <div style={{ display: 'grid', gap: '2.75rem' }}>
+        <ToolGallery query={query} filter={null} onSelect={handleSelect} />
+        <TemplateGallery query={query} onSelect={handleSelectTemplate} />
+      </div>
+    );
   } else if (filter === 'Calculators') {
     content = <Calculators />;
+  } else if (filter === 'Templates') {
+    content = <TemplateGallery query="" onSelect={handleSelectTemplate} />;
   } else if (filter === 'Chained workflows') {
     content = <WorkflowChains onSelect={setActiveWorkflow} />;
   } else if (filter === 'Workflow') {
@@ -2507,6 +3167,7 @@ export function AdminImpose() {
     content = (
       <div style={{ display: 'grid', gap: '2.75rem' }}>
         <WorkflowChains onSelect={setActiveWorkflow} />
+        <TemplateGallery query="" onSelect={handleSelectTemplate} />
         <ToolGallery query="" filter={null} onSelect={handleSelect} />
         <WorkflowBuilderSection onSelect={setActiveWorkflow} />
       </div>
@@ -2530,14 +3191,15 @@ export function AdminImpose() {
         <div style={{ color: VIOLET, fontSize: '.7rem', fontWeight: 800, letterSpacing: '.14em', marginBottom: '.75rem' }}>IMPOSITION GALLERY</div>
         <h1 style={{ fontSize: '2.1rem', margin: '0 0 .75rem', lineHeight: 1.15 }}>See what you can make — and exactly how</h1>
         <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: '0 0 1.35rem' }}>
-          Browse {TOOLS.length} real imposition and prepress layouts plus {WORKFLOWS.length} chained workflows.
-          Each one shows the result and the exact steps to create it — right in your browser, never uploaded.
+          Browse {TOOLS.length} real imposition and prepress tools, {TEMPLATES.length} ready-made templates,
+          and {WORKFLOWS.length} chained workflows. Each shows the result and the exact steps to create it —
+          right in your browser, never uploaded.
         </p>
         <button
-          onClick={() => { setFilter('All'); setQuery(''); }}
+          onClick={() => { setFilter('Templates'); setQuery(''); }}
           style={{ padding: '.6rem 1.25rem', border: `1px solid ${VIOLET}`, borderRadius: 8, background: 'var(--accent-soft)', color: VIOLET, fontWeight: 700, cursor: 'pointer', fontSize: '.9rem' }}
         >
-          Browse all {TOOLS.length + WORKFLOWS.length} templates →
+          Browse all {TEMPLATES.length} templates →
         </button>
       </div>
 

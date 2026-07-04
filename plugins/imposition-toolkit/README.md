@@ -1,15 +1,15 @@
 # Imposition Toolkit
 
-A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **60
-print-production tools + 6 chained workflows** plus 5 planning calculators,
-extracted from the Printing Comics storefront so it can be dropped into any
-other website.
+A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **73
+print-production tools + 156 ready-made industry templates + 6 chained
+workflows** plus 5 planning calculators, extracted from the Printing Comics
+storefront so it can be dropped into any other website.
 
 Everything runs in the browser using [`pdf-lib`](https://pdflib.js.org). **Files
 never leave the user's machine** — nothing is uploaded, there is no server
 component, and there are no network calls during processing.
 
-- **`src/impose.ts`** — the framework-agnostic engine (**26 functions**). No
+- **`src/impose.ts`** — the framework-agnostic engine (**35 functions**). No
   React, no app dependencies. This is the reusable core.
 - **`src/Impose.tsx`** — a complete React 19 UI (`<AdminImpose />`): a single-page
   gallery with a hero, a "how to make this" strip, filter chips, and stacked

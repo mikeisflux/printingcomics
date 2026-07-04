@@ -1,9 +1,31 @@
 # Tool Catalog
 
-60 tools across 8 categories, plus 6 chained workflows and a custom pipeline
-builder. Each tool maps to an engine from [API.md](API.md) with a preset; every
-value is editable in the UI. Auto-fit layouts recompute `cols × rows` from the
-sheet + item size.
+73 tools across 8 categories, **156 ready-made industry templates**, 6 chained
+workflows and a custom pipeline builder. Each tool maps to an engine from
+[API.md](API.md) with a preset; every value is editable in the UI. Auto-fit
+layouts recompute `cols × rows` from the sheet + item size.
+
+## Templates (156)
+
+Named, industry-grouped presets — pick one and it opens the matching tool with a
+complete working configuration (sheet, item size, exact n-up, cut-and-stack,
+duplex work-and-turn, bleed, RTL/manga, perfect-bound signatures) already dialled
+in. Seven categories: **Commercial Print · Packaging · Publishing · Large Format ·
+Office · Variable Data · Real Estate**. Examples: *10-Up Business Cards*,
+*Shingled 3-Up (Cut & Stack)*, *Folding Carton — Straight Tuck End*,
+*Perfect Bound Trade Paperback*, *Manga / RTL Comic Booklet*, *Feather Flag*,
+*Event Tickets (QR Code)*, *Mailing Labels (Avery 5160)*.
+
+## New tools (v1.2)
+
+- **Page & PDF tools** — Resize/Scale (`resizePdf`), Insert Pages (`insertPages`),
+  Mix/Interleave (`mixPdfs`, two files), Nudge (`nudgePdf`), PDF Repair (`repairPdf`).
+- **Marks & prepress** — Registration Marks (`addRegistrationMarks`), Watermark
+  (`addTextWatermark`), Header/Footer (`addHeaderFooter`), Slugline (`addJobSlug`),
+  Collating Marks (`addCollatingMarks`), QR/Barcode (`addQrStamp`), Backdrop
+  (`addBackdrop`), Dimensions (`addDimensions`).
+- **Shared** — double-sided (duplex) n-up, bleed-aware marks, booklet signatures,
+  center marks + mark weight, and the Shuffle expression language.
 
 ## Chained workflows (pipelines)
 

@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2.0
+
+Feature-parity pass against the full pdfpress tool guide + template library.
+
+**Engine — 9 new functions (35 total)**
+- `resizePdf` — scale by % / fit-to-paper / stretch
+- `addRegistrationMarks` — press registration targets (bullseye / crosshair)
+- `insertPages` — insert blank pages before a page or after every N
+- `mixPdfs` — interleave two PDFs (A1,B1,A2,B2…), optional reversed back stack
+- `nudgePdf` — shift/rotate page content about its centre (mis-registration fudge)
+- `repairPdf` — rebuild the document, dropping broken xref / dead objects
+- `addBackdrop` — paint a solid colour behind every page
+- `addQrStamp` — stamp a scannable QR (URL/vCard/code) on every page
+- `addDimensions` — annotate each page with its trim size (in + pt)
+
+**Engine — enhancements**
+- `imposeNUp`: **double-sided (duplex)** output with mirrored backs (long/short
+  edge) and **bleed-aware marks** (art fills the cell, marks drawn at the trim).
+- `imposeBooklet`: **perfect-binding signatures** (`signatureSheets`) alongside
+  the single saddle.
+- Configurable **printer's marks** everywhere — center marks + stroke weight
+  (`MarkStyle`) threaded through booklet / n-up / tickets / crop-marks / poster /
+  data-merge.
+- `shufflePages`: **expression language** — ranges (`1-5`/`5-1`), rotation
+  suffixes (`>` `<` `^`) and blank tokens (`B`/`X`/`_`).
+
+**UI (`Impose.tsx`)**
+- **73 tools** across 8 categories (adds Resize, Insert Pages, Mix/Interleave,
+  Nudge, PDF Repair, Registration Marks, Watermark, Header/Footer, Slugline,
+  Collating Marks, QR/Barcode, Backdrop, Dimensions).
+- New **Templates gallery — 156 ready-made, industry-grouped presets** (Commercial
+  Print, Packaging, Publishing, Large Format, Office, Variable Data, Real Estate).
+  Each template opens its tool with a complete working preset (sheet, item size,
+  exact n-up, cut-and-stack, duplex, bleed, RTL/manga, signatures).
+
 ## 1.1.0
 
 Major expansion to match a full pdfpress-style gallery.
