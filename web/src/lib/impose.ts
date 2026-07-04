@@ -117,6 +117,67 @@ export async function imposeBooklet(bytes: Uint8Array, opts: BookletOptions): Pr
   return outDoc.save();
 }
 
+// ── N-Up Book (multi-up signature imposition) ───────────────────────────────
+// Folds multiple pages onto each side of a large press sheet so that, after
+// folding + trimming, pages read sequentially. 2-up (folio) is exactly the
+// saddle/perfect booklet above. 4-up (quarto) folds an 8-page signature onto a
+// 2×2 grid per side, with the top row rotated 180° — the standard quarto scheme.
+
+export interface NUpBookOptions {
+  nUp: number;                 // 2 = folio, 4 = quarto (8+ falls back to folio saddle/perfect)
+  sheetWIn: number; sheetHIn: number;
+  marginIn: number; gutterIn: number;
+  creepIn: number; rtl: boolean;
+  signatureSheets: number;     // 0 = single saddle; N = perfect-bind signatures
+  addMarks: boolean; markLenIn: number; markOffIn: number;
+  centerMarks?: boolean; markWeightPt?: number;
+}
+
+export async function imposeNUpBook(bytes: Uint8Array, opts: NUpBookOptions): Promise<Uint8Array> {
+  // Folio (2-up) is the saddle/perfect booklet already implemented + verified.
+  if (opts.nUp <= 2) {
+    return imposeBooklet(bytes, {
+      rtl: opts.rtl, marginIn: opts.marginIn, gutterIn: opts.gutterIn, creepIn: opts.creepIn,
+      addMarks: opts.addMarks, markLenIn: opts.markLenIn, markOffIn: opts.markOffIn,
+      centerMarks: opts.centerMarks, markWeightPt: opts.markWeightPt, signatureSheets: opts.signatureSheets,
+    });
+  }
+  // Quarto (4-up): 8-page signatures, 2×2 per side, top row rotated 180°.
+  const { PDFDocument, rgb, degrees } = await import('pdf-lib');
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  const N = srcPages.length;
+  const shW = opts.sheetWIn*PT, shH = opts.sheetHIn*PT, m = opts.marginIn*PT, g = opts.gutterIn*PT;
+  const cols = 2, rows = 2;
+  const cellW = (shW-2*m-g)/cols, cellH = (shH-2*m-g)/rows;
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(srcPages);
+  const markStyle: MarkStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
+  const off = opts.markOffIn*PT, len = opts.markLenIn*PT;
+  const sigPages = 8;
+  const numSigs = Math.ceil(Math.max(1,N)/sigPages);
+  // [page-in-signature (1..8), row (0=top), col (0=left), rotation]
+  const FRONT: [number,number,number,number][] = [[5,0,0,180],[4,0,1,180],[8,1,0,0],[1,1,1,0]];
+  const BACK:  [number,number,number,number][] = [[3,0,0,180],[6,0,1,180],[2,1,0,0],[7,1,1,0]];
+  const colX = (c: number) => m + (opts.rtl ? cols-1-c : c) * (cellW+g);
+  for (let sig=0; sig<numSigs; sig++) {
+    for (const table of [FRONT, BACK]) {
+      const page = outDoc.addPage([shW,shH]);
+      for (const [p,r,c,rot] of table) {
+        const gp = sig*sigPages + p;                 // 1-indexed global page
+        const x = colX(c), yTop = shH - m - r*(cellH+g), yBot = yTop - cellH;
+        const emb = (gp>=1 && gp<=N) ? embeds[gp-1] : null;
+        if (emb) {
+          if (rot === 180) page.drawPage(emb, { x: x+cellW, y: yTop, width: cellW, height: cellH, rotate: degrees(180) });
+          else page.drawPage(emb, { x, y: yBot, width: cellW, height: cellH });
+        }
+        if (opts.addMarks) drawCropMarks(page, rgb, x, yBot, cellW, cellH, off, len, markStyle);
+      }
+    }
+  }
+  return outDoc.save();
+}
+
 // ── N-Up Grid / Step & Repeat ───────────────────────────────────────────────
 
 export interface NUpOptions {

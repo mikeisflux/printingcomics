@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type { DragEvent, ChangeEvent } from 'react';
 import {
-  getPdfInfo, imposeBooklet, imposeNUp, computeNUpGrid, addCropMarksOnly,
+  getPdfInfo, imposeBooklet, imposeNUpBook, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
@@ -12,7 +12,7 @@ import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
-  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -473,10 +473,10 @@ const TOOLS: ToolDef[] = [
 
   // ── Booklets & books ──
   {
-    id: 'nupbook', name: 'N-up Book', preset: 'N-up book', category: 'Booklets & books', engine: 'booklet',
-    desc: 'Booklet pages, imposed automatically.',
-    tags: ['4 / 8 / 16-up in binding order', 'perfect or nested', 'creep compensation'],
-    defaultBooklet: { marginIn: 0.5, creepIn: 0.125 }, Thumb: gridThumb(2, 2, { numbered: true }),
+    id: 'nupbook', name: 'N-up Book', preset: 'N-up book', category: 'Booklets & books', engine: 'nupbook',
+    desc: 'Multi-up signature imposition — 2-up folio or 4-up quarto, folded to read in order.',
+    tags: ['2-up folio / 4-up quarto', 'perfect or nested', 'true fold imposition'],
+    Thumb: gridThumb(2, 2, { numbered: true }),
   },
   {
     id: 'booklet', name: 'Booklet', preset: 'Booklet', category: 'Booklets & books', engine: 'booklet',
@@ -1241,6 +1241,52 @@ function BookletSettings({ opts, onChange }: { opts: BookletOptions; onChange: (
   );
 }
 
+const DEFAULT_NUPBOOK: NUpBookOptions = {
+  nUp: 4, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0, creepIn: 0,
+  rtl: false, signatureSheets: 0, addMarks: true, markLenIn: 0.25, markOffIn: 0.125,
+};
+
+function NUpBookSettings({ opts, onChange }: { opts: NUpBookOptions; onChange: (o: NUpBookOptions) => void }) {
+  const set = <K extends keyof NUpBookOptions>(k: K, v: NUpBookOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="N-up (fold scheme)" note="Pages per sheet side">
+        <select value={opts.nUp} onChange={e => set('nUp', +e.target.value)} style={iStyle}>
+          <option value={2}>2-up — folio (1 fold)</option>
+          <option value={4}>4-up — quarto (2 folds)</option>
+        </select>
+      </Field>
+      <SheetPicker opts={opts} set={set} />
+      <Field label="Binding">
+        <select value={opts.signatureSheets > 0 ? String(opts.signatureSheets) : '0'} onChange={e => set('signatureSheets', +e.target.value)} style={iStyle}>
+          <option value="0">Nested (saddle-stitch)</option>
+          <option value="1">Perfect-bound — 1-sheet signatures</option>
+          <option value="2">Perfect-bound — 2-sheet signatures</option>
+          <option value="4">Perfect-bound — 4-sheet signatures</option>
+        </select>
+      </Field>
+      <Field label="Reading direction">
+        <select value={opts.rtl ? 'rtl' : 'ltr'} onChange={e => set('rtl', e.target.value === 'rtl')} style={iStyle}>
+          <option value="ltr">Left-to-right</option>
+          <option value="rtl">Right-to-left (manga)</option>
+        </select>
+      </Field>
+      <Field label="Margin (in)"><input type="number" min={0} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Binding gutter (in)"><input type="number" min={0} max={0.5} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
+      {opts.nUp <= 2 && (
+        <Field label="Creep (in)" note="Only for 2-up nested"><input type="number" min={0} max={0.5} step={0.0625} value={opts.creepIn} onChange={e => set('creepIn', +e.target.value)} style={iStyle} /></Field>
+      )}
+      <Field label="Crop marks">
+        <Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add crop marks</span></Row>
+      </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        2-up folds one sheet in half (saddle/perfect). 4-up quarto folds an 8-page signature onto a 2×2 grid per side (top row rotates 180° so it reads correctly after folding + trimming).
+      </div>
+    </Grid>
+  );
+}
+
 function BookletPreview({ pageCount, opts }: { pageCount: number; opts: BookletOptions }) {
   const paddedN = Math.ceil(pageCount / 4) * 4;
   const numSheets = paddedN / 4;
@@ -1451,9 +1497,9 @@ function CellMarks({ x, y, w, h, off, len, center }: { x: number; y: number; w: 
 
 // The imposition preview for a given engine + settings + current output sheet.
 function ImpositionCanvas({
-  engine, nupOpts, bookletOpts, posterOpts, ticketOpts, pageCount, unit, sheetLabel, sheetIndex, onSheetCount, zoom,
+  engine, nupOpts, bookletOpts, nupBookOpts, posterOpts, ticketOpts, pageCount, unit, sheetLabel, sheetIndex, onSheetCount, zoom,
 }: {
-  engine: ToolEngine; nupOpts: NUpOptions; bookletOpts: BookletOptions; posterOpts: PosterOptions; ticketOpts: TicketOptions;
+  engine: ToolEngine; nupOpts: NUpOptions; bookletOpts: BookletOptions; nupBookOpts: NUpBookOptions; posterOpts: PosterOptions; ticketOpts: TicketOptions;
   pageCount: number; unit: 'in' | 'mm' | 'pt'; sheetLabel: string; sheetIndex: number; onSheetCount: (n: number) => void; zoom: number;
 }) {
   // Build the geometry for the CURRENT output sheet.
@@ -1512,6 +1558,34 @@ function ImpositionCanvas({
       const blank = gp > pageCount || gp < 1;
       cells.push({ x, y: 0.25, w: cw, h: ch, n: gp, blank });
       if (addMarks) marks.push({ x, y: 0.25, w: cw, h: ch });
+    }
+  } else if (engine === 'nupbook') {
+    const o = nupBookOpts;
+    if (o.nUp <= 2) {
+      // Folio spread (same as booklet preview).
+      const N = Math.max(1, pageCount), sig = o.signatureSheets > 0 ? o.signatureSheets * 4 : Math.ceil(N / 4) * 4;
+      sheetCount = Math.ceil(N / sig) * (sig / 4) * 2;
+      const si = Math.min(sheetIndex, sheetCount - 1), sheetNo = Math.floor((si % ((sig / 4) * 2)) / 2), isBack = si % 2 === 1;
+      let aL: number, aR: number;
+      if (!isBack) { aL = sig - sheetNo * 2; aR = sheetNo * 2 + 1; } else { aL = sheetNo * 2 + 2; aR = sig - sheetNo * 2 - 1; }
+      shW = 2 * 4.25 + 0.25; shH = 6.5;
+      for (const [gp, x] of [[aL, 0.25], [aR, 4.5]] as [number, number][]) cells.push({ x, y: 0.25, w: 4.25, h: 6, n: gp, blank: gp > pageCount });
+    } else {
+      // Quarto (4-up) — 2×2 per side, top row reads rotated 180°.
+      shW = o.sheetWIn; shH = o.sheetHIn;
+      const sigPages = 8, numSigs = Math.ceil(Math.max(1, pageCount) / sigPages);
+      sheetCount = numSigs * 2;
+      const si = Math.min(sheetIndex, sheetCount - 1), sigNo = Math.floor(si / 2), isBack = si % 2 === 1;
+      const m = o.marginIn, g = o.gutterIn, cw = (shW - 2 * m - g) / 2, chh = (shH - 2 * m - g) / 2;
+      addMarks = !!o.addMarks; centerMarks = !!o.centerMarks; off = o.markOffIn; len = o.markLenIn;
+      const FRONT: [number, number, number][] = [[5, 0, 0], [4, 0, 1], [8, 1, 0], [1, 1, 1]];
+      const BACK: [number, number, number][] = [[3, 0, 0], [6, 0, 1], [2, 1, 0], [7, 1, 1]];
+      for (const [p, r, c] of (isBack ? BACK : FRONT)) {
+        const gp = sigNo * sigPages + p, cc = o.rtl ? 1 - c : c;
+        const x = m + cc * (cw + g), y = m + r * (chh + g);
+        cells.push({ x, y, w: cw, h: chh, n: gp, blank: gp > pageCount });
+        if (addMarks) marks.push({ x, y, w: cw, h: chh });
+      }
     }
   } else if (engine === 'poster') {
     const o = posterOpts;
@@ -2114,6 +2188,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   // Per-engine settings state (initialised from the tool's presets, then any
   // template overrides layered on top).
   const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet, ...preset?.booklet });
+  const [nupBookOpts, setNupBookOpts] = useState<NUpBookOptions>({ ...DEFAULT_NUPBOOK, ...(preset?.booklet ? { rtl: preset.booklet.rtl } : {}) });
   const [nupOpts, setNupOpts] = useState<NUpOptions>(() => {
     const merged = { ...DEFAULT_NUP, ...tool.defaultNup, ...preset?.nup };
     if (gridPreset) { delete (merged as Partial<NUpOptions>).cellWIn; delete (merged as Partial<NUpOptions>).cellHIn; }
@@ -2195,6 +2270,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
     let outName = `${base}-imposed.pdf`;
     switch (tool.engine) {
         case 'booklet': out = await imposeBooklet(file.bytes, bookletOpts); outName = `${base}-booklet.pdf`; break;
+        case 'nupbook': out = await imposeNUpBook(file.bytes, nupBookOpts); outName = `${base}-nupbook-${nupBookOpts.nUp}up.pdf`; break;
         case 'nup':
           out = await imposeNUp(file.bytes, nupOpts);
           outName = `${base}-${nupOpts.repeatFirst ? 'repeat' : `${tool.id}`}.pdf`; break;
@@ -2336,6 +2412,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
               <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
                 <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'preflight' ? 'Preflight report' : 'Settings'}</h4>
                 {tool.engine === 'booklet' && <BookletSettings opts={bookletOpts} onChange={setBookletOpts} />}
+                {tool.engine === 'nupbook' && <NUpBookSettings opts={nupBookOpts} onChange={setNupBookOpts} />}
                 {tool.engine === 'nup' && <NUpSettings opts={nupOpts} onChange={setNupOpts} cardMode={cardMode} />}
                 {tool.engine === 'poster' && <PosterSettings opts={posterOpts} onChange={setPosterOpts} />}
                 {tool.engine === 'cropmarks' && <CropSettings opts={cropOpts} onChange={setCropOpts} />}
@@ -2409,10 +2486,10 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                   onPrint={printOut} onDownload={process} busy={isBusy} status={status}
                 />
                 <ImpositionCanvas
-                  engine={tool.engine} nupOpts={nupOpts} bookletOpts={bookletOpts} posterOpts={posterOpts}
+                  engine={tool.engine} nupOpts={nupOpts} bookletOpts={bookletOpts} nupBookOpts={nupBookOpts} posterOpts={posterOpts}
                   ticketOpts={ticketOpts} pageCount={file.info.count} unit={unit}
                   sheetLabel={tool.engine === 'nup' || tool.engine === 'tickets'
-                    ? `${nupOpts.sheetWIn}×${nupOpts.sheetHIn}` : tool.engine === 'poster' ? `${posterOpts.sheetWIn}×${posterOpts.sheetHIn}` : 'sheet'}
+                    ? `${nupOpts.sheetWIn}×${nupOpts.sheetHIn}` : tool.engine === 'poster' ? `${posterOpts.sheetWIn}×${posterOpts.sheetHIn}` : tool.engine === 'nupbook' ? `${nupBookOpts.sheetWIn}×${nupBookOpts.sheetHIn}` : 'sheet'}
                   sheetIndex={sheetIndex} onSheetCount={setSheetCount} zoom={zoom}
                 />
               </main>

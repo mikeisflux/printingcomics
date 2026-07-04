@@ -57,10 +57,10 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 These tools produce correct output but do **not** yet implement every option the
 guide lists:
 
-- **N-up Book** — currently **approximated** with the 2-up saddle/perfect
-  booklet engine. True N-up signature imposition (4 quarto / 8 octavo / 16 / 32
-  pages per sheet side with the correct fold rotations — e.g. the top row flipped
-  180°) and creep-direction inward/outward are **not** implemented.
+- **N-up Book** — real **2-up folio** (saddle/perfect) and **4-up quarto** (8-page
+  signature, 2×2 per side, top row rotated 180°) are implemented and the quarto
+  placement + rotation is verified against the canonical scheme. **8-up octavo /
+  16 / 32** still fall back to folio saddle/perfect (valid book, not folded N-up).
 - **Grid / Cards** — Z-pattern only (no S-pattern / snake fill).
 - **Cut and Stack** — LTR strip order only (no RTL strip reversal or a
   double-sided cut-and-stack back arrangement).
