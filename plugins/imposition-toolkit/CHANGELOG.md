@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.13
+
+- **Production Recipes** — the Workflows tab now ships **69 named, step-by-step
+  workflows** across 9 categories (Booklets & Books, Cards & Flat, Labels &
+  Stickers, Packaging, Large Format, Production Marks, Calendars & Specialty,
+  Ganging & Optimization, Transform & Prep), each with an ordered step list,
+  input note, prepress tip and tags. "Make this" loads the chain into the
+  pipeline builder.
+- New engine tools wired: **Layers** (OCG show/hide), **Custom Impose** (Expert
+  Grid per-cell placement), **PDF Tools** (optimize / decrypt / repair), deep
+  **Preflight** report + cleanup, and the **Gang Sheet** production plan.
+- New engine functions: `readLayers` / `setLayers`, `imposeCustomGrid`,
+  `optimizePdf` / `decryptPdf`, `preflightClean`, `computeGangPlan`, and an
+  expanded `preflight` report.
+
 ## 1.2.12
 
 - **Color Effects** — rasterise targeted pages (pdf.js) and apply a CSS-filter

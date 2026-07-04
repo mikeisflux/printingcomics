@@ -1,9 +1,9 @@
 # Imposition Toolkit
 
-A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **85
-print-production tools + 156 ready-made industry templates + 6 chained
-workflows** plus 5 planning calculators, extracted from the Printing Comics
-storefront so it can be dropped into any other website.
+A self-contained, **100% client-side** PDF imposition & pre-press toolkit — **88
+print-production tools + 156 ready-made industry templates + 69 production-recipe
+workflows** (in 9 categories) plus 5 planning calculators, extracted from the
+Printing Comics storefront so it can be dropped into any other website.
 
 Everything runs in the browser using [`pdf-lib`](https://pdflib.js.org). **Files
 never leave the user's machine** — nothing is uploaded, there is no server

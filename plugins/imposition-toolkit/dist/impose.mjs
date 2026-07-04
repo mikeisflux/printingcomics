@@ -1160,7 +1160,7 @@ async function addLayMarks(bytes, opts) {
   return doc.save();
 }
 async function preflight(bytes) {
-  const { PDFDocument } = await import("pdf-lib");
+  const { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFArray } = await import("pdf-lib");
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = doc.getPages();
   const warnings = [];
@@ -1172,13 +1172,257 @@ async function preflight(bytes) {
   });
   if (!uniformSize) warnings.push("Pages are not all the same size \u2014 imposition may misalign.");
   if (first.width / PT < 1 || first.height / PT < 1) warnings.push("Page size looks unusually small.");
+  const boxStr = (b) => `${(b.width / PT).toFixed(2)}\xD7${(b.height / PT).toFixed(2)} in`;
+  const p0 = pages[0];
+  const boxes = p0 ? { media: boxStr(p0.getMediaBox()), trim: boxStr(p0.getTrimBox()), bleed: boxStr(p0.getBleedBox()), crop: boxStr(p0.getCropBox()) } : { media: "\u2014", trim: "\u2014", bleed: "\u2014", crop: "\u2014" };
+  const fonts = [];
+  const fontSeen = /* @__PURE__ */ new Set();
+  const colorSpaces = /* @__PURE__ */ new Set();
+  let images = 0, minImagePx = null, annotations = 0;
+  const nm = (v) => v instanceof PDFName ? v.asString().replace(/^\//, "") : "";
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const dict = obj instanceof PDFRawStream ? obj.dict : obj instanceof PDFDict ? obj : null;
+    if (!dict) continue;
+    const type = nm(dict.get(PDFName.of("Type")));
+    const sub = nm(dict.get(PDFName.of("Subtype")));
+    if (type === "Font") {
+      const base = nm(dict.get(PDFName.of("BaseFont"))) || "(unnamed)";
+      const fd = dict.lookupMaybe(PDFName.of("FontDescriptor"), PDFDict);
+      const embedded = !!fd && (!!fd.get(PDFName.of("FontFile")) || !!fd.get(PDFName.of("FontFile2")) || !!fd.get(PDFName.of("FontFile3")));
+      if (!fontSeen.has(base)) {
+        fontSeen.add(base);
+        fonts.push({ name: base.replace(/^[A-Z]{6}\+/, ""), embedded });
+      }
+    }
+    if (sub === "Image") {
+      images++;
+      const w = Number(dict.get(PDFName.of("Width"))?.asNumber?.() ?? 0);
+      const h = Number(dict.get(PDFName.of("Height"))?.asNumber?.() ?? 0);
+      const edge = Math.min(w, h);
+      if (edge > 0 && (minImagePx === null || edge < minImagePx)) minImagePx = edge;
+      const cs = dict.get(PDFName.of("ColorSpace"));
+      if (cs instanceof PDFName) colorSpaces.add(nm(cs));
+      else if (cs instanceof PDFArray && cs.get(0) instanceof PDFName) colorSpaces.add(nm(cs.get(0)));
+    }
+    const res = dict.lookupMaybe(PDFName.of("Resources"), PDFDict) ?? (type === "" && sub === "" ? dict.lookupMaybe(PDFName.of("ColorSpace"), PDFDict) : void 0);
+    const csd = res?.lookupMaybe(PDFName.of("ColorSpace"), PDFDict);
+    if (csd) for (const [, v] of csd.entries()) {
+      const r = doc.context.lookupMaybe(v, PDFArray);
+      if (r && r.get(0) instanceof PDFName) colorSpaces.add(nm(r.get(0)));
+    }
+  }
+  for (const pg of pages) {
+    const a = pg.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+    if (a) annotations += a.size();
+  }
+  const cat = doc.catalog;
+  const names = cat.lookupMaybe(PDFName.of("Names"), PDFDict);
+  const embeddedFiles = (() => {
+    const ef = names?.lookupMaybe(PDFName.of("EmbeddedFiles"), PDFDict);
+    const arr = ef?.lookupMaybe(PDFName.of("Names"), PDFArray);
+    return arr ? Math.floor(arr.size() / 2) : 0;
+  })();
+  const hasJavaScript = !!names?.get(PDFName.of("JavaScript")) || !!cat.get(PDFName.of("OpenAction"));
+  const hasLayers = !!cat.get(PDFName.of("OCProperties"));
+  if (fonts.some((f) => !f.embedded)) warnings.push(`Non-embedded font(s): ${fonts.filter((f) => !f.embedded).map((f) => f.name).join(", ")} \u2014 may substitute on the RIP.`);
+  if (colorSpaces.has("DeviceRGB")) warnings.push("RGB content present \u2014 convert to CMYK for offset/press output.");
+  if (minImagePx !== null && minImagePx < 150) warnings.push(`Low-resolution image detected (${minImagePx}px on the short edge).`);
+  if (hasJavaScript) warnings.push("Document contains JavaScript \u2014 strip it for press delivery.");
+  if (embeddedFiles > 0) warnings.push(`${embeddedFiles} embedded file(s) \u2014 remove before press.`);
   return {
     pages: pages.length,
     uniformSize,
     widthIn: Math.round(first.width / PT * 1e3) / 1e3,
     heightIn: Math.round(first.height / PT * 1e3) / 1e3,
+    boxes,
+    fonts,
+    colorSpaces: [...colorSpaces],
+    images,
+    minImagePx,
+    annotations,
+    embeddedFiles,
+    hasJavaScript,
+    hasLayers,
     warnings
   };
+}
+async function preflightClean(bytes, opts) {
+  const { PDFDocument, PDFName, PDFDict } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  const pages = await out.copyPages(src, src.getPageIndices());
+  const sel = parsePageRange(opts.pages ?? "all", pages.length);
+  pages.forEach((p, i) => {
+    out.addPage(p);
+    if (!sel.has(i + 1)) return;
+    if (opts.removeAnnotations) p.node.delete(PDFName.of("Annots"));
+    if (opts.removeJavaScript) p.node.delete(PDFName.of("AA"));
+  });
+  const cat = out.catalog;
+  if (opts.flattenLayers) cat.delete(PDFName.of("OCProperties"));
+  const nd = cat.lookupMaybe(PDFName.of("Names"), PDFDict);
+  if (nd) {
+    if (opts.deleteEmbeddedFiles) nd.delete(PDFName.of("EmbeddedFiles"));
+    if (opts.removeJavaScript) nd.delete(PDFName.of("JavaScript"));
+  }
+  if (opts.removeJavaScript) cat.delete(PDFName.of("OpenAction"));
+  if (opts.stripMetadata) {
+    out.setTitle("");
+    out.setAuthor("");
+    out.setSubject("");
+    out.setKeywords([]);
+    out.setProducer("");
+    out.setCreator("");
+    try {
+      cat.delete(PDFName.of("Metadata"));
+    } catch {
+    }
+  }
+  return out.save({ useObjectStreams: true });
+}
+function computeGangPlan(distinctItems, itemsPerSheet, quantity, makeready = 0, spoilagePct = 0) {
+  const di = Math.max(1, Math.floor(distinctItems));
+  const ips = Math.max(1, Math.floor(itemsPerSheet));
+  const setsPerSheet = Math.max(1, Math.floor(ips / di));
+  const runSheets = Math.max(1, Math.ceil(Math.max(1, quantity) / setsPerSheet));
+  const makereadySheets = Math.max(0, Math.round(makeready));
+  const spoilageSheets = Math.ceil(runSheets * Math.max(0, spoilagePct) / 100);
+  return { itemsPerSheet: ips, setsPerSheet, runSheets, makereadySheets, spoilageSheets, totalSheets: runSheets + makereadySheets + spoilageSheets };
+}
+async function optimizePdf(bytes, opts = {}) {
+  const { PDFDocument } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  if (opts.removeUnused !== false) {
+    const out = await PDFDocument.create();
+    const pages = await out.copyPages(src, src.getPageIndices());
+    for (const p of pages) out.addPage(p);
+    return out.save({ useObjectStreams: opts.objectStreams !== false });
+  }
+  return src.save({ useObjectStreams: opts.objectStreams !== false });
+}
+async function decryptPdf(bytes) {
+  const { PDFDocument } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  return doc.save();
+}
+async function readLayers(bytes) {
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const ocp = doc.catalog.lookupMaybe(PDFName.of("OCProperties"), PDFDict);
+  if (!ocp) return [];
+  const ocgs = ocp.lookupMaybe(PDFName.of("OCGs"), PDFArray);
+  if (!ocgs) return [];
+  const d = ocp.lookupMaybe(PDFName.of("D"), PDFDict);
+  const refsIn = (key) => {
+    const a = d?.lookupMaybe(PDFName.of(key), PDFArray);
+    const set = /* @__PURE__ */ new Set();
+    if (a) for (let i = 0; i < a.size(); i++) {
+      const r = a.get(i);
+      set.add(r.toString());
+    }
+    return set;
+  };
+  const onSet = refsIn("ON"), offSet = refsIn("OFF");
+  const out = [];
+  for (let i = 0; i < ocgs.size(); i++) {
+    const ref = ocgs.get(i);
+    const g = doc.context.lookupMaybe(ref, PDFDict);
+    if (!g) continue;
+    const nmObj = g.get(PDFName.of("Name"));
+    const name = nmObj instanceof PDFString || nmObj instanceof PDFHexString ? nmObj.decodeText() : "(unnamed)";
+    out.push({ name, forcedOn: onSet.has(ref.toString()), forcedOff: offSet.has(ref.toString()) });
+  }
+  return out;
+}
+async function setLayers(bytes, states) {
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString } = await import("pdf-lib");
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const ctx = doc.context;
+  const ocp = doc.catalog.lookupMaybe(PDFName.of("OCProperties"), PDFDict);
+  if (!ocp) return doc.save();
+  const ocgs = ocp.lookupMaybe(PDFName.of("OCGs"), PDFArray);
+  let d = ocp.lookupMaybe(PDFName.of("D"), PDFDict);
+  if (!d) {
+    d = ctx.obj({});
+    ocp.set(PDFName.of("D"), d);
+  }
+  const ensureArr = (key) => {
+    let a = d.lookupMaybe(PDFName.of(key), PDFArray);
+    if (!a) {
+      a = ctx.obj([]);
+      d.set(PDFName.of(key), a);
+    }
+    return a;
+  };
+  const onArr = ensureArr("ON"), offArr = ensureArr("OFF");
+  const drop = (arr, refStr) => {
+    for (let i = arr.size() - 1; i >= 0; i--) if (arr.get(i).toString() === refStr) arr.remove(i);
+  };
+  const nameToRef = /* @__PURE__ */ new Map();
+  if (ocgs) for (let i = 0; i < ocgs.size(); i++) {
+    const ref = ocgs.get(i);
+    const g = ctx.lookupMaybe(ref, PDFDict);
+    const nmObj = g?.get(PDFName.of("Name"));
+    const nm = nmObj instanceof PDFString || nmObj instanceof PDFHexString ? nmObj.decodeText() : "";
+    if (nm) nameToRef.set(nm, ref);
+  }
+  for (const st of states) {
+    const ref = nameToRef.get(st.name);
+    if (!ref) continue;
+    const rs = ref.toString();
+    drop(onArr, rs);
+    drop(offArr, rs);
+    if (st.state === "on") onArr.push(ref);
+    else if (st.state === "off") offArr.push(ref);
+  }
+  return doc.save();
+}
+async function imposeCustomGrid(bytes, opts) {
+  const { PDFDocument, degrees, rgb } = await import("pdf-lib");
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcCount = src.getPageCount();
+  const out = await PDFDocument.create();
+  const embeds = await out.embedPages(src.getPages());
+  const cols = Math.max(1, Math.floor(opts.cols)), rows = Math.max(1, Math.floor(opts.rows));
+  const SW = opts.sheetWIn * PT, SH = opts.sheetHIn * PT;
+  const margin = (opts.marginIn ?? 0.25) * PT, gutter = (opts.gutterIn ?? 0) * PT;
+  const cw = (SW - 2 * margin - (cols - 1) * gutter) / cols;
+  const ch = (SH - 2 * margin - (rows - 1) * gutter) / rows;
+  for (const sheet of opts.sheets) {
+    const pg = out.addPage([SW, SH]);
+    for (let idx = 0; idx < cols * rows; idx++) {
+      const cell = sheet[idx];
+      if (!cell || cell.page == null || cell.page < 1 || cell.page > srcCount) continue;
+      const c = idx % cols, r = Math.floor(idx / cols);
+      const cx = margin + c * (cw + gutter), cy = SH - margin - (r + 1) * ch - r * gutter;
+      const emb = embeds[cell.page - 1];
+      const rot = (cell.rotation ?? 0) % 360;
+      const sw = emb.width, sh = emb.height;
+      const rotated = rot === 90 || rot === 270;
+      const fitW = rotated ? sh : sw, fitH = rotated ? sw : sh;
+      const scale = Math.min(cw / fitW, ch / fitH);
+      const dw = fitW * scale, dh = fitH * scale;
+      const ox = cx + (cw - dw) / 2, oy = cy + (ch - dh) / 2;
+      let px = ox, py = oy;
+      if (rot === 90) {
+        px = ox + dw;
+      } else if (rot === 180) {
+        px = ox + dw;
+        py = oy + dh;
+      } else if (rot === 270) {
+        py = oy + dh;
+      }
+      pg.drawPage(emb, { x: px, y: py, xScale: scale, yScale: scale, rotate: degrees(rot) });
+      if (opts.addMarks) {
+        const m = 6, blk = rgb(0, 0, 0);
+        for (const [mx, my, dx, dy] of [[cx, cy, -1, -1], [cx + cw, cy, 1, -1], [cx, cy + ch, -1, 1], [cx + cw, cy + ch, 1, 1]]) {
+          pg.drawLine({ start: { x: mx, y: my }, end: { x: mx + dx * m, y: my }, thickness: 0.5, color: blk });
+          pg.drawLine({ start: { x: mx, y: my }, end: { x: mx, y: my + dy * m }, thickness: 0.5, color: blk });
+        }
+      }
+    }
+  }
+  return out.save();
 }
 async function makeDieline(opts) {
   const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
@@ -2632,8 +2876,10 @@ export {
   cmykToRgb,
   colorEffectsFilter,
   colorEffectsIsIdentity,
+  computeGangPlan,
   computeNUpGrid,
   cropPdf,
+  decryptPdf,
   distortFactorFromCylinder,
   distortPdf,
   downloadMultiple,
@@ -2645,6 +2891,7 @@ export {
   getPdfInfo,
   imposeBooklet,
   imposeCalendar,
+  imposeCustomGrid,
   imposeDataMerge,
   imposeNUp,
   imposeNUpBook,
@@ -2659,13 +2906,17 @@ export {
   mixPdfs,
   nestPdf,
   nudgePdf,
+  optimizePdf,
   overlayPdf,
   parsePageRange,
   preflight,
+  preflightClean,
+  readLayers,
   repairPdf,
   resizePdf,
   rgbToCmyk,
   rotatePdf,
+  setLayers,
   shufflePages,
   splitPdf,
   splitPdfChunks

@@ -344,9 +344,77 @@ export interface PreflightReport {
     uniformSize: boolean;
     widthIn: number;
     heightIn: number;
+    boxes: {
+        media: string;
+        trim: string;
+        bleed: string;
+        crop: string;
+    };
+    fonts: {
+        name: string;
+        embedded: boolean;
+    }[];
+    colorSpaces: string[];
+    images: number;
+    minImagePx: number | null;
+    annotations: number;
+    embeddedFiles: number;
+    hasJavaScript: boolean;
+    hasLayers: boolean;
     warnings: string[];
 }
 export declare function preflight(bytes: Uint8Array): Promise<PreflightReport>;
+export interface PreflightCleanOptions {
+    deleteEmbeddedFiles?: boolean;
+    flattenLayers?: boolean;
+    removeAnnotations?: boolean;
+    removeJavaScript?: boolean;
+    stripMetadata?: boolean;
+    pages?: string;
+}
+export declare function preflightClean(bytes: Uint8Array, opts: PreflightCleanOptions): Promise<Uint8Array>;
+export interface GangPlan {
+    itemsPerSheet: number;
+    setsPerSheet: number;
+    runSheets: number;
+    makereadySheets: number;
+    spoilageSheets: number;
+    totalSheets: number;
+}
+export declare function computeGangPlan(distinctItems: number, itemsPerSheet: number, quantity: number, makeready?: number, spoilagePct?: number): GangPlan;
+export interface OptimizeOptions {
+    objectStreams?: boolean;
+    removeUnused?: boolean;
+    pages?: string;
+}
+export declare function optimizePdf(bytes: Uint8Array, opts?: OptimizeOptions): Promise<Uint8Array>;
+export declare function decryptPdf(bytes: Uint8Array): Promise<Uint8Array>;
+export interface PdfLayer {
+    name: string;
+    forcedOn: boolean;
+    forcedOff: boolean;
+}
+export declare function readLayers(bytes: Uint8Array): Promise<PdfLayer[]>;
+export interface LayerState {
+    name: string;
+    state: 'on' | 'off' | 'default';
+}
+export declare function setLayers(bytes: Uint8Array, states: LayerState[]): Promise<Uint8Array>;
+export interface CustomCell {
+    page: number | null;
+    rotation?: 0 | 90 | 180 | 270;
+}
+export interface CustomImposeOptions {
+    cols: number;
+    rows: number;
+    sheetWIn: number;
+    sheetHIn: number;
+    sheets: (CustomCell | null)[][];
+    gutterIn?: number;
+    marginIn?: number;
+    addMarks?: boolean;
+}
+export declare function imposeCustomGrid(bytes: Uint8Array, opts: CustomImposeOptions): Promise<Uint8Array>;
 export interface DielineOptions {
     kind: 'ste' | 'folder';
     widthIn: number;
