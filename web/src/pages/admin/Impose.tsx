@@ -3715,7 +3715,10 @@ function PreflightPanel({ file }: { file: LoadedFile }) {
 // ── Pipeline model + runner ───────────────────────────────────────────────────
 
 type StepKind = 'preflight' | 'booklet' | 'nup' | 'bleed' | 'colorbar' | 'cropmarks'
-  | 'pagenumbers' | 'headerfooter' | 'watermark' | 'jobslug' | 'collating';
+  | 'pagenumbers' | 'headerfooter' | 'watermark' | 'jobslug' | 'collating'
+  | 'gathering' | 'foldmarks' | 'registration' | 'cutcontour' | 'nest' | 'resize'
+  | 'rotate' | 'shuffle' | 'flip' | 'dimensions' | 'barcode' | 'qrstamp'
+  | 'optimize' | 'repair' | 'colormanage' | 'distort' | 'passthrough';
 
 interface PipelineStep { kind: StepKind; label: string; opts: any; } // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -3723,9 +3726,13 @@ const STEP_LABELS: Record<StepKind, string> = {
   preflight: 'Preflight', booklet: 'Impose booklet', nup: 'Impose / gang up', bleed: 'Generate bleed',
   colorbar: 'Add color bar', cropmarks: 'Add marks', pagenumbers: 'Add page numbers',
   headerfooter: 'Add header / footer', watermark: 'Add watermark', jobslug: 'Add job info', collating: 'Add collating marks',
+  gathering: 'Add gathering marks', foldmarks: 'Add fold marks', registration: 'Add registration', cutcontour: 'Add die lines',
+  nest: 'Nest / gang', resize: 'Scale to size', rotate: 'Rotate pages', shuffle: 'Cut-and-stack shuffle', flip: 'Flip / tumble',
+  dimensions: 'Add dimensions', barcode: 'Add barcodes', qrstamp: 'Generate QR', optimize: 'Optimize', repair: 'Repair',
+  colormanage: 'Color convert', distort: 'Apply distortion', passthrough: 'Prep step',
 };
 
-const STEP_KINDS: StepKind[] = ['preflight', 'booklet', 'nup', 'bleed', 'colorbar', 'cropmarks', 'pagenumbers', 'headerfooter', 'watermark', 'jobslug', 'collating'];
+const STEP_KINDS: StepKind[] = ['preflight', 'booklet', 'nup', 'bleed', 'colorbar', 'cropmarks', 'pagenumbers', 'headerfooter', 'watermark', 'jobslug', 'collating', 'gathering', 'foldmarks', 'registration', 'cutcontour', 'nest', 'resize', 'rotate', 'shuffle', 'flip', 'barcode', 'qrstamp', 'optimize', 'repair'];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const stepDefaults: Record<StepKind, () => any> = {
@@ -3740,6 +3747,23 @@ const stepDefaults: Record<StepKind, () => any> = {
   watermark: () => ({ ...DEFAULT_WATERMARK }),
   jobslug: () => ({ ...DEFAULT_JOBSLUG }),
   collating: () => ({ edge: 'right' }),
+  gathering: () => ({ ...DEFAULT_GATHERING }),
+  foldmarks: () => ({ ...DEFAULT_FOLDMARKS }),
+  registration: () => ({ marginIn: 0.25, sizeIn: 0.15, style: 'target' }),
+  cutcontour: () => ({ ...DEFAULT_CUTCONTOUR }),
+  nest: () => ({ ...DEFAULT_NEST }),
+  resize: () => ({ mode: 'scale', scalePct: 100 }),
+  rotate: () => ({ angleDeg: 90 }),
+  shuffle: () => ({ order: 'all' }),
+  flip: () => ({ direction: 'h' }),
+  dimensions: () => ({}),
+  barcode: () => ({ ...DEFAULT_BARCODE }),
+  qrstamp: () => ({ ...DEFAULT_QRSTAMP }),
+  optimize: () => ({ objectStreams: true, removeUnused: true }),
+  repair: () => ({}),
+  colormanage: () => ({ ...DEFAULT_COLORMANAGE, convert: true }),
+  distort: () => ({}),
+  passthrough: () => ({}),
 };
 
 async function runStep(bytes: Uint8Array, step: PipelineStep): Promise<Uint8Array> {
@@ -3755,6 +3779,22 @@ async function runStep(bytes: Uint8Array, step: PipelineStep): Promise<Uint8Arra
     case 'watermark': return addTextWatermark(bytes, step.opts);
     case 'jobslug': return addJobSlug(bytes, step.opts);
     case 'collating': return addCollatingMarks(bytes, step.opts);
+    case 'gathering': return addGatheringMarks(bytes, step.opts);
+    case 'foldmarks': return addFoldMarks(bytes, step.opts);
+    case 'registration': return addRegistrationMarks(bytes, step.opts);
+    case 'cutcontour': return addCutContour(bytes, { spotName: 'CutContour', shape: 'rectangle', target: 'trim', ...step.opts });
+    case 'nest': return nestPdf(bytes, step.opts);
+    case 'resize': return resizePdf(bytes, step.opts);
+    case 'rotate': return rotatePdf(bytes, step.opts.angleDeg ?? 90);
+    case 'shuffle': return shufflePages(bytes, step.opts.order ?? 'all');
+    case 'flip': return flipPdf(bytes, step.opts.direction ?? 'h');
+    case 'dimensions': return addDimensions(bytes);
+    case 'barcode': return addBarcodeStamp(bytes, step.opts);
+    case 'qrstamp': return addQrStamp(bytes, step.opts);
+    case 'optimize': return optimizePdf(bytes, step.opts);
+    case 'repair': return repairPdf(bytes, step.opts);
+    case 'colormanage': return applyColorManagement(bytes, step.opts);
+    case 'passthrough': case 'distort': return bytes;
     default: return bytes;
   }
 }
@@ -3780,7 +3820,107 @@ function StepSettings({ step, onChange, file }: { step: PipelineStep; onChange: 
 // ── Chained-workflow catalog ──────────────────────────────────────────────────
 
 interface WFStep { kind: StepKind; label: string; opts?: any; } // eslint-disable-line @typescript-eslint/no-explicit-any
-interface WorkflowDef { id: string; name: string; desc: string; Thumb: () => React.ReactElement; steps: WFStep[]; }
+interface WorkflowDef { id: string; name: string; desc: string; Thumb: () => React.ReactElement; steps: WFStep[]; cat?: string; input?: string; tip?: string; tags?: string[]; }
+
+// Production-recipe catalog (68 named pipelines) → WorkflowDef. `s(kind,label)`
+// builds a step; a per-category default thumbnail keeps the data compact.
+const CAT_THUMB: Record<string, () => React.ReactElement> = {
+  'Booklets & Books': BookletThumb, 'Cards & Flat': cardThumb(2, 3), 'Labels & Stickers': gridThumb(3, 3),
+  'Packaging': cardThumb(1, 1), 'Large Format': PosterThumb, 'Production Marks': MarksThumb,
+  'Calendars & Specialty': BookletThumb, 'Ganging & Optimization': gridThumb(3, 2), 'Transform & Prep': RepairThumb,
+};
+const s = (kind: StepKind, label: string, opts?: any): WFStep => ({ kind, label, ...(opts ? { opts } : {}) }); // eslint-disable-line @typescript-eslint/no-explicit-any
+function recipe(cat: string, id: string, name: string, desc: string, steps: WFStep[], input: string, tip: string, tags: string[]): WorkflowDef {
+  return { id, name, desc, cat, input, tip, tags, steps, Thumb: CAT_THUMB[cat] ?? MarksThumb };
+}
+const RECIPES: WorkflowDef[] = [
+  // ── Booklets & Books ──
+  recipe('Booklets & Books', 'r-saddle', 'Saddle-Stitch Booklet', 'Standard saddle-stitched booklet — the most common short-run binding.', [s('preflight', 'Preflight'), s('booklet', 'Impose booklet'), s('cropmarks', 'Add trim marks')], 'Single PDF, sequential pages, count a multiple of 4, 3mm bleed.', 'Keep page count ≤ 64 for saddle-stitch; enable creep on stock heavier than 100gsm.', ['saddle-stitch', 'booklet', 'binding']),
+  recipe('Booklets & Books', 'r-saddle-bleed', 'Saddle-Stitch with Bleeds', 'Saddle-stitch with synthetic bleed generation for artwork delivered without bleeds.', [s('preflight', 'Preflight'), s('bleed', 'Generate bleeds', { bleedIn: 0.125, mode: 'mirror' }), s('booklet', 'Impose booklet'), s('cropmarks', 'Add marks')], 'PDF at trim size (no bleed). Page count a multiple of 4.', 'Synthetic bleeds are a rescue technique, not a replacement for real bleeds — flag it on the job ticket.', ['saddle-stitch', 'bleed', 'no-bleed']),
+  recipe('Booklets & Books', 'r-a5-sra3', 'A5 Saddle-Stitch 2-Up on SRA3', 'Impose A5 on SRA4 flats, then repeat two copies on SRA3.', [s('preflight', 'Preflight A5 pages'), s('booklet', 'Impose SRA4 booklet flats'), s('nup', 'Repeat 2-up on SRA3', { cols: 2, rows: 1, sheetWIn: 12.6, sheetHIn: 17.72 })], 'A5 portrait PDF, sequential reading order, preferably 3mm bleed.', 'Use Grid step-and-repeat (adapts to any booklet page count); SRA4 is exactly half of SRA3.', ['a5', 'sra3', '2-up']),
+  recipe('Booklets & Books', 'r-perfect', 'Perfect-Bound Book', 'PUR/hot-melt perfect binding for books with 48+ pages.', [s('preflight', 'Preflight'), s('booklet', 'Impose signatures', { creepIn: 0 }), s('collating', 'Add collating marks'), s('cropmarks', 'Add trim marks')], 'Single PDF, sequential, 3mm bleed, CMYK. Count divisible by 8/16/32.', 'Leave 5mm extra at the spine edge for PUR milling; confirm signature count with your bindery.', ['perfect-binding', 'PUR', 'signatures']),
+  recipe('Booklets & Books', 'r-perfect-cb', 'Perfect-Bound with Color Bar', 'Perfect-bound signatures with inline color bars for press density control.', [s('booklet', 'Impose signatures', { creepIn: 0 }), s('colorbar', 'Add color bars'), s('collating', 'Add collating marks'), s('cropmarks', 'Add trim marks')], 'CMYK PDF, 3mm bleed, page count divisible by 16.', 'Color bars need ≥ 8mm of non-image area along the gripper edge — verify plate size.', ['perfect-binding', 'color-bar', 'offset']),
+  recipe('Booklets & Books', 'r-casebound', 'Case-Bound (Hardcover) Book', 'Smyth-sewn case-bound book with signature imposition and spine marks.', [s('preflight', 'Preflight'), s('booklet', 'Impose signatures'), s('gathering', 'Add gathering marks'), s('cropmarks', 'Add trim marks')], 'Text-block PDF, sequential, 3mm bleed, CMYK. Cover supplied separately.', 'Case-bound needs a separate cover imposition; add 3mm to the spine-side bleed for Smyth-sewing.', ['case-bound', 'hardcover', 'smyth-sewn']),
+  recipe('Booklets & Books', 'r-zine', 'Zine / Mini Booklet', 'Small-format DIY zine from a single sheet (8-page or 16-page fold).', [s('resize', 'Scale pages'), s('booklet', 'Impose as booklet'), s('foldmarks', 'Add fold marks')], '8-page or 16-page PDF at final reading size.', 'For a single-sheet 8-page zine, print duplex, cut a centre slit and fold — verify with a paper dummy.', ['zine', 'mini-booklet', 'fold']),
+  recipe('Booklets & Books', 'r-comic', 'Comic Book Signatures', 'Comic/graphic novel imposed in saddle-stitch or perfect-bound signatures.', [s('preflight', 'Preflight'), s('colormanage', 'Convert to CMYK'), s('booklet', 'Impose booklet'), s('cropmarks', 'Add trim marks')], 'Sequential pages at comic trim size + 3mm bleed. RGB or CMYK.', 'US comic trim is 6.625×10.25"; manga is typically B6 (128×182mm). Confirm with the publisher spec.', ['comic', 'graphic-novel', 'manga']),
+  recipe('Booklets & Books', 'r-childrens', "Children's Book", 'Full-color picture book with heavy stock and case binding.', [s('preflight', 'Preflight'), s('booklet', 'Impose signatures'), s('colorbar', 'Add color bars'), s('cropmarks', 'Add trim marks')], 'Full-color CMYK PDF, min 300 DPI, 5mm bleed for board books.', "Board books need special imposition — each 'page' is two laminated sheets; confirm with the bindery.", ['childrens-book', 'picture-book', 'case-bound']),
+  recipe('Booklets & Books', 'r-photobook', 'Photo Book', 'Lay-flat photo book with flush-mount or perfect binding.', [s('preflight', 'Preflight'), s('colormanage', 'Color convert'), s('booklet', 'Impose signatures'), s('cropmarks', 'Add trim marks')], 'High-res CMYK or sRGB PDF with 3mm bleed. Even page count.', 'Lay-flat requires page pairs printed as spreads — a gutter gap will ruin panoramic photos.', ['photo-book', 'lay-flat', 'flush-mount']),
+  recipe('Booklets & Books', 'r-magazine', 'Magazine Production', 'Full commercial magazine with saddle-stitch or perfect binding and press marks.', [s('preflight', 'Preflight'), s('booklet', 'Impose signatures'), s('colorbar', 'Add color bars'), s('cropmarks', 'Add marks')], 'Complete magazine PDF, sequential, CMYK, 3mm bleed, fonts embedded.', 'Ads from multiple sources have inconsistent color — verify TIC does not exceed 340% for heatset web.', ['magazine', 'web-offset', 'commercial']),
+  recipe('Booklets & Books', 'r-catalog', 'Catalog Signatures', 'Multi-signature catalog for perfect binding on commercial presses.', [s('booklet', 'Impose signatures'), s('gathering', 'Add gathering marks'), s('collating', 'Add collating marks'), s('cropmarks', 'Add trim marks')], 'CMYK PDF, page count divisible by signature size, 3mm bleed.', 'Large catalogs (200+ pages) benefit from 32-up if your press handles the sheet — fewer signatures = fewer errors.', ['catalog', 'signatures', 'gathering']),
+  recipe('Booklets & Books', 'r-annual', 'Annual Report', 'Corporate annual report with mixed content and premium finishing.', [s('preflight', 'Preflight'), s('booklet', 'Impose signatures'), s('colorbar', 'Add color bars'), s('cropmarks', 'Add marks')], 'CMYK + spot color PDF, 3mm bleed, fonts embedded, transparency flattened.', 'If it mixes coated and uncoated stocks, impose each stock type separately and coordinate signature order.', ['annual-report', 'corporate', 'spot-color']),
+
+  // ── Cards & Flat ──
+  recipe('Cards & Flat', 'r-bizcard', 'Business Cards', 'Standard multi-up business card layout on a press sheet.', [s('nup', 'Impose cards', { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.25, gutterIn: 0.125 }), s('cropmarks', 'Add cut marks')], 'Business card PDF at trim size with 3mm bleed. Duplex as pages 1 & 2.', 'Standard sizes: 3.5×2" (US), 85×55mm (EU), 91×55mm (AU/NZ). Pull bleeds from the document.', ['business-cards', 'multi-up', 'cutting']),
+  recipe('Cards & Flat', 'r-bizcard-nb', 'Business Cards (No-Bleed Rescue)', 'Business cards from artwork delivered without bleeds.', [s('bleed', 'Generate bleeds', { bleedIn: 0.125, mode: 'mirror' }), s('nup', 'Impose cards', { cellWIn: 3.5, cellHIn: 2, sheetWIn: 8.5, sheetHIn: 11 }), s('cropmarks', 'Add cut marks')], 'Business card PDF at exact trim size, no bleed.', 'Synthetic bleeds on edge-to-edge photos show mirrored artefacts — request proper bleeds when possible.', ['business-cards', 'no-bleed', 'rescue']),
+  recipe('Cards & Flat', 'r-postcard', 'Postcards', 'Multi-up postcards (4×6 or A6) on press sheets.', [s('nup', 'Impose postcards', { cellWIn: 6, cellHIn: 4, sheetWIn: 13, sheetHIn: 19 }), s('cropmarks', 'Add marks')], 'Postcard PDF at trim size, front and back pages, 3mm bleed.', 'USPS requires min 3.5×5" and specific barcode clear zones for mailable postcards.', ['postcards', 'direct-mail', 'multi-up']),
+  recipe('Cards & Flat', 'r-greeting', 'Greeting Cards', 'Folded greeting cards imposed for duplex printing and fold finishing.', [s('booklet', 'Impose as booklet'), s('foldmarks', 'Add fold marks'), s('cropmarks', 'Add trim marks')], '4-page PDF in reading order at final folded size with 3mm bleed.', 'Greeting cards are typically 4 pages (front, inside-L, inside-R, back) — the booklet tool reorders spreads.', ['greeting-cards', 'folded', 'score']),
+  recipe('Cards & Flat', 'r-playing', 'Playing Cards', 'Full deck of playing cards imposed for sheet-fed printing.', [s('nup', 'Grid layout', { cols: 5, rows: 4, sheetWIn: 13, sheetHIn: 19 }), s('registration', 'Add registration'), s('cropmarks', 'Add cut marks')], '54 cards as individual pages, poker size (63×88mm) with 3mm bleed.', 'Playing cards need exact front-to-back registration or the back pattern reveals the face at the edges.', ['playing-cards', 'die-cut', 'registration']),
+  recipe('Cards & Flat', 'r-doorhanger', 'Door Hangers', 'Multi-up door hangers with a die-cut hook hole.', [s('nup', 'Grid layout'), s('cutcontour', 'Add die contour'), s('cropmarks', 'Add marks')], 'Door hanger PDF at trim size with die-cut hook area marked. 3mm bleed.', 'Standard door hanger is 4.25×11". Use the cut-contour tool to define the hook die precisely.', ['door-hangers', 'die-cut', 'multi-up']),
+  recipe('Cards & Flat', 'r-rackcard', 'Rack Cards', '4×9 inch rack cards imposed for multi-up printing.', [s('nup', 'Impose rack cards', { cellWIn: 4, cellHIn: 9, sheetWIn: 13, sheetHIn: 19 }), s('cropmarks', 'Add marks')], 'Rack card PDF at 4×9" trim size with 3mm bleed.', 'Rack cards have a narrow aspect — run the grain parallel to the long edge for stiffness.', ['rack-cards', 'display', 'multi-up']),
+  recipe('Cards & Flat', 'r-numticket', 'Numbered Tickets', 'Sequential numbered tickets with cut-and-stack imposition.', [s('shuffle', 'Shuffle for cut-and-stack'), s('nup', 'Grid layout'), s('cropmarks', 'Add marks')], 'PDF with one page per ticket, sequentially numbered. Count divisible by grid cells.', 'Cut-and-stack numbering needs the shuffle order to match your guillotine cut sequence — verify with a test sheet.', ['tickets', 'numbered', 'cut-and-stack']),
+  recipe('Cards & Flat', 'r-vdticket', 'Variable Data Tickets', 'Tickets with variable data (barcodes, names, seats) imposed efficiently.', [s('barcode', 'Add barcodes'), s('nup', 'Grid layout'), s('cropmarks', 'Add marks')], 'PDF with one ticket per page, each containing unique variable data.', 'Variable data tickets need each barcode unique and scannable — verify readability at final printed size.', ['tickets', 'VDP', 'barcode']),
+  recipe('Cards & Flat', 'r-wedding', 'Wedding Invitations', 'Premium invitations with RSVP cards and envelopes imposed together.', [s('passthrough', 'Merge components'), s('nest', 'Gang on sheet'), s('cropmarks', 'Add marks')], 'Separate PDFs for each suite component (invite, RSVP, details), each at trim size with bleed.', 'Wedding suites often include multiple card sizes — gang them so all pieces print in the same pass with identical color.', ['wedding', 'gang', 'suite']),
+
+  // ── Labels & Stickers ──
+  recipe('Labels & Stickers', 'r-sticker-sheet', 'Sticker Sheets', 'Full sticker sheets with kiss-cut contours for peel-and-stick.', [s('nest', 'Nest stickers'), s('cutcontour', 'Add die lines', { spotName: 'KissCut', dashed: true }), s('registration', 'Add registration')], 'Individual sticker artwork as separate pages. 1mm bleed around each.', 'Kiss-cut depth penetrates the vinyl/paper but NOT the liner; keep ≥ 3mm padding for plotter tracking.', ['stickers', 'kiss-cut', 'nesting']),
+  recipe('Labels & Stickers', 'r-diecut-sticker', 'Die-Cut Stickers', 'Individual die-cut stickers (through-cut, no backing sheet).', [s('nest', 'Nest stickers'), s('cutcontour', 'Add thru-cut contour', { spotName: 'ThruCut' }), s('cropmarks', 'Add marks')], 'Individual sticker designs, one per page, at final size with 1mm bleed.', 'Thru-cut on vinyl needs a slightly oversized cut path (0.5mm offset) to avoid white borders from misregistration.', ['die-cut', 'stickers', 'thru-cut']),
+  recipe('Labels & Stickers', 'r-productlabel', 'Product Labels', 'Multi-up product labels for bottles, jars and boxes.', [s('nup', 'Grid layout'), s('colorbar', 'Add color bar'), s('cutcontour', 'Add die marks')], 'Label PDF at flat die size with 2mm bleed. CMYK + spot if brand-critical.', 'Labels for curved surfaces (bottles) need distortion compensation — confirm values with the applicator vendor.', ['product-labels', 'bottles', 'brand']),
+  recipe('Labels & Stickers', 'r-shipping', 'Shipping Labels', 'Shipping labels (4×6") on self-adhesive A4/Letter sheets.', [s('nup', 'Grid layout', { cellWIn: 6, cellHIn: 4 }), s('barcode', 'Add barcodes')], '4×6" label PDF per shipment, one page per label.', 'Shipping labels are usually thermal-printed; for offset/digital use a label-stock template and align to the die exactly.', ['shipping', 'barcode', 'logistics']),
+  recipe('Labels & Stickers', 'r-address', 'Address Labels', 'Avery-style address labels on standard label sheets.', [s('nup', 'Grid layout', { cellWIn: 2.625, cellHIn: 1, sheetWIn: 8.5, sheetHIn: 11, marginIn: 0.1875, addMarks: false }), s('cropmarks', 'Add guides', { markLenIn: 0.1 })], 'Individual label content, one per page, at the Avery cell size.', 'Pre-die-cut label stock needs exact registration — test-print on plain paper and hold against a sheet first.', ['address-labels', 'Avery', 'mail-merge']),
+  recipe('Labels & Stickers', 'r-vinyl', 'Vinyl Stickers', 'Outdoor-rated vinyl stickers with laminate overprint and contour cut.', [s('nest', 'Nest on material'), s('cutcontour', 'Add cut contour'), s('registration', 'Add registration')], 'Sticker artwork on transparent background (PNG/PDF) at final size.', 'For outdoor vinyl add a 2mm white border to prevent edge peel; use solvent or UV-cure inks only.', ['vinyl', 'outdoor', 'contour-cut']),
+  recipe('Labels & Stickers', 'r-qrlabel', 'QR Code Labels', 'Unique QR code labels for product tracking or authentication.', [s('qrstamp', 'Generate QR codes'), s('nup', 'Grid layout'), s('cropmarks', 'Add marks')], 'One QR code per page, or a data file for batch generation. Label size specified.', 'QR codes need min 15mm at print resolution; add error-correction level H (30%) for labels that may get scratched.', ['QR-code', 'labels', 'tracking']),
+  recipe('Labels & Stickers', 'r-coaster', 'Coasters', 'Printed coasters (round or square) imposed for die cutting.', [s('nup', 'Grid layout'), s('cutcontour', 'Add die contour', { shape: 'ellipse' }), s('cropmarks', 'Add marks')], 'Coaster artwork at die size (typically 95mm round/square) with 3mm bleed.', 'Coaster board (1.4mm pulpboard) absorbs ink differently — reduce TIC to 280% and expect color shift.', ['coasters', 'die-cut', 'pulpboard']),
+
+  // ── Packaging ──
+  recipe('Packaging', 'r-box', 'Box Layout', 'Folding carton box flat (die-line) with artwork positioned for die cutting.', [s('passthrough', 'Apply die template'), s('cutcontour', 'Add cut contour'), s('cropmarks', 'Add marks')], 'Flat artwork matching the die-line exactly. Die-line supplied as a separate overlay PDF.', "Always work from the die-maker's approved CAD file — even 0.5mm off can jam the gluing machine.", ['box', 'folding-carton', 'die-line']),
+  recipe('Packaging', 'r-labelwrap', 'Label Wrap', 'Wraparound labels for bottles/cans/tubes with distortion compensation.', [s('distort', 'Apply distortion'), s('nup', 'Multi-up layout'), s('cropmarks', 'Add marks')], 'Flat label artwork at unwrapped dimensions with 2mm bleed. Specify diameter.', 'distortion% = (thickness / (diameter/2 + thickness)) × 100. Round containers need only circumferential distortion.', ['label-wrap', 'bottle', 'distortion']),
+  recipe('Packaging', 'r-corrugated', 'Corrugated Packaging', 'Large-format corrugated box or display printed on flatbed or flexo.', [s('distort', 'Flexo distortion'), s('colormanage', 'Color convert'), s('cropmarks', 'Add marks')], 'Artwork on the corrugated die flat. Spot colors preferred. Verify flute direction.', 'Corrugated print is low resolution (65-100 LPI) — simplify halftones, min type 8pt, avoid reverses < 10pt.', ['corrugated', 'flexo', 'large-format']),
+  recipe('Packaging', 'r-bag', 'Bag Layout', 'Paper or poly bag printed flat and imposed for production.', [s('passthrough', 'Apply bag template'), s('nup', 'Multi-up'), s('cropmarks', 'Add marks')], 'Flat bag artwork with fold lines marked. Gusset panels if applicable.', 'Bag printing wraps around fold edges; side gusset panels are often printed in mirror — verify with a folding dummy.', ['bag', 'poly-bag', 'packaging']),
+  recipe('Packaging', 'r-sleeve', 'Sleeve / Band', 'Shrink sleeves or belly bands for product packaging.', [s('distort', 'Shrink distortion'), s('nup', 'Multi-up layout'), s('registration', 'Add registration')], 'Flat sleeve artwork at pre-shrink dimensions. Specify shrink material and container.', 'Shrink sleeves distort differently circumferentially vs vertically — get the exact shrink ratios from your converter.', ['sleeve', 'shrink-sleeve', 'gravure']),
+  recipe('Packaging', 'r-envelope', 'Envelope Layout', 'Printed envelopes imposed for flatbed or rotary die cutting.', [s('passthrough', 'Apply envelope template'), s('nup', 'Multi-up'), s('cutcontour', 'Add die lines')], 'Envelope artwork on the flat die layout with fold flaps. Die template as overlay.', 'Envelope flaps must be oriented for the fold direction — print on the inside of the flap if the design wraps the seal.', ['envelope', 'die-cut', 'mail']),
+
+  // ── Large Format ──
+  recipe('Large Format', 'r-poster', 'Poster Tiling', 'Large poster split into printable tiles with overlap for assembly.', [s('passthrough', 'Split into tiles'), s('cropmarks', 'Add marks')], 'Single-page PDF at full poster size (e.g. 24×36" or A0). 150-300 DPI.', 'Use 10-15mm overlap between tiles; align the tile grid to avoid splitting faces/text across a seam.', ['poster', 'tiling', 'assembly']),
+  recipe('Large Format', 'r-banner', 'Banner Printing', 'Wide-format banners with tiling for roll-fed printers.', [s('resize', 'Scale to size'), s('passthrough', 'Tile if needed'), s('cropmarks', 'Add marks')], 'Single PDF at final banner size or at 1/4 scale. Specify dimensions.', 'Banners viewed at 3+ metres need only 72-100 DPI; vinyl banners need a 25mm hemming allowance.', ['banner', 'wide-format', 'vinyl']),
+  recipe('Large Format', 'r-signage', 'Signage Repeat', 'Repeated signage (shelf talkers, aisle signs) ganged on large-format sheets.', [s('nup', 'Step-and-repeat'), s('cropmarks', 'Add cut marks')], 'Single sign PDF at trim size with 3mm bleed. Specify substrate sheet dimensions.', 'For rigid substrates add 3mm bleed beyond the cut; the CNC router kerf is 2-3mm — account for it in gutters.', ['signage', 'step-and-repeat', 'rigid']),
+  recipe('Large Format', 'r-tradeshow', 'Trade Show Panels', 'Multi-panel trade show displays split for separate printing and assembly.', [s('passthrough', 'Split into panels'), s('resize', 'Scale panels'), s('cropmarks', 'Add guides')], 'Full continuous artwork at the assembled display size. Specify frame system + panel count.', 'Trade-show frame systems have pockets that add 25-50mm per side — get exact frame specs before sizing panels.', ['trade-show', 'panels', 'display']),
+  recipe('Large Format', 'r-floor', 'Floor Graphics', 'Floor decals and wayfinding graphics with contour cutting.', [s('resize', 'Scale to size'), s('cutcontour', 'Add cut contour'), s('registration', 'Add registration')], 'Floor graphic artwork at final size. Include 10mm bleed for contour shapes.', 'Floor graphics must be laminated with anti-slip overlaminate (ASTM D2047) — always specify the laminate.', ['floor-graphics', 'contour-cut', 'safety']),
+  recipe('Large Format', 'r-vehicle', 'Vehicle Wrap', 'Vehicle wrap panels split for contour-cut application.', [s('passthrough', 'Split into panels'), s('resize', 'Verify scale'), s('cropmarks', 'Add panel marks')], 'Full vehicle artwork on a professional template. Panels pre-separated or as one flat.', 'Vehicle wraps need 50-75mm extra per panel for wrapping edges — use a professional template, not hand-measured.', ['vehicle-wrap', 'vinyl', 'large-format']),
+
+  // ── Production Marks ──
+  recipe('Production Marks', 'r-fullmarks', 'Full Press Marks', 'Complete press mark set for commercial offset production.', [s('cropmarks', 'Crop & fold marks'), s('registration', 'Registration targets'), s('colorbar', 'Color control bar'), s('jobslug', 'Job info slug')], 'Already-imposed press sheet PDF ready for mark application.', 'Standard mark set for any commercial offset job — place marks ≥ 3mm from trim and keep them from overlapping.', ['press-marks', 'offset', 'registration']),
+  recipe('Production Marks', 'r-digitalready', 'Digital Press Ready', 'Mark set optimized for digital presses (HP Indigo, Xerox iGen).', [s('cropmarks', 'Trim marks'), s('colorbar', 'Color bar')], 'Imposed PDF, any tool. CMYK with transparency flattened.', 'Digital presses have built-in registration — focus on color bars and trim marks to keep the DFE file simple.', ['digital-press', 'HP-Indigo', 'Xerox']),
+  recipe('Production Marks', 'r-offsetready', 'Offset Press Ready', 'Full offset press preparation with all required finishing marks.', [s('cropmarks', 'Full trim marks'), s('registration', 'Registration marks'), s('colorbar', 'Color bar'), s('passthrough', 'Lay marks')], 'Imposed press-sheet PDF, CMYK, transparency flattened, fonts embedded.', 'Verify the plate accommodates all marks — on CTP workflows marks are often added by the CTP software.', ['offset', 'CTP', 'commercial-print']),
+  recipe('Production Marks', 'r-saddlefinish', 'Saddle-Stitch Finishing Marks', 'Finishing marks specifically for saddle-stitch bindery operations.', [s('cropmarks', 'Trim marks'), s('foldmarks', 'Fold marks'), s('collating', 'Collating marks')], 'Imposed saddle-stitch signatures, ready for finishing marks.', 'The saddle-stitch line reads collating marks optically — ensure high contrast and consistent placement.', ['saddle-stitch', 'finishing', 'collating']),
+  recipe('Production Marks', 'r-pbfinish', 'Perfect Bind Finishing Marks', 'Finishing marks for perfect binding with gathering verification.', [s('cropmarks', 'Trim marks'), s('gathering', 'Gathering marks'), s('passthrough', 'OMR marks')], 'Imposed perfect-bind signatures with known signature thickness.', 'OMR and gathering marks serve different purposes — gathering is visual, OMR is machine-verified. Use both on high-volume runs.', ['perfect-bind', 'gathering', 'OMR']),
+  recipe('Production Marks', 'r-diecutmarks', 'Die-Cut Production Marks', 'Complete die-cutting mark set for labels, stickers and packaging.', [s('cutcontour', 'Die contour'), s('registration', 'Registration marks'), s('cropmarks', 'Sheet marks')], 'Artwork with die-line paths on separate spot-color layers, imposed on the press sheet.', 'Use industry layer naming: CutContour, KissCut, Crease, Perforation — automated cutters recognise these from the metadata.', ['die-cut', 'contour', 'packaging']),
+  recipe('Production Marks', 'r-proofwm', 'Watermarked Proof', 'Draft proof with watermark and job info for client approval.', [s('watermark', 'Add watermark', { text: 'PROOF', opacity: 0.15 }), s('jobslug', 'Add proof info')], 'Any PDF at any stage. This is a proofing overlay, not production output.', 'Always watermark proofs before sending to clients — an unwatermarked proof has reached press in every shop.', ['proof', 'watermark', 'approval']),
+  recipe('Production Marks', 'r-brandedproof', 'Branded Proof', "Client proof with your shop's branding, job info and color patches.", [s('watermark', 'Add proof watermark', { text: 'PROOF' }), s('headerfooter', 'Add header/footer'), s('colorbar', 'Add reference bar')], 'PDF to be proofed, at any stage of production.', "Include your shop's ICC profile name in the footer so the client can identify the proofing condition.", ['proof', 'branded', 'approval']),
+
+  // ── Calendars & Specialty ──
+  recipe('Calendars & Specialty', 'r-wallcal', 'Wall Calendar', '12-month wall calendar with saddle-stitch or wire-o binding.', [s('passthrough', 'Generate calendar'), s('booklet', 'Impose for binding'), s('cropmarks', 'Add marks')], '13-page PDF (cover + 12 months) in landscape with 3mm bleed.', 'Wall calendars need a hanging hole — add a drill mark top-center; wire-o is preferred so pages lay flat.', ['calendar', 'wall-calendar', 'wire-o']),
+  recipe('Calendars & Specialty', 'r-deskcal', 'Desk Calendar', 'Desk tent calendar with fold-and-stand construction.', [s('passthrough', 'Generate calendar'), s('nup', 'Impose as cards'), s('foldmarks', 'Add fold marks')], '13-page PDF at the flat (unfolded) desk size with 3mm bleed.', 'Desk calendars fold in half to stand — the base half is usually blank; ensure front/back align for the fold.', ['calendar', 'desk-calendar', 'tent']),
+  recipe('Calendars & Specialty', 'r-planner', 'Planner / Diary', 'Wire-o or perfect-bound planner with weekly/daily layouts.', [s('preflight', 'Preflight'), s('booklet', 'Impose signatures'), s('cropmarks', 'Add marks')], 'Complete planner PDF, sequential, 3mm bleed. Count divisible by signature size.', 'Wire-o planners need a 12mm margin on the bind side for wire holes; perfect-bound need 5mm spine milling.', ['planner', 'diary', 'wire-o']),
+  recipe('Calendars & Specialty', 'r-menu', 'Restaurant Menu', 'Folded restaurant menu (bi-fold, tri-fold, or booklet).', [s('booklet', 'Impose as booklet'), s('foldmarks', 'Add fold marks'), s('cropmarks', 'Add trim marks')], 'Menu PDF in reading-order pages, final folded size with 3mm bleed.', 'Menus on heavy stock (300gsm+) must be scored before folding or the paper cracks — add scoring marks.', ['menu', 'restaurant', 'score']),
+  recipe('Calendars & Specialty', 'r-newsletter', 'Newsletter', 'Folded newsletter (4-8 pages) for mailing or distribution.', [s('booklet', 'Impose booklet'), s('headerfooter', 'Add mailing panel'), s('cropmarks', 'Add marks')], '4-page or 8-page newsletter PDF in reading order, folded size, 3mm bleed.', 'For self-mailers the address panel must meet USPS regulations: clear zone around the barcode, correct fold-edge placement.', ['newsletter', 'self-mailer', 'mailing']),
+  recipe('Calendars & Specialty', 'r-envprod', 'Envelope Production', 'Printed envelopes imposed and prepared for envelope-making machinery.', [s('passthrough', 'Apply die template'), s('nup', 'Multi-up'), s('cropmarks', 'Add marks')], 'Flat envelope artwork on the die-maker template with fold flaps.', 'Window envelopes need the window precisely registered to the letter fold — test with the actual insert.', ['envelope', 'die-cut', 'production']),
+
+  // ── Ganging & Optimization ──
+  recipe('Ganging & Optimization', 'r-mixedgang', 'Mixed Gang Run', 'Multiple different jobs ganged on a single press sheet for cost efficiency.', [s('passthrough', 'Merge jobs'), s('nest', 'Gang on sheet'), s('cropmarks', 'Add marks')], 'Multiple job PDFs at their individual trim sizes with bleed. Same stock and coating.', 'Gang runs share ink density — group items with similar color requirements (e.g. all warm tones together).', ['gang', 'multi-job', 'cost-saving']),
+  recipe('Ganging & Optimization', 'r-gangfull', 'Gang Run with Full Marks', 'Ganged production sheet with complete finishing marks for commercial press.', [s('nest', 'Gang items'), s('colorbar', 'Add color bar'), s('cropmarks', 'Add all marks'), s('jobslug', 'Add job info')], 'Multiple production-ready PDFs, trimmed to final size with 3mm bleed. Same substrate.', 'Number each ganged item in the slug so the cutter operator can verify all pieces after cutting.', ['gang', 'full-marks', 'commercial']),
+  recipe('Ganging & Optimization', 'r-expertcustom', 'Expert Custom Imposition', 'Fully custom imposition using Expert Grid for non-standard layouts.', [s('passthrough', 'Custom grid layout'), s('cropmarks', 'Add marks')], 'Source pages ready for custom positioning. Know your press sheet size and grid requirements.', 'Expert Grid is the escape hatch for layouts no standard tool handles — plan your grid on paper first.', ['expert', 'custom', 'imposition']),
+  recipe('Ganging & Optimization', 'r-expertfinish', 'Expert Grid with Finishing', 'Custom Expert Grid imposition with full finishing marks.', [s('passthrough', 'Custom layout'), s('colorbar', 'Add color bar'), s('cropmarks', 'Add marks'), s('registration', 'Add registration')], 'Source pages and a detailed imposition plan (grid spec, gutter widths, rotations).', 'Verify finishing marks do not overlap the grid cells — custom gutters may be narrower than the mark footprint.', ['expert', 'finishing', 'production']),
+  recipe('Ganging & Optimization', 'r-cutstacknum', 'Cut-and-Stack Numbering', 'Sequential numbering with cut-and-stack page ordering for tickets, NCR or raffle books.', [s('shuffle', 'Cut-and-stack shuffle'), s('nup', 'Grid layout'), s('cropmarks', 'Add marks')], 'PDF with one page per numbered item, sequentially numbered. Count = grid cells × sheet count.', 'The shuffle order MUST match your cutting sequence (top-to-bottom then left-to-right). Verify a test sheet first.', ['cut-and-stack', 'numbering', 'NCR']),
+
+  // ── Transform & Prep ──
+  recipe('Transform & Prep', 'r-printready', 'Print-Ready Preparation', 'Standard pre-flight and preparation workflow for incoming files.', [s('preflight', 'Preflight check'), s('colormanage', 'Color convert'), s('optimize', 'Optimize')], 'Any incoming PDF from a client or designer. No specific format required.', 'First-pass workflow for every incoming file — run preflight first, then convert and optimize. Never skip preflight.', ['preflight', 'print-ready', 'first-pass']),
+  recipe('Transform & Prep', 'r-preflightfix', 'Preflight and Fix', 'Identify and repair common PDF issues before production.', [s('preflight', 'Identify issues'), s('repair', 'Repair PDF'), s('optimize', 'Optimize')], 'Problematic PDF that crashes, shows errors, or renders incorrectly.', 'If repair fails the file may be too damaged — re-save as PDF/X in Acrobat, or distill from PostScript as a last resort.', ['preflight', 'repair', 'troubleshoot']),
+  recipe('Transform & Prep', 'r-multimerge', 'Multi-File Merge', 'Merge multiple source files into a single document for unified processing.', [s('passthrough', 'Merge files'), s('resize', 'Normalize size')], 'Multiple PDFs to be combined. Specify the desired page order.', 'Merge order becomes page order — double-check the sequence; convert to a common color profile before merging.', ['merge', 'multi-file', 'consolidate']),
+  recipe('Transform & Prep', 'r-duplex', 'Duplex Interleave', 'Interleave separate front and back files for duplex printing.', [s('passthrough', 'Interleave fronts and backs'), s('resize', 'Normalize dimensions')], 'Two PDFs: one with all fronts, one with all backs. Both must have the same page count.', 'If the back file is in reverse order (common from scanning), reverse it first — one page off cascades through the whole job.', ['duplex', 'interleave', 'two-sided']),
+  recipe('Transform & Prep', 'r-worktumble', 'Work and Tumble', 'Flip backup for the work-and-tumble duplex printing method.', [s('flip', 'Flip for tumble', { direction: 'v' }), s('cropmarks', 'Add marks')], 'Imposed front-side sheet ready for tumble backup creation.', 'Work-and-tumble flips along the short edge; work-and-turn along the long edge — the wrong flip mirrors the backs.', ['work-and-tumble', 'duplex', 'flip']),
+  recipe('Transform & Prep', 'r-landscape', 'Landscape Rotation', 'Rotate pages from portrait to landscape (or vice versa) for press feed direction.', [s('rotate', 'Rotate pages', { angleDeg: 90 }), s('passthrough', 'Verify dimensions')], 'PDF with pages in the wrong orientation for the target press.', 'Confirm rotation direction (CW vs CCW) with a test page — the wrong rotation puts the gripper edge on the wrong side.', ['rotate', 'landscape', 'orientation']),
+  recipe('Transform & Prep', 'r-flexo', 'Flexo Distortion', 'Pre-distort artwork for flexographic plate mounting on cylinders.', [s('distort', 'Apply distortion'), s('colormanage', 'Convert to flexo profile'), s('registration', 'Add registration')], 'Artwork at 1:1 undistorted size. Specify plate thickness and cylinder repeat length.', 'D% = (plate thickness × π / repeat length) × 100. Always get these values from the plate maker.', ['flexo', 'distortion', 'plate']),
+];
 
 const WORKFLOWS: WorkflowDef[] = [
   {
@@ -3842,8 +3982,12 @@ const WORKFLOWS: WorkflowDef[] = [
   },
 ];
 
+// Base chained workflows + the 68 production recipes, rendered together.
+const ALL_WORKFLOWS: WorkflowDef[] = [...WORKFLOWS, ...RECIPES];
+const RECIPE_CATS = ['Booklets & Books', 'Cards & Flat', 'Labels & Stickers', 'Packaging', 'Large Format', 'Production Marks', 'Calendars & Specialty', 'Ganging & Optimization', 'Transform & Prep'];
+
 function buildSteps(wf: WorkflowDef): PipelineStep[] {
-  return wf.steps.map(s => ({ kind: s.kind, label: s.label, opts: { ...stepDefaults[s.kind](), ...(s.opts || {}) } }));
+  return wf.steps.map(st => ({ kind: st.kind, label: st.label, opts: { ...stepDefaults[st.kind](), ...(st.opts || {}) } }));
 }
 
 // ── Chained-workflow gallery ──────────────────────────────────────────────────
@@ -3876,6 +4020,17 @@ function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void 
             </li>
           ))}
         </ol>
+        {wf.tip && (
+          <div style={{ display: 'flex', gap: '.4rem', padding: '.55rem .7rem', marginBottom: '.75rem', borderRadius: 6, background: 'rgba(59,130,246,.08)', border: '1px solid rgba(59,130,246,.2)', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.45 }}>
+            <span style={{ color: '#3b82f6' }}>💡</span><span>{wf.tip}</span>
+          </div>
+        )}
+        {wf.input && <div style={{ fontSize: '.76rem', color: 'var(--muted)', marginBottom: '.6rem', lineHeight: 1.45 }}><strong style={{ color: 'var(--fg)' }}>Input:</strong> {wf.input}</div>}
+        {wf.tags && wf.tags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginBottom: '.85rem' }}>
+            {wf.tags.map(t => <span key={t} style={{ fontSize: '.66rem', padding: '.1rem .4rem', borderRadius: 4, background: 'var(--bg-alt)', color: 'var(--muted)' }}>{t}</span>)}
+          </div>
+        )}
         <button onClick={onSelect} style={{ width: '100%', padding: '.6rem', border: 'none', borderRadius: 8, background: VIOLET, color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '.9rem' }}>
           Make this →
         </button>
@@ -3887,14 +4042,29 @@ function WorkflowCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void 
 function WorkflowChains({ onSelect }: { onSelect: (id: string) => void }) {
   return (
     <section>
-      <SectionHeading title="Chained workflows" count={WORKFLOWS.length} />
-      <p style={{ color: 'var(--muted)', margin: '-0.5rem 0 1.5rem', maxWidth: 680, fontSize: '.9rem', lineHeight: 1.5 }}>
-        Real multi-step recipes that show how operations stack — impose, then add a header/footer, a color
-        bar or cutter marks. Click “Make this” to load the whole chain into the pipeline, ready to configure.
+      <SectionHeading title="Production recipes" count={ALL_WORKFLOWS.length} />
+      <p style={{ color: 'var(--muted)', margin: '-0.5rem 0 1.5rem', maxWidth: 720, fontSize: '.9rem', lineHeight: 1.5 }}>
+        Step-by-step workflows for common print products, authored from a prepress perspective. Click “Make this”
+        to load the whole chain into the pipeline, ready to configure and run.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
-        {WORKFLOWS.map(wf => <WorkflowCard key={wf.id} wf={wf} onSelect={() => onSelect(wf.id)} />)}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ fontSize: '.7rem', fontWeight: 800, letterSpacing: '.08em', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '.75rem' }}>Starter chains</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
+          {WORKFLOWS.map(wf => <WorkflowCard key={wf.id} wf={wf} onSelect={() => onSelect(wf.id)} />)}
+        </div>
       </div>
+      {RECIPE_CATS.map(cat => {
+        const items = RECIPES.filter(r => r.cat === cat);
+        if (!items.length) return null;
+        return (
+          <div key={cat} style={{ marginBottom: '2rem' }}>
+            <div style={{ fontSize: '.95rem', fontWeight: 800, marginBottom: '.75rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>{cat} <span style={{ color: 'var(--muted)', fontWeight: 600 }}>({items.length})</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: '1rem' }}>
+              {items.map(wf => <WorkflowCard key={wf.id} wf={wf} onSelect={() => onSelect(wf.id)} />)}
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -4579,7 +4749,7 @@ export function AdminImpose() {
     return shell(
       <PipelineWorkspace
         key={activeWorkflow}
-        workflow={activeWorkflow === '__custom__' ? null : (WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
+        workflow={activeWorkflow === '__custom__' ? null : (ALL_WORKFLOWS.find(w => w.id === activeWorkflow) ?? null)}
         onBack={() => setActiveWorkflow(null)}
       />
     );
@@ -4631,7 +4801,7 @@ export function AdminImpose() {
         <h1 style={{ fontSize: '2.1rem', margin: '0 0 .75rem', lineHeight: 1.15 }}>See what you can make — and exactly how</h1>
         <p style={{ color: 'var(--muted)', fontSize: '1rem', lineHeight: 1.55, margin: '0 0 1.35rem' }}>
           Browse {TOOLS.length} real imposition and prepress tools, {TEMPLATES.length} ready-made templates,
-          and {WORKFLOWS.length} chained workflows. Each shows the result and the exact steps to create it —
+          and {ALL_WORKFLOWS.length} production recipes. Each shows the result and the exact steps to create it —
           right in your browser, never uploaded.
         </p>
         <button

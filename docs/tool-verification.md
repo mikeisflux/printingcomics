@@ -67,6 +67,19 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Numbered Tickets | 8 tickets → 2 sheets + numbers | ✓ |
 | Preflight | reports pages / uniform size | ✓ |
 
+## Production recipes (workflows)
+
+The Workflows tab ships **69 named production recipes** across 9 categories
+(Booklets & Books, Cards & Flat, Labels & Stickers, Packaging, Large Format,
+Production Marks, Calendars & Specialty, Ganging & Optimization, Transform &
+Prep) plus 6 starter chains. Each recipe is an ordered pipeline whose steps map
+to the verified engines above; "Make this" loads the chain into the pipeline
+builder. Verified that representative multi-step chains (bleed→n-up→marks;
+nest→cut-contour→registration; rotate→flip→resize→shuffle→dims→barcode→qr→
+optimize→repair; booklet→gathering→collating→colour-bar) run end-to-end without
+error. Steps that need a second file or a server pass (merge, interleave, die
+templates, tiling, OMR/lay marks) are marked as prep/pass-through steps.
+
 ## Closed option gaps (v1.2.5)
 
 These documented options are now implemented and verified:
