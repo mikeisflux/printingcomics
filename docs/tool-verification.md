@@ -52,31 +52,34 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Numbered Tickets | 8 tickets → 2 sheets + numbers | ✓ |
 | Preflight | reports pages / uniform size | ✓ |
 
-## Known option gaps (work, but missing documented options)
+## Closed option gaps (v1.2.5)
 
-These tools produce correct output but do **not** yet implement every option the
-guide lists:
+These documented options are now implemented and verified:
 
-- **N-up Book** — real **2-up folio** (saddle/perfect) and **4-up quarto** (8-page
-  signature, 2×2 per side, top row rotated 180°) are implemented and the quarto
-  placement + rotation is verified against the canonical scheme. **8-up octavo /
-  16 / 32** still fall back to folio saddle/perfect (valid book, not folded N-up).
-- **Grid / Cards** — Z-pattern only (no S-pattern / snake fill).
-- **Cut and Stack** — LTR strip order only (no RTL strip reversal or a
-  double-sided cut-and-stack back arrangement).
-- **Rotate** — 90/180/270 only (no custom angle).
-- **Split** — range mode only (no fixed-chunk mode or zip output).
-- **Overlay** — center/fill/tile + opacity (no blend modes / 9-point anchor).
-- **BleedMaker** — scale mode only (no solid-colour / mirror-edge).
-- **Header/Footer & Slugline** — plain text (no `[page-number]` / `[timestamp]`
-  variable tokens or alternate sides).
-- **Barcode/QR** — QR only (no Code 128 / DataMatrix / EAN-13; no CSV-per-row on
-  the standalone tool — the data-merge tool does QR-per-row).
-- **Cutter Marks** — corner marks (no knockout / key mark / overshoot / cut type).
+- **Page range** — `all` / `1-5` / `odd` / `even` / `last` / `last-2` on **Flip,
+  Rotate, Crop, Resize** (shared `parsePageRange`).
+- **Rotate** — arbitrary custom angle (grows the page box to fit), plus 90/180/270.
+- **Split** — fixed **chunk mode** + single **.zip** download (dependency-free zip).
+- **Grid / Cards** — **S-pattern (snake)** fill + RTL column order.
+- **Cut and Stack** — RTL strip order.
+- **N-up Book** — 2-up folio + verified 4-up **quarto**.
+- **BleedMaker** — **scale / solid-colour / mirror-edge** methods.
+- **Header/Footer & Slugline** — variable tokens `[page-number]`,
+  `[page-number:0001]`, `[page-count]`, `[file-name]`, `[timestamp:%Y-%m-%d]`,
+  plus alternate-sides for running heads.
+- **Overlay** — 9-point anchor + padding for centred stamps.
+- **Cutter Marks** — cut type (thru/kiss/crease/perf), knockout halo, overshoot,
+  orientation key mark.
+- **Barcode/QR** — **Code 128** and **EAN-13** (with check digit) alongside QR, on
+  both the standalone stamp tool and the data-merge (one code per CSV row).
+
+## Remaining option gaps (bigger builds)
+
+- **N-up Book** — 8-up octavo / 16 / 32 fall back to folio saddle/perfect.
+- **Barcode** — DataMatrix (needs Reed-Solomon + matrix placement).
 - **Gang Sheet** — uniform gang (no true mixed-size bin-packing).
 - **Preflight** — size/uniformity only (no fonts / DPI / ink-coverage).
-- **Die Lines** — carton + folder presets (no arbitrary spot-colour
-  Kiss/Perf/Thru layers).
+- **Die Lines** — carton + folder presets (no arbitrary spot-colour layers).
 
 ## Not implemented (deep specialty)
 
