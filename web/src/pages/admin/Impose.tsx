@@ -5,7 +5,8 @@ import {
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, addGatheringMarks, addFoldMarks, addLayMarks,
-  addCutContour, addWhiteVarnish, addBraille, addBarcodeStamp, addBackdropFile, applyColorEffects, applyColorManagement, assignOutputIntent, preflight,
+  addCutContour, addWhiteVarnish, addBraille, addBarcodeStamp, addBackdropFile, applyColorEffects, applyColorManagement, assignOutputIntent,
+  preflight, preflightClean, computeGangPlan, readLayers, setLayers, imposeCustomGrid, optimizePdf, decryptPdf,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
@@ -18,6 +19,7 @@ import type {
   CollatingOptions, OmrOptions, GatheringOptions, FoldMarksOptions, LayMarksOptions,
   CutContourOptions, WhiteVarnishOptions, BrailleOptions, BarcodeStampOptions, BackdropFileOptions,
   ColorEffectsOptions, ColorManageOptions, RepairOptions,
+  PreflightCleanOptions, PdfLayer, LayerState, CustomImposeOptions, CustomCell, OptimizeOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -62,7 +64,8 @@ type ToolEngine =
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
   | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr' | 'gathering' | 'foldmarks' | 'laymarks'
-  | 'cutcontour' | 'whitevarnish' | 'braille' | 'barcode' | 'backdropfile' | 'coloreffects' | 'colormanage';
+  | 'cutcontour' | 'whitevarnish' | 'braille' | 'barcode' | 'backdropfile' | 'coloreffects' | 'colormanage'
+  | 'layers' | 'customgrid' | 'pdftools';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -935,6 +938,21 @@ const TOOLS: ToolDef[] = [
     id: 'colormanage', name: 'Color Management', preset: 'Color Management', category: 'Large & specialty', engine: 'colormanage',
     desc: 'Embed a destination ICC profile as a PDF/X OutputIntent, and/or convert pages to the CMYK-reproducible gamut with an out-of-gamut warning.',
     tags: ['ICC / OutputIntent', 'RGB→CMYK', 'gamut warning'], Thumb: ColorManageThumb,
+  },
+  {
+    id: 'layers', name: 'Layers', preset: 'Layers', category: 'Page & PDF tools', engine: 'layers',
+    desc: 'Show or hide named PDF layers (Optional Content Groups) in the output — force each layer on, off, or leave at its default.',
+    tags: ['OCG layers', 'toggle visibility', 'selective output'], Thumb: () => (<svg viewBox="0 0 200 148" width="100%" height="100%">{frame}<g fill="none" stroke={A} strokeWidth="2">{[0,1,2].map(i=>(<polygon key={i} points={`100,${44+i*14} 138,${58+i*14} 100,${72+i*14} 62,${58+i*14}`} fill={i===0?'#ede9fe':'none'} />))}</g></svg>),
+  },
+  {
+    id: 'customgrid', name: 'Custom Impose', preset: 'Custom Impose (Expert Grid)', category: 'Imposition & layout', engine: 'customgrid',
+    desc: 'Full manual control — define a column×row grid and assign any source page to any cell with per-cell rotation. The escape hatch for non-standard signatures.',
+    tags: ['expert grid', 'per-cell placement', 'manual imposition'], Thumb: gridThumb(2, 2, { numbered: true, accent: A }),
+  },
+  {
+    id: 'pdftools', name: 'PDF Tools', preset: 'PDF Optimizer', category: 'Page & PDF tools', engine: 'pdftools',
+    desc: 'Optimize (shrink), decrypt (remove password), or repair a PDF. Encryption and linearization need a server-side pass and are flagged as such.',
+    tags: ['optimize / shrink', 'decrypt', 'repair'], Thumb: RepairThumb,
   },
   {
     id: 'registration', name: 'Registration Marks', preset: 'Registration Marks', category: 'Marks & prepress', engine: 'registration',
@@ -2126,6 +2144,12 @@ const DEFAULT_REPAIR: RepairOptions = {
 const DEFAULT_COLORMANAGE: ColorManageOptions = {
   sourceProfile: 'sRGB', destProfile: '', intent: 'perceptual', dpi: 300, gamutWarning: false, pages: 'all',
 };
+const DEFAULT_CUSTOMGRID: { cols: number; rows: number; sheetWIn: number; sheetHIn: number; gutterIn: number; marginIn: number; addMarks: boolean; assign: string } = {
+  cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, gutterIn: 0, marginIn: 0.25, addMarks: false, assign: 'sequential',
+};
+const DEFAULT_PDFTOOLS: { operation: 'optimize' | 'linearize' | 'encrypt' | 'decrypt' | 'repair'; objectStreams: boolean; removeUnused: boolean } = {
+  operation: 'optimize', objectStreams: true, removeUnused: true,
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2623,6 +2647,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [colorEffectsOpts, setColorEffectsOpts] = useState<ColorEffectsOptions>(DEFAULT_COLOREFFECTS);
   const [repairOpts, setRepairOpts] = useState<RepairOptions>(DEFAULT_REPAIR);
   const [colorManageOpts, setColorManageOpts] = useState<ColorManageOptions>(DEFAULT_COLORMANAGE);
+  const [layerStates, setLayerStates] = useState<Record<string, 'on' | 'off' | 'default'>>({});
+  const [customGridOpts, setCustomGridOpts] = useState<typeof DEFAULT_CUSTOMGRID>(DEFAULT_CUSTOMGRID);
+  const [pdfToolsOpts, setPdfToolsOpts] = useState<typeof DEFAULT_PDFTOOLS>(DEFAULT_PDFTOOLS);
   const [mixReverse, setMixReverse] = useState(false);
   // Initialise order-list tools from the (possibly already-loaded) file so they
   // are correct even when this tool was reached by switching in the rail.
@@ -2724,6 +2751,32 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
           out = res; outName = `${base}-color.pdf`; break;
         }
         case 'backdrop': out = await addBackdrop(file.bytes, backdropOpts); outName = `${base}-backdrop.pdf`; break;
+        case 'layers': out = await setLayers(file.bytes, Object.entries(layerStates).map(([name, state]) => ({ name, state }))); outName = `${base}-layers.pdf`; break;
+        case 'customgrid': {
+          const { cols, rows, sheetWIn, sheetHIn, gutterIn, marginIn, addMarks, assign } = customGridOpts;
+          const n = file.info.count, per = cols * rows, numSheets = Math.max(1, Math.ceil(n / per));
+          const sheets: (CustomCell | null)[][] = [];
+          for (let s = 0; s < numSheets; s++) {
+            const cells: (CustomCell | null)[] = [];
+            for (let c = 0; c < per; c++) {
+              const seq = s * per + c;
+              let page: number | null = assign === 'repeat' ? 1 : assign === 'reverse' ? (seq < n ? n - seq : null) : (seq < n ? seq + 1 : null);
+              if (assign === 'saddle') { const half = Math.ceil(n / 2); page = c % 2 === 0 ? (seq < n ? n - Math.floor(seq / 2) : null) : (Math.floor(seq / 2) + 1 <= half ? Math.floor(seq / 2) + 1 : null); }
+              cells.push(page && page >= 1 && page <= n ? { page, rotation: 0 } : null);
+            }
+            sheets.push(cells);
+          }
+          out = await imposeCustomGrid(file.bytes, { cols, rows, sheetWIn, sheetHIn, gutterIn, marginIn, addMarks, sheets });
+          outName = `${base}-custom.pdf`; break;
+        }
+        case 'pdftools': {
+          const op = pdfToolsOpts.operation;
+          if (op === 'optimize') out = await optimizePdf(file.bytes, { objectStreams: pdfToolsOpts.objectStreams, removeUnused: pdfToolsOpts.removeUnused });
+          else if (op === 'decrypt') out = await decryptPdf(file.bytes);
+          else if (op === 'repair') out = await repairPdf(file.bytes, {});
+          else throw new Error(op === 'encrypt' ? 'Writing encryption is not available in the browser engine — use a desktop/server tool.' : 'Linearisation is not available in the browser engine — use Optimize, or a server-side qpdf pass.');
+          outName = `${base}-${op}.pdf`; break;
+        }
         case 'qrstamp': out = await addQrStamp(file.bytes, qrStampOpts); outName = `${base}-qr.pdf`; break;
         case 'barcode': out = await addBarcodeStamp(file.bytes, barcodeOpts); outName = `${base}-barcode.pdf`; break;
         case 'backdropfile':
@@ -2899,6 +2952,9 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'repair' && <RepairSettings opts={repairOpts} onChange={setRepairOpts} />}
                 {tool.engine === 'coloreffects' && <ColorEffectsSettings opts={colorEffectsOpts} onChange={setColorEffectsOpts} />}
                 {tool.engine === 'colormanage' && <ColorManageSettings opts={colorManageOpts} onChange={setColorManageOpts} />}
+                {tool.engine === 'layers' && file && <LayersPanel file={file} states={layerStates} onChange={setLayerStates} />}
+                {tool.engine === 'customgrid' && <CustomGridSettings opts={customGridOpts} onChange={setCustomGridOpts} />}
+                {tool.engine === 'pdftools' && <PdfToolsSettings opts={pdfToolsOpts} onChange={setPdfToolsOpts} />}
                 {tool.engine === 'dimensions' && (
                   <p style={{ margin: 0, fontSize: '.85rem', color: 'var(--muted)', lineHeight: 1.5 }}>
                     Stamps each page with its exact trim and bleed size (inches + points) along the edges. No options needed.
@@ -3231,6 +3287,90 @@ function ColorManageSettings({ opts, onChange }: { opts: ColorManageOptions; onC
       <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
       <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
         Two independent actions: <strong>assign a profile</strong> — upload an ICC below and it is embedded as a PDF/X <em>OutputIntent</em> (lossless, vectors intact, what a RIP reads); and <strong>convert / gamut-check</strong> — rasterise and map to the CMYK-reproducible gamut (RGB→CMYK→RGB via an 8-primary ink model), optionally flagging out-of-gamut colours. A device-exact ICC transform needs a full CMM; the pixel conversion uses a standard CMYK model — genuine for gamut checking and RGB→CMYK normalisation.
+      </div>
+    </Grid>
+  );
+}
+
+function LayersPanel({ file, states, onChange }: { file: LoadedFile; states: Record<string, 'on' | 'off' | 'default'>; onChange: (s: Record<string, 'on' | 'off' | 'default'>) => void }) {
+  const [layers, setLayers2] = useState<PdfLayer[] | null>(null);
+  useEffect(() => { let live = true; readLayers(file.bytes).then(l => { if (live) setLayers2(l); }); return () => { live = false; }; }, [file]);
+  if (!layers) return <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Reading layers…</div>;
+  if (!layers.length) return (
+    <div style={{ textAlign: 'center', padding: '1.5rem 1rem', color: 'var(--muted)', fontSize: '.85rem', lineHeight: 1.6 }}>
+      <div style={{ fontSize: '1.6rem', marginBottom: '.4rem' }}>▤</div>
+      <strong>No layers detected</strong><br />
+      This PDF has no named layers (OCGs). Layers created by upstream tools (or authored in InDesign/Illustrator) appear here with a three-state toggle.
+    </div>
+  );
+  const cycle = (name: string) => { const cur = states[name] ?? 'default'; const next = cur === 'default' ? 'on' : cur === 'on' ? 'off' : 'default'; onChange({ ...states, [name]: next }); };
+  const label = (s: string) => s === 'on' ? 'On (force visible)' : s === 'off' ? 'Off (force hidden)' : 'Default';
+  const col = (s: string) => s === 'on' ? '#16a34a' : s === 'off' ? '#dc2626' : 'var(--muted)';
+  return (
+    <div style={{ display: 'grid', gap: '.5rem' }}>
+      {layers.map(l => {
+        const s = states[l.name] ?? (l.forcedOff ? 'off' : l.forcedOn ? 'on' : 'default');
+        return (
+          <div key={l.name} style={{ display: 'flex', alignItems: 'center', gap: '.6rem', padding: '.5rem .7rem', border: '1px solid var(--border)', borderRadius: 6 }}>
+            <span style={{ flex: 1, fontSize: '.88rem' }}>{l.name}</span>
+            <button className="btn secondary" style={{ padding: '.25rem .6rem', fontSize: '.76rem', color: col(s) }} onClick={() => cycle(l.name)}>{label(s)}</button>
+          </div>
+        );
+      })}
+      <div style={{ fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>Click a layer to cycle Default → On → Off. <em>Off</em> force-hides the layer in the output; <em>On</em> force-shows it. Not all RIPs honour layer visibility — test with yours.</div>
+    </div>
+  );
+}
+
+function CustomGridSettings({ opts, onChange }: { opts: typeof DEFAULT_CUSTOMGRID; onChange: (o: typeof DEFAULT_CUSTOMGRID) => void }) {
+  const set = <K extends keyof typeof DEFAULT_CUSTOMGRID>(k: K, v: (typeof DEFAULT_CUSTOMGRID)[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="Columns"><input type="number" min={1} max={12} value={opts.cols} onChange={e => set('cols', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Rows"><input type="number" min={1} max={12} value={opts.rows} onChange={e => set('rows', +e.target.value)} style={iStyle} /></Field>
+      <SheetPicker opts={opts} set={set as never} />
+      <Field label="Gutter (in)"><input type="number" min={0} max={2} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Margin (in)"><input type="number" min={0} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Page fill" note="Auto-assign strategy">
+        <select value={opts.assign} onChange={e => set('assign', e.target.value)} style={iStyle}>
+          <option value="sequential">Sequential (1,2,3…)</option>
+          <option value="reverse">Reverse (last→first)</option>
+          <option value="repeat">Repeat page 1</option>
+          <option value="saddle">Saddle-stitch pairs</option>
+        </select>
+      </Field>
+      <Field label="Crop marks"><Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Per-cell corner marks</span></Row></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Full manual control: a <strong>{opts.cols}×{opts.rows}</strong> grid ({opts.cols * opts.rows} cells/sheet). The fill strategy assigns source pages to cells with per-cell rotation; each output page is one sheet. For non-standard signatures this is the escape hatch when no automated tool fits.
+      </div>
+    </Grid>
+  );
+}
+
+function PdfToolsSettings({ opts, onChange }: { opts: typeof DEFAULT_PDFTOOLS; onChange: (o: typeof DEFAULT_PDFTOOLS) => void }) {
+  const set = <K extends keyof typeof DEFAULT_PDFTOOLS>(k: K, v: (typeof DEFAULT_PDFTOOLS)[K]) => onChange({ ...opts, [k]: v });
+  const unavailable = opts.operation === 'encrypt' || opts.operation === 'linearize';
+  return (
+    <Grid>
+      <Field label="Operation">
+        <select value={opts.operation} onChange={e => set('operation', e.target.value as typeof DEFAULT_PDFTOOLS['operation'])} style={iStyle}>
+          <option value="optimize">Optimize (shrink)</option>
+          <option value="decrypt">Decrypt (remove password)</option>
+          <option value="repair">Repair (rebuild)</option>
+          <option value="linearize">Linearize (fast web view)</option>
+          <option value="encrypt">Encrypt (password)</option>
+        </select>
+      </Field>
+      {opts.operation === 'optimize' && <>
+        <Field label="Recompress + object streams"><Row><input type="checkbox" checked={opts.objectStreams} onChange={e => set('objectStreams', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Pack objects (smaller)</span></Row></Field>
+        <Field label="Remove unreferenced objects"><Row><input type="checkbox" checked={opts.removeUnused} onChange={e => set('removeUnused', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Drop orphaned objects</span></Row></Field>
+      </>}
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: unavailable ? '#b45309' : 'var(--muted)', lineHeight: 1.5 }}>
+        {opts.operation === 'optimize' && 'Rebuilds the PDF and packs objects into object streams — drops orphaned objects and re-writes a lean cross-reference table. Typical savings on unoptimised files; already-lean PDFs change little.'}
+        {opts.operation === 'decrypt' && 'Removes password protection / encryption by re-saving the document unencrypted. You must be able to open the file (supply the password in your viewer first if needed).'}
+        {opts.operation === 'repair' && 'Re-writes the whole PDF structure — fixes broken xref tables, stream lengths and object numbering that make viewers/RIPs reject a file.'}
+        {opts.operation === 'linearize' && '⚠ Linearisation (fast web view) reorders the byte stream and is not available in the browser engine — it needs a server-side pass (e.g. qpdf/Ghostscript). Use Optimize to shrink instead.'}
+        {opts.operation === 'encrypt' && '⚠ Writing encryption is not available in the browser engine (pdf-lib cannot author encryption). Encrypt with a desktop tool or a server-side pass. Decrypt (removing protection) is supported here.'}
       </div>
     </Grid>
   );

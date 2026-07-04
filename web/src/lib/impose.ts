@@ -1497,29 +1497,277 @@ export interface PreflightReport {
   uniformSize: boolean;
   widthIn: number;
   heightIn: number;
+  boxes: { media: string; trim: string; bleed: string; crop: string };
+  fonts: { name: string; embedded: boolean }[];
+  colorSpaces: string[];       // e.g. DeviceRGB, DeviceCMYK, DeviceGray, ICCBased, Separation
+  images: number;
+  minImagePx: number | null;   // smallest image's shorter pixel edge
+  annotations: number;
+  embeddedFiles: number;
+  hasJavaScript: boolean;
+  hasLayers: boolean;
   warnings: string[];
 }
 
 export async function preflight(bytes: Uint8Array): Promise<PreflightReport> {
-  const { PDFDocument } = await import('pdf-lib');
+  const { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFArray } = await import('pdf-lib');
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = doc.getPages();
   const warnings: string[] = [];
   if (!pages.length) warnings.push('Document has no pages.');
   const first = pages[0]?.getSize() ?? { width: 0, height: 0 };
-  const uniformSize = pages.every(p => {
-    const s = p.getSize();
-    return Math.abs(s.width - first.width) < 1 && Math.abs(s.height - first.height) < 1;
-  });
+  const uniformSize = pages.every(p => { const s = p.getSize(); return Math.abs(s.width - first.width) < 1 && Math.abs(s.height - first.height) < 1; });
   if (!uniformSize) warnings.push('Pages are not all the same size — imposition may misalign.');
   if (first.width / PT < 1 || first.height / PT < 1) warnings.push('Page size looks unusually small.');
+  const boxStr = (b: { width: number; height: number }) => `${(b.width / PT).toFixed(2)}×${(b.height / PT).toFixed(2)} in`;
+  const p0 = pages[0];
+  const boxes = p0
+    ? { media: boxStr(p0.getMediaBox()), trim: boxStr(p0.getTrimBox()), bleed: boxStr(p0.getBleedBox()), crop: boxStr(p0.getCropBox()) }
+    : { media: '—', trim: '—', bleed: '—', crop: '—' };
+
+  // Deep introspection over the whole object graph.
+  const fonts: { name: string; embedded: boolean }[] = [];
+  const fontSeen = new Set<string>();
+  const colorSpaces = new Set<string>();
+  let images = 0, minImagePx: number | null = null, annotations = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nm = (v: any) => (v instanceof PDFName ? v.asString().replace(/^\//, '') : '');
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const dict = obj instanceof PDFRawStream ? obj.dict : obj instanceof PDFDict ? obj : null;
+    if (!dict) continue;
+    const type = nm(dict.get(PDFName.of('Type')));
+    const sub = nm(dict.get(PDFName.of('Subtype')));
+    if (type === 'Font') {
+      const base = nm(dict.get(PDFName.of('BaseFont'))) || '(unnamed)';
+      const fd = dict.lookupMaybe(PDFName.of('FontDescriptor'), PDFDict);
+      const embedded = !!fd && (!!fd.get(PDFName.of('FontFile')) || !!fd.get(PDFName.of('FontFile2')) || !!fd.get(PDFName.of('FontFile3')));
+      if (!fontSeen.has(base)) { fontSeen.add(base); fonts.push({ name: base.replace(/^[A-Z]{6}\+/, ''), embedded }); }
+    }
+    if (sub === 'Image') {
+      images++;
+      const w = Number((dict.get(PDFName.of('Width')) as any)?.asNumber?.() ?? 0);
+      const h = Number((dict.get(PDFName.of('Height')) as any)?.asNumber?.() ?? 0);
+      const edge = Math.min(w, h);
+      if (edge > 0 && (minImagePx === null || edge < minImagePx)) minImagePx = edge;
+      const cs = dict.get(PDFName.of('ColorSpace'));
+      if (cs instanceof PDFName) colorSpaces.add(nm(cs));
+      else if (cs instanceof PDFArray && cs.get(0) instanceof PDFName) colorSpaces.add(nm(cs.get(0)));
+    }
+    // Resources /ColorSpace dictionaries
+    const res = dict.lookupMaybe(PDFName.of('Resources'), PDFDict) ?? (type === '' && sub === '' ? dict.lookupMaybe(PDFName.of('ColorSpace'), PDFDict) : undefined);
+    const csd = res?.lookupMaybe(PDFName.of('ColorSpace'), PDFDict);
+    if (csd) for (const [, v] of csd.entries()) { const r = doc.context.lookupMaybe(v, PDFArray); if (r && r.get(0) instanceof PDFName) colorSpaces.add(nm(r.get(0))); }
+  }
+  // Count only annotations actually referenced by a page (what will print).
+  for (const pg of pages) { const a = pg.node.lookupMaybe(PDFName.of('Annots'), PDFArray); if (a) annotations += a.size(); }
+
+  const cat = doc.catalog;
+  const names = cat.lookupMaybe(PDFName.of('Names'), PDFDict);
+  const embeddedFiles = (() => { const ef = names?.lookupMaybe(PDFName.of('EmbeddedFiles'), PDFDict); const arr = ef?.lookupMaybe(PDFName.of('Names'), PDFArray); return arr ? Math.floor(arr.size() / 2) : 0; })();
+  const hasJavaScript = !!names?.get(PDFName.of('JavaScript')) || !!cat.get(PDFName.of('OpenAction'));
+  const hasLayers = !!cat.get(PDFName.of('OCProperties'));
+
+  if (fonts.some(f => !f.embedded)) warnings.push(`Non-embedded font(s): ${fonts.filter(f => !f.embedded).map(f => f.name).join(', ')} — may substitute on the RIP.`);
+  if (colorSpaces.has('DeviceRGB')) warnings.push('RGB content present — convert to CMYK for offset/press output.');
+  if (minImagePx !== null && minImagePx < 150) warnings.push(`Low-resolution image detected (${minImagePx}px on the short edge).`);
+  if (hasJavaScript) warnings.push('Document contains JavaScript — strip it for press delivery.');
+  if (embeddedFiles > 0) warnings.push(`${embeddedFiles} embedded file(s) — remove before press.`);
+
   return {
-    pages: pages.length,
-    uniformSize,
+    pages: pages.length, uniformSize,
     widthIn: Math.round((first.width / PT) * 1000) / 1000,
     heightIn: Math.round((first.height / PT) * 1000) / 1000,
-    warnings,
+    boxes, fonts, colorSpaces: [...colorSpaces], images, minImagePx, annotations, embeddedFiles, hasJavaScript, hasLayers, warnings,
   };
+}
+
+// Doable prepress cleanup (the client-side subset of a Ghostscript pass):
+// rebuild + drop embedded files, layers (OCG), annotations, JavaScript, metadata.
+export interface PreflightCleanOptions {
+  deleteEmbeddedFiles?: boolean;
+  flattenLayers?: boolean;
+  removeAnnotations?: boolean;
+  removeJavaScript?: boolean;
+  stripMetadata?: boolean;
+  pages?: string;
+}
+export async function preflightClean(bytes: Uint8Array, opts: PreflightCleanOptions): Promise<Uint8Array> {
+  const { PDFDocument, PDFName, PDFDict } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  const pages = await out.copyPages(src, src.getPageIndices());
+  const sel = parsePageRange(opts.pages ?? 'all', pages.length);
+  pages.forEach((p, i) => {
+    out.addPage(p);
+    if (!sel.has(i + 1)) return;
+    if (opts.removeAnnotations) p.node.delete(PDFName.of('Annots'));
+    if (opts.removeJavaScript) p.node.delete(PDFName.of('AA'));
+  });
+  const cat = out.catalog;
+  if (opts.flattenLayers) cat.delete(PDFName.of('OCProperties'));
+  const nd = cat.lookupMaybe(PDFName.of('Names'), PDFDict);
+  if (nd) {
+    if (opts.deleteEmbeddedFiles) nd.delete(PDFName.of('EmbeddedFiles'));
+    if (opts.removeJavaScript) nd.delete(PDFName.of('JavaScript'));
+  }
+  if (opts.removeJavaScript) cat.delete(PDFName.of('OpenAction'));
+  if (opts.stripMetadata) { out.setTitle(''); out.setAuthor(''); out.setSubject(''); out.setKeywords([]); out.setProducer(''); out.setCreator(''); try { cat.delete(PDFName.of('Metadata')); } catch { /* none */ } }
+  return out.save({ useObjectStreams: true });
+}
+
+// ── Gang-sheet production plan (sheet counts incl. makeready + spoilage) ─────
+export interface GangPlan {
+  itemsPerSheet: number;
+  setsPerSheet: number;
+  runSheets: number;
+  makereadySheets: number;
+  spoilageSheets: number;
+  totalSheets: number;
+}
+export function computeGangPlan(distinctItems: number, itemsPerSheet: number, quantity: number, makeready = 0, spoilagePct = 0): GangPlan {
+  const di = Math.max(1, Math.floor(distinctItems));
+  const ips = Math.max(1, Math.floor(itemsPerSheet));
+  const setsPerSheet = Math.max(1, Math.floor(ips / di));
+  const runSheets = Math.max(1, Math.ceil(Math.max(1, quantity) / setsPerSheet));
+  const makereadySheets = Math.max(0, Math.round(makeready));
+  const spoilageSheets = Math.ceil(runSheets * Math.max(0, spoilagePct) / 100);
+  return { itemsPerSheet: ips, setsPerSheet, runSheets, makereadySheets, spoilageSheets, totalSheets: runSheets + makereadySheets + spoilageSheets };
+}
+
+// ── PDF Tools / Optimizer (optimize · decrypt · repair) ─────────────────────
+// pdf-lib can rebuild + write object streams (smaller), and strip encryption on
+// re-save. It cannot *write* encryption or true linearisation — those are
+// surfaced honestly in the UI as unavailable client-side.
+export interface OptimizeOptions {
+  objectStreams?: boolean;   // pack objects into streams (smaller output)
+  removeUnused?: boolean;    // rebuild into a fresh doc (drops orphaned objects)
+  pages?: string;            // (kept for parity; optimize is whole-document)
+}
+export async function optimizePdf(bytes: Uint8Array, opts: OptimizeOptions = {}): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  if (opts.removeUnused !== false) {
+    const out = await PDFDocument.create();
+    const pages = await out.copyPages(src, src.getPageIndices());
+    for (const p of pages) out.addPage(p);
+    return out.save({ useObjectStreams: opts.objectStreams !== false });
+  }
+  return src.save({ useObjectStreams: opts.objectStreams !== false });
+}
+// Strip encryption / password protection by loading (bypassing) and re-saving.
+export async function decryptPdf(bytes: Uint8Array): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  return doc.save();
+}
+
+// ── Layers (Optional Content Groups) ────────────────────────────────────────
+// Read the PDF's named OCG layers and force each one visible / hidden via the
+// default configuration's /ON and /OFF arrays.
+export interface PdfLayer { name: string; forcedOn: boolean; forcedOff: boolean; }
+
+export async function readLayers(bytes: Uint8Array): Promise<PdfLayer[]> {
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const ocp = doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict);
+  if (!ocp) return [];
+  const ocgs = ocp.lookupMaybe(PDFName.of('OCGs'), PDFArray);
+  if (!ocgs) return [];
+  const d = ocp.lookupMaybe(PDFName.of('D'), PDFDict);
+  const refsIn = (key: string) => { const a = d?.lookupMaybe(PDFName.of(key), PDFArray); const set = new Set<string>(); if (a) for (let i = 0; i < a.size(); i++) { const r = a.get(i); set.add(r.toString()); } return set; };
+  const onSet = refsIn('ON'), offSet = refsIn('OFF');
+  const out: PdfLayer[] = [];
+  for (let i = 0; i < ocgs.size(); i++) {
+    const ref = ocgs.get(i);
+    const g = doc.context.lookupMaybe(ref, PDFDict);
+    if (!g) continue;
+    const nmObj = g.get(PDFName.of('Name'));
+    const name = nmObj instanceof PDFString || nmObj instanceof PDFHexString ? nmObj.decodeText() : '(unnamed)';
+    out.push({ name, forcedOn: onSet.has(ref.toString()), forcedOff: offSet.has(ref.toString()) });
+  }
+  return out;
+}
+
+export interface LayerState { name: string; state: 'on' | 'off' | 'default'; }
+export async function setLayers(bytes: Uint8Array, states: LayerState[]): Promise<Uint8Array> {
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const ctx = doc.context;
+  const ocp = doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict);
+  if (!ocp) return doc.save();
+  const ocgs = ocp.lookupMaybe(PDFName.of('OCGs'), PDFArray);
+  let d = ocp.lookupMaybe(PDFName.of('D'), PDFDict);
+  if (!d) { d = ctx.obj({}); ocp.set(PDFName.of('D'), d); }
+  const ensureArr = (key: string) => { let a = d!.lookupMaybe(PDFName.of(key), PDFArray); if (!a) { a = ctx.obj([]); d!.set(PDFName.of(key), a); } return a; };
+  const onArr = ensureArr('ON'), offArr = ensureArr('OFF');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const drop = (arr: any, refStr: string) => { for (let i = arr.size() - 1; i >= 0; i--) if (arr.get(i).toString() === refStr) arr.remove(i); };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nameToRef = new Map<string, any>();
+  if (ocgs) for (let i = 0; i < ocgs.size(); i++) { const ref = ocgs.get(i); const g = ctx.lookupMaybe(ref, PDFDict); const nmObj = g?.get(PDFName.of('Name')); const nm = nmObj instanceof PDFString || nmObj instanceof PDFHexString ? nmObj.decodeText() : ''; if (nm) nameToRef.set(nm, ref); }
+  for (const st of states) {
+    const ref = nameToRef.get(st.name); if (!ref) continue;
+    const rs = ref.toString();
+    drop(onArr, rs); drop(offArr, rs);
+    if (st.state === 'on') onArr.push(ref);
+    else if (st.state === 'off') offArr.push(ref);
+  }
+  return doc.save();
+}
+
+// ── Custom Impose (Expert Grid): manual per-cell placement ──────────────────
+export interface CustomCell { page: number | null; rotation?: 0 | 90 | 180 | 270; }
+export interface CustomImposeOptions {
+  cols: number; rows: number;
+  sheetWIn: number; sheetHIn: number;
+  sheets: (CustomCell | null)[][];   // sheets[s] = flat array of cols*rows cells (row-major, top-left first)
+  gutterIn?: number; marginIn?: number;
+  addMarks?: boolean;
+}
+
+export async function imposeCustomGrid(bytes: Uint8Array, opts: CustomImposeOptions): Promise<Uint8Array> {
+  const { PDFDocument, degrees, rgb } = await import('pdf-lib');
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcCount = src.getPageCount();
+  const out = await PDFDocument.create();
+  const embeds = await out.embedPages(src.getPages());
+  const cols = Math.max(1, Math.floor(opts.cols)), rows = Math.max(1, Math.floor(opts.rows));
+  const SW = opts.sheetWIn * PT, SH = opts.sheetHIn * PT;
+  const margin = (opts.marginIn ?? 0.25) * PT, gutter = (opts.gutterIn ?? 0) * PT;
+  const cw = (SW - 2 * margin - (cols - 1) * gutter) / cols;
+  const ch = (SH - 2 * margin - (rows - 1) * gutter) / rows;
+  for (const sheet of opts.sheets) {
+    const pg = out.addPage([SW, SH]);
+    for (let idx = 0; idx < cols * rows; idx++) {
+      const cell = sheet[idx];
+      if (!cell || cell.page == null || cell.page < 1 || cell.page > srcCount) continue;
+      const c = idx % cols, r = Math.floor(idx / cols);
+      const cx = margin + c * (cw + gutter), cy = SH - margin - (r + 1) * ch - r * gutter;   // row 0 = top
+      const emb = embeds[cell.page - 1]!;
+      const rot = ((cell.rotation ?? 0) % 360) as 0 | 90 | 180 | 270;
+      // fit the (possibly rotated) source into the cell, centred
+      const sw = emb.width, sh = emb.height;
+      const rotated = rot === 90 || rot === 270;
+      const fitW = rotated ? sh : sw, fitH = rotated ? sw : sh;
+      const scale = Math.min(cw / fitW, ch / fitH);
+      const dw = fitW * scale, dh = fitH * scale;
+      const ox = cx + (cw - dw) / 2, oy = cy + (ch - dh) / 2;
+      // drawPage rotates about its origin; offset so the rotated box lands at (ox,oy)
+      let px = ox, py = oy;
+      if (rot === 90) { px = ox + dw; }
+      else if (rot === 180) { px = ox + dw; py = oy + dh; }
+      else if (rot === 270) { py = oy + dh; }
+      pg.drawPage(emb, { x: px, y: py, xScale: scale, yScale: scale, rotate: degrees(rot) });
+      if (opts.addMarks) {
+        const m = 6, blk = rgb(0, 0, 0);
+        for (const [mx, my, dx, dy] of [[cx, cy, -1, -1], [cx + cw, cy, 1, -1], [cx, cy + ch, -1, 1], [cx + cw, cy + ch, 1, 1]] as [number, number, number, number][]) {
+          pg.drawLine({ start: { x: mx, y: my }, end: { x: mx + dx * m, y: my }, thickness: 0.5, color: blk });
+          pg.drawLine({ start: { x: mx, y: my }, end: { x: mx, y: my + dy * m }, thickness: 0.5, color: blk });
+        }
+      }
+    }
+  }
+  return out.save();
 }
 
 // ── Dieline generator (folding carton + presentation folder) ────────────────

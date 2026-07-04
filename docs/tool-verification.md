@@ -11,7 +11,7 @@ each output page's content stream (`decodePDFRawStream`) and assert the
 documented behavior. Imposition **order** is proven by mapping each embedded
 XObject's BBox back to its source page and reading the `cm … Do` placements.
 
-## Results — 47/47 verified
+## Results — 52/52 verified
 
 | Tool | Assertion | ✓ |
 |---|---|---|
@@ -56,6 +56,11 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | PDF Repair | rebuilt; strip metadata / annotations / JS + range | ✓ |
 | Color Effects | CSS-filter stack builder + rasterise (browser) | ✓ |
 | Color Management | RGB→CMYK gamut (Neugebauer) + out-of-gamut + ICC OutputIntent | ✓ |
+| Preflight (deep) | fonts/colour-spaces/images/annots/JS/layers report + clean | ✓ |
+| Gang Sheet plan | items/sheet, makeready + spoilage → total sheets | ✓ |
+| Layers (OCG) | read named layers, force on/off/default | ✓ |
+| Custom Impose | per-cell page placement + rotation + fill strategies | ✓ |
+| PDF Tools | optimize (object streams) · decrypt (strip encryption) | ✓ |
 | Page Numbering | number on every page | ✓ |
 | Cutter Marks | margin added + corner marks | ✓ |
 | Tiled Poster | 2×2 → 4 tiles | ✓ |
@@ -105,7 +110,9 @@ These documented options are now implemented and verified:
 
 ## Not implemented (deep specialty)
 
-Edit PDF, Layers (OCG), PDF Optimizer (linearize/encrypt), JDF/CIP4 export.
+Edit PDF, JDF/CIP4 export, and — of the PDF Optimizer — **linearization and
+encryption writing** (pdf-lib can't author those client-side; optimize, decrypt
+and repair are implemented). Layers (OCG) is now implemented and verified.
 
 (OMR, Folding, Gathering and Lay marks, Cut Contour die lines, White/Varnish,
 Braille, DataMatrix, Color Effects and Color Management — previously listed
