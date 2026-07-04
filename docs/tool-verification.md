@@ -11,7 +11,12 @@ each output page's content stream (`decodePDFRawStream`) and assert the
 documented behavior. Imposition **order** is proven by mapping each embedded
 XObject's BBox back to its source page and reading the `cm … Do` placements.
 
-## Results — 52/52 verified
+## Results — 54/54 verified
+
+> A master smoke-test additionally exercises **all 74 exported engine
+> functions** on a live PDF each run; the current sweep is green (browser-only
+> `applyColorEffects` / `applyColorManagement` correctly throw their "needs a
+> browser" guard under Node).
 
 | Tool | Assertion | ✓ |
 |---|---|---|
@@ -61,6 +66,8 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Layers (OCG) | read named layers, force on/off/default | ✓ |
 | Custom Impose | per-cell page placement + rotation + fill strategies | ✓ |
 | PDF Tools | optimize (object streams) · decrypt (strip encryption) | ✓ |
+| Edit PDF | add text / redact / box / line, rotate + delete pages | ✓ |
+| JDF / CIP4 export | well-formed CIP4 JDF 1.4 Product ticket (dims/qty/sides/binding) | ✓ |
 | Page Numbering | number on every page | ✓ |
 | Cutter Marks | margin added + corner marks | ✓ |
 | Tiled Poster | 2×2 → 4 tiles | ✓ |
@@ -123,9 +130,11 @@ These documented options are now implemented and verified:
 
 ## Not implemented (deep specialty)
 
-Edit PDF, JDF/CIP4 export, and — of the PDF Optimizer — **linearization and
-encryption writing** (pdf-lib can't author those client-side; optimize, decrypt
-and repair are implemented). Layers (OCG) is now implemented and verified.
+Of the PDF Optimizer, **linearization and encryption writing** remain
+server-side only (pdf-lib can't author those client-side; optimize, decrypt and
+repair are implemented). **Edit PDF**, **JDF/CIP4 export** and **Layers (OCG)**
+are now implemented and verified above — the full pdfpress tool inventory is
+covered.
 
 (OMR, Folding, Gathering and Lay marks, Cut Contour die lines, White/Varnish,
 Braille, DataMatrix, Color Effects and Color Management — previously listed

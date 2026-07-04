@@ -1634,6 +1634,103 @@ export function computeGangPlan(distinctItems: number, itemsPerSheet: number, qu
   return { itemsPerSheet: ips, setsPerSheet, runSheets, makereadySheets, spoilageSheets, totalSheets: runSheets + makereadySheets + spoilageSheets };
 }
 
+// ── Edit PDF (page-level editing operations) ────────────────────────────────
+export type EditOp =
+  | { type: 'text'; page: number; xPt: number; yPt: number; text: string; sizePt?: number; color?: { r: number; g: number; b: number }; font?: 'helvetica' | 'times' | 'courier' }
+  | { type: 'box'; page: number; xPt: number; yPt: number; wPt: number; hPt: number; fill?: boolean; color?: { r: number; g: number; b: number }; opacity?: number }
+  | { type: 'redact'; page: number; xPt: number; yPt: number; wPt: number; hPt: number }
+  | { type: 'line'; page: number; x1: number; y1: number; x2: number; y2: number; thicknessPt?: number; color?: { r: number; g: number; b: number } }
+  | { type: 'rotate'; page: number; angleDeg: number }
+  | { type: 'delete'; pages: string };
+
+export async function editPdf(bytes: Uint8Array, ops: EditOp[]): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb, degrees } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const fonts = {
+    helvetica: await doc.embedFont(StandardFonts.Helvetica),
+    times: await doc.embedFont(StandardFonts.TimesRoman),
+    courier: await doc.embedFont(StandardFonts.Courier),
+  };
+  // draw / rotate ops first (page indices still valid), deletes last
+  for (const op of ops) {
+    if (op.type === 'delete') continue;
+    const pg = doc.getPage(op.page - 1);
+    if (!pg) continue;
+    if (op.type === 'text') pg.drawText(op.text || '', { x: op.xPt, y: op.yPt, size: op.sizePt ?? 12, font: fonts[op.font ?? 'helvetica'], color: rgb(op.color?.r ?? 0, op.color?.g ?? 0, op.color?.b ?? 0) });
+    else if (op.type === 'box') { const c = op.color ?? { r: 0, g: 0, b: 0 }; pg.drawRectangle({ x: op.xPt, y: op.yPt, width: op.wPt, height: op.hPt, ...(op.fill === false ? { borderColor: rgb(c.r, c.g, c.b), borderWidth: 1 } : { color: rgb(c.r, c.g, c.b) }), opacity: op.opacity ?? 1 }); }
+    else if (op.type === 'redact') pg.drawRectangle({ x: op.xPt, y: op.yPt, width: op.wPt, height: op.hPt, color: rgb(0, 0, 0) });
+    else if (op.type === 'line') pg.drawLine({ start: { x: op.x1, y: op.y1 }, end: { x: op.x2, y: op.y2 }, thickness: op.thicknessPt ?? 1, color: rgb(op.color?.r ?? 0, op.color?.g ?? 0, op.color?.b ?? 0) });
+    else if (op.type === 'rotate') pg.setRotation(degrees((((pg.getRotation().angle + op.angleDeg) % 360) + 360) % 360));
+  }
+  const n = doc.getPageCount();
+  const toRemove = new Set<number>();
+  for (const op of ops) if (op.type === 'delete') for (const p of parsePageRange(op.pages, n)) toRemove.add(p - 1);
+  [...toRemove].sort((a, b) => b - a).forEach(i => { if (doc.getPageCount() > 1) doc.removePage(i); });
+  return doc.save();
+}
+
+// ── JDF / CIP4 export (Product-intent job ticket) ───────────────────────────
+export interface JdfOptions {
+  jobName: string;
+  jobId?: string;
+  productType?: string;       // e.g. Book, Brochure, BusinessCard, Flyer
+  quantity: number;
+  widthPt: number;            // finished trim size
+  heightPt: number;
+  pages?: number;
+  sides?: 'OneSided' | 'TwoSidedFlipY' | 'TwoSidedFlipX';
+  mediaWidthPt?: number;      // press-sheet / media size
+  mediaHeightPt?: number;
+  mediaType?: string;         // Paper, Board…
+  binding?: 'None' | 'SaddleStitch' | 'PerfectBound' | 'CaseBound' | 'WireO' | 'Coil';
+}
+
+const xesc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const f2 = (v: number) => v.toFixed(2);
+
+// A well-formed CIP4 JDF 1.4 Product node with layout / media / binding intents.
+// Intent-level (not a full imposition RunList) — captures the job spec a MIS /
+// CIP4 tool reads to schedule the job.
+export function exportJdf(opts: JdfOptions): Uint8Array {
+  const id = opts.jobId || ('J' + Math.abs(hashStr(opts.jobName)).toString(36).toUpperCase());
+  const name = xesc(opts.jobName || 'Untitled Job');
+  const prod = xesc(opts.productType || 'Unknown');
+  const sides = opts.sides || 'TwoSidedFlipY';
+  const bind = opts.binding && opts.binding !== 'None' ? `\n      <BindingIntent Class="Intent" Status="Available">\n        <BindingType DataType="EnumerationSpan" Preferred="${opts.binding}"/>\n      </BindingIntent>` : '';
+  const mediaW = opts.mediaWidthPt ?? opts.widthPt, mediaH = opts.mediaHeightPt ?? opts.heightPt;
+  const xml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<JDF xmlns="http://www.CIP4.org/JDFSchema_1_1" ID="${id}" Type="Product" JobID="${id}"
+     Status="Waiting" Version="1.4" DescriptiveName="${name}" JobPartID="root"
+     Agent="Printing Comics Imposition Toolkit" AgentVersion="1.2">
+  <ResourcePool>
+    <LayoutIntent ID="LI1" Class="Intent" Status="Available">
+      <Dimensions DataType="ShapeSpan" Preferred="${f2(opts.widthPt)} ${f2(opts.heightPt)}"/>
+      <Sides DataType="EnumerationSpan" Preferred="${sides}"/>
+      <Pages DataType="IntegerSpan" Preferred="${opts.pages ?? 1}"/>
+    </LayoutIntent>
+    <MediaIntent ID="MI1" Class="Intent" Status="Available">
+      <Dimensions DataType="ShapeSpan" Preferred="${f2(mediaW)} ${f2(mediaH)}"/>
+      <MediaType DataType="EnumerationSpan" Preferred="${xesc(opts.mediaType || 'Paper')}"/>
+    </MediaIntent>${bind}
+    <ProductionIntent ID="PI1" Class="Intent" Status="Available">
+      <PrintProcess DataType="NameSpan" Preferred="Digital"/>
+    </ProductionIntent>
+    <Component ID="COMP1" Class="Quantity" Status="Unavailable" ComponentType="FinalProduct"
+               DescriptiveName="${name}" Amount="${Math.max(1, Math.round(opts.quantity))}"/>
+  </ResourcePool>
+  <ResourceLinkPool>
+    <LayoutIntentLink rRef="LI1" Usage="Input"/>
+    <MediaIntentLink rRef="MI1" Usage="Input"/>${opts.binding && opts.binding !== 'None' ? '\n    <BindingIntentLink rRef="BI1" Usage="Input"/>' : ''}
+    <ComponentLink rRef="COMP1" Usage="Output" Amount="${Math.max(1, Math.round(opts.quantity))}"/>
+  </ResourceLinkPool>
+  <Comment Name="ProductType">${prod}</Comment>
+</JDF>
+`;
+  return new TextEncoder().encode(xml);
+}
+function hashStr(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return h; }
+
 // ── PDF Tools / Optimizer (optimize · decrypt · repair) ─────────────────────
 // pdf-lib can rebuild + write object streams (smaller), and strip encryption on
 // re-save. It cannot *write* encryption or true linearisation — those are
@@ -3164,13 +3261,16 @@ async function renderNest(outDoc: any, srcPages: any[], sheets: NestPlaced[][], 
 
 // ── Download helper ─────────────────────────────────────────────────────────
 
-export function downloadPdf(bytes: Uint8Array, filename: string) {
-  const blob=new Blob([bytes as BlobPart],{type:'application/pdf'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download=filename;
+export function downloadFile(bytes: Uint8Array, filename: string, mime = 'application/octet-stream') {
+  const blob = new Blob([bytes as BlobPart], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+export function downloadPdf(bytes: Uint8Array, filename: string) {
+  downloadFile(bytes, filename, 'application/pdf');
 }
 
 export function downloadMultiple(files: Uint8Array[], baseName: string) {
