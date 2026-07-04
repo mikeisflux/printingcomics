@@ -1146,21 +1146,134 @@ export async function addJobSlug(bytes: Uint8Array, opts: JobSlugOptions): Promi
 // Stepped black ticks down the spine edge, one per sheet, forming a descending
 // staircase so mis-gathered signatures are obvious at a glance.
 
-export interface CollatingOptions { edge: 'left' | 'right'; }
+export interface CollatingOptions {
+  edge: 'left' | 'right';
+  startOffsetPt?: number;   // first mark's distance from the top (default 20)
+  markWpt?: number;         // mark width  (default 9)
+  markHpt?: number;         // mark height (default 14)
+  smallMarks?: boolean;     // draw marks at half height
+  pagesPerSig?: number;     // pages that make up one signature (default 16)
+  sigsPerSet?: number;      // staircase length before it resets/wraps (default 12)
+  stepPt?: number;          // vertical distance between successive marks (default = markH)
+  color?: { r: number; g: number; b: number };   // primary mark colour (default black)
+  color2?: { r: number; g: number; b: number };  // contrasting colour for the 2nd pass
+  opacity?: number;         // default 1
+  pages?: string;           // which pages to mark (default all)
+}
 
+// Collating (gathering) marks live on the spine of each *signature* — one mark
+// per folded section, stepped progressively down the spine so a correctly
+// gathered book block shows a clean diagonal staircase. When the staircase
+// reaches `sigsPerSet` it resets to the top and the next pass is drawn in a
+// contrasting colour so the two cycles stay distinguishable.
 export async function addCollatingMarks(bytes: Uint8Array, opts: CollatingOptions): Promise<Uint8Array> {
   const { PDFDocument, rgb } = await import('pdf-lib');
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = doc.getPages();
   const n = pages.length;
-  const markW = 9, markH = 14;
+  const startOff = opts.startOffsetPt ?? 20;
+  const mw = opts.markWpt ?? 9;
+  const baseH = opts.markHpt ?? 14;
+  const mh = opts.smallMarks ? baseH / 2 : baseH;
+  const pps = Math.max(1, Math.round(opts.pagesPerSig ?? 16));
+  const sps = Math.max(1, Math.round(opts.sigsPerSet ?? 12));
+  const step = opts.stepPt ?? baseH;
+  const c1 = opts.color ?? { r: 0, g: 0, b: 0 };
+  const c2 = opts.color2 ?? c1;
+  const op = opts.opacity ?? 1;
+  const sel = parsePageRange(opts.pages ?? 'all', n);
   for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
     const pg = pages[i]!;
     const { width: w, height: h } = pg.getSize();
-    const step = n > 1 ? (h - 40 - markH) / (n - 1) : 0;
-    const y = h - 20 - markH - i * step;
-    const x = opts.edge === 'right' ? w - markW : 0;
-    pg.drawRectangle({ x, y, width: markW, height: markH, color: rgb(0, 0, 0) });
+    const sig = Math.floor(i / pps);      // which signature this page belongs to
+    const slot = sig % sps;               // position within the staircase
+    const pass = Math.floor(sig / sps);   // wrap pass (0,1,2…)
+    const col = pass % 2 === 0 ? c1 : c2;
+    const y = h - startOff - mh - slot * step;
+    const x = opts.edge === 'right' ? w - mw : 0;
+    pg.drawRectangle({ x, y, width: mw, height: mh, color: rgb(col.r, col.g, col.b), opacity: op });
+  }
+  return doc.save();
+}
+
+// ── OMR (Optical Mark Recognition) marks ────────────────────────────────────
+// A row of black bars along one sheet edge that automated bindery equipment
+// reads to trigger fold / collate / cut / stack operations. A program number
+// (0…2^bits-1) is encoded across the data bars — MSB first — either as
+// present/absent (`binary`) or long/short (`barheight`), with an always-on
+// leading sync bar. Geometry follows the pdfpress panel: `widthPt` is the long
+// readable bar length (perpendicular to the feed / into the page), `heightPt`
+// the thin dimension along the feed, `spacingPt` the pitch between bars.
+export interface OmrOptions {
+  edge: 'top' | 'bottom' | 'left' | 'right';
+  encoding: 'binary' | 'barheight';
+  program: number;          // 0 … 2^bitCount − 1
+  bitCount: number;         // 4 | 8 | 12 | 16
+  repeats?: number;         // repeat the whole pattern down the track (default 1)
+  widthPt?: number;         // readable bar length ⟂ to feed (default 14.17 = 5 mm)
+  heightPt?: number;        // thin dimension along feed  (default 2.83 = 1 mm)
+  spacingPt?: number;       // pitch between bars (default = widthPt)
+  startOffsetPt?: number;   // offset along the track from the leading corner (default 40)
+  edgeOffsetPt?: number;    // inward offset from the paper edge (default 8.5 = 3 mm)
+  sync?: boolean;           // leading always-on sync/clock bar (default true)
+  color?: { r: number; g: number; b: number };
+  opacity?: number;
+  pages?: string;
+}
+
+export async function addOmrMarks(bytes: Uint8Array, opts: OmrOptions): Promise<Uint8Array> {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const n = pages.length;
+  const bitCount = Math.max(1, Math.round(opts.bitCount || 8));
+  const maxVal = Math.pow(2, bitCount) - 1;
+  const prog = Math.max(0, Math.min(maxVal, Math.round(opts.program || 0)));
+  const bits: number[] = [];
+  for (let b = bitCount - 1; b >= 0; b--) bits.push((prog >> b) & 1);   // MSB first
+  const repeats = Math.max(1, Math.round(opts.repeats ?? 1));
+  const length = opts.widthPt ?? 14.17;   // long readable dimension (panel "Width")
+  const thick = opts.heightPt ?? 2.83;    // thin dimension along feed (panel "Height")
+  const pitch = opts.spacingPt ?? length;
+  const startOff = opts.startOffsetPt ?? 40;
+  const edgeOff = opts.edgeOffsetPt ?? 8.5;
+  const sync = opts.sync !== false;
+  const c = opts.color ?? { r: 0, g: 0, b: 0 };
+  const op = opts.opacity ?? 1;
+  const horiz = opts.edge === 'top' || opts.edge === 'bottom';
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+
+  // slot list: optional sync (always full), then the data bits, ×repeats
+  const slots: { on: boolean; full: boolean }[] = [];
+  for (let r = 0; r < repeats; r++) {
+    if (sync) slots.push({ on: true, full: true });
+    for (const bit of bits) {
+      if (opts.encoding === 'barheight') slots.push({ on: true, full: bit === 1 });
+      else slots.push({ on: bit === 1, full: true });
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) continue;
+    const pg = pages[i]!;
+    const { width: w, height: h } = pg.getSize();
+    slots.forEach((s, k) => {
+      if (!s.on) return;
+      const len = s.full ? length : length * 0.45;   // readable extent (short for a 0 bar)
+      const pos = startOff + k * pitch;               // position along the track
+      let x: number, y: number, rw: number, rh: number;
+      if (horiz) {                                    // top / bottom → track along X
+        rw = thick; rh = len;
+        x = pos;
+        y = opts.edge === 'bottom' ? edgeOff : h - edgeOff - len;
+      } else {                                        // left / right → track along Y
+        rw = len; rh = thick;
+        y = pos;
+        x = opts.edge === 'left' ? edgeOff : w - edgeOff - len;
+      }
+      pg.drawRectangle({ x, y, width: rw, height: rh, color: rgb(c.r, c.g, c.b), opacity: op });
+    });
   }
   return doc.save();
 }

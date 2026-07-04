@@ -11,7 +11,7 @@ each output page's content stream (`decodePDFRawStream`) and assert the
 documented behavior. Imposition **order** is proven by mapping each embedded
 XObject's BBox back to its source page and reading the `cm … Do` placements.
 
-## Results — 36/36 verified
+## Results — 37/37 verified
 
 | Tool | Assertion | ✓ |
 |---|---|---|
@@ -39,7 +39,8 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Mix / Interleave | widths `A1,B1,A2,B2…` order | ✓ |
 | Slugline | strip added + text | ✓ |
 | Registration Marks | crosshair + bullseye strokes | ✓ |
-| Collating Marks | filled tick per page | ✓ |
+| Collating Marks | per-signature staircase, wrap colour, half-height, range | ✓ |
+| OMR Marks | program bits → bars, sync, bar-height, repeats, per-edge geometry | ✓ |
 | Die Lines | red cut + blue crease strokes present | ✓ |
 | Dimensions | width + height labels | ✓ |
 | Barcode / QR | QR module fills drawn | ✓ |

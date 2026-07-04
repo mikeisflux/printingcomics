@@ -4,7 +4,7 @@ import {
   getPdfInfo, imposeBooklet, imposeNUpBook, imposeCalendar, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, splitPdfChunks, makeZip, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
-  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
+  generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, addOmrMarks, preflight,
   makeDieline, imposeDataMerge, downloadPdf, downloadMultiple,
   addRegistrationMarks, insertPages, mixPdfs, nudgePdf, repairPdf, addBackdrop, addQrStamp, addDimensions,
   distortPdf, distortFactorFromCylinder, nestPdf,
@@ -14,6 +14,7 @@ import type {
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
   RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions, BleedOptions, DistortOptions, CalendarOptions, NestOptions,
+  CollatingOptions, OmrOptions,
 } from '../../lib/impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook' | 'distort' | 'calendar' | 'nest' | 'omr';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -374,6 +375,13 @@ const DimThumb = () => (
 const CollateThumb = () => (
   <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
     {[34,52,70,88].map((y,i)=>(<rect key={i} x="52" y={y} width="10" height="12" fill={A} transform={`translate(${i*3},0)`} />))}
+  </svg>
+);
+const OmrThumb = () => (
+  <svg viewBox="0 0 200 148" fill="none" width="100%" height="100%">{frame}
+    {/* a row of OMR bars along the bottom edge; program 0b1011010 pattern */}
+    {[0,1,0,1,1,0,1,0].map((b,i)=>(<rect key={i} x={60+i*10} y={110} width="4" height={b?16:8} fill={b?'#111':'#cbd5e1'} />))}
+    <rect x={52} y={110} width="4" height="16" fill={A} />
   </svg>
 );
 const HFThumb = () => (
@@ -873,6 +881,11 @@ const TOOLS: ToolDef[] = [
     id: 'collating', name: 'Collating Marks', preset: 'Collating Marks', category: 'Marks & prepress', engine: 'collating',
     desc: 'Stepped spine ticks that form a descending staircase so mis-gathered signatures show at a glance.',
     tags: ['gather marks', 'spine', 'signatures'], Thumb: CollateThumb,
+  },
+  {
+    id: 'omr', name: 'OMR Marks', preset: 'OMR Marks', category: 'Marks & prepress', engine: 'omr',
+    desc: 'Add optical machine-readable bars along a sheet edge that automated bindery equipment reads to trigger fold / collate / cut / stack.',
+    tags: ['optical marks', 'bindery automation', 'fold/collate/cut'], Thumb: OmrThumb,
   },
   {
     id: 'qrstamp', name: 'QR / Barcode', preset: 'QR Stamp', category: 'Marks & prepress', engine: 'qrstamp',
@@ -1945,7 +1958,16 @@ const DEFAULT_INSERT: InsertOptions = { mode: 'at', position: 1, everyN: 1, coun
 const DEFAULT_NUDGE: NudgeOptions = { dxIn: 0, dyIn: 0, rotateDeg: 0 };
 const DEFAULT_BACKDROP: BackdropOptions = { r: 1, g: 1, b: 1 };
 const DEFAULT_QRSTAMP: QrStampOptions = { text: 'https://', sizePt: 72, position: 'br', marginPt: 18 };
-const DEFAULT_COLLATING: { edge: 'left' | 'right' } = { edge: 'left' };
+const DEFAULT_COLLATING: CollatingOptions = {
+  edge: 'left', startOffsetPt: 18, markWpt: 6, markHpt: 6, smallMarks: false,
+  pagesPerSig: 16, sigsPerSet: 12, stepPt: 8,
+  color: { r: 0, g: 0, b: 0 }, color2: { r: 0, g: 0.6, b: 0.9 }, opacity: 1, pages: 'all',
+};
+const DEFAULT_OMR: OmrOptions = {
+  edge: 'bottom', encoding: 'binary', program: 1, bitCount: 8, repeats: 1,
+  widthPt: 14.17, heightPt: 2.83, spacingPt: 14.17, startOffsetPt: 40, edgeOffsetPt: 8.5,
+  sync: true, color: { r: 0, g: 0, b: 0 }, opacity: 1, pages: 'all',
+};
 
 const hexToRgb = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -2425,7 +2447,8 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   const [watermarkOpts, setWatermarkOpts] = useState<WatermarkOptions>(DEFAULT_WATERMARK);
   const [headerFooterOpts, setHeaderFooterOpts] = useState<HeaderFooterOptions>(DEFAULT_HEADERFOOTER);
   const [slugOpts, setSlugOpts] = useState<JobSlugOptions>({ text: 'Job • ' + new Date().toISOString().slice(0, 10), position: 'bottom', fontSizePt: 8 });
-  const [collatingOpts, setCollatingOpts] = useState<{ edge: 'left' | 'right' }>(DEFAULT_COLLATING);
+  const [collatingOpts, setCollatingOpts] = useState<CollatingOptions>(DEFAULT_COLLATING);
+  const [omrOpts, setOmrOpts] = useState<OmrOptions>(DEFAULT_OMR);
   const [regOpts, setRegOpts] = useState<RegMarkOptions>(DEFAULT_REGMARK);
   const [insertOpts, setInsertOpts] = useState<InsertOptions>(DEFAULT_INSERT);
   const [nudgeOpts, setNudgeOpts] = useState<NudgeOptions>(DEFAULT_NUDGE);
@@ -2512,6 +2535,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
         case 'headerfooter': out = await addHeaderFooter(file.bytes, { ...headerFooterOpts, fileName: file.name }); outName = `${base}-headerfooter.pdf`; break;
         case 'slug': out = await addJobSlug(file.bytes, { ...slugOpts, fileName: file.name }); outName = `${base}-slug.pdf`; break;
         case 'collating': out = await addCollatingMarks(file.bytes, collatingOpts); outName = `${base}-collated.pdf`; break;
+        case 'omr': out = await addOmrMarks(file.bytes, omrOpts); outName = `${base}-omr.pdf`; break;
         case 'registration': out = await addRegistrationMarks(file.bytes, regOpts); outName = `${base}-regmarks.pdf`; break;
         case 'insert': out = await insertPages(file.bytes, insertOpts); outName = `${base}-inserted.pdf`; break;
         case 'nudge': out = await nudgePdf(file.bytes, nudgeOpts); outName = `${base}-nudged.pdf`; break;
@@ -2667,6 +2691,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                 {tool.engine === 'headerfooter' && <HeaderFooterSettings opts={headerFooterOpts} onChange={setHeaderFooterOpts} />}
                 {tool.engine === 'slug' && <JobSlugSettings opts={slugOpts} onChange={setSlugOpts} />}
                 {tool.engine === 'collating' && <CollatingSettings opts={collatingOpts} onChange={setCollatingOpts} />}
+                {tool.engine === 'omr' && <OmrSettings opts={omrOpts} onChange={setOmrOpts} />}
                 {tool.engine === 'registration' && <RegistrationSettings opts={regOpts} onChange={setRegOpts} />}
                 {tool.engine === 'insert' && <InsertSettings opts={insertOpts} onChange={setInsertOpts} />}
                 {tool.engine === 'nudge' && <NudgeSettings opts={nudgeOpts} onChange={setNudgeOpts} />}
@@ -2878,14 +2903,83 @@ function JobSlugSettings({ opts, onChange }: { opts: JobSlugOptions; onChange: (
   );
 }
 
-function CollatingSettings({ opts, onChange }: { opts: { edge: 'left' | 'right' }; onChange: (o: { edge: 'left' | 'right' }) => void }) {
+function CollatingSettings({ opts, onChange }: { opts: CollatingOptions; onChange: (o: CollatingOptions) => void }) {
+  const set = <K extends keyof CollatingOptions>(k: K, v: CollatingOptions[K]) => onChange({ ...opts, [k]: v });
   return (
     <Grid>
-      <Field label="Spine edge" note="Where the staircase of marks sits">
-        <select value={opts.edge} onChange={e => onChange({ edge: e.target.value as 'left' | 'right' })} style={iStyle}>
-          <option value="right">Right edge</option><option value="left">Left edge</option>
+      <Field label="Spine side" note="Binding edge the marks sit on">
+        <select value={opts.edge} onChange={e => set('edge', e.target.value as CollatingOptions['edge'])} style={iStyle}>
+          <option value="left">Left edge</option><option value="right">Right edge</option>
         </select>
       </Field>
+      <Field label="Start offset (from top, pt)"><input type="number" min={0} max={400} step={1} value={opts.startOffsetPt ?? 18} onChange={e => set('startOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark width (pt)"><input type="number" min={1} max={40} step={1} value={opts.markWpt ?? 6} onChange={e => set('markWpt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark height (pt)"><input type="number" min={1} max={40} step={1} value={opts.markHpt ?? 6} onChange={e => set('markHpt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Small marks"><Row><input type="checkbox" checked={!!opts.smallMarks} onChange={e => set('smallMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Half height</span></Row></Field>
+      <Field label="Pages / signature">
+        <select value={opts.pagesPerSig ?? 16} onChange={e => set('pagesPerSig', +e.target.value)} style={iStyle}>
+          {[4, 8, 16, 32].map(v => <option key={v} value={v}>{v}pp</option>)}
+        </select>
+      </Field>
+      <Field label="Signatures / set" note="Staircase resets (wraps) after this many">
+        <select value={opts.sigsPerSet ?? 12} onChange={e => set('sigsPerSet', +e.target.value)} style={iStyle}>
+          {[8, 12, 16, 24, 32].map(v => <option key={v} value={v}>{v} sigs</option>)}
+        </select>
+      </Field>
+      <Field label="Step size (pt)" note="Vertical distance between marks"><input type="number" min={1} max={60} step={1} value={opts.stepPt ?? 8} onChange={e => set('stepPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Mark colour"><input type="color" value={rgbToHex(opts.color ?? { r: 0, g: 0, b: 0 })} onChange={e => set('color', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Wrap colour" note="2nd-pass (contrasting)"><input type="color" value={rgbToHex(opts.color2 ?? { r: 0, g: 0.6, b: 0.9 })} onChange={e => set('color2', hexToRgb(e.target.value))} style={{ ...iStyle, padding: 2, height: 34 }} /></Field>
+      <Field label="Opacity"><input type="number" min={0.1} max={1} step={0.05} value={opts.opacity ?? 1} onChange={e => set('opacity', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages" note="all · 1-5 · odd · even · last"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        One mark per <strong>signature</strong> (page ÷ pages-per-signature), stepped down the spine. When the staircase reaches <em>signatures / set</em> it resets to the top and switches to the wrap colour so the two passes stay distinguishable — a break in the staircase reveals a mis-gathered book.
+      </div>
+    </Grid>
+  );
+}
+
+function OmrSettings({ opts, onChange }: { opts: OmrOptions; onChange: (o: OmrOptions) => void }) {
+  const set = <K extends keyof OmrOptions>(k: K, v: OmrOptions[K]) => onChange({ ...opts, [k]: v });
+  const maxVal = Math.pow(2, opts.bitCount || 8) - 1;
+  const bits = Array.from({ length: opts.bitCount || 8 }, (_, i) => (Math.max(0, Math.min(maxVal, opts.program)) >> ((opts.bitCount || 8) - 1 - i)) & 1);
+  return (
+    <Grid>
+      <Field label="Edge" note="Must match the machine's sensor">
+        <select value={opts.edge} onChange={e => set('edge', e.target.value as OmrOptions['edge'])} style={iStyle}>
+          <option value="top">Top</option><option value="bottom">Bottom</option>
+          <option value="left">Left</option><option value="right">Right</option>
+        </select>
+      </Field>
+      <Field label="Encoding">
+        <select value={opts.encoding} onChange={e => set('encoding', e.target.value as OmrOptions['encoding'])} style={iStyle}>
+          <option value="binary">Binary (present = 1, absent = 0)</option>
+          <option value="barheight">Bar height (long = 1, short = 0)</option>
+        </select>
+      </Field>
+      <Field label="Program number" note={`0 – ${maxVal}`}><input type="number" min={0} max={maxVal} step={1} value={opts.program} onChange={e => set('program', Math.max(0, Math.min(maxVal, +e.target.value)))} style={iStyle} /></Field>
+      <Field label="Bit count">
+        <select value={opts.bitCount} onChange={e => set('bitCount', +e.target.value)} style={iStyle}>
+          {[4, 8, 12, 16].map(v => <option key={v} value={v}>{v}-bit</option>)}
+        </select>
+      </Field>
+      <Field label="Pattern (MSB→LSB)">
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', fontSize: '.72rem' }}>
+          {opts.sync && <span title="sync bar" style={{ width: 12, height: 16, background: '#7c3aed', borderRadius: 2, display: 'inline-block' }} />}
+          {bits.map((b, i) => <span key={i} style={{ width: 12, height: 16, background: b ? '#111' : 'transparent', border: '1px solid var(--border)', borderRadius: 2, display: 'inline-block' }} />)}
+          <span style={{ color: 'var(--muted)', marginLeft: 4 }}>{bits.join('')}</span>
+        </div>
+      </Field>
+      <Field label="Repeats" note="Repeat the pattern down the edge"><input type="number" min={1} max={20} step={1} value={opts.repeats ?? 1} onChange={e => set('repeats', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Sync bar"><Row><input type="checkbox" checked={opts.sync !== false} onChange={e => set('sync', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Leading always-on mark</span></Row></Field>
+      <Field label="Bar length (pt)" note="Readable length ⟂ to feed"><input type="number" min={2} max={80} step={0.5} value={opts.widthPt ?? 14.17} onChange={e => set('widthPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Bar width (pt)" note="Thin dimension along feed"><input type="number" min={0.5} max={20} step={0.25} value={opts.heightPt ?? 2.83} onChange={e => set('heightPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Spacing / pitch (pt)"><input type="number" min={2} max={80} step={0.5} value={opts.spacingPt ?? 14.17} onChange={e => set('spacingPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Start offset (pt)"><input type="number" min={0} max={400} step={1} value={opts.startOffsetPt ?? 40} onChange={e => set('startOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Edge offset (pt)" note="Inward from the paper edge"><input type="number" min={0} max={80} step={0.5} value={opts.edgeOffsetPt ?? 8.5} onChange={e => set('edgeOffsetPt', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Pages"><input type="text" value={opts.pages ?? 'all'} onChange={e => set('pages', e.target.value)} style={iStyle} /></Field>
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        Encodes the program number as a bar sequence read by automated bindery equipment to trigger fold / collate / cut / stack. Marks must be solid black at 100% density; the edge must match the machine's sensor position. Confirm the exact spec with your finishing vendor — patterns are manufacturer-specific.
+      </div>
     </Grid>
   );
 }
