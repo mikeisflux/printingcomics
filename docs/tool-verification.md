@@ -11,7 +11,7 @@ each output page's content stream (`decodePDFRawStream`) and assert the
 documented behavior. Imposition **order** is proven by mapping each embedded
 XObject's BBox back to its source page and reading the `cm … Do` placements.
 
-## Results — 45/45 verified
+## Results — 47/47 verified
 
 | Tool | Assertion | ✓ |
 |---|---|---|
@@ -53,7 +53,9 @@ XObject's BBox back to its source page and reading the `cm … Do` placements.
 | Watermark | diagonal text, colour + page range | ✓ |
 | Backdrop (fill) | full-page solid fill *before* content | ✓ |
 | Backdrop (file) | composites uploaded PDF/image behind content; repeat / range / opacity | ✓ |
-| PDF Repair | rebuilt, page count preserved | ✓ |
+| PDF Repair | rebuilt; strip metadata / annotations / JS + range | ✓ |
+| Color Effects | CSS-filter stack builder + rasterise (browser) | ✓ |
+| Color Management | RGB→CMYK gamut (Neugebauer) + out-of-gamut + ICC OutputIntent | ✓ |
 | Page Numbering | number on every page | ✓ |
 | Cutter Marks | margin added + corner marks | ✓ |
 | Tiled Poster | 2×2 → 4 tiles | ✓ |
@@ -103,8 +105,11 @@ These documented options are now implemented and verified:
 
 ## Not implemented (deep specialty)
 
-Edit PDF, Color Effects, Color Management (ICC), Layers (OCG),
-PDF Optimizer (linearize/encrypt), JDF/CIP4 export.
+Edit PDF, Layers (OCG), PDF Optimizer (linearize/encrypt), JDF/CIP4 export.
 
-(OMR, Folding, Gathering and Lay marks, Cut Contour die lines, White/Varnish
-and Braille — previously listed here — are now implemented and verified above.)
+(OMR, Folding, Gathering and Lay marks, Cut Contour die lines, White/Varnish,
+Braille, DataMatrix, Color Effects and Color Management — previously listed
+here — are now implemented and verified above. Color Effects / Color Management
+rasterise in the browser via pdf.js; their pure cores — the CSS-filter builder,
+the RGB↔CMYK Neugebauer gamut model, and the ICC OutputIntent embed — are
+unit-verified in Node.)

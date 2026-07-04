@@ -2018,13 +2018,236 @@ export async function nudgePdf(bytes: Uint8Array, opts: NudgeOptions): Promise<U
 // Rebuild the document from scratch — drops broken incremental-update cruft and
 // dead objects, and re-writes a clean cross-reference table.
 
-export async function repairPdf(bytes: Uint8Array): Promise<Uint8Array> {
-  const { PDFDocument } = await import('pdf-lib');
+export interface RepairOptions {
+  reserialize?: boolean;       // always effectively on (rebuild from scratch)
+  stripMetadata?: boolean;     // clear title / author / dates + XMP
+  removeAnnotations?: boolean; // flatten out /Annots
+  removeJavaScript?: boolean;  // drop page-level actions (doc-level JS is dropped by the rebuild)
+  pages?: string;              // scope annotation / action removal (default all)
+}
+
+export async function repairPdf(bytes: Uint8Array, opts: RepairOptions = {}): Promise<Uint8Array> {
+  const { PDFDocument, PDFName } = await import('pdf-lib');
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const out = await PDFDocument.create();
+  const out = await PDFDocument.create();                 // fresh doc → drops dead objects, doc-level JS, source metadata
   const pages = await out.copyPages(src, src.getPageIndices());
-  for (const p of pages) out.addPage(p);
+  const sel = parsePageRange(opts.pages ?? 'all', pages.length);
+  pages.forEach((p, i) => {
+    out.addPage(p);
+    if (!sel.has(i + 1)) return;
+    if (opts.removeAnnotations) p.node.delete(PDFName.of('Annots'));
+    if (opts.removeJavaScript) p.node.delete(PDFName.of('AA'));   // page additional-actions
+  });
+  if (opts.stripMetadata) {
+    out.setTitle(''); out.setAuthor(''); out.setSubject(''); out.setKeywords([]); out.setProducer(''); out.setCreator('');
+    try { out.catalog.delete(PDFName.of('Metadata')); } catch { /* no XMP present */ }
+  }
   return out.save({ useObjectStreams: true });
+}
+
+// ── Colour Effects (rasterise + filter) ─────────────────────────────────────
+// Renders targeted pages to a bitmap and applies brightness / contrast /
+// saturation and creative effects, then re-embeds them. Browser-only (needs a
+// canvas); non-targeted pages are copied through unchanged.
+export interface ColorEffectsOptions {
+  brightness?: number;   // 0–200, 100 = unchanged
+  contrast?: number;     // 0–200
+  saturation?: number;   // 0–200, 0 = grayscale
+  grayscale?: number;    // 0–100 %
+  warmTone?: number;     // 0–100 % (sepia cast)
+  invert?: number;       // 0–100 %
+  hueRotate?: number;    // 0–360°
+  dpi?: number;          // rasterise resolution (150 / 300 / 600)
+  pages?: string;
+}
+
+// Pure CSS-filter string for the effect stack (also unit-testable).
+export function colorEffectsFilter(o: ColorEffectsOptions): string {
+  const p: string[] = [];
+  p.push(`brightness(${(o.brightness ?? 100) / 100})`);
+  p.push(`contrast(${(o.contrast ?? 100) / 100})`);
+  p.push(`saturate(${(o.saturation ?? 100) / 100})`);
+  if (o.grayscale) p.push(`grayscale(${o.grayscale / 100})`);
+  if (o.warmTone) p.push(`sepia(${o.warmTone / 100})`);
+  if (o.invert) p.push(`invert(${o.invert / 100})`);
+  if (o.hueRotate) p.push(`hue-rotate(${o.hueRotate}deg)`);
+  return p.join(' ');
+}
+
+// Is this effect stack a no-op (identity)? Used to skip needless rasterisation.
+export function colorEffectsIsIdentity(o: ColorEffectsOptions): boolean {
+  return (o.brightness ?? 100) === 100 && (o.contrast ?? 100) === 100 && (o.saturation ?? 100) === 100 &&
+    !o.grayscale && !o.warmTone && !o.invert && !o.hueRotate;
+}
+
+export async function applyColorEffects(bytes: Uint8Array, opts: ColorEffectsOptions): Promise<Uint8Array> {
+  if (typeof document === 'undefined') throw new Error('Colour Effects needs a browser (canvas rasterisation).');
+  const { PDFDocument } = await import('pdf-lib');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjs: any = await import('pdfjs-dist');
+  try { pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default; } catch { /* bundler resolves worker */ }
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = src.getPageCount();
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  const dpi = opts.dpi ?? 300;
+  const filter = colorEffectsFilter(opts);
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const out = await PDFDocument.create();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) { const [cp] = await out.copyPages(src, [i]); out.addPage(cp!); continue; }
+    const page = await doc.getPage(i + 1);
+    const vp = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    // re-draw through a filtered context
+    const fcanvas = document.createElement('canvas');
+    fcanvas.width = canvas.width; fcanvas.height = canvas.height;
+    const fctx = fcanvas.getContext('2d')!;
+    fctx.filter = filter || 'none';
+    fctx.drawImage(canvas, 0, 0);
+    const dataUrl = fcanvas.toDataURL('image/png');
+    const bin = atob(dataUrl.split(',')[1]!);
+    const arr = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+    const emb = await out.embedPng(arr);
+    const { width: pw, height: ph } = src.getPage(i).getSize();
+    const pg = out.addPage([pw, ph]);
+    pg.drawImage(emb, { x: 0, y: 0, width: pw, height: ph });
+  }
+  return out.save();
+}
+
+// ── Colour Management (RGB → CMYK gamut simulation + gamut warning) ──────────
+// A genuine gamut-aware conversion done client-side: rasterise, map each pixel
+// RGB → CMYK → RGB (standard GCR model) so the output shows the CMYK-reproducible
+// colour, and optionally flag out-of-gamut pixels. Note: precise device ICC
+// profiles (FOGRA39, GRACoL…) require a full colour-management module; this uses
+// a standard SWOP-like CMYK model — accurate enough for gamut checking and
+// RGB→CMYK normalisation, and honest about not being a device-exact transform.
+export function rgbToCmyk(r: number, g: number, b: number): [number, number, number, number] {
+  const k = 1 - Math.max(r, g, b);
+  if (k >= 1 - 1e-6) return [0, 0, 0, 1];
+  return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k];
+}
+// Simulated *printed* appearance of a CMYK coverage on white coated stock, via
+// an 8-primary Neugebauer mix of non-ideal inks (so the gamut is genuinely
+// smaller than sRGB — saturated greens/blues/reds fall outside it). K ink
+// darkens the result. This is what makes gamut checking + conversion meaningful.
+const NEUG: [number, number, number][] = [
+  [1, 1, 1],          // white
+  [0.00, 0.68, 0.94], // C
+  [0.90, 0.10, 0.54], // M
+  [0.99, 0.95, 0.13], // Y
+  [0.16, 0.10, 0.45], // C+M  (blue)
+  [0.00, 0.62, 0.30], // C+Y  (green)
+  [0.92, 0.16, 0.18], // M+Y  (red)
+  [0.20, 0.18, 0.16], // C+M+Y (near-black)
+];
+export function cmykToRgb(c: number, m: number, y: number, k: number): [number, number, number] {
+  const w = [
+    (1 - c) * (1 - m) * (1 - y), c * (1 - m) * (1 - y), (1 - c) * m * (1 - y), (1 - c) * (1 - m) * y,
+    c * m * (1 - y), c * (1 - m) * y, (1 - c) * m * y, c * m * y,
+  ];
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < 8; i++) { r += w[i]! * NEUG[i]![0]; g += w[i]! * NEUG[i]![1]; b += w[i]! * NEUG[i]![2]; }
+  const kf = 1 - 0.9 * k;   // black-ink darkening
+  return [r * kf, g * kf, b * kf];
+}
+// RGB → CMYK → RGB round-trip = the CMYK-reproducible approximation of a colour.
+export function cmykRoundTrip(r: number, g: number, b: number): [number, number, number] {
+  const [c, m, y, k] = rgbToCmyk(r, g, b);
+  return cmykToRgb(c, m, y, k);
+}
+// A colour is "out of CMYK gamut" when the round-trip can't get close to it
+// (saturated RGB primaries/secondaries drift the most).
+export function isOutOfCmykGamut(r: number, g: number, b: number, thresh = 0.12): boolean {
+  const [r2, g2, b2] = cmykRoundTrip(r, g, b);
+  return Math.max(Math.abs(r - r2), Math.abs(g - g2), Math.abs(b - b2)) > thresh;
+}
+// Map one pixel per the rendering intent. Perceptual gently desaturates first
+// (proportional compression); relative/absolute clip via the plain round-trip;
+// saturation boosts chroma before converting.
+export function mapPixelCmyk(r: number, g: number, b: number, intent: string): [number, number, number] {
+  let R = r, G = g, B = b;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (intent === 'perceptual') { const f = 0.9; R = lum + (r - lum) * f; G = lum + (g - lum) * f; B = lum + (b - lum) * f; }
+  else if (intent === 'saturation') { const f = 1.1; R = Math.min(1, Math.max(0, lum + (r - lum) * f)); G = Math.min(1, Math.max(0, lum + (g - lum) * f)); B = Math.min(1, Math.max(0, lum + (b - lum) * f)); }
+  return cmykRoundTrip(R, G, B);
+}
+
+// Assign a destination ICC profile to the PDF as a PDF/X `/OutputIntent` — the
+// real, lossless "embed the profile" operation a RIP reads (no rasterisation).
+// `/N` (colorant count) is read from the ICC header's colour-space signature.
+export async function assignOutputIntent(baseBytes: Uint8Array, iccBytes: Uint8Array, conditionName: string): Promise<Uint8Array> {
+  const { PDFDocument, PDFName, PDFString } = await import('pdf-lib');
+  const doc = await PDFDocument.load(baseBytes, { ignoreEncryption: true });
+  const ctx = doc.context;
+  const cs = String.fromCharCode(...iccBytes.slice(16, 20));       // 'RGB ' | 'CMYK' | 'GRAY'
+  const N = cs.startsWith('CMYK') ? 4 : cs.startsWith('GRAY') ? 1 : 3;
+  const iccRef = ctx.register(ctx.stream(iccBytes, { N }));
+  const oi = ctx.obj({
+    Type: 'OutputIntent', S: 'GTS_PDFX',
+    OutputConditionIdentifier: PDFString.of(conditionName || 'Custom'),
+    Info: PDFString.of(conditionName || 'Custom'),
+    DestOutputProfile: iccRef,
+  });
+  doc.catalog.set(PDFName.of('OutputIntents'), ctx.obj([ctx.register(oi)]));
+  return doc.save();
+}
+
+export interface ColorManageOptions {
+  sourceProfile?: string;     // informational (sRGB / CMYK)
+  destProfile?: string;       // informational (FOGRA39 / GRACoL / SWOP …)
+  intent?: 'perceptual' | 'relative' | 'saturation' | 'absolute';
+  dpi?: number;
+  convert?: boolean;          // rasterise + RGB→CMYK gamut conversion
+  gamutWarning?: boolean;     // paint out-of-gamut pixels a warning colour
+  warningColor?: { r: number; g: number; b: number };  // default bright green
+  pages?: string;
+}
+
+export async function applyColorManagement(bytes: Uint8Array, opts: ColorManageOptions): Promise<Uint8Array> {
+  if (typeof document === 'undefined') throw new Error('Colour Management needs a browser (canvas rasterisation).');
+  const { PDFDocument } = await import('pdf-lib');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjs: any = await import('pdfjs-dist');
+  try { pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default; } catch { /* bundler resolves worker */ }
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = src.getPageCount();
+  const sel = parsePageRange(opts.pages ?? 'all', n);
+  const dpi = opts.dpi ?? 300;
+  const intent = opts.intent ?? 'perceptual';
+  const warn = opts.warningColor ?? { r: 0, g: 1, b: 0 };
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const out = await PDFDocument.create();
+  for (let i = 0; i < n; i++) {
+    if (!sel.has(i + 1)) { const [cp] = await out.copyPages(src, [i]); out.addPage(cp!); continue; }
+    const page = await doc.getPage(i + 1);
+    const vp = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = img.data;
+    for (let p = 0; p < d.length; p += 4) {
+      const r = d[p]! / 255, g = d[p + 1]! / 255, b = d[p + 2]! / 255;
+      if (opts.gamutWarning && isOutOfCmykGamut(r, g, b)) { d[p] = warn.r * 255; d[p + 1] = warn.g * 255; d[p + 2] = warn.b * 255; continue; }
+      const [nr, ng, nb] = mapPixelCmyk(r, g, b, intent);
+      d[p] = Math.round(nr * 255); d[p + 1] = Math.round(ng * 255); d[p + 2] = Math.round(nb * 255);
+    }
+    ctx.putImageData(img, 0, 0);
+    const dataUrl = canvas.toDataURL('image/png');
+    const bin = atob(dataUrl.split(',')[1]!);
+    const arr = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+    const emb = await out.embedPng(arr);
+    const { width: pw, height: ph } = src.getPage(i).getSize();
+    out.addPage([pw, ph]).drawImage(emb, { x: 0, y: 0, width: pw, height: ph });
+  }
+  return out.save();
 }
 
 // ── Backdrop ────────────────────────────────────────────────────────────────
