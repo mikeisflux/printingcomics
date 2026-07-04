@@ -26,17 +26,36 @@ export async function getPdfInfo(bytes: Uint8Array): Promise<PdfPageInfo> {
   };
 }
 
+// Shared printer's-mark style. `center` adds midpoint ticks on each edge;
+// `weight` sets the stroke; `color` overrides black (e.g. a registration hue).
+export interface MarkStyle {
+  weight?: number;
+  center?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  color?: any;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function drawCropMarks(page: any, rgb: any, tx: number, ty: number, tw: number, th: number, off: number, len: number) {
-  const c = rgb(0, 0, 0);
+function drawCropMarks(page: any, rgb: any, tx: number, ty: number, tw: number, th: number, off: number, len: number, style?: MarkStyle) {
+  const c = style?.color ?? rgb(0, 0, 0);
+  const thickness = style?.weight ?? 0.5;
   const segs: [number, number, number, number][] = [
     [tx-off-len,ty,  tx-off,ty],      [tx,ty-off-len,  tx,ty-off],
     [tx+tw+off,ty,   tx+tw+off+len,ty],[tx+tw,ty-off-len,tx+tw,ty-off],
     [tx-off-len,ty+th,tx-off,ty+th],  [tx,ty+th+off,   tx,ty+th+off+len],
     [tx+tw+off,ty+th,tx+tw+off+len,ty+th],[tx+tw,ty+th+off,tx+tw,ty+th+off+len],
   ];
+  if (style?.center) {
+    const cx = tx + tw/2, cy = ty + th/2;
+    segs.push(
+      [cx,ty-off-len,   cx,ty-off],           // bottom-centre
+      [cx,ty+th+off,    cx,ty+th+off+len],     // top-centre
+      [tx-off-len,cy,   tx-off,cy],            // left-centre
+      [tx+tw+off,cy,    tx+tw+off+len,cy],     // right-centre
+    );
+  }
   for (const [x1,y1,x2,y2] of segs)
-    page.drawLine({ start:{x:x1,y:y1}, end:{x:x2,y:y2}, thickness:0.5, color:c });
+    page.drawLine({ start:{x:x1,y:y1}, end:{x:x2,y:y2}, thickness, color:c });
 }
 
 // ── Booklet / Saddle Stitch (2-up) ─────────────────────────────────────────
@@ -49,6 +68,12 @@ export interface BookletOptions {
   addMarks: boolean;
   markLenIn: number;
   markOffIn: number;
+  centerMarks?: boolean;
+  markWeightPt?: number;
+  // 0/undefined = a single saddle-stitch. Otherwise fold into signatures of this
+  // many SHEETS (×4 pages); each signature is imposed on its own and concatenated
+  // — how perfect-bound and thick books are actually gathered.
+  signatureSheets?: number;
 }
 
 export async function imposeBooklet(bytes: Uint8Array, opts: BookletOptions): Promise<Uint8Array> {
@@ -56,26 +81,37 @@ export async function imposeBooklet(bytes: Uint8Array, opts: BookletOptions): Pr
   const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const srcPages = srcDoc.getPages();
   const N = srcPages.length;
-  const paddedN = Math.ceil(N / 4) * 4;
-  const numSheets = paddedN / 4;
   const { width: pw, height: ph } = srcPages[0]!.getSize();
   const mPt = opts.marginIn*PT, gPt = opts.gutterIn*PT, offPt = opts.markOffIn*PT, lenPt = opts.markLenIn*PT;
   const spreadW = mPt*2 + pw*2 + gPt, spreadH = mPt*2 + ph;
   const outDoc = await PDFDocument.create();
   const embeds = await outDoc.embedPages(srcPages);
-  function emb(n: number) { return (n>=1&&n<=N)?embeds[n-1]!:null; }
-  for (let s=0; s<numSheets; s++) {
-    const creepPt = numSheets>1 ? (s/(numSheets-1))*opts.creepIn*PT : 0;
-    const xL = mPt-creepPt, xR = mPt+pw+gPt+creepPt, yB = mPt;
-    let aL:number,aR:number,bL:number,bR:number;
-    if (!opts.rtl) { aL=paddedN-s*2; aR=s*2+1; bL=s*2+2; bR=paddedN-s*2-1; }
-    else           { aL=s*2+1; aR=paddedN-s*2; bL=paddedN-s*2-1; bR=s*2+2; }
-    for (const [left,right] of [[aL,aR],[bL,bR]] as [number,number][]) {
-      const pg = outDoc.addPage([spreadW,spreadH]);
-      const eL=emb(left), eR=emb(right);
-      if (eL) pg.drawPage(eL, {x:xL,y:yB,width:pw,height:ph});
-      if (eR) pg.drawPage(eR, {x:xR,y:yB,width:pw,height:ph});
-      if (opts.addMarks) { drawCropMarks(pg,rgb,xL,yB,pw,ph,offPt,lenPt); drawCropMarks(pg,rgb,xR,yB,pw,ph,offPt,lenPt); }
+  const markStyle: MarkStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
+  function emb(n: number) { return (n>=1&&n<=N)?embeds[n-1]!:null; }   // n = GLOBAL 1-indexed
+
+  // Pages per signature: a set number of sheets (×4) for perfect binding, else the
+  // whole book padded up to one saddle.
+  const sigPages = opts.signatureSheets && opts.signatureSheets>0
+    ? opts.signatureSheets*4
+    : Math.ceil(Math.max(1,N)/4)*4;
+
+  for (let start=1; start<=Math.max(1,N); start+=sigPages) {
+    const numSheets=sigPages/4;
+    for (let s=0; s<numSheets; s++) {
+      const creepPt = numSheets>1 ? (s/(numSheets-1))*opts.creepIn*PT : 0;
+      const xL = mPt-creepPt, xR = mPt+pw+gPt+creepPt, yB = mPt;
+      // local page numbers within this signature (1..sigPages)
+      let aL:number,aR:number,bL:number,bR:number;
+      if (!opts.rtl) { aL=sigPages-s*2; aR=s*2+1; bL=s*2+2; bR=sigPages-s*2-1; }
+      else           { aL=s*2+1; aR=sigPages-s*2; bL=sigPages-s*2-1; bR=s*2+2; }
+      const g=(loc:number)=>start-1+loc;   // local → global page number
+      for (const [left,right] of [[aL,aR],[bL,bR]] as [number,number][]) {
+        const pg = outDoc.addPage([spreadW,spreadH]);
+        const eL=emb(g(left)), eR=emb(g(right));
+        if (eL) pg.drawPage(eL, {x:xL,y:yB,width:pw,height:ph});
+        if (eR) pg.drawPage(eR, {x:xR,y:yB,width:pw,height:ph});
+        if (opts.addMarks) { drawCropMarks(pg,rgb,xL,yB,pw,ph,offPt,lenPt,markStyle); drawCropMarks(pg,rgb,xR,yB,pw,ph,offPt,lenPt,markStyle); }
+      }
     }
   }
   return outDoc.save();
@@ -104,6 +140,17 @@ export interface NUpOptions {
   // Cut-and-stack ordering: pages are laid out so that cutting the sheets into
   // piles by cell position and stacking them yields sequential order.
   cutStack?: boolean;
+  // Center marks at each edge midpoint + configurable mark weight/colour.
+  centerMarks?: boolean;
+  markWeightPt?: number;
+  // Bleed-aware marks: art fills the whole cell, but crop marks are drawn at the
+  // trim, i.e. inset by this many inches on every side. 0 = marks at cell edge.
+  bleedIn?: number;
+  // Double-sided (duplex): source pages are interpreted as front,back,front,back…
+  // Fronts land on odd output sheets; backs on even sheets with the column order
+  // mirrored so a long-edge duplex flip lines the back up behind its front.
+  duplex?: boolean;
+  duplexFlip?: 'long' | 'short';
 }
 
 // Compute the effective grid for an N-Up layout (shared by engine + preview).
@@ -134,25 +181,40 @@ export async function imposeNUp(bytes: Uint8Array, opts: NUpOptions): Promise<Ui
   const shW=opts.sheetWIn*PT, shH=opts.sheetHIn*PT;
   const { cols, rows, cellWPt:cellW, cellHPt:cellH, leftGapPt, topGapPt, gxPt, gyPt } = computeNUpGrid(opts);
   const perSheet=cols*rows;
-  const numSheets=opts.repeatFirst?1:Math.max(1,Math.ceil(N/perSheet));
+  const duplex=!!opts.duplex;
+  // In duplex mode the source is front,back,front,back… so one "item" = 2 pages.
+  const totalItems=duplex?Math.ceil(N/2):N;
+  const numSheets=opts.repeatFirst?1:Math.max(1,Math.ceil(totalItems/perSheet));
   const outDoc=await PDFDocument.create();
   const embeds=await outDoc.embedPages(srcPages);
-  const off=opts.markOffIn*PT, len=opts.markLenIn*PT;
+  const off=opts.markOffIn*PT, len=opts.markLenIn*PT, bl=(opts.bleedIn??0)*PT;
+  const markStyle: MarkStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
+  const shortEdge=opts.duplexFlip==='short';
+
+  const itemAt=(si:number, cellIdx:number):number => {
+    if (opts.repeatFirst) return 0;
+    if (opts.cutStack) return cellIdx*numSheets+si;
+    return si*perSheet+cellIdx;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const place=(sheet:any, itemIdx:number, r:number, c:number, isBack:boolean) => {
+    const pi=duplex ? itemIdx*2+(isBack?1:0) : itemIdx;
+    if (pi>=N) return;
+    const emb=embeds[pi]; if (!emb) return;
+    // Mirror the back so a duplex flip registers it behind the front.
+    let cc=c, rr=r;
+    if (isBack) { if (shortEdge) rr=rows-1-r; else cc=cols-1-c; }
+    const x=leftGapPt+cc*(cellW+gxPt), y=shH-topGapPt-cellH-rr*(cellH+gyPt);
+    sheet.drawPage(emb, {x,y,width:cellW,height:cellH});
+    if (opts.addMarks) drawCropMarks(sheet,rgb,x+bl,y+bl,cellW-2*bl,cellH-2*bl,off,len,markStyle);
+  };
+
   for (let si=0; si<numSheets; si++) {
-    const sheet=outDoc.addPage([shW,shH]);
-    for (let r=0; r<rows; r++) {
-      for (let c=0; c<cols; c++) {
-        const cellIdx=r*cols+c;
-        let pi:number;
-        if (opts.repeatFirst) pi=0;
-        else if (opts.cutStack) pi=cellIdx*numSheets+si;
-        else pi=si*perSheet+cellIdx;
-        if (pi>=N) continue;
-        const emb=embeds[pi]; if (!emb) continue;
-        const x=leftGapPt+c*(cellW+gxPt), y=shH-topGapPt-cellH-r*(cellH+gyPt);
-        sheet.drawPage(emb, {x,y,width:cellW,height:cellH});
-        if (opts.addMarks) drawCropMarks(sheet,rgb,x,y,cellW,cellH,off,len);
-      }
+    const front=outDoc.addPage([shW,shH]);
+    for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) place(front, itemAt(si,r*cols+c), r, c, false);
+    if (duplex) {
+      const back=outDoc.addPage([shW,shH]);
+      for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) place(back, itemAt(si,r*cols+c), r, c, true);
     }
   }
   return outDoc.save();
@@ -177,6 +239,8 @@ export interface TicketOptions {
   addMarks: boolean;
   markLenIn: number;
   markOffIn: number;
+  centerMarks?: boolean;
+  markWeightPt?: number;
 }
 
 export async function imposeTickets(bytes: Uint8Array, opts: TicketOptions): Promise<Uint8Array> {
@@ -194,6 +258,7 @@ export async function imposeTickets(bytes: Uint8Array, opts: TicketOptions): Pro
   const [emb]=await outDoc.embedPages([srcPages[0]!]);
   const font=await outDoc.embedFont(StandardFonts.Helvetica);
   const off=opts.markOffIn*PT, len=opts.markLenIn*PT, inset=4;
+  const markStyle: MarkStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
   let ticket=0;
   for (let si=0; si<numSheets; si++) {
     const sheet=outDoc.addPage([shW,shH]);
@@ -208,7 +273,7 @@ export async function imposeTickets(bytes: Uint8Array, opts: TicketOptions): Pro
         const tx=opts.position.includes('right')?x+cellW-tw-inset:opts.position.includes('left')?x+inset:x+(cellW-tw)/2;
         const ty=opts.position.startsWith('top')?y+cellH-opts.fontSizePt-inset:y+inset;
         sheet.drawText(label,{x:tx,y:ty,font,size:opts.fontSizePt,color:rgb(0,0,0)});
-        if (opts.addMarks) drawCropMarks(sheet,rgb,x,y,cellW,cellH,off,len);
+        if (opts.addMarks) drawCropMarks(sheet,rgb,x,y,cellW,cellH,off,len,markStyle);
       }
     }
   }
@@ -222,6 +287,8 @@ export interface CropMarksOptions {
   marginIn: number;
   markLenIn: number;
   markOffIn: number;
+  centerMarks?: boolean;
+  markWeightPt?: number;
 }
 
 export async function addCropMarksOnly(bytes: Uint8Array, opts: CropMarksOptions): Promise<Uint8Array> {
@@ -230,12 +297,13 @@ export async function addCropMarksOnly(bytes: Uint8Array, opts: CropMarksOptions
   const srcPages=srcDoc.getPages();
   const outDoc=await PDFDocument.create();
   const embeds=await outDoc.embedPages(srcPages);
+  const markStyle: MarkStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
   for (let i=0; i<embeds.length; i++) {
     const {width:pw,height:ph}=srcPages[i]!.getSize();
     const mPt=opts.marginIn*PT, bPt=opts.bleedIn*PT;
     const pg=outDoc.addPage([pw+mPt*2,ph+mPt*2]);
     pg.drawPage(embeds[i]!,{x:mPt,y:mPt,width:pw,height:ph});
-    drawCropMarks(pg,rgb,mPt+bPt,mPt+bPt,pw-bPt*2,ph-bPt*2,opts.markOffIn*PT,opts.markLenIn*PT);
+    drawCropMarks(pg,rgb,mPt+bPt,mPt+bPt,pw-bPt*2,ph-bPt*2,opts.markOffIn*PT,opts.markLenIn*PT,markStyle);
   }
   return outDoc.save();
 }
@@ -347,17 +415,51 @@ export async function overlayPdf(baseBytes: Uint8Array, stampBytes: Uint8Array, 
 }
 
 // ── Shuffle / Reorder Pages ─────────────────────────────────────────────────
-// order: 1-indexed page numbers, e.g. [3,1,2] or "3,1,2"
+// Expression language (comma-separated), a superset of a plain page list:
+//   3,1,2        reorder
+//   1-5          ascending range      5-1  descending range (reverse)
+//   4>  3<  2^   rotate that page 90° cw / 90° ccw / 180°
+//   B  X  _  0   insert a blank page (source page-1 size)
+// e.g. "1,2>,B,5-3" → p1, p2 rotated cw, a blank, then pages 5,4,3.
 
 export async function shufflePages(bytes: Uint8Array, orderStr: string): Promise<Uint8Array> {
-  const { PDFDocument } = await import('pdf-lib');
+  const { PDFDocument, degrees } = await import('pdf-lib');
   const srcDoc=await PDFDocument.load(bytes,{ignoreEncryption:true});
   const n=srcDoc.getPageCount();
-  const order=orderStr.split(',').map(s=>parseInt(s.trim())-1).filter(i=>i>=0&&i<n);
-  if (!order.length) throw new Error('No valid page numbers');
+  const ref=srcDoc.getPage(0).getSize();
+  const instr: { page: number|null; rot: number }[] = [];
+  for (const raw of orderStr.split(',')) {
+    let tok=raw.trim(); if (!tok) continue;
+    let rot=0;
+    while (/[><^]$/.test(tok)) {
+      const ch=tok[tok.length-1]!;
+      rot=(rot+(ch==='>'?90:ch==='<'?270:180))%360;
+      tok=tok.slice(0,-1).trim();
+    }
+    if (/^[bxBX_]$/.test(tok) || tok==='0') { instr.push({ page:null, rot }); continue; }
+    const m=tok.match(/^(\d+)-(\d+)$/);
+    if (m) {
+      const a=parseInt(m[1]!), b=parseInt(m[2]!);
+      if (a<=b) for (let p=a; p<=b; p++) instr.push({ page:p, rot });
+      else      for (let p=a; p>=b; p--) instr.push({ page:p, rot });
+      continue;
+    }
+    const p=parseInt(tok);
+    if (!isNaN(p)) instr.push({ page:p, rot });
+  }
+  const valid=instr.filter(x=>x.page===null || (x.page>=1 && x.page<=n));
+  if (!valid.length) throw new Error('No valid page numbers');
   const outDoc=await PDFDocument.create();
-  const pages=await outDoc.copyPages(srcDoc,order);
-  for (const pg of pages) outDoc.addPage(pg);
+  for (const it of valid) {
+    if (it.page===null) {
+      const pg=outDoc.addPage([ref.width, ref.height]);
+      if (it.rot) pg.setRotation(degrees(it.rot));
+    } else {
+      const [pg]=await outDoc.copyPages(srcDoc,[it.page-1]);
+      if (it.rot && pg) pg.setRotation(degrees((pg.getRotation().angle+it.rot)%360));
+      if (pg) outDoc.addPage(pg);
+    }
+  }
   return outDoc.save();
 }
 
@@ -373,6 +475,45 @@ export async function cropPdf(bytes: Uint8Array, opts: { top:number; right:numbe
     pg.setTrimBox(lPt, bPt, w-lPt-rPt, h-tPt-bPt);
   }
   return doc.save();
+}
+
+// ── Resize / Scale ──────────────────────────────────────────────────────────
+// scale: multiply every page by a percentage. fit: drop each page onto a fixed
+// target sheet, preserving aspect ratio (letterboxed + centred). stretch: force
+// content to exactly fill the target sheet (aspect may change).
+
+export interface ResizeOptions {
+  mode: 'scale' | 'fit' | 'stretch';
+  scalePct: number;    // 'scale' — 100 = unchanged
+  targetWIn: number;   // 'fit' / 'stretch'
+  targetHIn: number;
+}
+
+export async function resizePdf(bytes: Uint8Array, opts: ResizeOptions): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const srcDoc=await PDFDocument.load(bytes,{ignoreEncryption:true});
+  const srcPages=srcDoc.getPages();
+  const outDoc=await PDFDocument.create();
+  const embeds=await outDoc.embedPages(srcPages);
+  for (let i=0; i<embeds.length; i++) {
+    const {width:w,height:h}=srcPages[i]!.getSize();
+    if (opts.mode==='scale') {
+      const f=Math.max(0.01,opts.scalePct/100);
+      const nw=w*f, nh=h*f;
+      const pg=outDoc.addPage([nw,nh]);
+      pg.drawPage(embeds[i]!,{x:0,y:0,width:nw,height:nh});
+    } else {
+      const tw=opts.targetWIn*PT, th=opts.targetHIn*PT;
+      const pg=outDoc.addPage([tw,th]);
+      if (opts.mode==='stretch') {
+        pg.drawPage(embeds[i]!,{x:0,y:0,width:tw,height:th});
+      } else {
+        const s=Math.min(tw/w,th/h), dw=w*s, dh=h*s;
+        pg.drawPage(embeds[i]!,{x:(tw-dw)/2,y:(th-dh)/2,width:dw,height:dh});
+      }
+    }
+  }
+  return outDoc.save();
 }
 
 // ── Page Numbering ──────────────────────────────────────────────────────────
@@ -448,6 +589,7 @@ export async function imposeTiledPoster(bytes: Uint8Array, opts: {
   sheetWIn: number; sheetHIn: number;
   overlapIn: number; addMarks: boolean;
   markLenIn: number; markOffIn: number;
+  centerMarks?: boolean; markWeightPt?: number;
 }): Promise<Uint8Array> {
   const { PDFDocument, rgb } = await import('pdf-lib');
   const srcDoc=await PDFDocument.load(bytes,{ignoreEncryption:true});
@@ -474,7 +616,7 @@ export async function imposeTiledPoster(bytes: Uint8Array, opts: {
       pg.drawPage(embed,{x:-offsetX,y:-offsetY,width:scaledW,height:scaledH});
       if (opts.addMarks) {
         const off=opts.markOffIn*PT, len=opts.markLenIn*PT;
-        drawCropMarks(pg,rgb,0,0,shW,shH,off,len);
+        drawCropMarks(pg,rgb,0,0,shW,shH,off,len,{ center: !!opts.centerMarks, weight: opts.markWeightPt });
       }
     }
   }
@@ -788,6 +930,8 @@ export interface DataMergeOptions {
   addMarks: boolean;
   markLenIn: number;
   markOffIn: number;
+  centerMarks?: boolean;
+  markWeightPt?: number;
   qrColumn: string;   // header name to encode as a QR ('' = no QR)
   qrSizePt: number;
 }
@@ -858,7 +1002,7 @@ export async function imposeDataMerge(csvText: string, opts: DataMergeOptions): 
         const tw = font.widthOfTextAtSize(label, opts.fontSizePt);
         pg.drawText(label, { x: qrOn ? x + 8 : x + cellW - tw - 8, y: y + 8, font, size: opts.fontSizePt, color: rgb(0.42, 0.42, 0.45) });
       }
-      if (opts.addMarks) drawCropMarks(pg, rgb, x, y, cellW, cellH, off, len);
+      if (opts.addMarks) drawCropMarks(pg, rgb, x, y, cellW, cellH, off, len, { center: !!opts.centerMarks, weight: opts.markWeightPt });
     }
   }
   return { pdf: await doc.save(), records: records.length, columns: headers };
