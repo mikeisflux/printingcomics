@@ -89,6 +89,54 @@ async function imposeBooklet(bytes, opts) {
   }
   return outDoc.save();
 }
+async function imposeNUpBook(bytes, opts) {
+  if (opts.nUp <= 2) {
+    return imposeBooklet(bytes, {
+      rtl: opts.rtl,
+      marginIn: opts.marginIn,
+      gutterIn: opts.gutterIn,
+      creepIn: opts.creepIn,
+      addMarks: opts.addMarks,
+      markLenIn: opts.markLenIn,
+      markOffIn: opts.markOffIn,
+      centerMarks: opts.centerMarks,
+      markWeightPt: opts.markWeightPt,
+      signatureSheets: opts.signatureSheets
+    });
+  }
+  const { PDFDocument, rgb, degrees } = await import("pdf-lib");
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const srcPages = srcDoc.getPages();
+  const N = srcPages.length;
+  const shW = opts.sheetWIn * PT, shH = opts.sheetHIn * PT, m = opts.marginIn * PT, g = opts.gutterIn * PT;
+  const cols = 2, rows = 2;
+  const cellW = (shW - 2 * m - g) / cols, cellH = (shH - 2 * m - g) / rows;
+  const outDoc = await PDFDocument.create();
+  const embeds = await outDoc.embedPages(srcPages);
+  const markStyle = { center: !!opts.centerMarks, weight: opts.markWeightPt };
+  const off = opts.markOffIn * PT, len = opts.markLenIn * PT;
+  const sigPages = 8;
+  const numSigs = Math.ceil(Math.max(1, N) / sigPages);
+  const FRONT = [[5, 0, 0, 180], [4, 0, 1, 180], [8, 1, 0, 0], [1, 1, 1, 0]];
+  const BACK = [[3, 0, 0, 180], [6, 0, 1, 180], [2, 1, 0, 0], [7, 1, 1, 0]];
+  const colX = (c) => m + (opts.rtl ? cols - 1 - c : c) * (cellW + g);
+  for (let sig = 0; sig < numSigs; sig++) {
+    for (const table of [FRONT, BACK]) {
+      const page = outDoc.addPage([shW, shH]);
+      for (const [p, r, c, rot] of table) {
+        const gp = sig * sigPages + p;
+        const x = colX(c), yTop = shH - m - r * (cellH + g), yBot = yTop - cellH;
+        const emb = gp >= 1 && gp <= N ? embeds[gp - 1] : null;
+        if (emb) {
+          if (rot === 180) page.drawPage(emb, { x: x + cellW, y: yTop, width: cellW, height: cellH, rotate: degrees(180) });
+          else page.drawPage(emb, { x, y: yBot, width: cellW, height: cellH });
+        }
+        if (opts.addMarks) drawCropMarks(page, rgb, x, yBot, cellW, cellH, off, len, markStyle);
+      }
+    }
+  }
+  return outDoc.save();
+}
 function computeNUpGrid(opts) {
   const shW = opts.sheetWIn * PT, shH = opts.sheetHIn * PT, mPt = opts.marginIn * PT;
   const gxPt = opts.gutterIn * PT, gyPt = (opts.gutterYIn ?? opts.gutterIn) * PT;
@@ -978,6 +1026,7 @@ export {
   imposeBooklet,
   imposeDataMerge,
   imposeNUp,
+  imposeNUpBook,
   imposeTickets,
   imposeTiledPoster,
   insertPages,

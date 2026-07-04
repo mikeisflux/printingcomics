@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.4
+
+- **N-up Book** now does real signature imposition: 2-up folio (saddle/perfect)
+  and 4-up quarto (8-page signature, 2×2 per side, top row rotated 180° — the
+  canonical scheme, verified). New `imposeNUpBook` engine function.
+- Templates now tie to their correct tools (Folding templates open Trifold/Folded
+  Brochure; Variable-Data templates open a data-merge tool).
+
 ## 1.2.3
 
 - **Shuffle** now implements the full expression language: `all`, `odd`, `even`,

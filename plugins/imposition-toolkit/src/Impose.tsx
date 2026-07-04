@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type { DragEvent, ChangeEvent } from 'react';
 import {
-  getPdfInfo, imposeBooklet, imposeNUp, computeNUpGrid, addCropMarksOnly,
+  getPdfInfo, imposeBooklet, imposeNUpBook, imposeNUp, computeNUpGrid, addCropMarksOnly,
   mergePdfs, rotatePdf, flipPdf, splitPdf, overlayPdf, shufflePages, cropPdf, resizePdf,
   addPageNumbers, addColorBar, imposeTiledPoster, imposeTickets,
   generateBleed, addHeaderFooter, addTextWatermark, addJobSlug, addCollatingMarks, preflight,
@@ -12,7 +12,7 @@ import type {
   PdfPageInfo, BookletOptions, NUpOptions, CropMarksOptions,
   OverlayOptions, PageNumberOptions, TicketOptions, ResizeOptions,
   HeaderFooterOptions, WatermarkOptions, JobSlugOptions, PreflightReport, DielineOptions, DataMergeOptions,
-  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions,
+  RegMarkOptions, InsertOptions, NudgeOptions, BackdropOptions, QrStampOptions, NUpBookOptions,
 } from './impose';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ type ToolEngine =
   | 'tickets' | 'merge' | 'rotate' | 'flip' | 'split' | 'overlay' | 'shuffle' | 'crop'
   | 'bleed' | 'preflight' | 'dieline' | 'datamerge' | 'resize'
   | 'watermark' | 'headerfooter' | 'slug' | 'collating' | 'registration'
-  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions';
+  | 'insert' | 'mix' | 'nudge' | 'repair' | 'backdrop' | 'qrstamp' | 'dimensions' | 'nupbook';
 type Status = 'idle' | 'loading' | 'processing' | 'done' | 'error';
 type TopTab = 'tools' | 'workflows' | 'calculators';
 type CalcTab = 'saddle' | 'perfectbind' | 'nup' | 'cost' | 'bleed';
@@ -473,10 +473,10 @@ const TOOLS: ToolDef[] = [
 
   // ── Booklets & books ──
   {
-    id: 'nupbook', name: 'N-up Book', preset: 'N-up book', category: 'Booklets & books', engine: 'booklet',
-    desc: 'Booklet pages, imposed automatically.',
-    tags: ['4 / 8 / 16-up in binding order', 'perfect or nested', 'creep compensation'],
-    defaultBooklet: { marginIn: 0.5, creepIn: 0.125 }, Thumb: gridThumb(2, 2, { numbered: true }),
+    id: 'nupbook', name: 'N-up Book', preset: 'N-up book', category: 'Booklets & books', engine: 'nupbook',
+    desc: 'Multi-up signature imposition — 2-up folio or 4-up quarto, folded to read in order.',
+    tags: ['2-up folio / 4-up quarto', 'perfect or nested', 'true fold imposition'],
+    Thumb: gridThumb(2, 2, { numbered: true }),
   },
   {
     id: 'booklet', name: 'Booklet', preset: 'Booklet', category: 'Booklets & books', engine: 'booklet',
@@ -911,9 +911,9 @@ const TEMPLATES: TemplateDef[] = [
   { id: "t018-coupon-sheets-10-up", name: "Coupon Sheets (10-Up)", industry: "Commercial Print", toolId: "coupons", specs: "3.5×2\" coupons ganged 10-up on Letter with perforation-ready marks." },
   { id: "t019-eddm-postcard-6-25-9", name: "EDDM Postcard (6.25×9\")", industry: "Commercial Print", toolId: "postcard", specs: "USPS Every Door Direct Mail oversized postcard on 13×19\" stock.", preset: { nup: { cellWIn: 6.25, cellHIn: 9.0, sheetWIn: 13.0, sheetHIn: 19.0, addMarks: true } } },
   { id: "t020-folder-insert-tabloid", name: "Folder Insert (Tabloid)", industry: "Commercial Print", toolId: "presfolder", specs: "Presentation folder insert (9×12\") centered on tabloid with trim marks." },
-  { id: "t021-full-bleed-brochure-booklet", name: "Full-Bleed Brochure Booklet", industry: "Commercial Print", toolId: "gangsheet", specs: "Add 3mm bleed to brochure pages, then impose as saddle-stitch booklet on Tabloid.", preset: { nup: { sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125, addMarks: true } } },
+  { id: "t021-full-bleed-brochure-booklet", name: "Full-Bleed Brochure Booklet", industry: "Commercial Print", toolId: "trifold", specs: "Add 3mm bleed to brochure pages, then impose as saddle-stitch booklet on Tabloid.", preset: { nup: { sheetWIn: 11, sheetHIn: 17, bleedIn: 0.125, addMarks: true } } },
   { id: "t022-full-bleed-postcards-4-up-bleed", name: "Full-Bleed Postcards (4-Up + Bleed)", industry: "Commercial Print", toolId: "postcard", specs: "Add 1/8″ bleed to postcard artwork missing bleeds, then gang 4-up on Letter with crop marks.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, bleedIn: 0.125, addMarks: true } } },
-  { id: "t023-gatefold-brochure-4-panel-letter", name: "Gatefold Brochure (4-Panel, Letter)", industry: "Commercial Print", toolId: "gangsheet", specs: "4-panel gatefold marketing brochure on Letter landscape. Two inner panels fold inward to meet at center.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t023-gatefold-brochure-4-panel-letter", name: "Gatefold Brochure (4-Panel, Letter)", industry: "Commercial Print", toolId: "zfold", specs: "4-panel gatefold marketing brochure on Letter landscape. Two inner panels fold inward to meet at center.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
   { id: "t024-loyalty-punch-cards-10-up", name: "Loyalty/Punch Cards (10-Up)", industry: "Commercial Print", toolId: "business", specs: "Standard business-card-size loyalty/punch cards, 10-up on Letter with crop marks.", preset: { nup: { cellWIn: 3.5, cellHIn: 2.0, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t025-ncr-form-3-part-carbon", name: "NCR Form (3-Part Carbon)", industry: "Commercial Print", toolId: "ncrpads", specs: "3-part carbonless form on Letter. Each part prints on separate sheet for collating.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t026-perfect-bound-a5-signatures", name: "Perfect Bound A5 Signatures", industry: "Commercial Print", toolId: "perfectbound", specs: "4-up perfect-bound book signatures for A5 trade paperbacks on A4 landscape.", preset: { booklet: { signatureSheets: 4 } } },
@@ -927,12 +927,12 @@ const TEMPLATES: TemplateDef[] = [
   { id: "t034-square-coasters-4-up", name: "Square Coasters (4-Up)", industry: "Commercial Print", toolId: "coasters", specs: "4\" square drink coasters printed 4-up on Tabloid stock with crop marks for die cutting.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
   { id: "t035-step-and-repeat-flyer", name: "Step-and-Repeat Flyer", industry: "Commercial Print", toolId: "flyer", specs: "Fill a sheet with sequential flyer pages, auto-scaled to fit. Ideal for different-content handouts.", preset: { nup: { repeatFirst: true, addMarks: true } } },
   { id: "t036-tear-off-flyer-with-tabs", name: "Tear-Off Flyer with Tabs", industry: "Commercial Print", toolId: "magazine", specs: "Community bulletin flyer with tear-off contact tabs designed into the bottom of the artwork, placed 1…" },
-  { id: "t037-tent-card-2-up", name: "Tent Card 2-Up", industry: "Commercial Print", toolId: "gangsheet", specs: "Fold-in-half table tent cards (4.25×5.5\" finished), 2-up on Letter for double-sided printing.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, duplex: true, addMarks: true, duplexFlip: "long" } } },
-  { id: "t038-tri-fold-brochure-letter", name: "Tri-Fold Brochure (Letter)", industry: "Commercial Print", toolId: "gangsheet", specs: "Standard tri-fold brochure on Letter stock. 6 panels (3 front, 3 back) with fold marks.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
-  { id: "t039-tri-fold-brochure-2-up", name: "Tri-Fold Brochure 2-Up", industry: "Commercial Print", toolId: "gangsheet", specs: "Imposes two copies of each finished tri-fold brochure side on tabloid/A3-style duplex sheets.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
-  { id: "t040-tri-fold-event-program", name: "Tri-Fold Event Program", industry: "Commercial Print", toolId: "gangsheet", specs: "Tri-fold event or church program on Letter landscape. 6 panels with fold marks.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
+  { id: "t037-tent-card-2-up", name: "Tent Card 2-Up", industry: "Commercial Print", toolId: "zfold", specs: "Fold-in-half table tent cards (4.25×5.5\" finished), 2-up on Letter for double-sided printing.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t038-tri-fold-brochure-letter", name: "Tri-Fold Brochure (Letter)", industry: "Commercial Print", toolId: "trifold", specs: "Standard tri-fold brochure on Letter stock. 6 panels (3 front, 3 back) with fold marks.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t039-tri-fold-brochure-2-up", name: "Tri-Fold Brochure 2-Up", industry: "Commercial Print", toolId: "trifold", specs: "Imposes two copies of each finished tri-fold brochure side on tabloid/A3-style duplex sheets.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t040-tri-fold-event-program", name: "Tri-Fold Event Program", industry: "Commercial Print", toolId: "trifold", specs: "Tri-fold event or church program on Letter landscape. 6 panels with fold marks.", preset: { nup: { sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
   { id: "t041-wall-calendar-signatures", name: "Wall Calendar Signatures", industry: "Commercial Print", toolId: "perfectbound", specs: "Coil-bound wall calendar with back cover rotation on tabloid landscape.", preset: { booklet: { signatureSheets: 4 } } },
-  { id: "t042-z-fold-accordion-6-panel-tabloid", name: "Z-Fold Accordion (6-Panel, Tabloid)", industry: "Commercial Print", toolId: "gangsheet", specs: "6-panel accordion-style brochure on 11×17\" tabloid. Zigzag folds, ~5.67\" per panel (17/3).", preset: { nup: { sheetWIn: 11.0, sheetHIn: 17.0, addMarks: true } } },
+  { id: "t042-z-fold-accordion-6-panel-tabloid", name: "Z-Fold Accordion (6-Panel, Tabloid)", industry: "Commercial Print", toolId: "zfold", specs: "6-panel accordion-style brochure on 11×17\" tabloid. Zigzag folds, ~5.67\" per panel (17/3).", preset: { nup: { sheetWIn: 11.0, sheetHIn: 17.0, addMarks: true } } },
   // ── Packaging ──
   { id: "t043-bakery-tray-liner-1-up", name: "Bakery Tray Liner (1-Up)", industry: "Packaging", toolId: "packaging", specs: "Bakery/deli tray liners printed 1-up on Tabloid (two 10.5″ liners cannot stack on a 17″ sheet)." },
   { id: "t044-blister-card-4-up", name: "Blister Card 4-Up", industry: "Packaging", toolId: "packaging", specs: "Retail blister packaging cards (3.5×5\") ganged 4-up on Tabloid with dieline paths." },
@@ -1013,8 +1013,8 @@ const TEMPLATES: TemplateDef[] = [
   { id: "t116-bookmarks-6-up", name: "Bookmarks (6-Up)", industry: "Office", toolId: "bookmark", specs: "Standard bookmarks (2×6\") printed 6-up on Letter stock.", preset: { nup: { cols: 2, rows: 3, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t117-certificates-2-up", name: "Certificates (2-Up)", industry: "Office", toolId: "flyer", specs: "Half-letter classroom certificates printed 2-up on Letter for quick teacher printing.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t118-confidential-watermark", name: "Confidential Watermark", industry: "Office", toolId: "overlay", specs: "Red CONFIDENTIAL watermark for sensitive documents — visible but non-destructive." },
-  { id: "t119-desk-name-plates-4-up", name: "Desk Name Plates (4-Up)", industry: "Office", toolId: "gangsheet", specs: "Folding desk name plates (8×2\" flat) printed 4-up on Letter.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
-  { id: "t120-door-signs-2-up", name: "Door Signs (2-Up)", industry: "Office", toolId: "gangsheet", specs: "Do Not Disturb / office door signs (4×10\") printed 2-up on Letter.", preset: { nup: { cols: 1, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t119-desk-name-plates-4-up", name: "Desk Name Plates (4-Up)", industry: "Office", toolId: "zfold", specs: "Folding desk name plates (8×2\" flat) printed 4-up on Letter.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t120-door-signs-2-up", name: "Door Signs (2-Up)", industry: "Office", toolId: "zfold", specs: "Do Not Disturb / office door signs (4×10\") printed 2-up on Letter.", preset: { nup: { cellWIn: 4.0, cellHIn: 10.0, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t121-draft-watermark", name: "Draft Watermark", industry: "Office", toolId: "overlay", specs: "Stamp a diagonal DRAFT watermark on every page — prevents accidental use of unfinished documents." },
   { id: "t122-emergency-contact-cards-10-up", name: "Emergency Contact Cards (10-Up)", industry: "Office", toolId: "business", specs: "Wallet-size emergency contact cards (3.5×2\") printed 10-up on Letter.", preset: { nup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t123-flash-cards-12-up", name: "Flash Cards (12-Up)", industry: "Office", toolId: "trading", specs: "Study flash cards (3.5×2\") printed 12-up on Letter. Perfect for students and educators.", preset: { nup: { cols: 3, rows: 4, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
@@ -1033,25 +1033,25 @@ const TEMPLATES: TemplateDef[] = [
   { id: "t136-recipe-cards-4-6-4-up", name: "Recipe Cards (4×6\", 4-Up)", industry: "Office", toolId: "postcard", specs: "Standard recipe cards (4×6\") printed 4-up on Tabloid. Double-sided for ingredients + instructions.", preset: { nup: { cellWIn: 4.0, cellHIn: 6.0, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
   { id: "t137-rotate-all-pages-landscape", name: "Rotate All Pages Landscape", industry: "Office", toolId: "rotate", specs: "Rotates all pages 90° clockwise. Useful for converting portrait scans to landscape." },
   { id: "t138-shipping-labels-6-up", name: "Shipping Labels (6-Up)", industry: "Office", toolId: "labels", specs: "Shipping/mailing labels (4×3.33\") printed 6-up on Letter. Fits standard label sheets.", preset: { nup: { cols: 2, rows: 3, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
-  { id: "t139-tent-cards-4-up", name: "Tent Cards (4-Up)", industry: "Office", toolId: "gangsheet", specs: "Table tent cards (5×5\" flat, folds to 5×2.5\") printed 4-up on Letter.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t139-tent-cards-4-up", name: "Tent Cards (4-Up)", industry: "Office", toolId: "zfold", specs: "Table tent cards (5×5\" flat, folds to 5×2.5\") printed 4-up on Letter.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t140-visitor-passes-10-up", name: "Visitor Passes (10-Up)", industry: "Office", toolId: "business", specs: "Business-card-size visitor passes (3.5×2\") printed 10-up on Letter stock.", preset: { nup: { cols: 2, rows: 5, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   // ── Variable Data ──
   { id: "t141-asset-tags-datamatrix", name: "Asset Tags (DataMatrix)", industry: "Variable Data", toolId: "namebadge", specs: "Compact DataMatrix asset tags, 10-up on Letter for inventory tracking." },
   { id: "t142-conference-badges-qr", name: "Conference Badges (QR)", industry: "Variable Data", toolId: "namebadge", specs: "Name badges with unique QR codes from CSV, 4-up on A4." },
   { id: "t143-event-tickets-qr-code", name: "Event Tickets (QR Code)", industry: "Variable Data", toolId: "tickets", specs: "QR code tickets from CSV data, 2-up on Letter sheets for easy cutting." },
   { id: "t144-gift-vouchers-qr-code", name: "Gift Vouchers (QR Code)", industry: "Variable Data", toolId: "coupons", specs: "Gift vouchers with unique QR redemption codes, 2-up on A4." },
-  { id: "t145-loyalty-cards-code-128", name: "Loyalty Cards (Code 128)", industry: "Variable Data", toolId: "gangsheet", specs: "Loyalty/membership cards with unique Code 128 barcodes, 10-up on Letter.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t145-loyalty-cards-code-128", name: "Loyalty Cards (Code 128)", industry: "Variable Data", toolId: "coupons", specs: "Loyalty/membership cards with unique Code 128 barcodes, 10-up on Letter." },
   { id: "t146-parking-permits-qr-code", name: "Parking Permits (QR Code)", industry: "Variable Data", toolId: "hangtag", specs: "Parking permits with unique QR validation codes, 4-up on Letter.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
-  { id: "t147-product-labels-ean-13", name: "Product Labels (EAN-13)", industry: "Variable Data", toolId: "labels", specs: "EAN-13 retail barcodes from CSV, 12-up on A4 for product labelling.", preset: { nup: { sheetWIn: 8.27, sheetHIn: 11.69, addMarks: true } } },
+  { id: "t147-product-labels-ean-13", name: "Product Labels (EAN-13)", industry: "Variable Data", toolId: "tickets", specs: "EAN-13 retail barcodes from CSV, 12-up on A4 for product labelling." },
   { id: "t148-raffle-tickets-numbered", name: "Raffle Tickets (Numbered)", industry: "Variable Data", toolId: "raffle", specs: "Code 128 barcode raffle tickets from CSV, 4-up on Letter." },
-  { id: "t149-shipping-labels-code-128", name: "Shipping Labels (Code 128)", industry: "Variable Data", toolId: "labels", specs: "Shipping labels with unique Code 128 barcodes, 10-up on Letter.", preset: { nup: { sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
+  { id: "t149-shipping-labels-code-128", name: "Shipping Labels (Code 128)", industry: "Variable Data", toolId: "tickets", specs: "Shipping labels with unique Code 128 barcodes, 10-up on Letter." },
   { id: "t150-wristbands-qr-code", name: "Wristbands (QR Code)", industry: "Variable Data", toolId: "coupons", specs: "Event wristbands with unique QR codes, 8-up on Letter." },
   // ── Real Estate ──
   { id: "t151-just-listed-flyer-2-up-8-5-5-5", name: "Just-Listed Flyer 2-Up (8.5×5.5\")", industry: "Real Estate", toolId: "flyer", specs: "Half-sheet landscape just-listed flyers, 2-up on Letter for feature sheets and open-house handouts.", preset: { nup: { cols: 2, rows: 1, sheetWIn: 11, sheetHIn: 8.5, addMarks: true } } },
   { id: "t152-just-listed-flyer-4-up-4-25-5-5", name: "Just-Listed Flyer 4-Up (4.25×5.5\")", industry: "Real Estate", toolId: "flyer", specs: "Quarter-sheet just-listed flyers, 4-up on Letter — the cheapest way to print open-house handouts.", preset: { nup: { cols: 2, rows: 2, sheetWIn: 8.5, sheetHIn: 11, addMarks: true } } },
   { id: "t153-just-sold-postcard-4-up-4-6", name: "Just-Sold Postcard 4-Up (4×6\")", industry: "Real Estate", toolId: "postcard", specs: "USPS-standard 4×6\" just-sold / farming postcards, 4-up on Tabloid for short-run direct mail.", preset: { nup: { cellWIn: 4.0, cellHIn: 6.0, sheetWIn: 11, sheetHIn: 17, addMarks: true } } },
   { id: "t154-open-house-yard-sign-2-up-18-24", name: "Open-House Yard Sign 2-Up (18×24\")", industry: "Real Estate", toolId: "rollerbanner", specs: "Two 18×24\" open-house / for-sale yard signs ganged on a 36×24\" large-format sheet.", preset: { nup: { cols: 2, rows: 1, sheetWIn: 36.0, sheetHIn: 24.0, addMarks: false } } },
-  { id: "t155-property-brochure-tri-fold-2-up", name: "Property Brochure Tri-Fold 2-Up", industry: "Real Estate", toolId: "gangsheet", specs: "Imposes two copies of each finished property brochure side on tabloid duplex sheets with tri-fold cre…", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
+  { id: "t155-property-brochure-tri-fold-2-up", name: "Property Brochure Tri-Fold 2-Up", industry: "Real Estate", toolId: "trifold", specs: "Imposes two copies of each finished property brochure side on tabloid duplex sheets with tri-fold cre…", preset: { nup: { cols: 1, rows: 2, sheetWIn: 11, sheetHIn: 17, duplex: true, addMarks: true, duplexFlip: "long" } } },
 ];
 
 // ── Shared UI primitives ─────────────────────────────────────────────────────
@@ -1237,6 +1237,52 @@ function BookletSettings({ opts, onChange }: { opts: BookletOptions; onChange: (
         </Row>
       </Field>
       <MarkExtras opts={opts} onChange={onChange} />
+    </Grid>
+  );
+}
+
+const DEFAULT_NUPBOOK: NUpBookOptions = {
+  nUp: 4, sheetWIn: 11, sheetHIn: 17, marginIn: 0.25, gutterIn: 0, creepIn: 0,
+  rtl: false, signatureSheets: 0, addMarks: true, markLenIn: 0.25, markOffIn: 0.125,
+};
+
+function NUpBookSettings({ opts, onChange }: { opts: NUpBookOptions; onChange: (o: NUpBookOptions) => void }) {
+  const set = <K extends keyof NUpBookOptions>(k: K, v: NUpBookOptions[K]) => onChange({ ...opts, [k]: v });
+  return (
+    <Grid>
+      <Field label="N-up (fold scheme)" note="Pages per sheet side">
+        <select value={opts.nUp} onChange={e => set('nUp', +e.target.value)} style={iStyle}>
+          <option value={2}>2-up — folio (1 fold)</option>
+          <option value={4}>4-up — quarto (2 folds)</option>
+        </select>
+      </Field>
+      <SheetPicker opts={opts} set={set} />
+      <Field label="Binding">
+        <select value={opts.signatureSheets > 0 ? String(opts.signatureSheets) : '0'} onChange={e => set('signatureSheets', +e.target.value)} style={iStyle}>
+          <option value="0">Nested (saddle-stitch)</option>
+          <option value="1">Perfect-bound — 1-sheet signatures</option>
+          <option value="2">Perfect-bound — 2-sheet signatures</option>
+          <option value="4">Perfect-bound — 4-sheet signatures</option>
+        </select>
+      </Field>
+      <Field label="Reading direction">
+        <select value={opts.rtl ? 'rtl' : 'ltr'} onChange={e => set('rtl', e.target.value === 'rtl')} style={iStyle}>
+          <option value="ltr">Left-to-right</option>
+          <option value="rtl">Right-to-left (manga)</option>
+        </select>
+      </Field>
+      <Field label="Margin (in)"><input type="number" min={0} max={2} step={0.0625} value={opts.marginIn} onChange={e => set('marginIn', +e.target.value)} style={iStyle} /></Field>
+      <Field label="Binding gutter (in)"><input type="number" min={0} max={0.5} step={0.0625} value={opts.gutterIn} onChange={e => set('gutterIn', +e.target.value)} style={iStyle} /></Field>
+      {opts.nUp <= 2 && (
+        <Field label="Creep (in)" note="Only for 2-up nested"><input type="number" min={0} max={0.5} step={0.0625} value={opts.creepIn} onChange={e => set('creepIn', +e.target.value)} style={iStyle} /></Field>
+      )}
+      <Field label="Crop marks">
+        <Row><input type="checkbox" checked={opts.addMarks} onChange={e => set('addMarks', e.target.checked)} /><span style={{ fontSize: '.85rem' }}>Add crop marks</span></Row>
+      </Field>
+      <MarkExtras opts={opts} onChange={onChange} />
+      <div style={{ gridColumn: '1 / -1', fontSize: '.76rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+        2-up folds one sheet in half (saddle/perfect). 4-up quarto folds an 8-page signature onto a 2×2 grid per side (top row rotates 180° so it reads correctly after folding + trimming).
+      </div>
     </Grid>
   );
 }
@@ -1451,9 +1497,9 @@ function CellMarks({ x, y, w, h, off, len, center }: { x: number; y: number; w: 
 
 // The imposition preview for a given engine + settings + current output sheet.
 function ImpositionCanvas({
-  engine, nupOpts, bookletOpts, posterOpts, ticketOpts, pageCount, unit, sheetLabel, sheetIndex, onSheetCount, zoom,
+  engine, nupOpts, bookletOpts, nupBookOpts, posterOpts, ticketOpts, pageCount, unit, sheetLabel, sheetIndex, onSheetCount, zoom,
 }: {
-  engine: ToolEngine; nupOpts: NUpOptions; bookletOpts: BookletOptions; posterOpts: PosterOptions; ticketOpts: TicketOptions;
+  engine: ToolEngine; nupOpts: NUpOptions; bookletOpts: BookletOptions; nupBookOpts: NUpBookOptions; posterOpts: PosterOptions; ticketOpts: TicketOptions;
   pageCount: number; unit: 'in' | 'mm' | 'pt'; sheetLabel: string; sheetIndex: number; onSheetCount: (n: number) => void; zoom: number;
 }) {
   // Build the geometry for the CURRENT output sheet.
@@ -1512,6 +1558,34 @@ function ImpositionCanvas({
       const blank = gp > pageCount || gp < 1;
       cells.push({ x, y: 0.25, w: cw, h: ch, n: gp, blank });
       if (addMarks) marks.push({ x, y: 0.25, w: cw, h: ch });
+    }
+  } else if (engine === 'nupbook') {
+    const o = nupBookOpts;
+    if (o.nUp <= 2) {
+      // Folio spread (same as booklet preview).
+      const N = Math.max(1, pageCount), sig = o.signatureSheets > 0 ? o.signatureSheets * 4 : Math.ceil(N / 4) * 4;
+      sheetCount = Math.ceil(N / sig) * (sig / 4) * 2;
+      const si = Math.min(sheetIndex, sheetCount - 1), sheetNo = Math.floor((si % ((sig / 4) * 2)) / 2), isBack = si % 2 === 1;
+      let aL: number, aR: number;
+      if (!isBack) { aL = sig - sheetNo * 2; aR = sheetNo * 2 + 1; } else { aL = sheetNo * 2 + 2; aR = sig - sheetNo * 2 - 1; }
+      shW = 2 * 4.25 + 0.25; shH = 6.5;
+      for (const [gp, x] of [[aL, 0.25], [aR, 4.5]] as [number, number][]) cells.push({ x, y: 0.25, w: 4.25, h: 6, n: gp, blank: gp > pageCount });
+    } else {
+      // Quarto (4-up) — 2×2 per side, top row reads rotated 180°.
+      shW = o.sheetWIn; shH = o.sheetHIn;
+      const sigPages = 8, numSigs = Math.ceil(Math.max(1, pageCount) / sigPages);
+      sheetCount = numSigs * 2;
+      const si = Math.min(sheetIndex, sheetCount - 1), sigNo = Math.floor(si / 2), isBack = si % 2 === 1;
+      const m = o.marginIn, g = o.gutterIn, cw = (shW - 2 * m - g) / 2, chh = (shH - 2 * m - g) / 2;
+      addMarks = !!o.addMarks; centerMarks = !!o.centerMarks; off = o.markOffIn; len = o.markLenIn;
+      const FRONT: [number, number, number][] = [[5, 0, 0], [4, 0, 1], [8, 1, 0], [1, 1, 1]];
+      const BACK: [number, number, number][] = [[3, 0, 0], [6, 0, 1], [2, 1, 0], [7, 1, 1]];
+      for (const [p, r, c] of (isBack ? BACK : FRONT)) {
+        const gp = sigNo * sigPages + p, cc = o.rtl ? 1 - c : c;
+        const x = m + cc * (cw + g), y = m + r * (chh + g);
+        cells.push({ x, y, w: cw, h: chh, n: gp, blank: gp > pageCount });
+        if (addMarks) marks.push({ x, y, w: cw, h: chh });
+      }
     }
   } else if (engine === 'poster') {
     const o = posterOpts;
@@ -2114,6 +2188,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
   // Per-engine settings state (initialised from the tool's presets, then any
   // template overrides layered on top).
   const [bookletOpts, setBookletOpts] = useState<BookletOptions>({ ...DEFAULT_BOOKLET, ...tool.defaultBooklet, ...preset?.booklet });
+  const [nupBookOpts, setNupBookOpts] = useState<NUpBookOptions>({ ...DEFAULT_NUPBOOK, ...(preset?.booklet ? { rtl: preset.booklet.rtl } : {}) });
   const [nupOpts, setNupOpts] = useState<NUpOptions>(() => {
     const merged = { ...DEFAULT_NUP, ...tool.defaultNup, ...preset?.nup };
     if (gridPreset) { delete (merged as Partial<NUpOptions>).cellWIn; delete (merged as Partial<NUpOptions>).cellHIn; }
@@ -2195,6 +2270,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
     let outName = `${base}-imposed.pdf`;
     switch (tool.engine) {
         case 'booklet': out = await imposeBooklet(file.bytes, bookletOpts); outName = `${base}-booklet.pdf`; break;
+        case 'nupbook': out = await imposeNUpBook(file.bytes, nupBookOpts); outName = `${base}-nupbook-${nupBookOpts.nUp}up.pdf`; break;
         case 'nup':
           out = await imposeNUp(file.bytes, nupOpts);
           outName = `${base}-${nupOpts.repeatFirst ? 'repeat' : `${tool.id}`}.pdf`; break;
@@ -2336,6 +2412,7 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
               <div className="admin-card" style={{ margin: 0, padding: '1rem 1.25rem' }}>
                 <h4 style={{ margin: '0 0 .75rem' }}>{tool.engine === 'preflight' ? 'Preflight report' : 'Settings'}</h4>
                 {tool.engine === 'booklet' && <BookletSettings opts={bookletOpts} onChange={setBookletOpts} />}
+                {tool.engine === 'nupbook' && <NUpBookSettings opts={nupBookOpts} onChange={setNupBookOpts} />}
                 {tool.engine === 'nup' && <NUpSettings opts={nupOpts} onChange={setNupOpts} cardMode={cardMode} />}
                 {tool.engine === 'poster' && <PosterSettings opts={posterOpts} onChange={setPosterOpts} />}
                 {tool.engine === 'cropmarks' && <CropSettings opts={cropOpts} onChange={setCropOpts} />}
@@ -2409,10 +2486,10 @@ function ToolWorkspace({ tool, preset, file, onFile, onSelectTool, onBack }: { t
                   onPrint={printOut} onDownload={process} busy={isBusy} status={status}
                 />
                 <ImpositionCanvas
-                  engine={tool.engine} nupOpts={nupOpts} bookletOpts={bookletOpts} posterOpts={posterOpts}
+                  engine={tool.engine} nupOpts={nupOpts} bookletOpts={bookletOpts} nupBookOpts={nupBookOpts} posterOpts={posterOpts}
                   ticketOpts={ticketOpts} pageCount={file.info.count} unit={unit}
                   sheetLabel={tool.engine === 'nup' || tool.engine === 'tickets'
-                    ? `${nupOpts.sheetWIn}×${nupOpts.sheetHIn}` : tool.engine === 'poster' ? `${posterOpts.sheetWIn}×${posterOpts.sheetHIn}` : 'sheet'}
+                    ? `${nupOpts.sheetWIn}×${nupOpts.sheetHIn}` : tool.engine === 'poster' ? `${posterOpts.sheetWIn}×${posterOpts.sheetHIn}` : tool.engine === 'nupbook' ? `${nupBookOpts.sheetWIn}×${nupBookOpts.sheetHIn}` : 'sheet'}
                   sheetIndex={sheetIndex} onSheetCount={setSheetCount} zoom={zoom}
                 />
               </main>

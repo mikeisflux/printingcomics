@@ -24,6 +24,22 @@ export interface BookletOptions {
     signatureSheets?: number;
 }
 export declare function imposeBooklet(bytes: Uint8Array, opts: BookletOptions): Promise<Uint8Array>;
+export interface NUpBookOptions {
+    nUp: number;
+    sheetWIn: number;
+    sheetHIn: number;
+    marginIn: number;
+    gutterIn: number;
+    creepIn: number;
+    rtl: boolean;
+    signatureSheets: number;
+    addMarks: boolean;
+    markLenIn: number;
+    markOffIn: number;
+    centerMarks?: boolean;
+    markWeightPt?: number;
+}
+export declare function imposeNUpBook(bytes: Uint8Array, opts: NUpBookOptions): Promise<Uint8Array>;
 export interface NUpOptions {
     cols: number;
     rows: number;
