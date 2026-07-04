@@ -285,36 +285,102 @@ async function overlayPdf(baseBytes, stampBytes, opts) {
   }
   return baseDoc.save();
 }
+function splitTopLevel(s) {
+  const parts = [];
+  let depth = 0, cur = "";
+  for (const ch of s) {
+    if (ch === "[" || ch === "(") depth++;
+    else if (ch === "]" || ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  parts.push(cur);
+  return parts;
+}
+function expandShuffle(expr, n, rot = 0) {
+  const out = [];
+  for (let tok of splitTopLevel(expr)) {
+    tok = tok.trim();
+    if (!tok) continue;
+    let r = rot;
+    while (/[><^]$/.test(tok)) {
+      const ch = tok.slice(-1);
+      r = (r + (ch === ">" ? 90 : ch === "<" ? 270 : 180)) % 360;
+      tok = tok.slice(0, -1).trim();
+    }
+    const low = tok.toLowerCase();
+    let m;
+    if (m = tok.match(/^(\d+)\s*\*\s*\(([\s\S]*)\)$/)) {
+      const times = parseInt(m[1]), sub = expandShuffle(m[2], n, r);
+      for (let k = 0; k < times; k++) out.push(...sub.map((x) => ({ ...x })));
+      continue;
+    }
+    if (tok.startsWith("[") && tok.endsWith("]")) {
+      const lists = splitTopLevel(tok.slice(1, -1)).map((s) => expandShuffle(s, n, r));
+      const maxLen = Math.max(0, ...lists.map((l) => l.length));
+      for (let i = 0; i < maxLen; i++) for (const l of lists) if (i < l.length) out.push(l[i]);
+      continue;
+    }
+    if (m = tok.match(/^group\s+(\d+)\s*:\s*([\s\S]+)$/i)) {
+      const g = Math.max(1, parseInt(m[1]));
+      const order = m[2].trim().split(/[\s,]+/).map((x) => parseInt(x)).filter((x) => !isNaN(x));
+      for (let base = 0; base < n; base += g) for (const loc of order) {
+        const p2 = base + loc;
+        if (p2 >= 1 && p2 <= n) out.push({ page: p2, rot: r });
+      }
+      continue;
+    }
+    if (low === "all") {
+      for (let i = 1; i <= n; i++) out.push({ page: i, rot: r });
+      continue;
+    }
+    if (low === "odd") {
+      for (let i = 1; i <= n; i += 2) out.push({ page: i, rot: r });
+      continue;
+    }
+    if (low === "even") {
+      for (let i = 2; i <= n; i += 2) out.push({ page: i, rot: r });
+      continue;
+    }
+    if (low === "first") {
+      out.push({ page: 1, rot: r });
+      continue;
+    }
+    if (low === "last") {
+      out.push({ page: n, rot: r });
+      continue;
+    }
+    if (low === "reverse" || low === "last-1" || low === "last-first") {
+      for (let i = n; i >= 1; i--) out.push({ page: i, rot: r });
+      continue;
+    }
+    if (/^[bxBX_]$/.test(tok) || tok === "0") {
+      out.push({ page: null, rot: r });
+      continue;
+    }
+    if (m = tok.match(/^(\d+|last|first|n)\s*-\s*(\d+|last|first|n)$/i)) {
+      const res = (t) => {
+        const tl = t.toLowerCase();
+        return tl === "last" || tl === "n" ? n : tl === "first" ? 1 : parseInt(t);
+      };
+      const a = res(m[1]), b = res(m[2]);
+      if (a <= b) for (let i = a; i <= b; i++) out.push({ page: i, rot: r });
+      else for (let i = a; i >= b; i--) out.push({ page: i, rot: r });
+      continue;
+    }
+    const p = parseInt(tok);
+    if (!isNaN(p)) out.push({ page: p, rot: r });
+  }
+  return out;
+}
 async function shufflePages(bytes, orderStr) {
   const { PDFDocument, degrees } = await import("pdf-lib");
   const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const n = srcDoc.getPageCount();
   const ref = srcDoc.getPage(0).getSize();
-  const instr = [];
-  for (const raw of orderStr.split(",")) {
-    let tok = raw.trim();
-    if (!tok) continue;
-    let rot = 0;
-    while (/[><^]$/.test(tok)) {
-      const ch = tok[tok.length - 1];
-      rot = (rot + (ch === ">" ? 90 : ch === "<" ? 270 : 180)) % 360;
-      tok = tok.slice(0, -1).trim();
-    }
-    if (/^[bxBX_]$/.test(tok) || tok === "0") {
-      instr.push({ page: null, rot });
-      continue;
-    }
-    const m = tok.match(/^(\d+)-(\d+)$/);
-    if (m) {
-      const a = parseInt(m[1]), b = parseInt(m[2]);
-      if (a <= b) for (let p2 = a; p2 <= b; p2++) instr.push({ page: p2, rot });
-      else for (let p2 = a; p2 >= b; p2--) instr.push({ page: p2, rot });
-      continue;
-    }
-    const p = parseInt(tok);
-    if (!isNaN(p)) instr.push({ page: p, rot });
-  }
-  const valid = instr.filter((x) => x.page === null || x.page >= 1 && x.page <= n);
+  const valid = expandShuffle(orderStr, n).filter((x) => x.page === null || x.page >= 1 && x.page <= n);
   if (!valid.length) throw new Error("No valid page numbers");
   const outDoc = await PDFDocument.create();
   for (const it of valid) {
@@ -905,6 +971,7 @@ export {
   cropPdf,
   downloadMultiple,
   downloadPdf,
+  expandShuffle,
   flipPdf,
   generateBleed,
   getPdfInfo,

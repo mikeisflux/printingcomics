@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3
+
+- **Shuffle** now implements the full expression language: `all`, `odd`, `even`,
+  `first`, `last`, `reverse`/`last-1`, `N*(...)` repeats, `[a,b]` interleave, and
+  `group N:` per-group reorder (plus the existing ranges/rotation/blanks).
+
 ## 1.2.2
 
 - **Persistent tool rail + full-width layout** — the studio is now a three-column

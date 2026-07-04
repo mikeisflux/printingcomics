@@ -415,48 +415,96 @@ export async function overlayPdf(baseBytes: Uint8Array, stampBytes: Uint8Array, 
 }
 
 // ── Shuffle / Reorder Pages ─────────────────────────────────────────────────
-// Expression language (comma-separated), a superset of a plain page list:
-//   3,1,2        reorder
-//   1-5          ascending range      5-1  descending range (reverse)
-//   4>  3<  2^   rotate that page 90° cw / 90° ccw / 180°
-//   B  X  _  0   insert a blank page (source page-1 size)
-// e.g. "1,2>,B,5-3" → p1, p2 rotated cw, a blank, then pages 5,4,3.
+// A small expression language (comma-separated at the top level):
+//   3,1,2          reorder                 all             every page 1..n
+//   1-5            ascending range          5-1 / last-1   descending (reverse)
+//   odd  even      odd / even pages         first  last    page 1 / page n
+//   4>  3<  2^     rotate 90cw / 90ccw / 180 (suffix, applies to the token)
+//   B  X  _  0     insert a blank page
+//   5*(1)          repeat the sub-expression 5 times
+//   [odd,even]     interleave the sub-lists (a1,b1,a2,b2…)
+//   group 3: 3 2 1 within each group of 3 source pages, reorder locally
+// e.g. "1,2>,B,5-3", "[odd,even]", "3*(1-2)", "group 4: 4 3 2 1".
+
+interface ShufInstr { page: number | null; rot: number }
+
+// Split a string on top-level commas, respecting [] and () nesting.
+function splitTopLevel(s: string): string[] {
+  const parts: string[] = []; let depth = 0, cur = '';
+  for (const ch of s) {
+    if (ch === '[' || ch === '(') depth++;
+    else if (ch === ']' || ch === ')') depth--;
+    if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; } else cur += ch;
+  }
+  parts.push(cur);
+  return parts;
+}
+
+// Expand an expression into an ordered instruction list against an n-page doc.
+export function expandShuffle(expr: string, n: number, rot = 0): ShufInstr[] {
+  const out: ShufInstr[] = [];
+  for (let tok of splitTopLevel(expr)) {
+    tok = tok.trim(); if (!tok) continue;
+    let r = rot;
+    while (/[><^]$/.test(tok)) { const ch = tok.slice(-1); r = (r + (ch === '>' ? 90 : ch === '<' ? 270 : 180)) % 360; tok = tok.slice(0, -1).trim(); }
+    const low = tok.toLowerCase();
+    let m: RegExpMatchArray | null;
+    // N*(sub) — repeat
+    if ((m = tok.match(/^(\d+)\s*\*\s*\(([\s\S]*)\)$/))) {
+      const times = parseInt(m[1]!), sub = expandShuffle(m[2]!, n, r);
+      for (let k = 0; k < times; k++) out.push(...sub.map(x => ({ ...x })));
+      continue;
+    }
+    // [a,b,...] — interleave
+    if (tok.startsWith('[') && tok.endsWith(']')) {
+      const lists = splitTopLevel(tok.slice(1, -1)).map(s => expandShuffle(s, n, r));
+      const maxLen = Math.max(0, ...lists.map(l => l.length));
+      for (let i = 0; i < maxLen; i++) for (const l of lists) if (i < l.length) out.push(l[i]!);
+      continue;
+    }
+    // group N: order — reorder within each group of N source pages
+    if ((m = tok.match(/^group\s+(\d+)\s*:\s*([\s\S]+)$/i))) {
+      const g = Math.max(1, parseInt(m[1]!));
+      const order = m[2]!.trim().split(/[\s,]+/).map(x => parseInt(x)).filter(x => !isNaN(x));
+      for (let base = 0; base < n; base += g) for (const loc of order) { const p = base + loc; if (p >= 1 && p <= n) out.push({ page: p, rot: r }); }
+      continue;
+    }
+    if (low === 'all') { for (let i = 1; i <= n; i++) out.push({ page: i, rot: r }); continue; }
+    if (low === 'odd') { for (let i = 1; i <= n; i += 2) out.push({ page: i, rot: r }); continue; }
+    if (low === 'even') { for (let i = 2; i <= n; i += 2) out.push({ page: i, rot: r }); continue; }
+    if (low === 'first') { out.push({ page: 1, rot: r }); continue; }
+    if (low === 'last') { out.push({ page: n, rot: r }); continue; }
+    if (low === 'reverse' || low === 'last-1' || low === 'last-first') { for (let i = n; i >= 1; i--) out.push({ page: i, rot: r }); continue; }
+    if (/^[bxBX_]$/.test(tok) || tok === '0') { out.push({ page: null, rot: r }); continue; }
+    // range a-b (endpoints may be numbers or first/last/n)
+    if ((m = tok.match(/^(\d+|last|first|n)\s*-\s*(\d+|last|first|n)$/i))) {
+      const res = (t: string) => { const tl = t.toLowerCase(); return tl === 'last' || tl === 'n' ? n : tl === 'first' ? 1 : parseInt(t); };
+      const a = res(m[1]!), b = res(m[2]!);
+      if (a <= b) for (let i = a; i <= b; i++) out.push({ page: i, rot: r });
+      else for (let i = a; i >= b; i--) out.push({ page: i, rot: r });
+      continue;
+    }
+    const p = parseInt(tok);
+    if (!isNaN(p)) out.push({ page: p, rot: r });
+  }
+  return out;
+}
 
 export async function shufflePages(bytes: Uint8Array, orderStr: string): Promise<Uint8Array> {
   const { PDFDocument, degrees } = await import('pdf-lib');
-  const srcDoc=await PDFDocument.load(bytes,{ignoreEncryption:true});
-  const n=srcDoc.getPageCount();
-  const ref=srcDoc.getPage(0).getSize();
-  const instr: { page: number|null; rot: number }[] = [];
-  for (const raw of orderStr.split(',')) {
-    let tok=raw.trim(); if (!tok) continue;
-    let rot=0;
-    while (/[><^]$/.test(tok)) {
-      const ch=tok[tok.length-1]!;
-      rot=(rot+(ch==='>'?90:ch==='<'?270:180))%360;
-      tok=tok.slice(0,-1).trim();
-    }
-    if (/^[bxBX_]$/.test(tok) || tok==='0') { instr.push({ page:null, rot }); continue; }
-    const m=tok.match(/^(\d+)-(\d+)$/);
-    if (m) {
-      const a=parseInt(m[1]!), b=parseInt(m[2]!);
-      if (a<=b) for (let p=a; p<=b; p++) instr.push({ page:p, rot });
-      else      for (let p=a; p>=b; p--) instr.push({ page:p, rot });
-      continue;
-    }
-    const p=parseInt(tok);
-    if (!isNaN(p)) instr.push({ page:p, rot });
-  }
-  const valid=instr.filter(x=>x.page===null || (x.page>=1 && x.page<=n));
+  const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const n = srcDoc.getPageCount();
+  const ref = srcDoc.getPage(0).getSize();
+  const valid = expandShuffle(orderStr, n).filter(x => x.page === null || (x.page >= 1 && x.page <= n));
   if (!valid.length) throw new Error('No valid page numbers');
-  const outDoc=await PDFDocument.create();
+  const outDoc = await PDFDocument.create();
   for (const it of valid) {
-    if (it.page===null) {
-      const pg=outDoc.addPage([ref.width, ref.height]);
+    if (it.page === null) {
+      const pg = outDoc.addPage([ref.width, ref.height]);
       if (it.rot) pg.setRotation(degrees(it.rot));
     } else {
-      const [pg]=await outDoc.copyPages(srcDoc,[it.page-1]);
-      if (it.rot && pg) pg.setRotation(degrees((pg.getRotation().angle+it.rot)%360));
+      const [pg] = await outDoc.copyPages(srcDoc, [it.page - 1]);
+      if (it.rot && pg) pg.setRotation(degrees((pg.getRotation().angle + it.rot) % 360));
       if (pg) outDoc.addPage(pg);
     }
   }

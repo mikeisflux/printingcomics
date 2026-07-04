@@ -97,6 +97,11 @@ export interface OverlayOptions {
     tileCols?: number;
 }
 export declare function overlayPdf(baseBytes: Uint8Array, stampBytes: Uint8Array, opts: OverlayOptions): Promise<Uint8Array>;
+interface ShufInstr {
+    page: number | null;
+    rot: number;
+}
+export declare function expandShuffle(expr: string, n: number, rot?: number): ShufInstr[];
 export declare function shufflePages(bytes: Uint8Array, orderStr: string): Promise<Uint8Array>;
 export declare function cropPdf(bytes: Uint8Array, opts: {
     top: number;
@@ -245,3 +250,4 @@ export declare function addQrStamp(bytes: Uint8Array, opts: QrStampOptions): Pro
 export declare function addDimensions(bytes: Uint8Array): Promise<Uint8Array>;
 export declare function downloadPdf(bytes: Uint8Array, filename: string): void;
 export declare function downloadMultiple(files: Uint8Array[], baseName: string): void;
+export {};
