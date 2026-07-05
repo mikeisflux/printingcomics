@@ -91,6 +91,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 6.67,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 13.0,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 13.0,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 13.0,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [
@@ -553,6 +568,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 6.67,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 13.0,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 13.0,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 13.0,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [
@@ -1015,6 +1045,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 6.67,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 17.5,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 17.5,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 17.5,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [
@@ -1442,7 +1487,23 @@
           "discountPct": 0.35
         }
       ],
-      "cover": [],
+      "cover": [
+        {
+          "label": "Metal Covers",
+          "priceUSD": 13.0,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 13.0,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 13.0,
+          "sub": "Glow-in-the-Dark Metal Cover"
+        }
+      ],
       "lamination": [],
       "uv": [],
       "foil": [],
@@ -1538,6 +1599,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 5,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 13.0,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 13.0,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 13.0,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [
@@ -5566,6 +5642,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 5,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 13.0,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 13.0,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 13.0,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [
@@ -9594,6 +9685,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 5,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 17.5,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 17.5,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 17.5,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [
@@ -13632,6 +13738,21 @@
           "label": "Holo-Chrome",
           "priceUSD": 6.67,
           "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
+          "label": "Metal Covers",
+          "priceUSD": 13.0,
+          "sub": "Brushed Metal Cover"
+        },
+        {
+          "label": "Raised Metal",
+          "priceUSD": 13.0,
+          "sub": "Raised Metal Cover"
+        },
+        {
+          "label": "Glow-in-the-Dark Metal",
+          "priceUSD": 13.0,
+          "sub": "Glow-in-the-Dark Metal Cover"
         }
       ],
       "lamination": [

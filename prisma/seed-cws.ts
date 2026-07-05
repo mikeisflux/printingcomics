@@ -203,7 +203,7 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
           ...(p.cover.length > 0
             ? [
                 {
-                  name: 'Cover Paper',
+                  name: 'Cover Type',
                   internalKey: 'cover_paper',
                   section: 'Your Cover',
                   type: 'TILES' as const,
