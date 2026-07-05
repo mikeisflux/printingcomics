@@ -1,7 +1,11 @@
 # Tool functional verification
 
+> The imposition tool suite now lives in the **`imposition-toolkit` plugin**
+> (`plugins/imposition-toolkit/`); it was removed from the storefront's
+> `/admin/impose` page. This doc describes that engine.
+
 Every tool in `pdfpress-reference.md` was exercised against the engine
-(`web/src/lib/impose.ts`) and its **output PDF inspected** — page counts, page
+(`plugins/imposition-toolkit/src/impose.ts`) and its **output PDF inspected** — page counts, page
 sizes, page boxes, rotation, and the actual **content-stream operators** (which
 source page landed in which cell, which marks/text/fills were drawn). This is a
 functional check of real output, not just "a PDF came back."

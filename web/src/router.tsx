@@ -52,7 +52,6 @@ import { AdminApiKeys } from './pages/admin/ApiKeys';
 import { AdminPartners } from './pages/admin/Partners';
 import { AdminPartnerDetail } from './pages/admin/PartnerDetail';
 import { AdminSiteDiscounts } from './pages/admin/SiteDiscounts';
-import { AdminImpose } from './pages/admin/Impose';
 
 export const router = createBrowserRouter([
   {
@@ -121,7 +120,6 @@ export const router = createBrowserRouter([
       { path: 'partners/:id', element: <AdminPartnerDetail /> },
       { path: 'settings', element: <AdminSettings /> },
       { path: 'sitediscounts', element: <AdminSiteDiscounts /> },
-      { path: 'impose', element: <AdminImpose /> },
     ],
   },
   { path: '*', element: <StoreLayout />, children: [{ index: true, element: <NotFound /> }] },
