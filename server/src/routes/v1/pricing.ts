@@ -15,6 +15,7 @@ import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
+import { evaluateCoupon } from '../../lib/coupons.js';
 
 const router = Router();
 
@@ -111,22 +112,12 @@ router.post('/quote', async (req, res) => {
     });
   }
 
-  // Coupon
-  let discount = 0;
-  let couponInfo: any = null;
-  if (data.couponCode) {
-    const coupon = await prisma.coupon.findUnique({ where: { code: data.couponCode.toUpperCase() } });
-    if (coupon && coupon.active && subtotal >= coupon.minSubtotalCents) {
-      if (coupon.percentOffBps) discount += Math.floor((subtotal * coupon.percentOffBps) / 10_000);
-      if (coupon.amountOffCents) discount += coupon.amountOffCents;
-      discount = Math.min(discount, subtotal);
-      couponInfo = {
-        code: coupon.code,
-        description: coupon.description,
-        discountCents: discount,
-      };
-    }
-  }
+  // Coupon — stacks on top of the site-wide discount already baked into each unit price.
+  const couponEval = await evaluateCoupon(data.couponCode, subtotal);
+  const discount = couponEval.discountCents;
+  const couponInfo = couponEval.ok && couponEval.coupon
+    ? { code: couponEval.coupon.code, description: couponEval.coupon.description, discountCents: discount }
+    : null;
 
   // Shipping
   let shippingCents = 0;

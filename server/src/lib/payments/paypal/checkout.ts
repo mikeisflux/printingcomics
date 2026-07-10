@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { prisma } from '../../../db.js';
+import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 
 export interface CreatePaypalOrderInput {
@@ -28,15 +29,11 @@ async function computeTotals(cartId: string, couponCode?: string, shippingMethod
 
   const subtotal = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
-  let discount = 0;
-  if (couponCode) {
-    const coupon = await prisma.coupon.findUnique({ where: { code: couponCode.toUpperCase() } });
-    if (coupon && coupon.active && subtotal >= coupon.minSubtotalCents) {
-      if (coupon.percentOffBps) discount += Math.floor((subtotal * coupon.percentOffBps) / 10_000);
-      if (coupon.amountOffCents) discount += coupon.amountOffCents;
-      discount = Math.min(discount, subtotal);
-    }
-  }
+  // Discount codes stack on top of the site-wide discount, which is already
+  // baked into each line's unitPriceCents (see routes/cart.ts).
+  const couponEval = await evaluateCoupon(couponCode, subtotal);
+  const discount = couponEval.discountCents;
+  const coupon = couponEval.ok ? couponEval.coupon : null;
 
   let shipping = 0;
   let shippingMethodName: string | undefined;
@@ -57,7 +54,7 @@ async function computeTotals(cartId: string, couponCode?: string, shippingMethod
   }
 
   const total = subtotal - discount + tax + shipping;
-  return { cart, subtotal, discount, tax, shipping, total, shippingMethodName };
+  return { cart, subtotal, discount, tax, shipping, total, shippingMethodName, coupon };
 }
 
 /**
@@ -178,6 +175,11 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
     where: { orderId: order.id },
     data: { providerRef: paypalOrder.id },
   });
+
+  // Count the redemption now that the PayPal order exists. (Abandoned
+  // approvals are rare; counting at capture would require persisting the code
+  // on the order.)
+  if (totals.coupon) await incrementCouponUsage(totals.coupon.id);
 
   return {
     paypalOrderId: paypalOrder.id,

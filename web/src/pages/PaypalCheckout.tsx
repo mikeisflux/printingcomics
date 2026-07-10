@@ -39,6 +39,12 @@ export function PaypalCheckout() {
   const [sameAsShip, setSameAsShip] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Discount code (applied before payment; stacks on top of the site-wide discount)
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountCents: number; description: string | null } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<string | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
+
   // Shipping rate selection
   interface ShipRate { id: string; name: string; rateCents: number; estimatedDays?: string | null }
   const [shipRates, setShipRates] = useState<ShipRate[]>([]);
@@ -77,6 +83,37 @@ export function PaypalCheckout() {
 
   const canCheckout = !!email && !!ship.line1 && !!ship.city && !!ship.postalCode && !!(cart?.items.length);
 
+  const applyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponBusy(true);
+    setCouponMsg(null);
+    try {
+      const r = await api.post<{ ok: boolean; code: string; description: string | null; discountCents: number; reason: string | null }>(
+        '/checkout/validate-coupon',
+        { code },
+      );
+      if (r.ok) {
+        setAppliedCoupon({ code: r.code, discountCents: r.discountCents, description: r.description });
+        setCouponMsg(null);
+      } else {
+        setAppliedCoupon(null);
+        setCouponMsg(r.reason ?? 'That code isn’t valid.');
+      }
+    } catch (e: any) {
+      setAppliedCoupon(null);
+      setCouponMsg(e?.message ?? 'Could not validate that code.');
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponMsg(null);
+  };
+
   const createOrder = async (): Promise<string> => {
     setError(null);
     const r = await api.post<{ paypalOrderId: string; orderNumber: string }>('/checkout/paypal/create', {
@@ -84,6 +121,7 @@ export function PaypalCheckout() {
       shippingAddress: ship,
       billingAddress: sameAsShip ? ship : bill,
       shippingRateId: shipRateId,
+      couponCode: appliedCoupon?.code,
     });
     return r.paypalOrderId;
   };
@@ -208,6 +246,48 @@ export function PaypalCheckout() {
             <span>Subtotal</span><span>{formatMoney(sub)}</span>
           </div>
 
+          {/* Discount code — applied here, before payment */}
+          <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 600, fontSize: '.9rem', marginBottom: '.35rem' }}>Discount code</div>
+            {appliedCoupon ? (
+              <div className="spread" style={{ alignItems: 'center' }}>
+                <span style={{ fontSize: '.9rem' }}>
+                  <strong>{appliedCoupon.code}</strong> applied
+                  {appliedCoupon.description ? ` — ${appliedCoupon.description}` : ''}
+                </span>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  style={{ padding: '.2rem .6rem', fontSize: '.8rem' }}
+                  onClick={removeCoupon}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '.5rem' }}>
+                <input
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon(); } }}
+                  placeholder="Enter code"
+                  style={{ flex: 1, textTransform: 'uppercase' }}
+                />
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={applyCoupon}
+                  disabled={couponBusy || !couponInput.trim()}
+                >
+                  {couponBusy ? '…' : 'Apply'}
+                </button>
+              </div>
+            )}
+            {couponMsg && (
+              <div className="error" style={{ marginTop: '.4rem', fontSize: '.8rem' }}>{couponMsg}</div>
+            )}
+          </div>
+
           {shipRates.length > 0 && (
             <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
               <div style={{ fontWeight: 600, fontSize: '.9rem', marginBottom: '.35rem' }}>Shipping</div>
@@ -232,12 +312,20 @@ export function PaypalCheckout() {
             </div>
           )}
 
+          {appliedCoupon && appliedCoupon.discountCents > 0 && (
+            <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: 'green' }}>
+              <span>Discount ({appliedCoupon.code})</span>
+              <span>−{formatMoney(appliedCoupon.discountCents)}</span>
+            </div>
+          )}
+
           {(() => {
             const ship = shipRates.find((r) => r.id === shipRateId);
             const shipCents = ship?.rateCents ?? 0;
+            const discount = appliedCoupon?.discountCents ?? 0;
             return (
               <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
-                <span>Total</span><span>{formatMoney(sub + shipCents)}</span>
+                <span>Total</span><span>{formatMoney(Math.max(0, sub - discount) + shipCents)}</span>
               </div>
             );
           })()}

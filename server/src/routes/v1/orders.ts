@@ -18,6 +18,7 @@ import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
+import { evaluateCoupon, incrementCouponUsage } from '../../lib/coupons.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { createPaypalApprovalForOrder } from '../../lib/payments/paypal/approval-for-order.js';
 
@@ -249,16 +250,9 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     });
   }
 
-  // ---- Coupon ----
-  let discount = 0;
-  if (data.couponCode) {
-    const coupon = await prisma.coupon.findUnique({ where: { code: data.couponCode.toUpperCase() } });
-    if (coupon && coupon.active && subtotal >= coupon.minSubtotalCents) {
-      if (coupon.percentOffBps) discount += Math.floor((subtotal * coupon.percentOffBps) / 10_000);
-      if (coupon.amountOffCents) discount += coupon.amountOffCents;
-      discount = Math.min(discount, subtotal);
-    }
-  }
+  // ---- Coupon ---- (stacks on top of the site-wide discount)
+  const couponEval = await evaluateCoupon(data.couponCode, subtotal);
+  const discount = couponEval.discountCents;
 
   // ---- Shipping ----
   let shippingCents = 0;
@@ -340,6 +334,8 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     },
     include: { items: { include: { files: { include: { media: true } } } } },
   });
+
+  if (couponEval.ok && couponEval.coupon) await incrementCouponUsage(couponEval.coupon.id);
 
   if (data.markAsPaid) {
     await prisma.payment.create({

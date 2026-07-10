@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
+import { evaluateCoupon } from '../lib/coupons.js';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 
 const router = Router();
@@ -56,6 +57,27 @@ router.post('/quote', async (req, res) => {
     shippingOptions: options.map((o) => ({
       id: o.id, name: o.name, rateCents: o.rateCents, estimatedDays: o.estimatedDays,
     })),
+  });
+});
+
+// ---- Validate a discount code against the current cart ----
+// Lets checkout preview the discount before the buyer commits to payment.
+router.post('/validate-coupon', async (req, res) => {
+  const { code } = z.object({ code: z.string().min(1).max(64) }).parse(req.body);
+  const cart = await findCart(req);
+  if (!cart) throw new HttpError(400, 'No cart');
+
+  const items = await prisma.cartItem.findMany({ where: { cartId: cart.id } });
+  const subtotalCents = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
+
+  const result = await evaluateCoupon(code, subtotalCents);
+  res.json({
+    ok: result.ok,
+    code: result.coupon?.code ?? code.trim().toUpperCase(),
+    description: result.coupon?.description ?? null,
+    discountCents: result.discountCents,
+    subtotalCents,
+    reason: result.ok ? null : result.reason,
   });
 });
 
