@@ -20,6 +20,21 @@ export function StoreLayout() {
 
   return (
     <>
+      {/* Top utility bar — phone number, always visible at the top of every page */}
+      <div style={{ background: 'var(--brand-dark)', color: '#fff', fontSize: '.85rem' }}>
+        <div
+          className="container"
+          style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', padding: '.4rem 0' }}
+        >
+          <a
+            href="tel:+12192386540"
+            style={{ color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '.4rem' }}
+          >
+            <span aria-hidden="true">📞</span> (219) 238-6540
+          </a>
+        </div>
+      </div>
+
       <header className="site-header">
         <div className="container">
           <Link to="/" className="logo">Printing Comics</Link>

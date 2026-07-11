@@ -159,6 +159,17 @@ export function Contact() {
       title="Contact us"
       intro="We usually respond within one business day."
     >
+      <div
+        className="admin-card"
+        style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '.85rem' }}
+      >
+        <span style={{ fontSize: '1.5rem' }} aria-hidden="true">📞</span>
+        <div>
+          <div style={{ fontWeight: 700 }}>Prefer to call?</div>
+          <a href="tel:+12192386540" style={{ fontSize: '1.15rem', fontWeight: 600 }}>(219) 238-6540</a>
+        </div>
+      </div>
+
       {status === 'ok' ? (
         <div className="admin-card" style={{ background: '#d4f5dc', border: '1px solid #166534' }}>
           <h3 style={{ marginTop: 0 }}>Thanks — we got it.</h3>
