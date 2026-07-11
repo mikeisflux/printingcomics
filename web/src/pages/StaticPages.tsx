@@ -285,17 +285,6 @@ export function FilePrep() {
   );
 }
 
-export function Templates() {
-  return (
-    <Page
-      title="Templates"
-      intro="Grab our Photoshop, Illustrator, and Clip Studio templates for every trim size we print."
-    >
-      <p className="muted">Template downloads are attached to each product page. Pick the product that matches your trim size, then click &quot;Download template&quot; on the left column.</p>
-    </Page>
-  );
-}
-
 export function Faq() {
   const items: { q: string; a: string }[] = [
     { q: 'What is your minimum order quantity?', a: 'As low as 1 for graphic novels and 25 for saddle-stitched comics.' },

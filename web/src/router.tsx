@@ -26,9 +26,9 @@ import {
   MakeAComic,
   Media,
   SamplePack,
-  Templates,
   Terms,
 } from './pages/StaticPages';
+import { Templates } from './pages/resources/Templates';
 import { Developers } from './pages/Developers';
 
 import { AdminDashboard } from './pages/admin/Dashboard';

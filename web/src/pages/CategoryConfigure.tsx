@@ -708,6 +708,22 @@ function OptionField({ opt, value, onChange, deltas }: { opt: ProductOption; val
               </label>
             ))}
           </div>
+          {opt.internalKey === 'printing_comics_ad' && (
+            <div style={{ marginTop: '.6rem' }}>
+              <a
+                href="/templates/comic-book-ad.pdf"
+                download
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: '.85rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '.35rem' }}
+              >
+                ↓ Download the Printing Comics ad (PDF)
+              </a>
+              <div className="muted" style={{ fontSize: '.78rem', marginTop: '.15rem' }}>
+                Preview the full-page house ad we can include in your book — free with your order.
+              </div>
+            </div>
+          )}
         </div>
       );
     case 'TOGGLE':
