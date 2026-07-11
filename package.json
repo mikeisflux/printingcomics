@@ -17,6 +17,7 @@
     "dev:web": "npm --workspace web run dev",
     "build": "prisma generate && npm --workspace server run build && npm --workspace web run build",
     "start": "npm --workspace server run start",
+    "deploy": "bash scripts/deploy.sh",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
