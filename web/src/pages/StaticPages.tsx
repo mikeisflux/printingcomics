@@ -251,40 +251,6 @@ export function SamplePack() {
   );
 }
 
-export function MakeAComic() {
-  return (
-    <Page
-      title="Make a comic"
-      intro="A crash course in taking an idea from script to printed book."
-    >
-      <p>
-        We've compiled our favorite articles, tools, and templates for working comic makers —
-        covering script format, thumbnails, lettering, color prepress, and final file export.
-      </p>
-      <p style={{ marginTop: '1rem' }}>
-        <Link to="/resources/templates" className="btn secondary">Download templates</Link>
-      </p>
-    </Page>
-  );
-}
-
-export function FilePrep() {
-  return (
-    <Page
-      title="File prep"
-      intro="How to build PDFs that print cleanly on our presses."
-    >
-      <ul>
-        <li>300 dpi raster at final trim size, plus 0.125&quot; bleed on all four sides</li>
-        <li>CMYK color only — convert RGB artwork before export</li>
-        <li>Embed all fonts, or outline them before export</li>
-        <li>Single PDF for interior, single PDF for cover (front-spine-back as one spread)</li>
-        <li>Flatten transparency to avoid blend-mode shifts</li>
-      </ul>
-    </Page>
-  );
-}
-
 export function Faq() {
   const items: { q: string; a: string }[] = [
     { q: 'What is your minimum order quantity?', a: 'As low as 1 for graphic novels and 25 for saddle-stitched comics.' },

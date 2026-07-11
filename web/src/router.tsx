@@ -22,13 +22,13 @@ import {
   Contact,
   Crowdfunding,
   Faq,
-  FilePrep,
-  MakeAComic,
   Media,
   SamplePack,
   Terms,
 } from './pages/StaticPages';
 import { Templates } from './pages/resources/Templates';
+import { MakeAComic } from './pages/resources/MakeAComic';
+import { FilePrep } from './pages/resources/FilePrep';
 import { Developers } from './pages/Developers';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
