@@ -255,12 +255,17 @@ function EmailSection() {
       <div className="admin-card">
         <h3>Mailgun</h3>
         <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          Transactional + campaign email via Mailgun's HTTP API. Get your API key from
-          Mailgun → <em>Sending → API Keys → Private API key</em>. Recommended sending domain:
-          <code> mail.printingcomics.com</code>.
+          Transactional + campaign email via Mailgun's HTTP API. The <strong>API key</strong> box
+          takes a Mailgun <em>Sending key</em> (Mailgun → your domain → <em>Domain settings →
+          Sending keys → Add sending key</em>, then copy the <strong>full key shown once</strong>).
+          The short <em>Key ID</em> like <code>8a38…a6cf</code> is <strong>not</strong> the key — copy
+          the full secret. A legacy account <em>Private API key</em> also works if you still have one.
+          Set <strong>Sending domain</strong> to your verified Mailgun domain exactly (e.g.
+          <code> printingcomics.com</code>) and <strong>From email</strong> to an address at that
+          domain. Region must match your Mailgun account (US vs EU).
         </p>
         <div className="grid-2">
-          <Field label="API key" type="password" placeholder="paste to update" value={settings['mailgun.apiKey']} onSave={(v) => save('mailgun.apiKey', v)} />
+          <Field label="API key (Mailgun sending key)" type="password" placeholder="paste full sending key" value={settings['mailgun.apiKey']} onSave={(v) => save('mailgun.apiKey', v)} />
           <Field label="Sending domain" value={settings['mailgun.domain']} onSave={(v) => save('mailgun.domain', v)} placeholder="mail.printingcomics.com" />
         </div>
         <div className="grid-2">
