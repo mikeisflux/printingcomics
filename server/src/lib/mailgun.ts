@@ -85,8 +85,25 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new HttpError(502, `Mailgun error ${res.status}: ${body}`);
+    const body = (await res.text().catch(() => '')).slice(0, 500);
+    if (res.status === 401 || res.status === 403) {
+      throw new HttpError(
+        502,
+        `Mailgun rejected the credentials (HTTP ${res.status}). Re-paste the Mailgun Private API key ` +
+          `(no leading/trailing spaces) and make sure the Region setting matches your Mailgun account — ` +
+          `an EU domain used on the US endpoint (or vice-versa) always returns 401. ` +
+          `Currently using region "${cfg.region}" (${base}) and domain "${cfg.domain}". ` +
+          `Mailgun response: ${body || '(empty)'}`,
+      );
+    }
+    if (res.status === 404) {
+      throw new HttpError(
+        502,
+        `Mailgun couldn't find the sending domain "${cfg.domain}" in the ${cfg.region.toUpperCase()} region. ` +
+          `Check the Sending domain and Region in Admin → Settings → Email. Mailgun response: ${body || '(empty)'}`,
+      );
+    }
+    throw new HttpError(502, `Mailgun error ${res.status}: ${body || '(empty)'}`);
   }
 
   const json = (await res.json().catch(() => ({}))) as { id?: string };

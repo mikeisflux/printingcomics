@@ -251,14 +251,16 @@ export async function getMailgunConfig() {
     getSetting<string>('mailgun.webhookSigningKey'),
     getSetting<boolean>('mailgun.testMode'),
   ]);
+  // Trim every credential/field — a stray space or newline pasted into the
+  // API key or domain is a common cause of Mailgun 401s.
   return {
-    apiKey: apiKey ?? '',
-    domain: domain ?? '',
-    region: (region === 'eu' ? 'eu' : 'us') as 'us' | 'eu',
-    fromEmail: fromEmail ?? '',
-    fromName: fromName ?? 'Printing Comics',
-    replyTo: replyTo ?? '',
-    webhookSigningKey: webhookSigningKey ?? '',
+    apiKey: (apiKey ?? '').trim(),
+    domain: (domain ?? '').trim(),
+    region: (String(region ?? 'us').trim().toLowerCase() === 'eu' ? 'eu' : 'us') as 'us' | 'eu',
+    fromEmail: (fromEmail ?? '').trim(),
+    fromName: (fromName ?? 'Printing Comics').trim(),
+    replyTo: (replyTo ?? '').trim(),
+    webhookSigningKey: (webhookSigningKey ?? '').trim(),
     testMode: Boolean(testMode),
   };
 }
