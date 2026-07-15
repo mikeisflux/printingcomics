@@ -6,6 +6,7 @@ import { HttpError } from '../middleware/error.js';
 import { priceForQuantity, type VolumeTier } from '../lib/money.js';
 import { computePricing, type PricingConfig } from '../lib/pricing.js';
 import { getSetting } from '../lib/settings.js';
+import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, PROOF_PRODUCT_SLUG } from '../lib/proofs.js';
 import { isProd } from '../config.js';
 
 const router = Router();
@@ -100,17 +101,18 @@ router.post('/items', async (req, res) => {
   // Configurator products (with pricingConfig) compute unit price from
   // selections instead of base+variant+volume.
   const cfg = product.pricingConfig as PricingConfig | null;
-  if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
-    const optionInputs: Record<string, string | number> = {};
-    for (const [k, v] of Object.entries(data.options ?? {})) {
-      const n = Number(v);
-      optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
-    }
-    const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
-    const breakdown = computePricing(cfg, { quantity: data.quantity, options: optionInputs, siteDiscountBps });
-    unitPriceCents = breakdown.unitCents;
+  const isConfigurator = !!(cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers));
+  const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
+  const optionInputs: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(data.options ?? {})) {
+    const n = Number(v);
+    optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
+  }
+  const baseUnit = unitPriceCents;
+  if (isConfigurator) {
+    unitPriceCents = computePricing(cfg!, { quantity: data.quantity, options: optionInputs, siteDiscountBps }).unitCents;
   } else {
-    unitPriceCents = priceForQuantity(unitPriceCents, data.quantity, product.volumeTiers as VolumeTier[] | null);
+    unitPriceCents = priceForQuantity(baseUnit, data.quantity, product.volumeTiers as VolumeTier[] | null);
   }
 
   const item = await prisma.cartItem.create({
@@ -123,6 +125,24 @@ router.post('/items', async (req, res) => {
       unitPriceCents,
     },
   });
+
+  // Hard-copy proof: add a separate, server-priced line — one printed copy of
+  // THIS book (single-copy price, no volume discount) plus a flat proof fee.
+  if (isProofRequested(data.options?.['hard_copy_proof'])) {
+    const singleCopyCents = isConfigurator
+      ? computePricing(cfg!, { quantity: 1, options: optionInputs, siteDiscountBps }).unitCents
+      : priceForQuantity(baseUnit, 1, product.volumeTiers as VolumeTier[] | null);
+    const proofProduct = await getOrCreateProofProduct();
+    await prisma.cartItem.create({
+      data: {
+        cartId: cart.id,
+        productId: proofProduct.id,
+        quantity: 1,
+        unitPriceCents: singleCopyCents + HARD_COPY_PROOF_FEE_CENTS,
+        options: { proof_kind: 'hard-copy', proof_for_item: item.id, book: product.name },
+      },
+    });
+  }
 
   await prisma.cart.update({ where: { id: cart.id }, data: { updatedAt: new Date() } });
 
@@ -144,7 +164,10 @@ router.patch('/items/:id', async (req, res) => {
   const baseCents = item.variant?.priceCents ?? item.product.priceCents;
   let unitPriceCents: number;
   const cfg = item.product.pricingConfig as PricingConfig | null;
-  if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
+  if (item.product.slug === PROOF_PRODUCT_SLUG) {
+    // Proof lines carry a fixed, server-computed price — never recompute.
+    unitPriceCents = item.unitPriceCents;
+  } else if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
     const optionInputs: Record<string, string | number> = {};
     const stored = (item.options as Record<string, string> | null) ?? {};
     for (const [k, v] of Object.entries(stored)) {
@@ -170,6 +193,10 @@ router.patch('/items/:id', async (req, res) => {
 router.delete('/items/:id', async (req, res) => {
   const cart = await getOrCreateCart(req, res);
   await prisma.cartItem.deleteMany({ where: { id: req.params.id, cartId: cart.id } });
+  // Also drop any hard-copy-proof line attached to this book line.
+  await prisma.cartItem.deleteMany({
+    where: { cartId: cart.id, options: { path: ['proof_for_item'], equals: req.params.id } },
+  });
   const full = await loadCartFull(cart.id);
   res.json({ cart: full });
 });

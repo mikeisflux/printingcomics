@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { prisma } from '../../../db.js';
 import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
+import { itemsRequestProof } from '../../proofs.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 
 export interface CreatePaypalOrderInput {
@@ -107,6 +108,9 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
         billingAddress: input.billingAddress as any,
         shippingMethod: totals.shippingMethodName,
         notes: input.notes,
+        // If any book asked for a PDF or hard-copy proof, the order can't go to
+        // production until staff upload a proof and the customer approves it.
+        proofStatus: itemsRequestProof(totals.cart.items) ? 'requested' : null,
         items: {
           create: totals.cart.items.map((ci) => {
             const uploadIds = itemUploadIds.get(ci.id) ?? [];

@@ -354,6 +354,26 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
           },
           // Finalize
           {
+            name: 'PDF proof before printing',
+            internalKey: 'pdf_proof',
+            section: 'Finalize Setup',
+            type: 'TOGGLE' as const,
+            required: false,
+            sortOrder: 38,
+            helpText:
+              'Free — we email you a PDF proof to approve before anything is printed. Nothing goes to production until you approve it.',
+          },
+          {
+            name: 'Hard-copy proof before printing',
+            internalKey: 'hard_copy_proof',
+            section: 'Finalize Setup',
+            type: 'TOGGLE' as const,
+            required: false,
+            sortOrder: 39,
+            helpText:
+              'A single printed proof of this book, shipped to you first. Adds the price of one book plus a $19.95 proof & shipping fee.',
+          },
+          {
             name: 'I would like a Printing Comics ad',
             internalKey: 'printing_comics_ad',
             section: 'Finalize Setup',
