@@ -221,24 +221,48 @@ export function AdminMedia() {
                     {f.mimeType.startsWith('image/') ? (
                       <img src={f.url} alt={f.altText ?? f.originalName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <div style={{ padding: '1rem', textAlign: 'center', fontSize: '.8rem', color: 'var(--ink-muted)' }}>
-                        {f.mimeType}
+                      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '.35rem', padding: '1rem', textAlign: 'center', color: 'var(--ink-muted)' }}>
+                        <span aria-hidden="true" style={{ fontSize: '2rem' }}>
+                          {f.mimeType === 'application/pdf' ? '📄' : f.mimeType.startsWith('video/') ? '🎬' : '📁'}
+                        </span>
+                        <span style={{ fontSize: '.72rem' }}>{f.mimeType === 'application/pdf' ? 'PDF' : f.mimeType}</span>
                       </div>
                     )}
                   </div>
                   <div style={{ padding: '.5rem' }}>
-                    <div style={{ fontSize: '.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.originalName}>
                       {f.originalName}
                     </div>
                     <div style={{ fontSize: '.75rem', color: 'var(--ink-muted)' }}>{humanSize(f.size)}</div>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      style={{ fontSize: '.75rem', padding: '.2rem .45rem', marginTop: '.35rem' }}
-                      onClick={() => setEditing(f)}
-                    >
-                      Edit
-                    </button>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginTop: '.4rem' }}>
+                      <a
+                        className="btn secondary"
+                        style={{ fontSize: '.72rem', padding: '.2rem .45rem' }}
+                        href={f.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Preview
+                      </a>
+                      <a
+                        className="btn secondary"
+                        style={{ fontSize: '.72rem', padding: '.2rem .45rem' }}
+                        href={f.url}
+                        download={f.originalName}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Download
+                      </a>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{ fontSize: '.72rem', padding: '.2rem .45rem' }}
+                        onClick={() => setEditing(f)}
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -260,6 +284,8 @@ function EditDialog({ file, onClose, onSaved }: { file: MediaFile; onClose: () =
     tags: (file.tags ?? []).join(', '),
   });
   const [busy, setBusy] = useState(false);
+  const [showPdf, setShowPdf] = useState(false);
+  const isPdf = file.mimeType === 'application/pdf';
 
   const save = async () => {
     setBusy(true);
@@ -286,9 +312,28 @@ function EditDialog({ file, onClose, onSaved }: { file: MediaFile; onClose: () =
         {file.mimeType.startsWith('image/') && (
           <img src={file.url} alt="" style={{ width: '100%', borderRadius: 'var(--radius)', marginBottom: '1rem' }} />
         )}
-        <div className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
+        {isPdf && (
+          <div style={{ marginBottom: '1rem' }}>
+            {showPdf ? (
+              <iframe
+                title={`Preview of ${file.originalName}`}
+                src={file.url}
+                style={{ width: '100%', height: 460, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
+              />
+            ) : (
+              <button type="button" className="btn secondary" style={{ width: '100%' }} onClick={() => setShowPdf(true)}>
+                Show PDF preview
+              </button>
+            )}
+          </div>
+        )}
+        <div className="muted" style={{ fontSize: '.85rem', marginBottom: '.75rem' }}>
           {file.mimeType} · {humanSize(file.size)}
           {file.width && file.height ? ` · ${file.width}×${file.height}` : ''}
+        </div>
+        <div className="row" style={{ marginBottom: '1rem', gap: '.5rem' }}>
+          <a className="btn" href={file.url} target="_blank" rel="noreferrer">Open in new tab</a>
+          <a className="btn secondary" href={file.url} download={file.originalName}>Download</a>
         </div>
         <label>Display name</label>
         <input value={form.originalName} onChange={(e) => setForm({ ...form, originalName: e.target.value })} />

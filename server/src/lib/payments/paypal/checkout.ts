@@ -76,6 +76,22 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
   // row we own, so webhook + capture callbacks can reconcile.
   const number = `PC-${Date.now().toString(36).toUpperCase()}-${randomInt(1000, 9999)}`;
 
+  // Link any customer-uploaded print files (referenced by URL in the cart-item
+  // options) to their order item, so staff can download them from the order.
+  const uploadUrlRe = /\/uploads\/customer\/[A-Za-z0-9._-]+/g;
+  const itemUploadIds = new Map<string, string[]>();
+  for (const ci of totals.cart.items) {
+    const opts = ci.options as Record<string, unknown> | null;
+    if (!opts) continue;
+    const urls = new Set<string>();
+    for (const v of Object.values(opts)) {
+      if (typeof v === 'string') for (const m of v.matchAll(uploadUrlRe)) urls.add(m[0]);
+    }
+    if (urls.size === 0) continue;
+    const medias = await prisma.mediaFile.findMany({ where: { url: { in: [...urls] } }, select: { id: true } });
+    if (medias.length) itemUploadIds.set(ci.id, medias.map((m) => m.id));
+  }
+
   const order = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({
       data: {
@@ -92,15 +108,21 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
         shippingMethod: totals.shippingMethodName,
         notes: input.notes,
         items: {
-          create: totals.cart.items.map((ci) => ({
-            productId: ci.productId,
-            variantId: ci.variantId,
-            name: ci.product.name + (ci.variant ? ` — ${ci.variant.label}` : ''),
-            options: ci.options ?? undefined,
-            quantity: ci.quantity,
-            unitPriceCents: ci.unitPriceCents,
-            totalCents: ci.unitPriceCents * ci.quantity,
-          })),
+          create: totals.cart.items.map((ci) => {
+            const uploadIds = itemUploadIds.get(ci.id) ?? [];
+            return {
+              productId: ci.productId,
+              variantId: ci.variantId,
+              name: ci.product.name + (ci.variant ? ` — ${ci.variant.label}` : ''),
+              options: ci.options ?? undefined,
+              quantity: ci.quantity,
+              unitPriceCents: ci.unitPriceCents,
+              totalCents: ci.unitPriceCents * ci.quantity,
+              files: uploadIds.length
+                ? { create: uploadIds.map((mediaFileId) => ({ mediaFileId, purpose: 'artwork' })) }
+                : undefined,
+            };
+          }),
         },
       },
     });

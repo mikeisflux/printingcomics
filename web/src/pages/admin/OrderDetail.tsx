@@ -283,30 +283,46 @@ export function AdminOrderDetail() {
                     {i.files && i.files.length > 0 && (
                       <div style={{ marginTop: '.4rem', display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
                         {i.files.map((f) => (
-                          <a
+                          <span
                             key={f.id}
-                            href={f.media.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={f.notes ?? undefined}
                             style={{
                               display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              padding: '.3rem .55rem',
+                              alignItems: 'stretch',
                               borderRadius: 4,
-                              background: 'var(--bg-alt)',
                               border: '1px solid var(--border)',
+                              overflow: 'hidden',
                               fontSize: '.8rem',
-                              textDecoration: 'none',
                             }}
                           >
-                            <span style={{ fontWeight: 600 }}>
-                              {f.purpose ? f.purpose.toUpperCase() : 'FILE'}
-                            </span>
-                            <span style={{ color: 'var(--ink)' }}>{f.media.originalName}</span>
-                            <span className="muted">({formatBytes(f.media.size)})</span>
-                          </a>
+                            <a
+                              href={f.media.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={f.notes ?? 'Preview'}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '.3rem .55rem',
+                                background: 'var(--bg-alt)',
+                                textDecoration: 'none',
+                              }}
+                            >
+                              <span style={{ fontWeight: 600 }}>
+                                {f.purpose ? f.purpose.toUpperCase() : 'FILE'}
+                              </span>
+                              <span style={{ color: 'var(--ink)' }}>{f.media.originalName}</span>
+                              <span className="muted">({formatBytes(f.media.size)})</span>
+                            </a>
+                            <a
+                              href={f.media.url}
+                              download={f.media.originalName}
+                              title="Download"
+                              style={{ padding: '.3rem .5rem', borderLeft: '1px solid var(--border)', textDecoration: 'none', color: 'var(--brand)', fontWeight: 700 }}
+                            >
+                              ↓
+                            </a>
+                          </span>
                         ))}
                       </div>
                     )}

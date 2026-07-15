@@ -532,20 +532,23 @@ function UploadControl({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [nameByUrl, setNameByUrl] = useState<Record<string, string>>({});
+
+  // The option stores every uploaded file's URL, one per line.
+  const urls = typeof value === 'string' && value ? value.split('\n').map((s) => s.trim()).filter(Boolean) : [];
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
-    const file = list[0]!;
     setBusy(true);
     setErr(null);
     setProgress(0);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      for (const file of Array.from(list)) fd.append('files', file);
       if (productId) fd.append('productId', productId);
       fd.append('optionKey', opt.internalKey ?? opt.id);
 
-      const url: string = await new Promise((resolve, reject) => {
+      const uploaded: { url: string; filename: string }[] = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/uploads/customer');
         xhr.withCredentials = true;
@@ -556,7 +559,10 @@ function UploadControl({
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const body = JSON.parse(xhr.responseText);
-              resolve(body.url);
+              const arr = Array.isArray(body.files)
+                ? body.files
+                : body.url ? [{ url: body.url, filename: body.filename }] : [];
+              resolve(arr);
             } catch (e) { reject(e); }
           } else {
             reject(new Error(xhr.statusText || 'Upload failed'));
@@ -565,7 +571,14 @@ function UploadControl({
         xhr.onerror = () => reject(new Error('Network error'));
         xhr.send(fd);
       });
-      onChange(url);
+      if (uploaded.length) {
+        setNameByUrl((m) => {
+          const next = { ...m };
+          for (const u of uploaded) next[u.url] = u.filename;
+          return next;
+        });
+        onChange([...urls, ...uploaded.map((u) => u.url)].join('\n'));
+      }
     } catch (e: any) {
       setErr(e.message ?? 'Upload failed');
     } finally {
@@ -573,26 +586,48 @@ function UploadControl({
     }
   }
 
+  function removeAt(idx: number) {
+    onChange(urls.filter((_, i) => i !== idx).join('\n'));
+  }
+
   return (
     <div>
       {label}
-      <label
-        className="btn secondary"
-        style={{ cursor: busy ? 'wait' : 'pointer', display: 'inline-block' }}
-      >
-        {busy ? `Uploading… ${progress}%` : value ? 'Replace file' : 'Upload your work'}
+      <label className="btn secondary" style={{ cursor: busy ? 'wait' : 'pointer', display: 'inline-block' }}>
+        {busy ? `Uploading… ${progress}%` : urls.length ? 'Add more files' : 'Upload your work'}
         <input
           type="file"
+          multiple
           style={{ display: 'none' }}
           disabled={busy}
-          onChange={(e) => void handleFiles(e.target.files)}
+          onChange={(e) => { void handleFiles(e.target.files); e.currentTarget.value = ''; }}
         />
       </label>
-      {typeof value === 'string' && value && !busy && (
-        <div className="muted" style={{ fontSize: '.85rem', marginTop: '.5rem', wordBreak: 'break-all' }}>
-          Uploaded: <a href={value} target="_blank" rel="noreferrer">{value}</a>
-        </div>
+      {urls.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '.6rem 0 0', display: 'grid', gap: '.35rem' }}>
+          {urls.map((u, i) => (
+            <li key={u} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.85rem' }}>
+              <span aria-hidden="true">📄</span>
+              <a href={u} target="_blank" rel="noreferrer" style={{ flex: 1, wordBreak: 'break-all' }}>
+                {nameByUrl[u] ?? u.split('/').pop()}
+              </a>
+              {!busy && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  style={{ padding: '.1rem .45rem', fontSize: '.75rem' }}
+                  onClick={() => removeAt(i)}
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
+      <div className="muted" style={{ fontSize: '.78rem', marginTop: '.4rem' }}>
+        Upload every print-ready file for this book — you can add multiple files (e.g. interior + cover).
+      </div>
       {err && <div className="error" style={{ marginTop: '.5rem' }}>{err}</div>}
     </div>
   );
