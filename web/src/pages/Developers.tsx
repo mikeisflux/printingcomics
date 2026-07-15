@@ -469,12 +469,42 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
 #   },
 #   "proofs": [ { "version": 1, "status": "pending", "createdAt": "..." } ]
 # }`}</Code>
+            <h3>Creator approval on your site</h3>
             <p>
-              Forward <code>latestProof.reviewUrl</code> to the creator, or subscribe to the{' '}
-              <code>proof.ready</code>, <code>proof.approved</code>, and{' '}
-              <code>proof.changes_requested</code> <a href="#webhooks">webhooks</a> to track
-              approval without polling.
+              Only the <strong>creator</strong> can approve a proof — never your API key. Approval is
+              gated by the proof's <code>token</code> (delivered in the <code>proof.ready</code>{' '}
+              webhook and as <code>latestProof.token</code>), so you can host the whole review +
+              approval flow inside your own platform:
             </p>
+            <ol>
+              <li>On <code>proof.ready</code>, notify the creator on your site — the payload carries{' '}
+                <code>reviewUrl</code>, <code>token</code>, and <code>fileUrl</code>.</li>
+              <li>Render the proof + terms with the public token endpoints below (or just deep-link
+                the creator to <code>reviewUrl</code>).</li>
+              <li>The creator approves (typing their name + accepting the terms) or requests changes;
+                you POST their decision with the token.</li>
+              <li>We fire <code>proof.approved</code> / <code>proof.changes_requested</code> back to
+                your <a href="#webhooks">webhook</a>, and the order is cleared for production (or held
+                for a revised proof).</li>
+            </ol>
+            <p className="muted">
+              These endpoints are token-authenticated (no <code>Authorization</code> header). The
+              token is the creator's credential — surface it only to the creator; your API key
+              deliberately cannot approve on their behalf.
+            </p>
+            <Code>{`# Fetch the proof + terms to display
+GET https://printingcomics.com/api/proofing/proof/<token>
+# → { proof: { version, status, fileUrl, message, ... },
+#     order: { number, items }, terms: "..." }
+
+# The creator approves — name + explicit terms acceptance are required
+POST https://printingcomics.com/api/proofing/proof/<token>/approve
+Content-Type: application/json
+{ "name": "Jane Doe", "acceptTerms": true }
+
+# ...or requests changes
+POST https://printingcomics.com/api/proofing/proof/<token>/changes
+{ "note": "Please fix the spine text." }`}</Code>
           </Section>
 
           <Section id="payments" title="Payments">
@@ -716,7 +746,7 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
                 <tr><td><code>order.delivered</code></td><td>Carrier reports delivery</td></tr>
                 <tr><td><code>order.cancelled</code></td><td>You or we cancelled the order</td></tr>
                 <tr><td><code>order.refunded</code></td><td>Payment refunded in full or part</td></tr>
-                <tr><td><code>proof.ready</code></td><td>Staff uploaded a proof; the customer was emailed a review link</td></tr>
+                <tr><td><code>proof.ready</code></td><td>A proof was uploaded for the creator to approve. Payload includes <code>reviewUrl</code>, <code>token</code>, and <code>fileUrl</code> so you can surface approval on your site</td></tr>
                 <tr><td><code>proof.approved</code></td><td>The customer approved the proof — the order is cleared for production</td></tr>
                 <tr><td><code>proof.changes_requested</code></td><td>The customer requested changes; a revised proof is needed</td></tr>
               </tbody>

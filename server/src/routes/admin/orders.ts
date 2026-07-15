@@ -9,7 +9,7 @@ import {
   sendOrderCancelledEmail,
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
-import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork } from '../../lib/proofs.js';
+import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
@@ -338,11 +338,22 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
   await sendProofReadyEmail(proof.id);
 
   if (order.partnerId) {
+    const reviewUrl = await proofReviewUrl(proof.token);
     void dispatchPartnerWebhook({
       partnerId: order.partnerId,
       event: 'proof.ready',
       orderId: order.id,
-      payload: { orderId: order.id, number: order.number, proofVersion: version, status: 'awaiting_approval' },
+      // token + reviewUrl let the partner surface the approval on their own
+      // site. Only whoever holds this token (the creator) can approve.
+      payload: {
+        orderId: order.id,
+        number: order.number,
+        proofVersion: version,
+        status: 'awaiting_approval',
+        token: proof.token,
+        reviewUrl,
+        fileUrl: media.url,
+      },
     }).catch(() => undefined);
   }
   res.json({ ok: true, proof });

@@ -485,6 +485,10 @@ router.get('/:idOrNumber/proof', requireApiKey('orders:read'), async (req, res) 
           version: latest.version,
           status: latest.status,
           fileUrl: latest.media.url,
+          // token/reviewUrl let you render the approval on your own site. Only
+          // the creator (whoever holds the token) can approve — your API key
+          // cannot. Approve/request-changes via the public token endpoints.
+          token: latest.token,
           reviewUrl: base ? `${base}/proof/${latest.token}` : null,
           approvedName: latest.approvedName,
           decidedAt: latest.decidedAt,

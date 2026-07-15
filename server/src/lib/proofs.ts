@@ -2,6 +2,14 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { prisma } from '../db.js';
+import { getSetting } from './settings.js';
+
+/** Absolute customer review link for a proof token, or null if no public URL is set. */
+export async function proofReviewUrl(token: string): Promise<string | null> {
+  const u = (await getSetting<string>('store.publicUrl')) || process.env.PUBLIC_URL || '';
+  const base = u.replace(/\/$/, '');
+  return base ? `${base}/proof/${token}` : null;
+}
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? './uploads');
 
