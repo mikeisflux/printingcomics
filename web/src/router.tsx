@@ -30,6 +30,8 @@ import { Templates } from './pages/resources/Templates';
 import { MakeAComic } from './pages/resources/MakeAComic';
 import { FilePrep } from './pages/resources/FilePrep';
 import { Developers } from './pages/Developers';
+import { ProofReview } from './pages/ProofReview';
+import { CorrectedUpload } from './pages/CorrectedUpload';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminProducts } from './pages/admin/Products';
@@ -93,6 +95,8 @@ export const router = createBrowserRouter([
       { path: 'resources/templates', element: <Templates /> },
       { path: 'resources/faq', element: <Faq /> },
       { path: 'developers', element: <Developers /> },
+      { path: 'proof/:token', element: <ProofReview /> },
+      { path: 'upload/:token', element: <CorrectedUpload /> },
     ],
   },
   {

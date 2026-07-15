@@ -66,12 +66,151 @@ interface OrderFull {
   } | null;
   source?: string | null;
   externalRef?: string | null;
+  proofStatus?: string | null;
+  proofs?: {
+    id: string; version: number; status: string; token: string;
+    message: string | null; decisionNote: string | null; approvedName: string | null;
+    approvedTermsAt: string | null; decidedAt: string | null; createdAt: string;
+    media: { id: string; originalName: string; url: string; size: number; mimeType: string };
+  }[];
+  mediaRequests?: {
+    id: string; message: string; token: string; status: string; fulfilledAt: string | null; createdAt: string;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
 
 const STATUSES = ['PENDING', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
 const PAY_STATUSES = ['PENDING', 'AUTHORIZED', 'CAPTURED', 'FAILED', 'REFUNDED'];
+
+function proofBanner(status: string | null | undefined): { text: string; bg: string; border: string } | null {
+  switch (status) {
+    case 'requested': return { text: '⚠ Proof requested — upload a PDF proof to send the customer. Production is blocked until it is approved.', bg: '#fdf3e7', border: '#e08a00' };
+    case 'awaiting_approval': return { text: '⏳ Awaiting customer approval — production is blocked until the customer approves the proof.', bg: '#fdf3e7', border: '#e08a00' };
+    case 'changes_requested': return { text: '✎ Customer requested changes — upload a revised proof. Production is blocked.', bg: '#fdecea', border: '#c0392b' };
+    case 'approved': return { text: '✓ Proof approved — this order is cleared for production.', bg: '#eef9f0', border: '#1c9b4b' };
+    default: return null;
+  }
+}
+
+function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
+  const [showProof, setShowProof] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofMsg, setProofMsg] = useState('');
+  const [showRequest, setShowRequest] = useState(false);
+  const [requestMsg, setRequestMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const origin = window.location.origin;
+  const banner = proofBanner(order.proofStatus);
+  const proofs = order.proofs ?? [];
+  const requests = order.mediaRequests ?? [];
+
+  async function uploadProof() {
+    if (!proofFile) return;
+    setBusy(true); setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', proofFile);
+      if (proofMsg.trim()) fd.append('message', proofMsg.trim());
+      const r = await fetch(`/api/admin/orders/${order.id}/proof`, { method: 'POST', credentials: 'include', body: fd });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Upload failed' }))).error);
+      setShowProof(false); setProofFile(null); setProofMsg('');
+      onChange();
+    } catch (e: any) { setErr(e.message ?? 'Upload failed'); }
+    finally { setBusy(false); }
+  }
+
+  async function requestMedia() {
+    if (!requestMsg.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.post(`/admin/orders/${order.id}/request-media`, { message: requestMsg.trim() });
+      setShowRequest(false); setRequestMsg('');
+      onChange();
+    } catch (e: any) { setErr(e.message ?? 'Request failed'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="admin-card">
+      <h3 style={{ marginTop: 0 }}>Proofing</h3>
+      {banner ? (
+        <div style={{ background: banner.bg, borderLeft: `4px solid ${banner.border}`, borderRadius: 8, padding: '.7rem 1rem', margin: '.5rem 0 1rem', fontWeight: 600 }}>
+          {banner.text}
+        </div>
+      ) : (
+        <p className="muted" style={{ margin: '.25rem 0 1rem' }}>No proof was requested for this order — you can still send one below.</p>
+      )}
+
+      <div style={{ display: 'flex', gap: '.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <button className="btn" onClick={() => { setShowProof((v) => !v); setShowRequest(false); }}>Upload PDF proof</button>
+        <button className="btn secondary" onClick={() => { setShowRequest((v) => !v); setShowProof(false); }}>Request additional media</button>
+      </div>
+
+      {showProof && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '1rem', marginBottom: '1rem' }}>
+          <label>Proof file (PDF)</label>
+          <input type="file" accept="application/pdf,image/*" onChange={(e) => setProofFile(e.target.files?.[0] ?? null)} />
+          <label style={{ marginTop: '.5rem' }}>Note to customer (optional)</label>
+          <textarea rows={2} value={proofMsg} onChange={(e) => setProofMsg(e.target.value)} placeholder="Anything the customer should look at…" />
+          <div style={{ marginTop: '.6rem' }}>
+            <button className="btn" onClick={uploadProof} disabled={busy || !proofFile}>{busy ? 'Sending…' : 'Send proof to customer'}</button>
+          </div>
+        </div>
+      )}
+
+      {showRequest && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '1rem', marginBottom: '1rem' }}>
+          <label>What do you need from the customer?</label>
+          <textarea rows={3} value={requestMsg} onChange={(e) => setRequestMsg(e.target.value)} placeholder="e.g. Your cover file is low-resolution — please re-upload at 300 DPI with bleed." />
+          <div style={{ marginTop: '.6rem' }}>
+            <button className="btn" onClick={requestMedia} disabled={busy || !requestMsg.trim()}>{busy ? 'Sending…' : 'Email the request'}</button>
+          </div>
+        </div>
+      )}
+
+      {err && <div className="error" style={{ marginBottom: '1rem' }}>{err}</div>}
+
+      {proofs.length > 0 && (
+        <div style={{ marginBottom: requests.length ? '1rem' : 0 }}>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '.4rem' }}>Proofs</div>
+          {proofs.map((p) => (
+            <div key={p.id} style={{ borderTop: '1px solid var(--border)', padding: '.5rem 0', fontSize: '.85rem' }}>
+              <div className="spread">
+                <span><strong>v{p.version}</strong> · {p.status.replace(/_/g, ' ')}</span>
+                <span className="muted">{new Date(p.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginTop: '.25rem' }}>
+                <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} target="_blank" rel="noreferrer">Preview</a>
+                <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} download={p.media.originalName}>Download</a>
+                <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} onClick={() => { void navigator.clipboard?.writeText(`${origin}/proof/${p.token}`); }}>Copy review link</button>
+              </div>
+              {p.status === 'approved' && <div style={{ color: 'green', marginTop: '.25rem' }}>Approved by {p.approvedName}{p.decidedAt ? ` on ${new Date(p.decidedAt).toLocaleString()}` : ''}</div>}
+              {p.status === 'changes_requested' && p.decisionNote && <div style={{ color: '#c0392b', marginTop: '.25rem' }}>Changes requested: {p.decisionNote}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {requests.length > 0 && (
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '.4rem' }}>Media requests</div>
+          {requests.map((mr) => (
+            <div key={mr.id} style={{ borderTop: '1px solid var(--border)', padding: '.5rem 0', fontSize: '.85rem' }}>
+              <div className="spread">
+                <span>{mr.status === 'fulfilled' ? '✓ fulfilled' : 'open'}</span>
+                <span className="muted">{new Date(mr.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ marginTop: '.2rem' }}>{mr.message}</div>
+              <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem', marginTop: '.3rem' }} onClick={() => { void navigator.clipboard?.writeText(`${origin}/upload/${mr.token}`); }}>Copy upload link</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AdminOrderDetail() {
   const { id } = useParams();
@@ -199,6 +338,8 @@ export function AdminOrderDetail() {
           )}
         </div>
       </div>
+
+      <ProofingCard order={order} onChange={load} />
 
       <div className="admin-card">
         <h3>Fulfilment</h3>
