@@ -16,6 +16,7 @@ import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
 import { evaluateCoupon } from '../../lib/coupons.js';
+import { isProofRequested, HARD_COPY_PROOF_FEE_CENTS } from '../../lib/proofs.js';
 
 const router = Router();
 
@@ -76,6 +77,7 @@ router.post('/quote', async (req, res) => {
       if (!variant || !variant.active) throw new HttpError(400, `Invalid variant for ${product.slug}`);
       unitPriceCents = variant.priceCents;
     }
+    const baseCents = unitPriceCents;
 
     const cfg = product.pricingConfig as PricingConfig | null;
     const optionInputs: Record<string, string | number> = {};
@@ -110,6 +112,25 @@ router.post('/quote', async (req, res) => {
       totalCents,
       breakdown,
     });
+
+    // Hard-copy proof: one printed copy of this book (single-copy price, no
+    // volume discount) + a $19.95 fee. Mirrors order creation so the quoted
+    // total matches what we'll actually charge. (PDF proof is free.)
+    if (isProofRequested(line.options?.['hard_copy_proof'])) {
+      const singleCopy = cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)
+        ? computePricing(cfg, { quantity: 1, options: optionInputs, siteDiscountBps }).unitCents
+        : priceForQuantity(baseCents, 1, product.volumeTiers as VolumeTier[] | null);
+      const proofUnit = singleCopy + HARD_COPY_PROOF_FEE_CENTS;
+      subtotal += proofUnit;
+      lines.push({
+        productSlug: 'hard-copy-proof',
+        productName: `Hard-Copy Proof — ${product.name}`,
+        quantity: 1,
+        options: { proof_kind: 'hard-copy', book: product.name },
+        unitPriceCents: proofUnit,
+        totalCents: proofUnit,
+      });
+    }
   }
 
   // Coupon — stacks on top of the site-wide discount already baked into each unit price.

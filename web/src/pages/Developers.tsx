@@ -267,6 +267,12 @@ Content-Type: application/json
   "totalCents": 45548,
   "currency": "USD"
 }`}</Code>
+            <p>
+              Proof fees are included in the quote exactly as they'll be charged: a line with{' '}
+              <code>hard_copy_proof</code> adds a separate <code>Hard-Copy Proof — …</code> item
+              (that book's single-copy price + $19.95), and <code>pdf_proof</code> is free. So the
+              quoted <code>totalCents</code> already reflects any requested proofs.
+            </p>
           </Section>
 
           <Section id="shipping" title="Shipping">
