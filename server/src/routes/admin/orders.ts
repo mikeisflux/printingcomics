@@ -9,8 +9,25 @@ import {
   sendOrderCancelledEmail,
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
+import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction } from '../../lib/proofs.js';
+import { sendProofReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
+import multer from 'multer';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 const router = Router();
+
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? './uploads');
+const PROOF_DIR = path.join(UPLOADS_DIR, 'proofs');
+await fs.mkdir(PROOF_DIR, { recursive: true }).catch(() => undefined);
+const proofUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_r, _f, cb) => cb(null, PROOF_DIR),
+    filename: (_r, file, cb) => cb(null, `${Date.now()}-${randomBytes(6).toString('hex')}${path.extname(file.originalname).slice(0, 10)}`),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+});
 
 router.get('/', async (req, res) => {
   const status = req.query.status as string | undefined;
@@ -72,6 +89,11 @@ router.get('/:id', async (req, res) => {
       apiKey: { select: { id: true, name: true, prefix: true } },
       partner: { select: { id: true, slug: true, name: true, color: true, status: true } },
       project: { select: { id: true, externalProjectId: true, title: true, creatorName: true, creatorEmail: true, status: true } },
+      proofs: {
+        orderBy: { createdAt: 'desc' },
+        include: { media: { select: { id: true, originalName: true, url: true, size: true, mimeType: true } } },
+      },
+      mediaRequests: { orderBy: { createdAt: 'desc' } },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
@@ -90,6 +112,14 @@ router.patch('/:id', async (req, res) => {
   const data = updateSchema.parse(req.body);
   const before = await prisma.order.findUnique({ where: { id: req.params.id } });
   if (!before) throw new HttpError(404, 'Order not found');
+
+  // Proof gate: block moving into production/shipping until the proof is approved.
+  if (data.status && PRODUCTION_STATUSES.has(data.status) && proofBlocksProduction(before.proofStatus)) {
+    throw new HttpError(
+      400,
+      `This order is awaiting proof approval — it can't move to ${data.status} until the customer approves the proof.`,
+    );
+  }
 
   const order = await prisma.order.update({ where: { id: req.params.id }, data });
 
@@ -259,6 +289,64 @@ router.post('/:id/refund', async (req, res) => {
     },
   });
   res.json({ refund: result });
+});
+
+// ---- Proofing: upload a PDF proof for the customer to approve ----
+router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: String(req.params.id) } });
+  if (!order) throw new HttpError(404, 'Order not found');
+  const f = req.file;
+  if (!f) throw new HttpError(400, 'No proof file received');
+  const rawMessage = req.body?.message;
+  const message = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.trim() : undefined;
+
+  const media = await prisma.mediaFile.create({
+    data: {
+      filename: f.filename,
+      originalName: f.originalname,
+      mimeType: f.mimetype,
+      size: f.size,
+      url: `/uploads/proofs/${f.filename}`,
+      folder: '/proofs',
+      tags: ['proof', `order:${order.number}`],
+      uploaderId: req.session?.sub,
+    },
+  });
+  const version = (await prisma.proof.count({ where: { orderId: order.id } })) + 1;
+  const proof = await prisma.proof.create({
+    data: { orderId: order.id, mediaFileId: media.id, version, token: proofToken(), message, status: 'pending' },
+  });
+  await prisma.order.update({ where: { id: order.id }, data: { proofStatus: 'awaiting_approval' } });
+  await prisma.orderStatusEvent.create({
+    data: { orderId: order.id, kind: 'status', message: `Proof v${version} uploaded and emailed for approval` },
+  });
+  await sendProofReadyEmail(proof.id);
+
+  if (order.partnerId) {
+    void dispatchPartnerWebhook({
+      partnerId: order.partnerId,
+      event: 'proof.ready',
+      orderId: order.id,
+      payload: { orderId: order.id, number: order.number, proofVersion: version, status: 'awaiting_approval' },
+    }).catch(() => undefined);
+  }
+  res.json({ ok: true, proof });
+});
+
+// ---- Proofing: request additional / corrected media from the customer ----
+const requestMediaSchema = z.object({ message: z.string().min(1).max(2000) });
+router.post('/:id/request-media', async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+  if (!order) throw new HttpError(404, 'Order not found');
+  const { message } = requestMediaSchema.parse(req.body);
+  const mr = await prisma.mediaRequest.create({
+    data: { orderId: order.id, message, token: proofToken(), status: 'open' },
+  });
+  await prisma.orderStatusEvent.create({
+    data: { orderId: order.id, kind: 'status', message: 'Requested additional media from the customer' },
+  });
+  await sendMediaRequestEmail(mr.id);
+  res.json({ ok: true, mediaRequest: mr });
 });
 
 export default router;

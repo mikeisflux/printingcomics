@@ -49,7 +49,7 @@ export function itemsRequestProof(items: Array<{ options: unknown }>): boolean {
  * beyond". While a proof is required and not yet approved, transitions into
  * these are blocked.
  */
-export const PRODUCTION_STATUSES = new Set(['IN_PRODUCTION', 'PRINTED', 'SHIPPED', 'DELIVERED']);
+export const PRODUCTION_STATUSES = new Set(['IN_PRODUCTION', 'SHIPPED', 'DELIVERED']);
 
 /** Is the order's proof still blocking production? */
 export function proofBlocksProduction(proofStatus: string | null | undefined): boolean {
