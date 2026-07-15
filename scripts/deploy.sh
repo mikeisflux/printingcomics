@@ -41,6 +41,11 @@ done
 echo "==> Deploying branch '$BRANCH'  ($REPO_DIR)"
 BEFORE="$(git rev-parse HEAD 2>/dev/null || echo none)"
 
+# Remember our own content hash so we can re-exec the updated copy after the
+# reset — otherwise a self-update to this script runs stale logic in memory.
+SELF="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+SELF_HASH_BEFORE="$(git hash-object "$SELF" 2>/dev/null || echo none)"
+
 # ---- fetch with retry/backoff on flaky networks ----
 git_retry() {
   local n=0 max=4 delay=2
@@ -57,6 +62,17 @@ git_retry fetch origin "$BRANCH"
 git checkout -B "$BRANCH" "origin/$BRANCH"
 git reset --hard "origin/$BRANCH"
 AFTER="$(git rev-parse HEAD)"
+
+# If the reset changed this script itself, re-exec the new copy so we never run
+# stale deploy logic (e.g. a deploy that predates the db-push step).
+if [ "${DEPLOY_REEXECED:-0}" != "1" ]; then
+  SELF_HASH_AFTER="$(git hash-object "$SELF" 2>/dev/null || echo none)"
+  if [ "$SELF_HASH_BEFORE" != "$SELF_HASH_AFTER" ]; then
+    echo "==> deploy.sh changed in this update — re-running the new version"
+    export DEPLOY_REEXECED=1
+    exec bash "$SELF" --branch="$BRANCH"
+  fi
+fi
 
 if [ "$BEFORE" = "$AFTER" ]; then
   echo "==> Already at $(git rev-parse --short HEAD) — rebuilding anyway."
