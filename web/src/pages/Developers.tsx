@@ -462,6 +462,7 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
 #     "version": 1,
 #     "status": "pending",                // pending | approved | changes_requested
 #     "fileUrl": "/uploads/proofs/....pdf",
+#     "token": "<token>",                 // the creator's approval credential
 #     "reviewUrl": "https://printingcomics.com/proof/<token>",
 #     "approvedName": null,
 #     "decidedAt": null,
