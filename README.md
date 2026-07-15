@@ -40,9 +40,11 @@ npm run dev
 - Shop listing (optionally filtered by category slug)
 - Product detail with variants, options, volume pricing
 - Cart (persists for guests via cookie, merges on login)
-- Checkout with shipping quote, tax calculation, coupon, order notes
+- Checkout with shipping quote, tax calculation, coupon + discount codes,
+  PDF / hard-copy proof options, order notes
 - Order confirmation
 - Customer account + order history
+- Tokenized proof review (`/proof/:token`) + corrected-file upload (`/upload/:token`)
 - Register / Login / Logout
 
 ### Admin (`/admin`)
@@ -50,13 +52,17 @@ npm run dev
 - Products (list, create, edit, delete, variants, volume tiers, categories, images)
 - Categories (CRUD)
 - Orders (list, filter by status, detail view with status + payment + tracking updates)
+- Proofing per order (upload PDF proof, request corrected media, approval hard-block)
 - Customers (list, search, role assignment, drawer view of orders + addresses)
+- Discount Codes, Site Discounts, Media library (download + PDF preview)
+- Email Center (compose one-off, campaigns, templates, subscribers, inbound)
 - Settings (store info, shipping zones/rates, tax rates, coupons)
 
 ### Data model (Prisma)
 `User`, `Address`, `Category`, `Product`, `ProductImage`, `ProductOption`,
 `ProductOptionValue`, `ProductVariant`, `Cart`, `CartItem`, `Order`, `OrderItem`,
-`Payment`, `ShippingZone`, `ShippingRate`, `TaxRate`, `Coupon`, `Setting`.
+`Payment`, `ShippingZone`, `ShippingRate`, `TaxRate`, `Coupon`, `Setting`,
+`MediaFile`, `OrderItemFile`, `Proof`, `MediaRequest`.
 
 ## Deployment notes
 

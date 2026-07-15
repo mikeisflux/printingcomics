@@ -400,6 +400,7 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
 #     "projectId": "cmproj1abcde...",
 #     "status": "PENDING",
 #     "paymentStatus": "PENDING",
+#     "proofStatus": null,
 #     "totalCents": 487500,
 #     "items": [ { ... "files": [ ... ] } ]
 #   },
@@ -431,6 +432,49 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
 
             <Endpoint method="POST" path="/orders/:idOrNumber/cancel" scope="orders:write" />
             <p>Cancel an order that hasn't shipped yet. Optional body: <code>{`{ "reason": "Backer refunded" }`}</code>.</p>
+
+            <h3 id="order-proofing">Proofing</h3>
+            <p>
+              Request a pre-production proof by setting proof options on a line item. A{' '}
+              <strong>PDF proof</strong> is free and simply flags the order; a{' '}
+              <strong>hard-copy proof</strong> adds a separate line item priced at that book's
+              single-copy price plus a <strong>$19.95</strong> proof &amp; shipping fee (charged per
+              book). Add either or both in the item <code>options</code>:
+            </p>
+            <Code>{`"options": {
+  "interior_pages": 32,
+  "pdf_proof": "yes",         // free — flags the order for a PDF proof
+  "hard_copy_proof": "yes"    // adds one printed proof of this book + $19.95
+}`}</Code>
+            <p>
+              An order that requests any proof is created with{' '}
+              <code>proofStatus: "requested"</code> and is <strong>held from production and shipping
+              until the proof is approved</strong>. Our team uploads a proof (emailing the customer a
+              review link); the customer approves it or requests changes.
+            </p>
+            <Endpoint method="GET" path="/orders/:idOrNumber/proof" scope="orders:read" />
+            <p>Proof status, the customer's review link, and version history:</p>
+            <Code>{`GET /api/v1/orders/PCAPI-LK7Z2X-3491/proof
+# →
+# {
+#   "proofStatus": "awaiting_approval",   // null | requested | awaiting_approval | approved | changes_requested
+#   "latestProof": {
+#     "version": 1,
+#     "status": "pending",                // pending | approved | changes_requested
+#     "fileUrl": "/uploads/proofs/....pdf",
+#     "reviewUrl": "https://printingcomics.com/proof/<token>",
+#     "approvedName": null,
+#     "decidedAt": null,
+#     "decisionNote": null
+#   },
+#   "proofs": [ { "version": 1, "status": "pending", "createdAt": "..." } ]
+# }`}</Code>
+            <p>
+              Forward <code>latestProof.reviewUrl</code> to the creator, or subscribe to the{' '}
+              <code>proof.ready</code>, <code>proof.approved</code>, and{' '}
+              <code>proof.changes_requested</code> <a href="#webhooks">webhooks</a> to track
+              approval without polling.
+            </p>
           </Section>
 
           <Section id="payments" title="Payments">
@@ -672,6 +716,9 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
                 <tr><td><code>order.delivered</code></td><td>Carrier reports delivery</td></tr>
                 <tr><td><code>order.cancelled</code></td><td>You or we cancelled the order</td></tr>
                 <tr><td><code>order.refunded</code></td><td>Payment refunded in full or part</td></tr>
+                <tr><td><code>proof.ready</code></td><td>Staff uploaded a proof; the customer was emailed a review link</td></tr>
+                <tr><td><code>proof.approved</code></td><td>The customer approved the proof — the order is cleared for production</td></tr>
+                <tr><td><code>proof.changes_requested</code></td><td>The customer requested changes; a revised proof is needed</td></tr>
               </tbody>
             </table>
             <p>
@@ -707,6 +754,7 @@ function verify(secret, signatureHeader, rawBody) {
                 <tr><td><code>projectId</code></td><td>string?</td><td>Our internal project id, set when you submitted with <code>projectId</code></td></tr>
                 <tr><td><code>status</code></td><td>enum</td><td><code>PENDING | PAID | IN_PRODUCTION | SHIPPED | DELIVERED | CANCELLED | REFUNDED</code></td></tr>
                 <tr><td><code>paymentStatus</code></td><td>enum</td><td><code>PENDING | AUTHORIZED | CAPTURED | FAILED | REFUNDED</code></td></tr>
+                <tr><td><code>proofStatus</code></td><td>string?</td><td><code>null</code> when no proof is required, else <code>requested | awaiting_approval | approved | changes_requested</code>. Held from production/shipping until <code>approved</code>.</td></tr>
                 <tr><td><code>subtotalCents / shippingCents / taxCents / discountCents / totalCents</code></td><td>integer</td><td>All amounts in USD cents</td></tr>
                 <tr><td><code>shippingMethod</code></td><td>string?</td><td>Carrier + service once shipped</td></tr>
                 <tr><td><code>trackingNumber</code></td><td>string?</td><td>Set when we hand off to the carrier</td></tr>
