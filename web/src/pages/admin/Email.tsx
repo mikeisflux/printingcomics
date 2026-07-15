@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 
-type Tab = 'inbox' | 'campaigns' | 'templates' | 'subscribers' | 'sends';
+type Tab = 'compose' | 'inbox' | 'campaigns' | 'templates' | 'subscribers' | 'sends';
 
 export function AdminEmail() {
-  const [tab, setTab] = useState<Tab>('inbox');
+  const [tab, setTab] = useState<Tab>('compose');
 
   return (
     <div>
@@ -15,7 +15,7 @@ export function AdminEmail() {
       </div>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['inbox', 'campaigns', 'templates', 'subscribers', 'sends'] as Tab[]).map((t) => (
+          {(['compose', 'inbox', 'campaigns', 'templates', 'subscribers', 'sends'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -35,11 +35,66 @@ export function AdminEmail() {
           ))}
         </div>
       </div>
+      {tab === 'compose' && <ComposeTab />}
       {tab === 'inbox' && <InboxTab />}
       {tab === 'campaigns' && <CampaignsTab />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'subscribers' && <SubscribersTab />}
       {tab === 'sends' && <SendsTab />}
+    </div>
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] ?? c));
+}
+
+function ComposeTab() {
+  const [to, setTo] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const canSend = /.+@.+\..+/.test(to.trim()) && subject.trim().length > 0 && body.trim().length > 0 && status !== 'sending';
+
+  async function send() {
+    setStatus('sending');
+    setError(null);
+    try {
+      const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">${body
+        .split('\n')
+        .map((l) => escapeHtml(l))
+        .join('<br>')}</div>`;
+      await api.post('/admin/email/send', { to: to.trim(), subject: subject.trim(), html, text: body });
+      setStatus('sent');
+      setTo(''); setSubject(''); setBody('');
+      setTimeout(() => setStatus('idle'), 3500);
+    } catch (e: any) {
+      setStatus('error');
+      setError(e.message ?? 'Send failed');
+    }
+  }
+
+  return (
+    <div className="admin-card" style={{ maxWidth: 680 }}>
+      <h3 style={{ marginTop: 0 }}>Compose email</h3>
+      <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>
+        Send a one-off email to any address via Mailgun. It's recorded under the <strong>Sends</strong> tab.
+      </p>
+      <label>To</label>
+      <input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="customer@example.com" />
+      <label>Subject</label>
+      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject line" />
+      <label>Message</label>
+      <textarea rows={12} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your message…" />
+      {error && <div className="error" style={{ marginTop: '.75rem' }}>{error}</div>}
+      {status === 'sent' && <div style={{ marginTop: '.75rem', color: 'green', fontWeight: 600 }}>Sent ✓</div>}
+      <div style={{ marginTop: '1rem' }}>
+        <button className="btn" onClick={send} disabled={!canSend}>
+          {status === 'sending' ? 'Sending…' : 'Send email'}
+        </button>
+      </div>
     </div>
   );
 }
