@@ -79,6 +79,13 @@ if [ "${FORCE_MIGRATE:-0}" = "1" ] || printf '%s\n' "$CHANGED" | grep -q '^prism
   npm run db:deploy
 fi
 
+# ---- schema sync (this project tracks schema via `prisma db push`) ----
+# db push applies additive changes and safely aborts on destructive ones.
+if [ "${FORCE_PUSH:-0}" = "1" ] || printf '%s\n' "$CHANGED" | grep -q '^prisma/schema\.prisma$'; then
+  echo "==> Syncing database schema (prisma db push)"
+  npm run db:push
+fi
+
 # ---- build ----
 echo "==> Building (prisma generate + server + web)"
 npm run build

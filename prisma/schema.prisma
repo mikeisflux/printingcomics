@@ -324,10 +324,18 @@ model Order {
   trackingNumber  String?
   notes           String?
 
+  // Proofing workflow (see Proof / MediaRequest). null = no proof required;
+  // otherwise "awaiting_upload" | "awaiting_approval" | "approved" |
+  // "changes_requested". Orders are hard-blocked from production/shipping
+  // while a proof is required and not yet approved.
+  proofStatus     String?
+
   items           OrderItem[]
   payments        Payment[]
   events          OrderStatusEvent[]
   shipments       Shipment[]
+  proofs          Proof[]
+  mediaRequests   MediaRequest[]
 
   // API integration: orders submitted by an external integrator (e.g. a
   // crowdfunding platform) carry the ApiKey that created them and an
@@ -633,6 +641,44 @@ model OrderItemFile {
   @@index([mediaFileId])
 }
 
+// A PDF proof uploaded by staff for the customer to approve before production.
+// Multiple versions per order (re-uploaded after a change request). The order
+// cannot move into production/shipping until its latest proof is approved.
+model Proof {
+  id              String    @id @default(cuid())
+  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId         String
+  media           MediaFile @relation(fields: [mediaFileId], references: [id])
+  mediaFileId     String
+  version         Int       @default(1)
+  status          String    @default("pending") // "pending" | "approved" | "changes_requested"
+  // Random, unguessable token for the customer's no-login review link.
+  token           String    @unique
+  message         String?   // optional note staff show the customer with the proof
+  decisionNote    String?   // the customer's note when requesting changes
+  approvedName    String?   // name the customer typed when approving
+  approvedTermsAt DateTime? // when the customer accepted the approval terms
+  decidedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([orderId])
+}
+
+// A staff request for the customer to (re-)upload corrected artwork. Emails the
+// customer a tokenized return link; uploaded files attach back to the order.
+model MediaRequest {
+  id          String    @id @default(cuid())
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId     String
+  message     String
+  token       String    @unique
+  status      String    @default("open") // "open" | "fulfilled"
+  fulfilledAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([orderId])
+}
+
 // A physical box going out for an order. Orders may require multiple
 // shipments when contents don't fit in one parcel; each shipment tracks its
 // own EasyPost label, carrier, tracking code, and insurance policy. The
@@ -798,6 +844,7 @@ model MediaFile {
   updatedAt    DateTime @updatedAt
 
   orderItemFiles OrderItemFile[]
+  proofs         Proof[]
 
   @@index([folder])
   @@index([mimeType])
