@@ -34,7 +34,20 @@ router.get('/', async (req, res) => {
   const q = (req.query.q as string | undefined)?.trim();
   const partnerFilter = req.query.partner as string | undefined;
   const where: any = {};
-  if (status) where.status = status;
+
+  // "Abandoned" = a storefront checkout that was created but never paid (a
+  // PayPal order was minted, the buyer never completed on PayPal). These are
+  // hidden by default so the list shows only real, committed orders. They stay
+  // reachable via the "Abandoned (unpaid)" status filter.
+  const ABANDONED = { status: 'PENDING', paymentStatus: 'PENDING', partnerId: null, apiKeyId: null };
+  if (status === 'ABANDONED') {
+    Object.assign(where, ABANDONED);
+  } else if (status) {
+    where.status = status;
+  } else {
+    where.NOT = ABANDONED;
+  }
+
   if (q) {
     where.OR = [
       { number: { contains: q, mode: 'insensitive' } },

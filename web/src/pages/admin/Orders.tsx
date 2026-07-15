@@ -32,8 +32,9 @@ export function AdminOrders() {
           <div>
             <label>Status</label>
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All</option>
+              <option value="">All (excludes abandoned)</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              <option value="ABANDONED">Abandoned (unpaid)</option>
             </select>
           </div>
           <div>
@@ -55,6 +56,11 @@ export function AdminOrders() {
             </tr>
           </thead>
           <tbody>
+            {orders.length === 0 && (
+              <tr><td colSpan={7} className="muted" style={{ padding: '1.5rem', textAlign: 'center' }}>
+                {status === 'ABANDONED' ? 'No abandoned checkouts.' : 'No orders yet.'}
+              </td></tr>
+            )}
             {orders.map((o) => (
               <tr key={o.id}>
                 <td><Link to={`/admin/orders/${o.id}`}>{o.number}</Link></td>
