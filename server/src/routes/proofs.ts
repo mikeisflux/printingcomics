@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { sendProofApprovedEmail, notifyStaff } from '../lib/proof-emails.js';
+import { dispatchPartnerWebhook } from '../lib/partners.js';
 
 const router = Router();
 
@@ -71,6 +72,14 @@ router.post('/proof/:token/approve', async (req, res) => {
     }),
   ]);
   await sendProofApprovedEmail(proof.id);
+  if (proof.order.partnerId) {
+    void dispatchPartnerWebhook({
+      partnerId: proof.order.partnerId,
+      event: 'proof.approved',
+      orderId: proof.orderId,
+      payload: { orderId: proof.orderId, number: proof.order.number, proofVersion: proof.version, status: 'approved', approvedName: name },
+    }).catch(() => undefined);
+  }
   res.json({ ok: true });
 });
 
@@ -88,6 +97,14 @@ router.post('/proof/:token/changes', async (req, res) => {
     }),
   ]);
   await notifyStaff(proof.orderId, `Proof changes requested — order ${proof.order.number}`, `The customer requested changes on proof v${proof.version} for order ${proof.order.number}: ${note}`);
+  if (proof.order.partnerId) {
+    void dispatchPartnerWebhook({
+      partnerId: proof.order.partnerId,
+      event: 'proof.changes_requested',
+      orderId: proof.orderId,
+      payload: { orderId: proof.orderId, number: proof.order.number, proofVersion: proof.version, status: 'changes_requested', note },
+    }).catch(() => undefined);
+  }
   res.json({ ok: true });
 });
 

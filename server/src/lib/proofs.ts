@@ -37,7 +37,7 @@ export async function getOrCreateProofProduct() {
 }
 
 /** True when any line item asked for a PDF or hard-copy proof. */
-export function itemsRequestProof(items: Array<{ options: unknown }>): boolean {
+export function itemsRequestProof(items: Array<{ options?: unknown }>): boolean {
   return items.some((i) => {
     const o = i.options as Record<string, unknown> | null;
     return !!o && (isProofRequested(o['pdf_proof']) || isProofRequested(o['hard_copy_proof']));

@@ -19,6 +19,7 @@ import { computePricing, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
 import { evaluateCoupon, incrementCouponUsage } from '../../lib/coupons.js';
+import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, itemsRequestProof } from '../../lib/proofs.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { createPaypalApprovalForOrder } from '../../lib/payments/paypal/approval-for-order.js';
 
@@ -248,6 +249,30 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       unitPriceCents,
       files: lineFiles,
     });
+
+    // Hard-copy proof: one printed copy of this book (single-copy price) + fee.
+    if (isProofRequested(line.options?.['hard_copy_proof'])) {
+      let singleCopy: number;
+      if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
+        const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
+        singleCopy = computePricing(cfg, { quantity: 1, options: optionInputs, siteDiscountBps }).unitCents;
+      } else {
+        const base = variant?.priceCents ?? product.priceCents;
+        singleCopy = priceForQuantity(base, 1, product.volumeTiers as VolumeTier[] | null);
+      }
+      const proofProduct = await getOrCreateProofProduct();
+      const proofUnit = singleCopy + HARD_COPY_PROOF_FEE_CENTS;
+      subtotal += proofUnit;
+      resolved.push({
+        productId: proofProduct.id,
+        variantId: null,
+        name: `Hard-Copy Proof — ${product.name}`,
+        quantity: 1,
+        options: { proof_kind: 'hard-copy', book: product.name },
+        unitPriceCents: proofUnit,
+        files: [],
+      });
+    }
   }
 
   // ---- Coupon ---- (stacks on top of the site-wide discount)
@@ -301,6 +326,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       partnerId,
       projectId,
       externalRef: data.externalRef ?? null,
+      proofStatus: itemsRequestProof(data.items) ? 'requested' : null,
       items: {
         create: resolved.map((r) => ({
           productId: r.productId,
@@ -438,6 +464,35 @@ router.get('/:idOrNumber', requireApiKey('orders:read'), async (req, res) => {
   const order = await loadApiOrder(String(req.params.idOrNumber), req.apiKey!.id);
   if (!order) throw new HttpError(404, 'Order not found');
   res.json({ order: serializeOrder(order) });
+});
+
+// Proof status + the customer's review link for an order. Partners poll this
+// (or subscribe to proof.* webhooks) to know when a proof is approved.
+router.get('/:idOrNumber/proof', requireApiKey('orders:read'), async (req, res) => {
+  const order = await loadApiOrder(String(req.params.idOrNumber), req.apiKey!.id);
+  if (!order) throw new HttpError(404, 'Order not found');
+  const proofs = await prisma.proof.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: 'desc' },
+    include: { media: true },
+  });
+  const base = ((await getSetting<string>('store.publicUrl')) || process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  const latest = proofs[0];
+  res.json({
+    proofStatus: order.proofStatus ?? null,
+    latestProof: latest
+      ? {
+          version: latest.version,
+          status: latest.status,
+          fileUrl: latest.media.url,
+          reviewUrl: base ? `${base}/proof/${latest.token}` : null,
+          approvedName: latest.approvedName,
+          decidedAt: latest.decidedAt,
+          decisionNote: latest.decisionNote,
+        }
+      : null,
+    proofs: proofs.map((p) => ({ version: p.version, status: p.status, createdAt: p.createdAt })),
+  });
 });
 
 const cancelSchema = z.object({ reason: z.string().max(500).optional() });
@@ -692,6 +747,7 @@ function serializeOrder(o: any) {
     projectId: o.projectId ?? null,
     status: o.status,
     paymentStatus: o.paymentStatus,
+    proofStatus: o.proofStatus ?? null,
     email: o.email,
     subtotalCents: o.subtotalCents,
     discountCents: o.discountCents,
