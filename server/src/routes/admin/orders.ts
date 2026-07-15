@@ -9,7 +9,7 @@ import {
   sendOrderCancelledEmail,
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
-import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction } from '../../lib/proofs.js';
+import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
@@ -194,6 +194,8 @@ router.patch('/:id', async (req, res) => {
     }
     if (data.status === 'SHIPPED' && before.status !== 'SHIPPED') {
       void sendShippingNotificationEmail(order.id);
+      // Fulfilled — purge the proofs and the creator's uploaded print files.
+      void purgeOrderArtwork(order.id).catch(() => undefined);
     }
     if (data.status === 'CANCELLED' && before.status !== 'CANCELLED') {
       void sendOrderCancelledEmail(order.id);
