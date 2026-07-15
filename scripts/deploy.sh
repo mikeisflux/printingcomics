@@ -106,10 +106,15 @@ fi
 echo "==> Building (prisma generate + server + web)"
 npm run build
 
-# ---- configurator pricing re-seed ----
-if [ "${FORCE_SEED:-0}" = "1" ] || printf '%s\n' "$CHANGED" | grep -qE 'prisma/(pricing/cws-pricing\.json|seed-cws\.ts)'; then
-  echo "==> Re-seeding configurator products (pricing changed)"
+# ---- configurator pricing re-seed (opt-in) ----
+# Re-seeding rebuilds each configurator product's options/pricing, so we DON'T
+# run it automatically. Run `FORCE_SEED=1 npm run deploy` (or `npm run
+# db:seed:cws`) when you've actually changed pricing data.
+if [ "${FORCE_SEED:-0}" = "1" ]; then
+  echo "==> Re-seeding configurator products (FORCE_SEED=1)"
   npm run db:seed:cws
+elif printf '%s\n' "$CHANGED" | grep -qE 'prisma/(pricing/cws-pricing\.json|seed-cws\.ts)'; then
+  echo "==> NOTE: configurator pricing data changed — run 'npm run db:seed:cws' to apply it (not re-seeded automatically)."
 fi
 
 # ---- restart ----
