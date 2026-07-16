@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { formatCartItemOptions } from '../../lib/cart-options';
 import { StatusBadge } from '../Account';
@@ -270,6 +270,17 @@ export function AdminOrderDetail() {
     }
   };
 
+  const deleteOrder = async () => {
+    if (!order) return;
+    if (!confirm(`Permanently delete order ${order.number}? This removes the order and any uploaded files and can't be undone.`)) return;
+    try {
+      await api.del(`/admin/orders/${id}`);
+      navigate('/admin/orders');
+    } catch (e: any) {
+      alert(e.message ?? 'Delete failed');
+    }
+  };
+
   if (!order) return <div>Loading…</div>;
 
   return (
@@ -334,6 +345,11 @@ export function AdminOrderDetail() {
           {order.paymentStatus === 'CAPTURED' && (
             <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
               Refund via PayPal
+            </button>
+          )}
+          {order.paymentStatus !== 'CAPTURED' && (
+            <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={deleteOrder}>
+              Delete order
             </button>
           )}
         </div>

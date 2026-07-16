@@ -306,6 +306,29 @@ router.post('/:id/refund', async (req, res) => {
   res.json({ refund: result });
 });
 
+// ---- Delete an order (for clearing abandoned/unpaid checkouts) ----
+router.delete('/:id', async (req, res) => {
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.id },
+    include: { payments: { select: { status: true } } },
+  });
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  // Guard: never silently delete a real, paid order — those are financial
+  // records. Use cancel/refund instead.
+  const everPaid = order.paymentStatus === 'CAPTURED' || order.payments.some((p) => p.status === 'CAPTURED');
+  if (everPaid) {
+    throw new HttpError(409, 'This order has a captured payment — cancel or refund it instead of deleting.');
+  }
+
+  // Remove the creator's uploaded files + any proofs from disk, then delete the
+  // order. Payments, items, events, shipments, proofs and media requests all
+  // cascade away with the order row.
+  await purgeOrderArtwork(order.id);
+  await prisma.order.delete({ where: { id: order.id } });
+  res.json({ ok: true });
+});
+
 // ---- Proofing: upload a PDF proof for the customer to approve ----
 router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: String(req.params.id) } });
