@@ -214,6 +214,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 
 export function AdminOrderDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [order, setOrder] = useState<OrderFull | null>(null);
   const [tracking, setTracking] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
