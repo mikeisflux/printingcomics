@@ -13,6 +13,7 @@ import { errorHandler, notFound } from './middleware/error.js';
 import { botBlockerGate } from './middleware/botblocker.js';
 import { cleanupExpiredData } from './lib/bot-blocker.js';
 import { startCampaignScheduler } from './lib/email-send.js';
+import { startAbandonedOrderCleanup } from './lib/order-cleanup.js';
 
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
@@ -132,6 +133,9 @@ setInterval(() => {
 
 // Poll for scheduled email campaigns every minute.
 startCampaignScheduler(60_000);
+
+// Auto-delete abandoned (unpaid) storefront checkouts older than 24h.
+startAbandonedOrderCleanup();
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
