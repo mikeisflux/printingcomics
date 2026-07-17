@@ -490,6 +490,15 @@ const PRINTS: PrintDef[] = [
   },
 ];
 
+// Per-print shipping weight (grams). From the legacy BYOP weights:
+// metal 0.361424 lb ≈ 164 g; paper & foil 0.076775 lb ≈ 35 g.
+const PRINT_WEIGHT_GRAMS: Record<string, number> = {
+  'art-print-11x17-silver-metal': 164,
+  'art-print-11x17-raised-metal': 164,
+  'art-print-11x17-paper-gloss': 35,
+  'art-print-11x17-foil': 35,
+};
+
 async function buildPrintProduct(def: PrintDef, categoryId: string) {
   const first = def.tiers[0]!;
   const baseCents = cents(first.priceUSD);
@@ -510,6 +519,7 @@ async function buildPrintProduct(def: PrintDef, categoryId: string) {
     madeToOrder: true,
     active: true,
     minQuantity: first.minQty,
+    weightGrams: PRINT_WEIGHT_GRAMS[def.slug] ?? 0,
     pricingConfig: config as any,
     seoTitle: def.name,
     seoDescription: def.shortDescription,
