@@ -46,6 +46,7 @@ export function StoreLayout() {
               items={[
                 { to: '/shop/comic-books', label: 'Comic Books' },
                 { to: '/shop/graphic-novels', label: 'Graphic Novels' },
+                { to: '/shop/11x17-prints', label: '11×17 Prints' },
                 { to: '/shop/artist-tools', label: 'Artist Tools' },
               ]}
             />
@@ -128,6 +129,7 @@ export function StoreLayout() {
               <ul>
                 <li><Link to="/shop/comic-books">Comic Books</Link></li>
                 <li><Link to="/shop/graphic-novels">Graphic Novels</Link></li>
+                <li><Link to="/shop/11x17-prints">11×17 Prints</Link></li>
                 <li><Link to="/shop/artist-tools">Artist Tools</Link></li>
               </ul>
             </div>

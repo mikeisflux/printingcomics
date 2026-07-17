@@ -71,6 +71,7 @@ async function ensureCategories() {
     { slug: 'manga', name: 'Manga', description: 'Manga-format printing.' },
     { slug: 'zines', name: 'Zines', description: 'Short-run zines.' },
     { slug: 'artist-tools', name: 'Artist Tools', description: 'Sample packs, templates, resources.' },
+    { slug: '11x17-prints', name: '11×17 Prints', description: 'Metal, paper and foil 11×17 art prints.' },
   ];
   const byslug: Record<string, string> = {};
   for (let i = 0; i < cats.length; i++) {
@@ -429,6 +430,118 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
   void pagesSubLabelFor;
 }
 
+// ---------------------------------------------------------------------------
+// 11×17 Prints — a separate product line. Firm prices (no site-wide promo);
+// each material carries its own quantity price curve.
+// ---------------------------------------------------------------------------
+interface PrintTier { minQty: number; priceUSD: number; }
+interface PrintDef {
+  slug: string;
+  name: string;
+  shortDescription: string;
+  description: string;
+  tiers: PrintTier[];
+}
+
+const PRINTS: PrintDef[] = [
+  {
+    slug: 'art-print-11x17-silver-metal',
+    name: '11×17 Metal Print — Silver',
+    shortDescription: 'Brushed silver metal 11×17 art print.',
+    description: 'Vibrant 11×17 prints on brushed silver metal. Flat per-unit pricing at every quantity.',
+    tiers: [
+      { minQty: 1, priceUSD: 17.67 }, { minQty: 25, priceUSD: 17.67 }, { minQty: 50, priceUSD: 17.67 },
+      { minQty: 100, priceUSD: 17.67 }, { minQty: 250, priceUSD: 17.67 }, { minQty: 500, priceUSD: 17.67 },
+      { minQty: 1000, priceUSD: 17.67 },
+    ],
+  },
+  {
+    slug: 'art-print-11x17-raised-metal',
+    name: '11×17 Metal Print — Raised',
+    shortDescription: 'Raised-texture metal 11×17 art print.',
+    description: 'Raised-texture metal 11×17 prints. Flat per-unit pricing at every quantity.',
+    tiers: [
+      { minQty: 1, priceUSD: 22.67 }, { minQty: 25, priceUSD: 22.67 }, { minQty: 50, priceUSD: 22.67 },
+      { minQty: 100, priceUSD: 22.67 }, { minQty: 250, priceUSD: 22.67 }, { minQty: 500, priceUSD: 22.67 },
+      { minQty: 1000, priceUSD: 22.67 },
+    ],
+  },
+  {
+    slug: 'art-print-11x17-paper-gloss',
+    name: '11×17 Paper Print — 100# Gloss',
+    shortDescription: '11×17 prints on 100# gloss cover stock.',
+    description: 'Full-color 11×17 prints on premium 100# gloss cover stock. Volume pricing.',
+    tiers: [
+      { minQty: 10, priceUSD: 2.16 }, { minQty: 25, priceUSD: 1.72 }, { minQty: 50, priceUSD: 1.35 },
+      { minQty: 100, priceUSD: 1.08 }, { minQty: 250, priceUSD: 0.87 }, { minQty: 500, priceUSD: 0.76 },
+      { minQty: 1000, priceUSD: 0.71 },
+    ],
+  },
+  {
+    slug: 'art-print-11x17-foil',
+    name: '11×17 Foil Print',
+    shortDescription: 'Foil-finished 11×17 art print.',
+    description: 'Eye-catching foil-finished 11×17 prints. Volume pricing.',
+    tiers: [
+      { minQty: 5, priceUSD: 5.73 }, { minQty: 25, priceUSD: 5.33 }, { minQty: 50, priceUSD: 5.00 },
+      { minQty: 100, priceUSD: 4.75 }, { minQty: 250, priceUSD: 4.56 }, { minQty: 500, priceUSD: 4.46 },
+      { minQty: 1000, priceUSD: 4.42 },
+    ],
+  },
+];
+
+async function buildPrintProduct(def: PrintDef, categoryId: string) {
+  const first = def.tiers[0]!;
+  const baseCents = cents(first.priceUSD);
+  const qtyTiers = def.tiers.map((t) => ({
+    qty: t.minQty,
+    discountBps: Math.round((1 - t.priceUSD / first.priceUSD) * 10000),
+  }));
+  const config = { baseCents, qtyTiers, modifiers: [], kind: 'print', ignoreSiteDiscount: true };
+
+  const existing = await prisma.product.findUnique({ where: { slug: def.slug }, select: { id: true } });
+  const data = {
+    slug: def.slug,
+    name: def.name,
+    shortDescription: def.shortDescription,
+    description: def.description,
+    priceCents: baseCents,
+    hasVariants: false,
+    madeToOrder: true,
+    active: true,
+    minQuantity: first.minQty,
+    pricingConfig: config as any,
+    seoTitle: def.name,
+    seoDescription: def.shortDescription,
+    faq: [
+      { q: 'What size are these prints?', a: 'All prints are 11×17 inches. Provide art at 11×17 with 0.125" bleed at 300 DPI.' },
+      { q: 'Is there a minimum order?', a: `Minimum order is ${first.minQty} for this material.` },
+      { q: 'Do you proof before printing?', a: 'Yes — request a free PDF proof (or a paid hard-copy proof) at checkout. Nothing prints until you approve.' },
+    ],
+    categories: { create: [{ category: { connect: { id: categoryId } } }] },
+    options: {
+      create: [
+        { name: 'Print title / reference', internalKey: 'title', type: 'TEXT' as const, required: false, sortOrder: 0 },
+        { name: 'PDF proof before printing', internalKey: 'pdf_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 38, helpText: 'Free — we email a PDF proof to approve before anything prints.' },
+        { name: 'Hard-copy proof before printing', internalKey: 'hard_copy_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 39, helpText: 'A single printed proof shipped to you first. Adds the price of one print plus a $19.95 proof & shipping fee.' },
+        { name: 'Is this a reorder?', internalKey: 'is_reorder', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 41 },
+        { name: 'Upload your art', internalKey: 'upload', section: 'Finalize Setup', type: 'UPLOAD' as const, required: true, sortOrder: 42 },
+        { name: 'File Prep Checklist Confirmation', internalKey: 'file_prep_ok', section: 'Finalize Setup', type: 'CONFIRM' as const, required: true, sortOrder: 43, longDescription: 'I confirm my art is 11×17 at 300 DPI with 0.125" bleed, CMYK, flattened and print-ready. Files are reviewed in prepress; I will be contacted if corrections are needed.' },
+      ],
+    },
+  };
+
+  if (existing) {
+    await prisma.$transaction(async (tx) => {
+      await tx.productOption.deleteMany({ where: { productId: existing.id } });
+      await tx.productCategory.deleteMany({ where: { productId: existing.id } });
+      await tx.product.update({ where: { id: existing.id }, data });
+    }, { timeout: 30000 });
+  } else {
+    await prisma.product.create({ data });
+  }
+}
+
 async function main() {
   const categoryIds = await ensureCategories();
 
@@ -496,6 +609,12 @@ async function main() {
       categoryIds['graphic-novels']!,
     );
     console.log(`  created graphic-novel-${s.slugSegment}-size`);
+  }
+
+  // 11×17 prints
+  for (const def of PRINTS) {
+    await buildPrintProduct(def, categoryIds['11x17-prints']!);
+    console.log(`  built ${def.slug}`);
   }
 
   console.log('CWS-style products seeded.');

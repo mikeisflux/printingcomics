@@ -22,6 +22,8 @@ export interface PricingConfig {
   qtyTiers: QtyTier[];
   modifiers: ModifierDef[];
   pages?: PagesPricing;
+  kind?: string;
+  ignoreSiteDiscount?: boolean;
 }
 export interface PricingInputs {
   quantity: number;
@@ -69,7 +71,7 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
   let discountBps = 0;
   for (const t of sortedTiers) if (inputs.quantity >= t.qty) discountBps = t.discountBps;
 
-  const siteDiscountBps = inputs.siteDiscountBps ?? 0;
+  const siteDiscountBps = config.ignoreSiteDiscount ? 0 : (inputs.siteDiscountBps ?? 0);
   const unitCents = Math.round(
     combinedListCents * (1 - discountBps / 10000) * (1 - siteDiscountBps / 10000),
   );

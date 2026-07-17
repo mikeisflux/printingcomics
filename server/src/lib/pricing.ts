@@ -51,6 +51,11 @@ export interface PricingConfig {
   qtyTiers: QtyTier[];
   modifiers: ModifierDef[];
   pages?: PagesPricing;
+  /** Product family marker, e.g. "print" — used by the configurator UI. */
+  kind?: string;
+  /** When true, the site-wide promo discount does NOT apply — the qty-tier
+   *  prices are firm (used for the 11×17 print line). */
+  ignoreSiteDiscount?: boolean;
 }
 
 export interface PricingInputs {
@@ -105,7 +110,7 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
     if (inputs.quantity >= t.qty) discountBps = t.discountBps;
   }
 
-  const siteDiscountBps = inputs.siteDiscountBps ?? 0;
+  const siteDiscountBps = config.ignoreSiteDiscount ? 0 : (inputs.siteDiscountBps ?? 0);
   const unitCents = Math.round(
     combinedListCents * (1 - discountBps / 10000) * (1 - siteDiscountBps / 10000),
   );

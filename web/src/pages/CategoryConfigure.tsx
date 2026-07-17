@@ -273,8 +273,11 @@ export function CategoryConfigure() {
   }, [breakdown?.totalCents, product, qty]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build the 3D book spec from active product + selections
+  const isPrint = (product?.pricingConfig as { kind?: string } | null)?.kind === 'print';
+
   const bookSpec = useMemo(() => {
     if (!product) return null;
+    if ((product.pricingConfig as { kind?: string } | null)?.kind === 'print') return null;
     const dim = parseDimensions(product.name) ?? { widthIn: 6.625, heightIn: 10.25 };
     const pageCount = Number(selections['pages']) || Number(selections['interior_pages']) || 32;
     const cover = (selections['cover_paper'] ?? selections['cover'] ?? 'White') as string;
@@ -433,51 +436,72 @@ export function CategoryConfigure() {
       <div className="container" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 460px)', gap: '2rem', alignItems: 'flex-start' }}>
         {/* Left: 3D preview pinned, vertically centered in the viewport */}
         <div style={{ position: 'sticky', top: 'max(6rem, calc(50vh - 16rem))' }}>
-          <Suspense fallback={<div style={{ height: 520, background: '#0f172a', borderRadius: 16 }} />}>
-            {bookSpec && <BookPreview3D spec={bookSpec} />}
-          </Suspense>
-          <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '.85rem', color: 'var(--muted)' }}>
-            Live preview — drag to orbit, scroll to zoom
-          </div>
+          {isPrint ? (
+            <div className="admin-card">
+              <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em', marginBottom: '.5rem' }}>
+                Your 11×17 art
+              </div>
+              <div style={{ aspectRatio: '11 / 17', background: '#0f172a', borderRadius: 12, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {frontCoverUrl
+                  ? <img src={frontCoverUrl} alt="Your art preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  : <span className="muted" style={{ fontSize: '.85rem', padding: '1rem', textAlign: 'center' }}>Drop your art below to preview it here</span>}
+              </div>
+              <div style={{ marginTop: '.75rem' }}>
+                <CoverUploadTile label="Preview image" url={frontCoverUrl} onPick={pickCover('front')} onClear={() => pickCover('front')(null)} />
+              </div>
+              <p className="muted" style={{ fontSize: '.78rem', marginTop: '.5rem', marginBottom: 0 }}>
+                Preview only. Upload your print-ready file under <strong>Upload your art</strong> to submit it for printing.
+              </p>
+            </div>
+          ) : (
+            <>
+              <Suspense fallback={<div style={{ height: 520, background: '#0f172a', borderRadius: 16 }} />}>
+                {bookSpec && <BookPreview3D spec={bookSpec} />}
+              </Suspense>
+              <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '.85rem', color: 'var(--muted)' }}>
+                Live preview — drag to orbit, scroll to zoom
+              </div>
 
-          <div className="admin-card" style={{ marginTop: '1rem' }}>
-            <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em', marginBottom: '.5rem' }}>
-              Cover artwork (optional)
-            </div>
-            <p className="muted" style={{ fontSize: '.8rem', marginTop: 0, marginBottom: '.75rem' }}>
-              <strong>Preview only.</strong> Drop cover images here to visualize your book in 3D.
-              These are not used for order fulfillment — you'll upload your final print-ready
-              artwork separately when you finalize the order.
-            </p>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: bookSpec?.binding === 'perfect' ? '1fr 1fr 1fr' : '1fr 1fr',
-                gap: '.75rem',
-              }}
-            >
-              <CoverUploadTile
-                label="Front cover"
-                url={frontCoverUrl}
-                onPick={pickCover('front')}
-                onClear={() => pickCover('front')(null)}
-              />
-              {bookSpec?.binding === 'perfect' && (
-                <CoverUploadTile
-                  label="Spine art"
-                  url={spineCoverUrl}
-                  onPick={pickCover('spine')}
-                  onClear={() => pickCover('spine')(null)}
-                />
-              )}
-              <CoverUploadTile
-                label="Back cover"
-                url={backCoverUrl}
-                onPick={pickCover('back')}
-                onClear={() => pickCover('back')(null)}
-              />
-            </div>
-          </div>
+              <div className="admin-card" style={{ marginTop: '1rem' }}>
+                <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em', marginBottom: '.5rem' }}>
+                  Cover artwork (optional)
+                </div>
+                <p className="muted" style={{ fontSize: '.8rem', marginTop: 0, marginBottom: '.75rem' }}>
+                  <strong>Preview only.</strong> Drop cover images here to visualize your book in 3D.
+                  These are not used for order fulfillment — you'll upload your final print-ready
+                  artwork separately when you finalize the order.
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: bookSpec?.binding === 'perfect' ? '1fr 1fr 1fr' : '1fr 1fr',
+                    gap: '.75rem',
+                  }}
+                >
+                  <CoverUploadTile
+                    label="Front cover"
+                    url={frontCoverUrl}
+                    onPick={pickCover('front')}
+                    onClear={() => pickCover('front')(null)}
+                  />
+                  {bookSpec?.binding === 'perfect' && (
+                    <CoverUploadTile
+                      label="Spine art"
+                      url={spineCoverUrl}
+                      onPick={pickCover('spine')}
+                      onClear={() => pickCover('spine')(null)}
+                    />
+                  )}
+                  <CoverUploadTile
+                    label="Back cover"
+                    url={backCoverUrl}
+                    onPick={pickCover('back')}
+                    onClear={() => pickCover('back')(null)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           {product && (
             <div className="admin-card pc-summary-card" style={{ marginTop: '1rem' }}>
@@ -578,6 +602,7 @@ export function CategoryConfigure() {
                     opt={opt}
                     value={selections[keyOf(opt)]}
                     onChange={(v) => setSel(keyOf(opt), v)}
+                    productId={product.id}
                     deltas={
                       product.pricingConfig
                         ? optionPriceDeltas(product.pricingConfig, opt, selections, visibleKeys, siteDiscountBps)
@@ -625,7 +650,7 @@ function ConfigSection({ title, subtitle, defaultOpen, children }: { title: stri
   );
 }
 
-function OptionField({ opt, value, onChange, deltas }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string | number | boolean) => void; deltas?: Map<string, number> }) {
+function OptionField({ opt, value, onChange, deltas, productId }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string | number | boolean) => void; deltas?: Map<string, number>; productId?: string }) {
   // Price shown next to a value: the list-price delta vs. the cheapest choice.
   const priceTag = (valueLabel: string): string => {
     const d = deltas?.get(valueLabel) ?? 0;
@@ -757,11 +782,76 @@ function OptionField({ opt, value, onChange, deltas }: { opt: ProductOption; val
           </span>
         </label>
       );
+    case 'UPLOAD':
+      return <UploadField opt={opt} value={value} onChange={onChange} productId={productId} />;
     default:
       return null;
   }
 }
 
+function UploadField({ opt, value, onChange, productId }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string) => void; productId?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [nameByUrl, setNameByUrl] = useState<Record<string, string>>({});
+  const urls = typeof value === 'string' && value ? value.split('\n').map((s) => s.trim()).filter(Boolean) : [];
+
+  async function handleFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setBusy(true); setErr(null); setProgress(0);
+    try {
+      const fd = new FormData();
+      for (const file of Array.from(list)) fd.append('files', file);
+      if (productId) fd.append('productId', productId);
+      fd.append('optionKey', opt.internalKey ?? opt.id);
+      const uploaded: { url: string; filename: string }[] = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/uploads/customer');
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100)); };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { const b = JSON.parse(xhr.responseText); resolve(Array.isArray(b.files) ? b.files : b.url ? [{ url: b.url, filename: b.filename }] : []); }
+            catch (e) { reject(e); }
+          } else reject(new Error(xhr.statusText || 'Upload failed'));
+        };
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(fd);
+      });
+      if (uploaded.length) {
+        setNameByUrl((m) => { const n = { ...m }; for (const u of uploaded) n[u.url] = u.filename; return n; });
+        onChange([...urls, ...uploaded.map((u) => u.url)].join('\n'));
+      }
+    } catch (e: any) { setErr(e.message ?? 'Upload failed'); }
+    finally { setBusy(false); }
+  }
+  function removeAt(i: number) { onChange(urls.filter((_, idx) => idx !== i).join('\n')); }
+
+  return (
+    <div>
+      <div style={{ marginBottom: '.5rem' }}>
+        <strong>{opt.name}</strong>{opt.required && <span style={{ color: '#b91c1c', marginLeft: 4 }}>*</span>}
+        {opt.helpText && <div className="muted" style={{ fontSize: '.85rem' }}>{opt.helpText}</div>}
+      </div>
+      <label className="btn secondary" style={{ cursor: busy ? 'wait' : 'pointer', display: 'inline-block' }}>
+        {busy ? `Uploading… ${progress}%` : urls.length ? 'Add more files' : 'Upload your art'}
+        <input type="file" multiple style={{ display: 'none' }} disabled={busy} onChange={(e) => { void handleFiles(e.target.files); e.currentTarget.value = ''; }} />
+      </label>
+      {urls.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '.6rem 0 0', display: 'grid', gap: '.35rem' }}>
+          {urls.map((u, i) => (
+            <li key={u} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.85rem' }}>
+              <span aria-hidden="true">📄</span>
+              <a href={u} target="_blank" rel="noreferrer" style={{ flex: 1, wordBreak: 'break-all' }}>{nameByUrl[u] ?? u.split('/').pop()}</a>
+              {!busy && <button type="button" className="btn secondary" style={{ padding: '.1rem .45rem', fontSize: '.75rem' }} onClick={() => removeAt(i)}>Remove</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {err && <div className="error" style={{ marginTop: '.5rem' }}>{err}</div>}
+    </div>
+  );
+}
 
 function CoverUploadTile({
   label, url, onPick, onClear,
