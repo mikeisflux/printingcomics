@@ -139,6 +139,7 @@ export function CategoryConfigure() {
 
   const [category, setCategory] = useState<Category | null>(null);
   const [products, setProducts] = useState<ProductDetail[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [productId, setProductId] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<string, string | number | boolean>>({});
   const [qty, setQty] = useState(1);
@@ -190,7 +191,8 @@ export function CategoryConfigure() {
           setProductId(r.products[0]!.id);
           setQty(r.products[0]!.minQuantity);
         }
-      });
+      })
+      .catch(() => setLoadError(true));
   }, [categorySlug]);
 
   const product = useMemo(() => products.find((p) => p.id === productId) ?? null, [products, productId]);
@@ -377,7 +379,20 @@ export function CategoryConfigure() {
     }
   }
 
-  if (!category) return <div className="container" style={{ padding: '3rem 0' }}>Loading…</div>;
+  if (!category) {
+    return (
+      <div className="container" style={{ padding: '3rem 0' }}>
+        {loadError ? (
+          <>
+            <h1>Category unavailable</h1>
+            <p className="muted">We couldn’t load this category right now. Please try again shortly.</p>
+          </>
+        ) : (
+          'Loading…'
+        )}
+      </div>
+    );
+  }
 
   if (products.length === 0) {
     return (
