@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
-import { computePricing, type PricingConfig } from '../../lib/pricing.js';
+import { computePricing, canonicalizeOptionValues, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
 import { evaluateCoupon } from '../../lib/coupons.js';
@@ -89,6 +89,11 @@ router.post('/quote', async (req, res) => {
         const isInt = /^-?\d+$/.test(trimmed);
         optionInputs[k] = isInt ? Number(trimmed) : v;
       }
+    }
+    // Match the order path: resolve loose size labels to canonical keys so the
+    // quote reflects the size the caller meant (e.g. "comic" → the comic price).
+    if (cfg && typeof cfg === 'object' && Array.isArray(cfg.modifiers)) {
+      Object.assign(optionInputs, canonicalizeOptionValues(cfg, optionInputs));
     }
 
     let breakdown: any = undefined;

@@ -80,6 +80,36 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
   return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
 }
 
+/**
+ * Resolve loosely-typed option values to a config's canonical modifier keys.
+ * Mirror of the server helper — pricing matches modifier values by exact
+ * label, so `"11x17"` resolves to `"11×17"`. Additive only: fills in when
+ * there's no exact match and exactly one value matches under normalization
+ * (unify ×/x, drop spaces/quotes/parens) or as a unique prefix. The storefront
+ * sends exact labels, so this is a no-op there.
+ */
+export function canonicalizeOptionValues(
+  config: PricingConfig,
+  options: Record<string, string | number>,
+): Record<string, string | number> {
+  const norm = (s: string) => s.toLowerCase().replace(/[×✕]/g, 'x').replace(/["'()]/g, '').replace(/\s+/g, '');
+  const out = { ...options };
+  for (const mod of config.modifiers) {
+    const v = out[mod.key];
+    if (typeof v !== 'string') continue;
+    if (v in mod.values) continue;
+    const target = norm(v);
+    if (!target) continue;
+    const keys = Object.keys(mod.values);
+    const matches = keys.filter((k) => {
+      const nk = norm(k);
+      return nk === target || nk.startsWith(target) || target.startsWith(nk);
+    });
+    if (matches.length === 1) out[mod.key] = matches[0]!;
+  }
+  return out;
+}
+
 export function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }

@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
-import { computePricing, type PricingConfig } from '../../lib/pricing.js';
+import { computePricing, canonicalizeOptionValues, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
 import { evaluateCoupon, incrementCouponUsage } from '../../lib/coupons.js';
@@ -207,6 +207,12 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
         const isInt = /^-?\d+$/.test(trimmed);
         optionInputs[k] = isInt ? Number(trimmed) : v;
       }
+    }
+    // Resolve loose size labels (e.g. "11x17" → "11×17") to canonical modifier
+    // keys before pricing AND before we persist them — the stored option value
+    // is what fulfillment reads for the per-size shipping weight.
+    if (cfg && typeof cfg === 'object' && Array.isArray(cfg.modifiers)) {
+      Object.assign(optionInputs, canonicalizeOptionValues(cfg, optionInputs));
     }
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
       const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;

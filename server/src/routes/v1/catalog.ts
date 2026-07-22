@@ -25,6 +25,12 @@ function serializeProduct(p: any, opts: { full: boolean }) {
     priceCents: p.priceCents,
     minQuantity: p.minQuantity,
     weightGrams: p.weightGrams,
+    // Art prints ship by size — per-size shipping weight keyed by the
+    // `print_size` option value (null for products without size pricing).
+    sizeWeightsGrams:
+      p.pricingConfig && typeof p.pricingConfig === 'object'
+        ? (p.pricingConfig.sizeWeightsGrams ?? null)
+        : null,
     madeToOrder: p.madeToOrder,
     hasVariants: p.hasVariants,
     sku: p.sku,

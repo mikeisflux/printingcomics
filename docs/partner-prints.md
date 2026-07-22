@@ -1,53 +1,85 @@
-# Partner integration — 11×17 Prints
+# Partner integration — Art Prints
 
-The **11×17 Prints** line is exposed through the same partner API as everything
+The **Art Prints** line is exposed through the same partner API as everything
 else (catalog, pricing, orders, proofing). Prints are ordinary catalog
 products, so if you already integrate comic/graphic-novel orders, prints work
-with **no new endpoints** — you just reference a different `productSlug` and set
-`quantity`.
+with **no new endpoints** — you reference a substrate `productSlug`, set a
+`print_size` option, and set `quantity`.
 
 Base URL: `https://printingcomics.com/api/v1` · Auth: `Authorization: Bearer <key>`
 
-## Products
+## Products (one per substrate)
 
-| Material | `productSlug` | Min qty | Pricing |
-|---|---|---|---|
-| Silver Metal | `art-print-11x17-silver-metal` | 1 | flat **$17.67**/unit |
-| Raised Metal | `art-print-11x17-raised-metal` | 1 | flat **$22.67**/unit |
-| Paper (100# Gloss) | `art-print-11x17-paper-gloss` | 10 | volume-tiered |
-| Foil | `art-print-11x17-foil` | 5 | volume-tiered |
+| Material | `productSlug` | Min qty | Sizes | Pricing |
+|---|---|---|---|---|
+| Silver Metal | `art-print-metal-silver` | 1 | 11×17 · Comic · Trading Card | flat per size |
+| Raised Metal | `art-print-metal-raised` | 1 | 11×17 · Comic · Trading Card | flat per size |
+| Paper (100# Gloss) | `art-print-paper-gloss` | 10 | 11×17 · Comic | volume-tiered |
+| Foil | `art-print-foil` | 5 | 11×17 · Comic | volume-tiered |
 
-All prints are **11 × 17 in**. Prices are **firm** — the site-wide storefront
-promo does **not** apply, so what you quote is exactly what's charged.
+Prices are **firm** — the site-wide storefront promo does **not** apply, so what
+you quote is exactly what's charged.
 
-### Price-per-unit tiers
+> **Migration note:** the old per-size slugs (`art-print-11x17-silver-metal`,
+> `art-print-11x17-raised-metal`, `art-print-11x17-paper-gloss`,
+> `art-print-11x17-foil`) are retired. Use the substrate slugs above with a
+> `print_size` option. The old slugs map to the new slug + `print_size: "11×17"`.
+
+## The `print_size` option
+
+Each print takes one **required** `print_size` option. Prints are cut from an
+11×17 sheet, so smaller sizes cost proportionally less (a comic is a half sheet;
+a trading card is 1/18th of a sheet).
+
+| `print_size` value | Trim size | Offered on |
+|---|---|---|
+| `11×17` | 11 × 17 in | all substrates |
+| `Comic (6.625 × 10.25)` | 6.625 × 10.25 in | all substrates |
+| `Trading Card (2.5 × 3.5)` | 2.5 × 3.5 in | **metal only** |
+
+Send the value exactly as shown, **or** a loose form — `"11x17"`, `"comic"`,
+`"trading card"` (ASCII `x`, any case/spacing) all resolve to the canonical
+size. If `print_size` is omitted, the print is priced and shipped as **11×17**.
+The exact accepted values are always available live on
+`GET /catalog/products/:slug` under `options[print_size].values[].label`.
+
+### Price per unit
+
+**Metal — flat at every quantity**
+
+| `print_size` | Silver (`art-print-metal-silver`) | Raised (`art-print-metal-raised`) |
+|---|---|---|
+| `11×17` | $17.67 | $22.67 |
+| `Comic (6.625 × 10.25)` | $8.84 | $11.34 |
+| `Trading Card (2.5 × 3.5)` | $0.98 | $1.26 |
 
 **Paper (100# Gloss)** — min 10
 
 | Qty | 10–24 | 25–49 | 50–99 | 100–249 | 250–499 | 500–999 | 1000+ |
 |---|---|---|---|---|---|---|---|
-| $/unit | 2.16 | 1.72 | 1.35 | 1.08 | 0.87 | 0.76 | 0.71 |
+| `11×17` | 2.16 | 1.72 | 1.35 | 1.08 | 0.87 | 0.76 | 0.71 |
+| `Comic (6.625 × 10.25)` | 1.08 | 0.86 | 0.68 | 0.54 | 0.44 | 0.38 | 0.35 |
 
 **Foil** — min 5
 
 | Qty | 5–24 | 25–49 | 50–99 | 100–249 | 250–499 | 500–999 | 1000+ |
 |---|---|---|---|---|---|---|---|
-| $/unit | 5.73 | 5.33 | 5.00 | 4.75 | 4.56 | 4.46 | 4.42 |
-
-**Silver / Raised Metal** — flat at every quantity ($17.67 / $22.67).
+| `11×17` | 5.73 | 5.33 | 5.00 | 4.75 | 4.56 | 4.46 | 4.42 |
+| `Comic (6.625 × 10.25)` | 2.87 | 2.67 | 2.50 | 2.38 | 2.28 | 2.23 | 2.21 |
 
 Always trust a live **`POST /pricing/quote`** over these tables — it's the
 authoritative price and reflects any future changes.
 
 ## Per-print shipping weight
 
-If you estimate shipping yourself, these are the per-unit weights we use
-(also on `GET /catalog/products/:slug` as `weightGrams`):
+If you estimate shipping yourself, these are the per-unit weights we use. They
+also come back on `GET /catalog/products/:slug` as `sizeWeightsGrams` (keyed by
+`print_size` value); the top-level `weightGrams` is the 11×17 fallback.
 
-| Material | Per print |
-|---|---|
-| Silver / Raised Metal | 0.361424 lb (164 g) |
-| Paper / Foil | 0.076775 lb (35 g) |
+| Material | 11×17 | Comic | Trading Card |
+|---|---|---|---|
+| Silver / Raised Metal | 164 g (0.3614 lb) | 82 g | 9 g |
+| Paper / Foil | 35 g (0.0768 lb) | 18 g | — |
 
 ## Quote a basket
 
@@ -55,14 +87,16 @@ If you estimate shipping yourself, these are the per-unit weights we use
 POST /api/v1/pricing/quote
 {
   "items": [
-    { "productSlug": "art-print-11x17-foil", "quantity": 100 }
+    { "productSlug": "art-print-metal-silver",
+      "quantity": 50,
+      "options": { "print_size": "Comic (6.625 × 10.25)" } }
   ],
   "shippingAddress": { "country": "US", "region": "CA" }
 }
-// → items[0].unitPriceCents = 475, totalCents = 47500, plus shipping/tax.
+// → items[0].unitPriceCents = 884, totalCents = 44200, plus shipping/tax.
 ```
-Prints need **no configurator options** to price — just `productSlug` +
-`quantity`. (Proof options below add fees; see Proofing.)
+Set `print_size` to price a specific size; omit it to price 11×17.
+(Proof options below add fees; see Proofing.)
 
 ## Submit an order
 
@@ -78,9 +112,10 @@ POST /api/v1/orders
     "postalCode": "94110", "country": "US" },
   "items": [
     {
-      "productSlug": "art-print-11x17-silver-metal",
+      "productSlug": "art-print-metal-silver",
       "quantity": 50,
       "options": {
+        "print_size": "Comic (6.625 × 10.25)",
         "title": "Issue 1 variant",
         "pdf_proof": "yes"          // free proof; hard_copy_proof also allowed
       },
@@ -90,13 +125,14 @@ POST /api/v1/orders
 }
 ```
 
-### Options a print accepts (all optional)
+### Options a print accepts
 
 | key | type | effect |
 |---|---|---|
+| `print_size` | string | trim size (see table); **required**, defaults to `11×17` |
 | `title` | string | reference label shown on the order |
 | `pdf_proof` | `"yes"` | free PDF proof before printing (flags the order) |
-| `hard_copy_proof` | `"yes"` | adds a printed proof line = one print's single-copy price + **$19.95** |
+| `hard_copy_proof` | `"yes"` | adds a printed proof line = one print's single-copy price at the chosen size + **$19.95** |
 | `is_reorder` | `"yes"` | marks the line as a reorder |
 
 Prints have **no** page/cover/binding options.

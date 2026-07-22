@@ -71,7 +71,7 @@ async function ensureCategories() {
     { slug: 'manga', name: 'Manga', description: 'Manga-format printing.' },
     { slug: 'zines', name: 'Zines', description: 'Short-run zines.' },
     { slug: 'artist-tools', name: 'Artist Tools', description: 'Sample packs, templates, resources.' },
-    { slug: '11x17-prints', name: '11×17 Prints', description: 'Metal, paper and foil 11×17 art prints.' },
+    { slug: 'art-prints', name: 'Art Prints', description: 'Metal, paper and foil art prints — full 11×17, comic, or trading-card size.' },
   ];
   const byslug: Record<string, string> = {};
   for (let i = 0; i < cats.length; i++) {
@@ -431,100 +431,156 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
 }
 
 // ---------------------------------------------------------------------------
-// 11×17 Prints — a separate product line. Firm prices (no site-wide promo);
-// each material carries its own quantity price curve.
+// Art Prints — a separate product line. One product per substrate; a "Size"
+// option scales price by sheet-yield off the 11×17 sheet (Comic = 2-up,
+// Trading Card = 18-up). Firm prices — the site-wide promo does not apply, so
+// what's quoted is exactly what's charged.
+//
+// Pricing model: the 11×17 quantity curve is the reference. The `print_size`
+// modifier shifts the list price to that size's tier-0 unit (= round(11×17
+// tier-0 / divisor) − 11×17 tier-0). Because the quantity discount is a
+// percentage applied to the whole list, every size tracks the 11×17 curve
+// scaled by 1/divisor at every quantity — no per-size tier tables needed.
 // ---------------------------------------------------------------------------
-interface PrintTier { minQty: number; priceUSD: number; }
-interface PrintDef {
+interface PrintTier { minQty: number; priceUSD: number; }   // priced at 11×17
+interface PrintSize { label: string; subLabel: string; divisor: number; weightGrams: number; }
+interface SubstrateDef {
   slug: string;
+  legacySlugs: string[];   // older slugs whose Product row we reuse in place (keeps FKs)
   name: string;
   shortDescription: string;
   description: string;
-  tiers: PrintTier[];
+  tiers: PrintTier[];      // the 11×17 quantity curve (reference size)
+  sizes: PrintSize[];      // offered sizes, largest first (11×17 is the base)
 }
 
-const PRINTS: PrintDef[] = [
+// Size labels double as pricing-modifier keys, sizeWeightsGrams keys, and the
+// value stored in OrderItem.options.print_size — keep them stable. Dimensions
+// stay in the label so the configurator preview can parse the trim aspect.
+const SIZE_11X17 = '11×17';
+const SIZE_COMIC = 'Comic (6.625 × 10.25)';
+const SIZE_CARD  = 'Trading Card (2.5 × 3.5)';
+
+// Per-print shipping weight (grams). 11×17 metal 0.361424 lb ≈ 164 g; 11×17
+// paper & foil 0.076775 lb ≈ 35 g. Smaller sizes scale by sheet-yield (÷2, ÷18)
+// — a slight over-estimate vs. raw area, which keeps us from ever undercharging
+// shipping.
+const METAL_SIZES: PrintSize[] = [
+  { label: SIZE_11X17, subLabel: 'Full sheet',   divisor: 1,  weightGrams: 164 },
+  { label: SIZE_COMIC, subLabel: '2 per sheet',  divisor: 2,  weightGrams: 82 },
+  { label: SIZE_CARD,  subLabel: '18 per sheet', divisor: 18, weightGrams: 9 },
+];
+const FLAT_SIZES: PrintSize[] = [
+  { label: SIZE_11X17, subLabel: 'Full sheet',  divisor: 1, weightGrams: 35 },
+  { label: SIZE_COMIC, subLabel: '2 per sheet', divisor: 2, weightGrams: 18 },
+];
+
+const flatTiers = (prices: number[], minQtys: number[]): PrintTier[] =>
+  prices.map((priceUSD, i) => ({ minQty: minQtys[i]!, priceUSD }));
+
+const QTY_BREAKS = [25, 50, 100, 250, 500, 1000];
+
+const SUBSTRATES: SubstrateDef[] = [
   {
-    slug: 'art-print-11x17-silver-metal',
-    name: '11×17 Metal Print — Silver',
-    shortDescription: 'Brushed silver metal 11×17 art print.',
-    description: 'Vibrant 11×17 prints on brushed silver metal. Flat per-unit pricing at every quantity.',
-    tiers: [
-      { minQty: 1, priceUSD: 17.67 }, { minQty: 25, priceUSD: 17.67 }, { minQty: 50, priceUSD: 17.67 },
-      { minQty: 100, priceUSD: 17.67 }, { minQty: 250, priceUSD: 17.67 }, { minQty: 500, priceUSD: 17.67 },
-      { minQty: 1000, priceUSD: 17.67 },
-    ],
+    slug: 'art-print-metal-silver',
+    legacySlugs: ['art-print-11x17-silver-metal'],
+    name: 'Metal Print — Silver',
+    shortDescription: 'Brushed silver metal art print — 11×17, comic, or trading-card size.',
+    description: 'Vibrant prints on brushed silver metal. Choose your size — full 11×17, comic (6.625 × 10.25"), or trading card (2.5 × 3.5"). Flat per-unit pricing at every quantity.',
+    tiers: flatTiers([17.67, 17.67, 17.67, 17.67, 17.67, 17.67, 17.67], [1, ...QTY_BREAKS]),
+    sizes: METAL_SIZES,
   },
   {
-    slug: 'art-print-11x17-raised-metal',
-    name: '11×17 Metal Print — Raised',
-    shortDescription: 'Raised-texture metal 11×17 art print.',
-    description: 'Raised-texture metal 11×17 prints. Flat per-unit pricing at every quantity.',
-    tiers: [
-      { minQty: 1, priceUSD: 22.67 }, { minQty: 25, priceUSD: 22.67 }, { minQty: 50, priceUSD: 22.67 },
-      { minQty: 100, priceUSD: 22.67 }, { minQty: 250, priceUSD: 22.67 }, { minQty: 500, priceUSD: 22.67 },
-      { minQty: 1000, priceUSD: 22.67 },
-    ],
+    slug: 'art-print-metal-raised',
+    legacySlugs: ['art-print-11x17-raised-metal'],
+    name: 'Metal Print — Raised',
+    shortDescription: 'Raised-texture metal art print — 11×17, comic, or trading-card size.',
+    description: 'Raised-texture metal prints with a tactile finish. Choose your size — full 11×17, comic (6.625 × 10.25"), or trading card (2.5 × 3.5"). Flat per-unit pricing at every quantity.',
+    tiers: flatTiers([22.67, 22.67, 22.67, 22.67, 22.67, 22.67, 22.67], [1, ...QTY_BREAKS]),
+    sizes: METAL_SIZES,
   },
   {
-    slug: 'art-print-11x17-paper-gloss',
-    name: '11×17 Paper Print — 100# Gloss',
-    shortDescription: '11×17 prints on 100# gloss cover stock.',
-    description: 'Full-color 11×17 prints on premium 100# gloss cover stock. Volume pricing.',
-    tiers: [
-      { minQty: 10, priceUSD: 2.16 }, { minQty: 25, priceUSD: 1.72 }, { minQty: 50, priceUSD: 1.35 },
-      { minQty: 100, priceUSD: 1.08 }, { minQty: 250, priceUSD: 0.87 }, { minQty: 500, priceUSD: 0.76 },
-      { minQty: 1000, priceUSD: 0.71 },
-    ],
+    slug: 'art-print-paper-gloss',
+    legacySlugs: ['art-print-11x17-paper-gloss'],
+    name: 'Paper Print — 100# Gloss',
+    shortDescription: 'Prints on premium 100# gloss cover stock — 11×17 or comic size.',
+    description: 'Full-color prints on premium 100# gloss cover stock. Choose full 11×17 or comic (6.625 × 10.25") size. Volume pricing.',
+    tiers: flatTiers([2.16, 1.72, 1.35, 1.08, 0.87, 0.76, 0.71], [10, ...QTY_BREAKS]),
+    sizes: FLAT_SIZES,
   },
   {
-    slug: 'art-print-11x17-foil',
-    name: '11×17 Foil Print',
-    shortDescription: 'Foil-finished 11×17 art print.',
-    description: 'Eye-catching foil-finished 11×17 prints. Volume pricing.',
-    tiers: [
-      { minQty: 5, priceUSD: 5.73 }, { minQty: 25, priceUSD: 5.33 }, { minQty: 50, priceUSD: 5.00 },
-      { minQty: 100, priceUSD: 4.75 }, { minQty: 250, priceUSD: 4.56 }, { minQty: 500, priceUSD: 4.46 },
-      { minQty: 1000, priceUSD: 4.42 },
-    ],
+    slug: 'art-print-foil',
+    legacySlugs: ['art-print-11x17-foil'],
+    name: 'Foil Print',
+    shortDescription: 'Foil-finished art print — 11×17 or comic size.',
+    description: 'Eye-catching foil-finished prints. Choose full 11×17 or comic (6.625 × 10.25") size. Volume pricing.',
+    tiers: flatTiers([5.73, 5.33, 5.00, 4.75, 4.56, 4.46, 4.42], [5, ...QTY_BREAKS]),
+    sizes: FLAT_SIZES,
   },
 ];
 
-// Per-print shipping weight (grams). From the legacy BYOP weights:
-// metal 0.361424 lb ≈ 164 g; paper & foil 0.076775 lb ≈ 35 g.
-const PRINT_WEIGHT_GRAMS: Record<string, number> = {
-  'art-print-11x17-silver-metal': 164,
-  'art-print-11x17-raised-metal': 164,
-  'art-print-11x17-paper-gloss': 35,
-  'art-print-11x17-foil': 35,
-};
-
-async function buildPrintProduct(def: PrintDef, categoryId: string) {
+async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
   const first = def.tiers[0]!;
-  const baseCents = cents(first.priceUSD);
+  const baseCents = cents(first.priceUSD);            // 11×17 tier-0 list price
   const qtyTiers = def.tiers.map((t) => ({
     qty: t.minQty,
     discountBps: Math.round((1 - t.priceUSD / first.priceUSD) * 10000),
   }));
-  const config = { baseCents, qtyTiers, modifiers: [], kind: 'print', ignoreSiteDiscount: true };
 
-  const existing = await prisma.product.findUnique({ where: { slug: def.slug }, select: { id: true } });
+  // print_size: a pricing modifier (relative cents) + the per-size tier-0 unit
+  // (absolute, for the configurator's price tag) + a shipping weight.
+  const sizeModifiers: Record<string, number> = {};
+  const sizeUnitCents: Record<string, number> = {};
+  const sizeWeightsGrams: Record<string, number> = {};
+  for (const s of def.sizes) {
+    const unit = Math.round(baseCents / s.divisor);
+    sizeUnitCents[s.label] = unit;
+    sizeModifiers[s.label] = unit - baseCents;         // 0 for 11×17, negative for smaller
+    sizeWeightsGrams[s.label] = s.weightGrams;
+  }
+
+  const config = {
+    baseCents,
+    qtyTiers,
+    modifiers: [{ key: 'print_size', values: sizeModifiers }],
+    kind: 'print',
+    ignoreSiteDiscount: true,
+    sizeWeightsGrams,
+  };
+
+  // "From" price = the cheapest size at min qty (smallest size, tier-0), so the
+  // storefront's "from $X" is honest across all sizes.
+  const fromCents = Math.min(...def.sizes.map((s) => sizeUnitCents[s.label]!));
+
+  // Reuse an existing row (current slug first, then any legacy slug) so
+  // CartItem / OrderItem foreign keys survive the rename.
+  const existing =
+    (await prisma.product.findUnique({ where: { slug: def.slug }, select: { id: true } })) ??
+    (await (async () => {
+      for (const legacy of def.legacySlugs) {
+        const row = await prisma.product.findUnique({ where: { slug: legacy }, select: { id: true } });
+        if (row) return row;
+      }
+      return null;
+    })());
+
   const data = {
     slug: def.slug,
     name: def.name,
     shortDescription: def.shortDescription,
     description: def.description,
-    priceCents: baseCents,
+    priceCents: fromCents,
     hasVariants: false,
     madeToOrder: true,
     active: true,
     minQuantity: first.minQty,
-    weightGrams: PRINT_WEIGHT_GRAMS[def.slug] ?? 0,
+    weightGrams: def.sizes[0]!.weightGrams,             // 11×17 weight — fallback default
     pricingConfig: config as any,
     seoTitle: def.name,
     seoDescription: def.shortDescription,
     faq: [
-      { q: 'What size are these prints?', a: 'All prints are 11×17 inches. Provide art at 11×17 with 0.125" bleed at 300 DPI.' },
+      { q: 'What sizes can I order?', a: `Choose ${def.sizes.map((s) => s.label).join(', ')}. Provide art at the selected size with 0.125" bleed at 300 DPI.` },
+      { q: 'How is size priced?', a: 'Prints are cut from an 11×17 sheet, so smaller sizes cost proportionally less — a comic print is a half sheet, a trading card is 1/18th of a sheet.' },
       { q: 'Is there a minimum order?', a: `Minimum order is ${first.minQty} for this material.` },
       { q: 'Do you proof before printing?', a: 'Yes — request a free PDF proof (or a paid hard-copy proof) at checkout. Nothing prints until you approve.' },
     ],
@@ -532,11 +588,28 @@ async function buildPrintProduct(def: PrintDef, categoryId: string) {
     options: {
       create: [
         { name: 'Print title / reference', internalKey: 'title', type: 'TEXT' as const, required: false, sortOrder: 0 },
+        {
+          name: 'Size',
+          internalKey: 'print_size',
+          section: 'Size',
+          type: 'TILES' as const,
+          required: true,
+          sortOrder: 5,
+          helpText: 'Prints are cut from an 11×17 sheet — smaller sizes cost less.',
+          values: {
+            create: def.sizes.map((s, i) => ({
+              label: s.label,
+              subLabel: s.subLabel,
+              priceModifierCents: sizeUnitCents[s.label]!,   // display only: this size's per-print price at min qty
+              sortOrder: i,
+            })),
+          },
+        },
         { name: 'PDF proof before printing', internalKey: 'pdf_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 38, helpText: 'Free — we email a PDF proof to approve before anything prints.' },
         { name: 'Hard-copy proof before printing', internalKey: 'hard_copy_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 39, helpText: 'A single printed proof shipped to you first. Adds the price of one print plus a $19.95 proof & shipping fee.' },
         { name: 'Is this a reorder?', internalKey: 'is_reorder', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 41 },
         { name: 'Upload your art', internalKey: 'upload', section: 'Finalize Setup', type: 'UPLOAD' as const, required: true, sortOrder: 42 },
-        { name: 'File Prep Checklist Confirmation', internalKey: 'file_prep_ok', section: 'Finalize Setup', type: 'CONFIRM' as const, required: true, sortOrder: 43, longDescription: 'I confirm my art is 11×17 at 300 DPI with 0.125" bleed, CMYK, flattened and print-ready. Files are reviewed in prepress; I will be contacted if corrections are needed.' },
+        { name: 'File Prep Checklist Confirmation', internalKey: 'file_prep_ok', section: 'Finalize Setup', type: 'CONFIRM' as const, required: true, sortOrder: 43, longDescription: 'I confirm my art matches the selected print size at 300 DPI with 0.125" bleed, CMYK, flattened and print-ready. Files are reviewed in prepress; I will be contacted if corrections are needed.' },
       ],
     },
   };
@@ -621,10 +694,25 @@ async function main() {
     console.log(`  created graphic-novel-${s.slugSegment}-size`);
   }
 
-  // 11×17 prints
-  for (const def of PRINTS) {
-    await buildPrintProduct(def, categoryIds['11x17-prints']!);
+  // Art prints — one product per substrate, size chosen in the configurator.
+  for (const def of SUBSTRATES) {
+    await buildSubstrateProduct(def, categoryIds['art-prints']!);
     console.log(`  built ${def.slug}`);
+  }
+
+  // Retire any legacy per-size 11×17 rows that weren't reused above (e.g. a
+  // prior run already created the new slug). Deactivate + detach rather than
+  // delete, so historical OrderItem references stay intact.
+  const newSlugs = new Set(SUBSTRATES.map((s) => s.slug));
+  const stale = await prisma.product.findMany({
+    where: { slug: { startsWith: 'art-print-11x17-' } },
+    select: { id: true, slug: true },
+  });
+  for (const p of stale) {
+    if (newSlugs.has(p.slug)) continue;
+    await prisma.productCategory.deleteMany({ where: { productId: p.id } });
+    await prisma.product.update({ where: { id: p.id }, data: { active: false } });
+    console.log(`  retired legacy ${p.slug}`);
   }
 
   console.log('CWS-style products seeded.');

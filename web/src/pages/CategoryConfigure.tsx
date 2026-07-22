@@ -276,6 +276,26 @@ export function CategoryConfigure() {
 
   // Build the 3D book spec from active product + selections
   const isPrint = (product?.pricingConfig as { kind?: string } | null)?.kind === 'print';
+  // Firm-priced prints ignore the site-wide promo — don't scale their price
+  // tags / "from" prices by the discount factor or they'd read low.
+  const ignoreSiteDiscount = Boolean((product?.pricingConfig as PricingConfig | null)?.ignoreSiteDiscount);
+  const effSiteDiscountBps = ignoreSiteDiscount ? 0 : siteDiscountBps;
+
+  // Art-print preview follows the chosen trim size (dims live in the size
+  // label, e.g. "Comic (6.625 × 10.25)"). Rendered true-to-scale against the
+  // 11×17 sheet so a trading card visibly reads smaller than a full sheet.
+  const artBox = useMemo(() => {
+    const sizeLabel = selections['print_size'];
+    const dim = typeof sizeLabel === 'string' ? parseDimensions(sizeLabel) : null;
+    const w = dim?.widthIn ?? 11;
+    const h = dim?.heightIn ?? 17;
+    const maxH = 480;   // full 11×17 sheet height on screen
+    const maxW = 360;   // left-column budget
+    let heightPx = Math.min(maxH, (h / 17) * maxH);
+    let widthPx = heightPx * (w / h);
+    if (widthPx > maxW) { widthPx = maxW; heightPx = widthPx * (h / w); }
+    return { widthPx: Math.round(widthPx), heightPx: Math.round(heightPx) };
+  }, [selections]);
 
   const bookSpec = useMemo(() => {
     if (!product) return null;
@@ -454,12 +474,14 @@ export function CategoryConfigure() {
           {isPrint ? (
             <div className="admin-card">
               <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em', marginBottom: '.5rem' }}>
-                Your 11×17 art
+                Your artwork{typeof selections['print_size'] === 'string' ? ` — ${selections['print_size']}` : ''}
               </div>
-              <div style={{ aspectRatio: '11 / 17', background: '#0f172a', borderRadius: 12, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {frontCoverUrl
-                  ? <img src={frontCoverUrl} alt="Your art preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  : <span className="muted" style={{ fontSize: '.85rem', padding: '1rem', textAlign: 'center' }}>Drop your art below to preview it here</span>}
+              <div style={{ minHeight: 480, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: artBox.widthPx, height: artBox.heightPx, background: '#0f172a', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 30px rgba(0,0,0,.25)', transition: 'width .3s ease, height .3s ease' }}>
+                  {frontCoverUrl
+                    ? <img src={frontCoverUrl} alt="Your art preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span className="muted" style={{ fontSize: '.8rem', padding: '.75rem', textAlign: 'center', color: '#94a3b8' }}>Drop your art below to preview it here</span>}
+                </div>
               </div>
               <div style={{ marginTop: '.75rem' }}>
                 <CoverUploadTile label="Preview image" url={frontCoverUrl} onPick={pickCover('front')} onClear={() => pickCover('front')(null)} />
@@ -570,12 +592,18 @@ export function CategoryConfigure() {
 
         {/* Right: configurator panels */}
         <div>
-          {/* Size picker — synthesized from the products */}
-          <ConfigSection title="Choose your size" subtitle="Pick a trim size to start" defaultOpen>
+          {/* Product picker — trim size for books, substrate for art prints */}
+          <ConfigSection
+            title={isPrint ? 'Choose your material' : 'Choose your size'}
+            subtitle={isPrint ? 'Pick a substrate to start' : 'Pick a trim size to start'}
+            defaultOpen
+          >
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '.75rem' }}>
               {products.map((p) => {
                 const dim = parseDimensions(p.name);
                 const selected = p.id === productId;
+                const pIgnore = Boolean((p.pricingConfig as PricingConfig | null)?.ignoreSiteDiscount);
+                const fromCents = Math.round(p.priceCents * (pIgnore ? 1 : 1 - siteDiscountBps / 10000));
                 return (
                   <button
                     key={p.id}
@@ -592,15 +620,17 @@ export function CategoryConfigure() {
                     }}
                   >
                     <div style={{ fontWeight: 600, fontSize: '.95rem' }}>
-                      {p.name.replace(/^.*?[—-]\s*/, '').replace(/\s*\(.*?\)/, '')}
+                      {isPrint
+                        ? p.name.replace(/\s*[—-]\s*/, ' — ')
+                        : p.name.replace(/^.*?[—-]\s*/, '').replace(/\s*\(.*?\)/, '')}
                     </div>
-                    {dim && (
+                    {!isPrint && dim && (
                       <div style={{ fontSize: '.8rem', opacity: .85, marginTop: '.25rem' }}>
                         {dim.widthIn}" × {dim.heightIn}"
                       </div>
                     )}
                     <div style={{ fontSize: '.8rem', marginTop: '.5rem', opacity: .9 }}>
-                      from {formatMoney(Math.round(p.priceCents * (1 - siteDiscountBps / 10000)))}
+                      from {formatMoney(fromCents)}
                     </div>
                   </button>
                 );
@@ -620,7 +650,7 @@ export function CategoryConfigure() {
                     productId={product.id}
                     deltas={
                       product.pricingConfig
-                        ? optionPriceDeltas(product.pricingConfig, opt, selections, visibleKeys, siteDiscountBps)
+                        ? optionPriceDeltas(product.pricingConfig, opt, selections, visibleKeys, effSiteDiscountBps)
                         : undefined
                     }
                   />

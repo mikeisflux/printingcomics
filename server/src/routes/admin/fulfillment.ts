@@ -11,6 +11,26 @@ import { getEasyPostConfig } from '../../lib/settings.js';
 
 const router = Router();
 
+/**
+ * Per-unit shipping weight (grams) for an order line. Art prints price and ship
+ * by size: the product carries a `pricingConfig.sizeWeightsGrams` map keyed by
+ * the selected `print_size` option, so a comic-size metal print (82 g) isn't
+ * billed as a full 11×17 sheet (164 g). Falls back to the product's flat
+ * `weightGrams` for everything else.
+ */
+function perUnitWeightGrams(item: {
+  options?: unknown;
+  product?: { weightGrams?: number | null; pricingConfig?: unknown } | null;
+}): number {
+  const cfg = item.product?.pricingConfig as { sizeWeightsGrams?: Record<string, number> } | null | undefined;
+  const size = (item.options as Record<string, unknown> | null | undefined)?.['print_size'];
+  if (cfg?.sizeWeightsGrams && typeof size === 'string') {
+    const g = cfg.sizeWeightsGrams[size];
+    if (typeof g === 'number') return g;
+  }
+  return item.product?.weightGrams ?? 0;
+}
+
 // ============ Packages CRUD ============
 
 const packageSchema = z.object({
@@ -144,7 +164,7 @@ router.get('/orders/:orderId/shipments', async (req, res) => {
     unitPriceCents: i.unitPriceCents,
     totalQuantity: i.quantity,
     remaining: Math.max(0, i.quantity - (allocatedByItem.get(i.id) ?? 0)),
-    weightGramsEach: i.product.weightGrams ?? 0,
+    weightGramsEach: perUnitWeightGrams(i),
   }));
 
   res.json({ shipments, remaining });
@@ -189,7 +209,7 @@ router.post('/orders/:orderId/shipments', async (req, res) => {
     if (alreadyAllocated + a.quantity > item.quantity) {
       throw new HttpError(400, `Allocation for "${item.name}" exceeds remaining qty (${item.quantity - alreadyAllocated} left)`);
     }
-    const perUnitOz = ((item.product?.weightGrams ?? 0) as number) / 28.3495;
+    const perUnitOz = perUnitWeightGrams(item) / 28.3495;
     contentWeightOz += perUnitOz * a.quantity;
     insuredValueCents += (item.unitPriceCents as number) * a.quantity;
   }
@@ -280,7 +300,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     // Default to 1oz per unit if a product is missing weightGrams — better
     // than packing 1000 weightless items into one mailer and then having
     // USPS reject it.
-    const perUnitOz = ((item.product?.weightGrams ?? 0) / 28.3495) || 1;
+    const perUnitOz = (perUnitWeightGrams(item) / 28.3495) || 1;
     for (let i = 0; i < remaining; i++) {
       units.push({ orderItemId: item.id, weightOz: perUnitOz });
     }
@@ -318,7 +338,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     for (const alloc of box.allocations) {
       const it = itemById.get(alloc.orderItemId);
       if (!it) continue;
-      const perUnit = ((it.product?.weightGrams ?? 0) / 28.3495) || 1;
+      const perUnit = (perUnitWeightGrams(it) / 28.3495) || 1;
       contentWeightOz += perUnit * alloc.quantity;
       insuredValueCents += (it.unitPriceCents as number) * alloc.quantity;
     }
