@@ -201,9 +201,12 @@ await fetch('https://printingcomics.com/api/v1/orders', {
             <Endpoint method="GET" path="/catalog/products/:slug" scope="catalog:read" />
             <p>
               Returns the full product, including every <code>option</code> (cover stock, paper
-              type, page count, finish), every <code>value</code> (with price modifiers), the{' '}
-              <code>variants</code>, and the structured <code>pricingConfig</code> the storefront
-              uses to compute prices.
+              type, page count, finish, or an art print's <code>print_size</code>), every{' '}
+              <code>value</code> (with price modifiers), the <code>variants</code>, and the
+              structured <code>pricingConfig</code> the storefront uses to compute prices.
+              Size-priced products (see <a href="#art-prints">Art Prints</a>) also carry{' '}
+              <code>sizeWeightsGrams</code> — per-size shipping weight keyed by the{' '}
+              <code>print_size</code> value.
             </p>
 
             <Endpoint method="GET" path="/catalog/categories" scope="catalog:read" />
@@ -272,6 +275,126 @@ Content-Type: application/json
               <code>hard_copy_proof</code> adds a separate <code>Hard-Copy Proof — …</code> item
               (that book's single-copy price + $19.95), and <code>pdf_proof</code> is free. So the
               quoted <code>totalCents</code> already reflects any requested proofs.
+            </p>
+          </Section>
+
+          <Section id="art-prints" title="Art Prints">
+            <p>
+              The <strong>Art Prints</strong> line is four substrate products, each with a
+              required <code>print_size</code> option. Prints are cut from an 11×17 sheet, so
+              smaller sizes cost proportionally less (a comic is a half sheet; a trading card is
+              1/18th). Prices are <strong>firm</strong> — the site-wide storefront promo never
+              applies, so a quote is exactly what's charged. Prints are ordinary catalog
+              products; they need <strong>no new endpoints</strong>.
+            </p>
+            <table className="api-table">
+              <thead><tr><th>Material</th><th><code>productSlug</code></th><th>Min qty</th><th>Sizes</th></tr></thead>
+              <tbody>
+                <tr><td>Silver Metal</td><td><code>art-print-metal-silver</code></td><td>1</td><td>11×17 · Comic · Trading Card</td></tr>
+                <tr><td>Raised Metal</td><td><code>art-print-metal-raised</code></td><td>1</td><td>11×17 · Comic · Trading Card</td></tr>
+                <tr><td>Paper (100# Gloss)</td><td><code>art-print-paper-gloss</code></td><td>10</td><td>11×17 · Comic</td></tr>
+                <tr><td>Foil</td><td><code>art-print-foil</code></td><td>5</td><td>11×17 · Comic</td></tr>
+              </tbody>
+            </table>
+            <p className="muted">
+              The old per-size slugs (<code>art-print-11x17-*</code>) are retired — use a
+              substrate slug + <code>print_size</code>. The old slugs map to the new slug with{' '}
+              <code>print_size: "11×17"</code>.
+            </p>
+
+            <h3>The <code>print_size</code> option</h3>
+            <p>
+              Required on every print line. Send the exact value, <em>or</em> a loose form
+              (<code>"11x17"</code>, <code>"comic"</code>, <code>"trading card"</code> — ASCII{' '}
+              <code>x</code>, any case/spacing) which we resolve to the canonical size. Omitting
+              it prices and ships the print as <strong>11×17</strong>. The exact accepted values
+              are always live on <code>GET /catalog/products/:slug</code> under{' '}
+              <code>options[print_size].values[].label</code>.
+            </p>
+            <table className="api-table">
+              <thead><tr><th><code>print_size</code> value</th><th>Trim</th><th>Offered on</th></tr></thead>
+              <tbody>
+                <tr><td><code>11×17</code></td><td>11 × 17 in</td><td>all substrates</td></tr>
+                <tr><td><code>Comic (6.625 × 10.25)</code></td><td>6.625 × 10.25 in</td><td>all substrates</td></tr>
+                <tr><td><code>Trading Card (2.5 × 3.5)</code></td><td>2.5 × 3.5 in</td><td>metal only</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Price per unit</h3>
+            <p>Metal is flat at every quantity; paper and foil are volume-tiered. Always trust a live <a href="#pricing"><code>POST /pricing/quote</code></a> over these tables.</p>
+            <table className="api-table">
+              <thead><tr><th>Metal size</th><th>Silver</th><th>Raised</th></tr></thead>
+              <tbody>
+                <tr><td><code>11×17</code></td><td>$17.67</td><td>$22.67</td></tr>
+                <tr><td><code>Comic</code></td><td>$8.84</td><td>$11.34</td></tr>
+                <tr><td><code>Trading Card</code></td><td>$0.98</td><td>$1.26</td></tr>
+              </tbody>
+            </table>
+            <table className="api-table">
+              <thead><tr><th>Qty</th><th>Paper 11×17</th><th>Paper Comic</th><th>Foil 11×17</th><th>Foil Comic</th></tr></thead>
+              <tbody>
+                <tr><td>min–24</td><td>2.16</td><td>1.08</td><td>5.73</td><td>2.87</td></tr>
+                <tr><td>25–49</td><td>1.72</td><td>0.86</td><td>5.33</td><td>2.67</td></tr>
+                <tr><td>50–99</td><td>1.35</td><td>0.68</td><td>5.00</td><td>2.50</td></tr>
+                <tr><td>100–249</td><td>1.08</td><td>0.54</td><td>4.75</td><td>2.38</td></tr>
+                <tr><td>250–499</td><td>0.87</td><td>0.44</td><td>4.56</td><td>2.28</td></tr>
+                <tr><td>500–999</td><td>0.76</td><td>0.38</td><td>4.46</td><td>2.23</td></tr>
+                <tr><td>1000+</td><td>0.71</td><td>0.35</td><td>4.42</td><td>2.21</td></tr>
+              </tbody>
+            </table>
+            <p className="muted">Paper minimum 10; foil minimum 5.</p>
+
+            <h3>Per-print shipping weight</h3>
+            <p>
+              Returned on <code>GET /catalog/products/:slug</code> as{' '}
+              <code>sizeWeightsGrams</code> (keyed by <code>print_size</code> value); the
+              top-level <code>weightGrams</code> is the 11×17 fallback.
+            </p>
+            <table className="api-table">
+              <thead><tr><th>Material</th><th>11×17</th><th>Comic</th><th>Trading Card</th></tr></thead>
+              <tbody>
+                <tr><td>Silver / Raised metal</td><td>164 g</td><td>82 g</td><td>9 g</td></tr>
+                <tr><td>Paper / Foil</td><td>35 g</td><td>18 g</td><td>—</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Quote &amp; order</h3>
+            <Code>{`POST /api/v1/pricing/quote
+{
+  "items": [
+    { "productSlug": "art-print-metal-silver",
+      "quantity": 50,
+      "options": { "print_size": "Comic (6.625 × 10.25)" } }
+  ],
+  "shippingAddress": { "country": "US", "region": "CA" }
+}
+// → items[0].unitPriceCents = 884, totalCents = 44200 (+ shipping/tax)
+
+POST /api/v1/orders
+{
+  "email": "creator@example.com",
+  "shippingAddress": { "firstName": "Jane", "lastName": "Doe",
+    "line1": "123 Main St", "city": "SF", "region": "CA",
+    "postalCode": "94110", "country": "US" },
+  "items": [
+    {
+      "productSlug": "art-print-metal-silver",
+      "quantity": 50,
+      "options": {
+        "print_size": "Comic (6.625 × 10.25)",
+        "title": "Issue 1 variant",
+        "pdf_proof": "yes"
+      },
+      "files": [ { "uploadId": "cmf12abcde…", "purpose": "artwork" } ]
+    }
+  ]
+}`}</Code>
+            <p>
+              Prints accept <code>print_size</code>, <code>title</code>, <code>pdf_proof</code>,{' '}
+              <code>hard_copy_proof</code>, and <code>is_reorder</code> — no page / cover /
+              binding options. A <code>hard_copy_proof</code> line is priced at the chosen size's
+              single-copy price + $19.95. Proofing works exactly as in{' '}
+              <a href="#orders">Orders → Proofing</a>.
             </p>
           </Section>
 
@@ -1026,6 +1149,7 @@ function Sidebar() {
     ['rate-limits', 'Rate limits & idempotency'],
     ['catalog', 'Catalog'],
     ['pricing', 'Pricing'],
+    ['art-prints', 'Art Prints'],
     ['shipping', 'Shipping'],
     ['projects', 'Projects'],
     ['orders', 'Orders'],
