@@ -1,4 +1,5 @@
 import { getPaypalConfig as getPaypalSettings, invalidateSettingsCache } from '../../settings.js';
+import { HttpError } from '../../../middleware/error.js';
 
 export interface PayPalConfig {
   clientId: string;
@@ -15,9 +16,11 @@ export async function getPayPalConfig(): Promise<PayPalConfig> {
   if (cachedConfig && Date.now() < cacheExpiry) return cachedConfig;
 
   const settings = await getPaypalSettings();
-  const clientId = settings.clientId || '';
-  const clientSecret = settings.clientSecret || '';
-  const webhookId = settings.webhookId || '';
+  // Trim — a trailing space/newline from copy-paste is a common, invisible
+  // cause of "invalid_client" (the credential no longer matches byte-for-byte).
+  const clientId = (settings.clientId || '').trim();
+  const clientSecret = (settings.clientSecret || '').trim();
+  const webhookId = (settings.webhookId || '').trim();
   const mode = settings.environment || 'sandbox';
 
   if (!clientId || !clientSecret) {
@@ -49,7 +52,19 @@ export async function getPayPalAccessToken(): Promise<string> {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`PayPal auth failed: ${err}`);
+    // Log the raw PayPal body for diagnostics, but return an actionable,
+    // buyer-safe message instead of a bare 500. invalid_client means the
+    // Client ID + Secret pair PayPal received didn't authenticate — almost
+    // always a wrong/rotated Secret or an environment (sandbox/live) that
+    // doesn't match the credentials.
+    console.error('[paypal] auth failed', { env: config.baseUrl, body: err });
+    if (res.status === 401 || /invalid_client/.test(err)) {
+      throw new HttpError(
+        502,
+        'Payment provider rejected our credentials. If you are the site owner, re-check the PayPal Client ID, Secret, and that the environment (Sandbox/Live) matches the keys in Admin → Settings → Payments.',
+      );
+    }
+    throw new HttpError(502, 'Could not reach the payment provider. Please try again in a moment.');
   }
 
   const data = (await res.json()) as { access_token: string };
