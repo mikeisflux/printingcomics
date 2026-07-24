@@ -443,7 +443,7 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
 // scaled by 1/divisor at every quantity — no per-size tier tables needed.
 // ---------------------------------------------------------------------------
 interface PrintTier { minQty: number; priceUSD: number; }   // priced at 11×17
-interface PrintSize { label: string; subLabel: string; divisor: number; weightGrams: number; }
+interface PrintSize { label: string; divisor: number; weightGrams: number; }
 interface SubstrateDef {
   slug: string;
   legacySlugs: string[];   // older slugs whose Product row we reuse in place (keeps FKs)
@@ -466,13 +466,13 @@ const SIZE_CARD  = 'Trading Card (2.5 × 3.5)';
 // — a slight over-estimate vs. raw area, which keeps us from ever undercharging
 // shipping.
 const METAL_SIZES: PrintSize[] = [
-  { label: SIZE_11X17, subLabel: 'Full sheet',   divisor: 1,  weightGrams: 164 },
-  { label: SIZE_COMIC, subLabel: '2 per sheet',  divisor: 2,  weightGrams: 82 },
-  { label: SIZE_CARD,  subLabel: '18 per sheet', divisor: 18, weightGrams: 9 },
+  { label: SIZE_11X17, divisor: 1,  weightGrams: 164 },
+  { label: SIZE_COMIC, divisor: 2,  weightGrams: 82 },
+  { label: SIZE_CARD,  divisor: 18, weightGrams: 9 },
 ];
 const FLAT_SIZES: PrintSize[] = [
-  { label: SIZE_11X17, subLabel: 'Full sheet',  divisor: 1, weightGrams: 35 },
-  { label: SIZE_COMIC, subLabel: '2 per sheet', divisor: 2, weightGrams: 18 },
+  { label: SIZE_11X17, divisor: 1, weightGrams: 35 },
+  { label: SIZE_COMIC, divisor: 2, weightGrams: 18 },
 ];
 
 const flatTiers = (prices: number[], minQtys: number[]): PrintTier[] =>
@@ -599,7 +599,6 @@ async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
           values: {
             create: def.sizes.map((s, i) => ({
               label: s.label,
-              subLabel: s.subLabel,
               priceModifierCents: sizeUnitCents[s.label]!,   // display only: this size's per-print price at min qty
               sortOrder: i,
             })),
