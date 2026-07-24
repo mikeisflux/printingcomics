@@ -12,8 +12,8 @@ Base URL: `https://printingcomics.com/api/v1` · Auth: `Authorization: Bearer <k
 
 | Material | `productSlug` | Min qty | Sizes | Pricing |
 |---|---|---|---|---|
-| Silver Metal | `art-print-metal-silver` | 1 | 11×17 · Comic · Trading Card | flat per size |
-| Raised Metal | `art-print-metal-raised` | 1 | 11×17 · Comic · Trading Card | flat per size |
+| Silver Metal | `art-print-metal-silver` | 1 | 11×17 · Comic | flat per size |
+| Raised Metal | `art-print-metal-raised` | 1 | 11×17 · Comic | flat per size |
 | Paper (100# Gloss) | `art-print-paper-gloss` | 10 | 11×17 · Comic | volume-tiered |
 | Foil | `art-print-foil` | 5 | 11×17 · Comic | volume-tiered |
 
@@ -27,18 +27,17 @@ you quote is exactly what's charged.
 
 ## The `print_size` option
 
-Each print takes one **required** `print_size` option. Prints are cut from an
-11×17 sheet, so smaller sizes cost proportionally less (a comic is a half sheet;
-a trading card is 1/18th of a sheet).
+Each print takes one **required** `print_size` option. Each size has its own
+firm per-unit price (smaller sizes cost less) — quote or read it live rather
+than deriving it.
 
 | `print_size` value | Trim size | Offered on |
 |---|---|---|
 | `11×17` | 11 × 17 in | all substrates |
 | `Comic (6.625 × 10.25)` | 6.625 × 10.25 in | all substrates |
-| `Trading Card (2.5 × 3.5)` | 2.5 × 3.5 in | **metal only** |
 
-Send the value exactly as shown, **or** a loose form — `"11x17"`, `"comic"`,
-`"trading card"` (ASCII `x`, any case/spacing) all resolve to the canonical
+Send the value exactly as shown, **or** a loose form — `"11x17"`, `"comic"`
+(ASCII `x`, any case/spacing) both resolve to the canonical
 size. If `print_size` is omitted, the print is priced and shipped as **11×17**.
 The exact accepted values are always available live on
 `GET /catalog/products/:slug` under `options[print_size].values[].label`.
@@ -49,23 +48,22 @@ The exact accepted values are always available live on
 
 | `print_size` | Silver (`art-print-metal-silver`) | Raised (`art-print-metal-raised`) |
 |---|---|---|
-| `11×17` | $17.67 | $22.67 |
-| `Comic (6.625 × 10.25)` | $8.84 | $11.34 |
-| `Trading Card (2.5 × 3.5)` | $0.98 | $1.26 |
+| `11×17` | $17.67 | $17.67 |
+| `Comic (6.625 × 10.25)` | $8.20 | $8.20 |
 
 **Paper (100# Gloss)** — min 10
 
 | Qty | 10–24 | 25–49 | 50–99 | 100–249 | 250–499 | 500–999 | 1000+ |
 |---|---|---|---|---|---|---|---|
 | `11×17` | 2.16 | 1.72 | 1.35 | 1.08 | 0.87 | 0.76 | 0.71 |
-| `Comic (6.625 × 10.25)` | 1.08 | 0.86 | 0.68 | 0.54 | 0.44 | 0.38 | 0.35 |
+| `Comic (6.625 × 10.25)` | 1.08 | 0.86 | 0.68 | 0.54 | 0.44 | 0.38 | 0.36 |
 
 **Foil** — min 5
 
 | Qty | 5–24 | 25–49 | 50–99 | 100–249 | 250–499 | 500–999 | 1000+ |
 |---|---|---|---|---|---|---|---|
-| `11×17` | 5.73 | 5.33 | 5.00 | 4.75 | 4.56 | 4.46 | 4.42 |
-| `Comic (6.625 × 10.25)` | 2.87 | 2.67 | 2.50 | 2.38 | 2.28 | 2.23 | 2.21 |
+| `11×17` | 7.41 | 6.97 | 6.60 | 6.33 | 6.12 | 6.01 | 5.97 |
+| `Comic (6.625 × 10.25)` | 5.17 | 4.76 | 4.41 | 4.14 | 3.96 | 3.84 | 3.81 |
 
 Always trust a live **`POST /pricing/quote`** over these tables — it's the
 authoritative price and reflects any future changes.
@@ -76,10 +74,10 @@ If you estimate shipping yourself, these are the per-unit weights we use. They
 also come back on `GET /catalog/products/:slug` as `sizeWeightsGrams` (keyed by
 `print_size` value); the top-level `weightGrams` is the 11×17 fallback.
 
-| Material | 11×17 | Comic | Trading Card |
-|---|---|---|---|
-| Silver / Raised Metal | 164 g (0.3614 lb) | 82 g | 9 g |
-| Paper / Foil | 35 g (0.0768 lb) | 18 g | — |
+| Material | 11×17 | Comic |
+|---|---|---|
+| Silver / Raised Metal | 164 g (0.3614 lb) | 82 g |
+| Paper / Foil | 35 g (0.0768 lb) | 18 g |
 
 ## Quote a basket
 
@@ -93,7 +91,7 @@ POST /api/v1/pricing/quote
   ],
   "shippingAddress": { "country": "US", "region": "CA" }
 }
-// → items[0].unitPriceCents = 884, totalCents = 44200, plus shipping/tax.
+// → items[0].unitPriceCents = 820, totalCents = 41000, plus shipping/tax.
 ```
 Set `print_size` to price a specific size; omit it to price 11×17.
 (Proof options below add fees; see Proofing.)

@@ -71,7 +71,7 @@ async function ensureCategories() {
     { slug: 'manga', name: 'Manga', description: 'Manga-format printing.' },
     { slug: 'zines', name: 'Zines', description: 'Short-run zines.' },
     { slug: 'artist-tools', name: 'Artist Tools', description: 'Sample packs, templates, resources.' },
-    { slug: 'art-prints', name: 'Art Prints', description: 'Metal, paper and foil art prints — full 11×17, comic, or trading-card size.' },
+    { slug: 'art-prints', name: 'Art Prints', description: 'Metal, paper and foil art prints — full 11×17 or comic size.' },
   ];
   const byslug: Record<string, string> = {};
   for (let i = 0; i < cats.length; i++) {
@@ -431,73 +431,72 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
 }
 
 // ---------------------------------------------------------------------------
-// Art Prints — a separate product line. One product per substrate; a "Size"
-// option scales price by sheet-yield off the 11×17 sheet (Comic = 2-up,
-// Trading Card = 18-up). Firm prices — the site-wide promo does not apply, so
-// what's quoted is exactly what's charged.
+// Art Prints — a separate product line, one product per substrate. Each size
+// (11×17, Comic) carries its OWN firm price-per-unit chart via
+// PricingConfig.sizePricing — sizes are NOT derived from one another, so any
+// curve fits. Firm prices: the site-wide promo does not apply.
 //
-// Pricing model: the 11×17 quantity curve is the reference. The `print_size`
-// modifier shifts the list price to that size's tier-0 unit (= round(11×17
-// tier-0 / divisor) − 11×17 tier-0). Because the quantity discount is a
-// percentage applied to the whole list, every size tracks the 11×17 curve
-// scaled by 1/divisor at every quantity — no per-size tier tables needed.
+// NB: this is the Art Print line ONLY. The Comic Book / Graphic Novel products
+// (buildProduct above) are completely separate and untouched — the "Comic"
+// size here is an art-print trim size (6.625 × 10.25"), not a comic book.
 // ---------------------------------------------------------------------------
-interface PrintTier { minQty: number; priceUSD: number; }   // priced at 11×17
-interface PrintSize { label: string; divisor: number; weightGrams: number; }
+interface SizeChart {
+  label: string;
+  weightGrams: number;
+  prices?: number[];   // explicit per-qty-break unit price (USD); length = qtyBreaks
+  divisor?: number;    // else derive from prices11x17: round(11×17 cents ÷ divisor)
+}
 interface SubstrateDef {
   slug: string;
   legacySlugs: string[];   // older slugs whose Product row we reuse in place (keeps FKs)
   name: string;
   shortDescription: string;
   description: string;
-  tiers: PrintTier[];      // the 11×17 quantity curve (reference size)
-  sizes: PrintSize[];      // offered sizes, largest first (11×17 is the base)
+  minQty: number;
+  qtyBreaks: number[];     // qty tier thresholds (first === minQty)
+  prices11x17: number[];   // reference 11×17 price per break (for divisor-derived sizes)
+  sizes: SizeChart[];      // first entry is the 11×17 size
 }
 
-// Size labels double as pricing-modifier keys, sizeWeightsGrams keys, and the
+// Size labels double as the sizePricing keys, sizeWeightsGrams keys, and the
 // value stored in OrderItem.options.print_size — keep them stable. Dimensions
 // stay in the label so the configurator preview can parse the trim aspect.
 const SIZE_11X17 = '11×17';
 const SIZE_COMIC = 'Comic (6.625 × 10.25)';
-const SIZE_CARD  = 'Trading Card (2.5 × 3.5)';
-
-// Per-print shipping weight (grams). 11×17 metal 0.361424 lb ≈ 164 g; 11×17
-// paper & foil 0.076775 lb ≈ 35 g. Smaller sizes scale by sheet-yield (÷2, ÷18)
-// — a slight over-estimate vs. raw area, which keeps us from ever undercharging
-// shipping.
-const METAL_SIZES: PrintSize[] = [
-  { label: SIZE_11X17, divisor: 1,  weightGrams: 164 },
-  { label: SIZE_COMIC, divisor: 2,  weightGrams: 82 },
-  { label: SIZE_CARD,  divisor: 18, weightGrams: 9 },
-];
-const FLAT_SIZES: PrintSize[] = [
-  { label: SIZE_11X17, divisor: 1, weightGrams: 35 },
-  { label: SIZE_COMIC, divisor: 2, weightGrams: 18 },
-];
-
-const flatTiers = (prices: number[], minQtys: number[]): PrintTier[] =>
-  prices.map((priceUSD, i) => ({ minQty: minQtys[i]!, priceUSD }));
 
 const QTY_BREAKS = [25, 50, 100, 250, 500, 1000];
+const flat = (v: number): number[] => [v, v, v, v, v, v, v];   // same price at every break
 
+// Firm per-unit charts supplied for each substrate × size. Each `prices` array
+// is a 7-value curve aligned to that substrate's qtyBreaks.
 const SUBSTRATES: SubstrateDef[] = [
   {
     slug: 'art-print-metal-silver',
     legacySlugs: ['art-print-11x17-silver-metal'],
     name: 'Metal Print — Silver',
-    shortDescription: 'Brushed silver metal art print — 11×17, comic, or trading-card size.',
-    description: 'Vibrant prints on brushed silver metal. Choose your size — full 11×17, comic (6.625 × 10.25"), or trading card (2.5 × 3.5"). Flat per-unit pricing at every quantity.',
-    tiers: flatTiers([17.67, 17.67, 17.67, 17.67, 17.67, 17.67, 17.67], [1, ...QTY_BREAKS]),
-    sizes: METAL_SIZES,
+    shortDescription: 'Brushed silver metal art print — 11×17 or comic size.',
+    description: 'Vibrant prints on brushed silver metal. Choose full 11×17 or comic (6.625 × 10.25") size. Flat per-unit pricing at every quantity.',
+    minQty: 1,
+    qtyBreaks: [1, ...QTY_BREAKS],
+    prices11x17: flat(17.67),
+    sizes: [
+      { label: SIZE_11X17, weightGrams: 164, prices: flat(17.67) },
+      { label: SIZE_COMIC, weightGrams: 82,  prices: flat(8.20) },
+    ],
   },
   {
     slug: 'art-print-metal-raised',
     legacySlugs: ['art-print-11x17-raised-metal'],
     name: 'Metal Print — Raised',
-    shortDescription: 'Raised-texture metal art print — 11×17, comic, or trading-card size.',
-    description: 'Raised-texture metal prints with a tactile finish. Choose your size — full 11×17, comic (6.625 × 10.25"), or trading card (2.5 × 3.5"). Flat per-unit pricing at every quantity.',
-    tiers: flatTiers([22.67, 22.67, 22.67, 22.67, 22.67, 22.67, 22.67], [1, ...QTY_BREAKS]),
-    sizes: METAL_SIZES,
+    shortDescription: 'Raised-texture metal art print — 11×17 or comic size.',
+    description: 'Raised-texture metal prints with a tactile finish. Choose full 11×17 or comic (6.625 × 10.25") size. Flat per-unit pricing at every quantity.',
+    minQty: 1,
+    qtyBreaks: [1, ...QTY_BREAKS],
+    prices11x17: flat(17.67),
+    sizes: [
+      { label: SIZE_11X17, weightGrams: 164, prices: flat(17.67) },
+      { label: SIZE_COMIC, weightGrams: 82,  prices: flat(8.20) },
+    ],
   },
   {
     slug: 'art-print-paper-gloss',
@@ -505,8 +504,13 @@ const SUBSTRATES: SubstrateDef[] = [
     name: 'Paper Print — 100# Gloss',
     shortDescription: 'Prints on premium 100# gloss cover stock — 11×17 or comic size.',
     description: 'Full-color prints on premium 100# gloss cover stock. Choose full 11×17 or comic (6.625 × 10.25") size. Volume pricing.',
-    tiers: flatTiers([2.16, 1.72, 1.35, 1.08, 0.87, 0.76, 0.71], [10, ...QTY_BREAKS]),
-    sizes: FLAT_SIZES,
+    minQty: 10,
+    qtyBreaks: [10, ...QTY_BREAKS],
+    prices11x17: [2.16, 1.72, 1.35, 1.08, 0.87, 0.76, 0.71],
+    sizes: [
+      { label: SIZE_11X17, weightGrams: 35, divisor: 1 },
+      { label: SIZE_COMIC, weightGrams: 18, divisor: 2 },
+    ],
   },
   {
     slug: 'art-print-foil',
@@ -514,43 +518,56 @@ const SUBSTRATES: SubstrateDef[] = [
     name: 'Foil Print',
     shortDescription: 'Foil-finished art print — 11×17 or comic size.',
     description: 'Eye-catching foil-finished prints. Choose full 11×17 or comic (6.625 × 10.25") size. Volume pricing.',
-    tiers: flatTiers([5.73, 5.33, 5.00, 4.75, 4.56, 4.46, 4.42], [5, ...QTY_BREAKS]),
-    sizes: FLAT_SIZES,
+    minQty: 5,
+    // Supplier chart showed a temporary "10% off foil" sale; our firm prices
+    // are the regular (pre-sale) rates = sale ÷ 0.9.
+    qtyBreaks: [5, ...QTY_BREAKS],
+    prices11x17: [7.41, 6.97, 6.60, 6.33, 6.12, 6.01, 5.97],
+    sizes: [
+      { label: SIZE_11X17, weightGrams: 35, prices: [7.41, 6.97, 6.60, 6.33, 6.12, 6.01, 5.97] },
+      { label: SIZE_COMIC, weightGrams: 18, prices: [5.17, 4.76, 4.41, 4.14, 3.96, 3.84, 3.81] },
+    ],
   },
 ];
 
 async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
-  const first = def.tiers[0]!;
-  const baseCents = cents(first.priceUSD);            // 11×17 tier-0 list price
-  const qtyTiers = def.tiers.map((t) => ({
-    qty: t.minQty,
-    discountBps: Math.round((1 - t.priceUSD / first.priceUSD) * 10000),
-  }));
+  const cents11x17 = def.prices11x17.map(cents);
 
-  // print_size: a pricing modifier (relative cents) + the per-size tier-0 unit
-  // (absolute, for the configurator's price tag) + a shipping weight.
-  const sizeModifiers: Record<string, number> = {};
+  // Each size resolves to its OWN complete {baseCents, qtyTiers} curve — from an
+  // explicit per-break price chart, or derived from the 11×17 reference.
+  const sizePricing: Record<string, { baseCents: number; qtyTiers: { qty: number; discountBps: number }[] }> = {};
   const sizeUnitCents: Record<string, number> = {};
   const sizeWeightsGrams: Record<string, number> = {};
   for (const s of def.sizes) {
-    const unit = Math.round(baseCents / s.divisor);
-    sizeUnitCents[s.label] = unit;
-    sizeModifiers[s.label] = unit - baseCents;         // 0 for 11×17, negative for smaller
+    const sizeCents = s.prices
+      ? s.prices.map(cents)
+      : cents11x17.map((c) => Math.round(c / (s.divisor ?? 1)));
+    const base = sizeCents[0]!;
+    const qtyTiers = def.qtyBreaks.map((q, i) => ({
+      qty: q,
+      discountBps: Math.round((1 - sizeCents[i]! / base) * 10000),
+    }));
+    sizePricing[s.label] = { baseCents: base, qtyTiers };
+    sizeUnitCents[s.label] = base;   // this size's min-qty unit price (for the tile tag)
     sizeWeightsGrams[s.label] = s.weightGrams;
   }
 
+  // The 11×17 curve is the default (used when no print_size is supplied).
+  const ref = sizePricing[def.sizes[0]!.label]!;
   const config = {
-    baseCents,
-    qtyTiers,
-    modifiers: [{ key: 'print_size', values: sizeModifiers }],
     kind: 'print',
     ignoreSiteDiscount: true,
     sizeWeightsGrams,
+    sizePriceKey: 'print_size',
+    sizePricing,
+    baseCents: ref.baseCents,
+    qtyTiers: ref.qtyTiers,
+    modifiers: [],
   };
 
-  // "From" price = the cheapest size at min qty (smallest size, tier-0), so the
-  // storefront's "from $X" is honest across all sizes.
-  const fromCents = Math.min(...def.sizes.map((s) => sizeUnitCents[s.label]!));
+  // "From" price = the cheapest size at its min qty, so the storefront's
+  // "from $X" is honest across all sizes.
+  const fromCents = Math.min(...Object.values(sizeUnitCents));
 
   // Reuse an existing row (current slug first, then any legacy slug) so
   // CartItem / OrderItem foreign keys survive the rename.
@@ -573,15 +590,15 @@ async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
     hasVariants: false,
     madeToOrder: true,
     active: true,
-    minQuantity: first.minQty,
+    minQuantity: def.minQty,
     weightGrams: def.sizes[0]!.weightGrams,             // 11×17 weight — fallback default
     pricingConfig: config as any,
     seoTitle: def.name,
     seoDescription: def.shortDescription,
     faq: [
       { q: 'What sizes can I order?', a: `Choose ${def.sizes.map((s) => s.label).join(', ')}. Provide art at the selected size with 0.125" bleed at 300 DPI.` },
-      { q: 'How is size priced?', a: 'Prints are cut from an 11×17 sheet, so smaller sizes cost proportionally less — a comic print is a half sheet, a trading card is 1/18th of a sheet.' },
-      { q: 'Is there a minimum order?', a: `Minimum order is ${first.minQty} for this material.` },
+      { q: 'How is size priced?', a: 'Each size has its own firm per-print price — smaller sizes cost less. Pick a size to see its price.' },
+      { q: 'Is there a minimum order?', a: `Minimum order is ${def.minQty} for this material.` },
       { q: 'Do you proof before printing?', a: 'Yes — request a free PDF proof (or a paid hard-copy proof) at checkout. Nothing prints until you approve.' },
     ],
     categories: { create: [{ category: { connect: { id: categoryId } } }] },
@@ -595,7 +612,7 @@ async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
           type: 'TILES' as const,
           required: true,
           sortOrder: 5,
-          helpText: 'Prints are cut from an 11×17 sheet — smaller sizes cost less.',
+          helpText: 'Smaller sizes cost less.',
           values: {
             create: def.sizes.map((s, i) => ({
               label: s.label,

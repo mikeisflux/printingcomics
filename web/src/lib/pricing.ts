@@ -24,6 +24,11 @@ export interface PricingConfig {
   pages?: PagesPricing;
   kind?: string;
   ignoreSiteDiscount?: boolean;
+  /** Art prints: option key whose value picks a full per-size price curve. */
+  sizePriceKey?: string;
+  /** Art prints: complete {baseCents, qtyTiers} per size label; the selected
+   *  size replaces baseCents/qtyTiers for the whole calculation. */
+  sizePricing?: Record<string, { baseCents: number; qtyTiers: QtyTier[] }>;
 }
 export interface PricingInputs {
   quantity: number;
@@ -42,6 +47,17 @@ export interface PricingBreakdown {
 }
 
 export function computePricing(config: PricingConfig, inputs: PricingInputs): PricingBreakdown {
+  // Art prints: the selected size can carry its own complete price curve.
+  let baseCents = config.baseCents;
+  let qtyTiers = config.qtyTiers;
+  if (config.sizePricing && config.sizePriceKey) {
+    const sel = inputs.options[config.sizePriceKey];
+    if (typeof sel === 'string' && config.sizePricing[sel]) {
+      baseCents = config.sizePricing[sel]!.baseCents;
+      qtyTiers = config.sizePricing[sel]!.qtyTiers;
+    }
+  }
+
   const modifierCents: Record<string, number> = {};
   let modifierTotal = 0;
   for (const mod of config.modifiers) {
@@ -65,9 +81,9 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
     }
   }
 
-  const combinedListCents = config.baseCents + modifierTotal + pagesCents;
+  const combinedListCents = baseCents + modifierTotal + pagesCents;
 
-  const sortedTiers = [...config.qtyTiers].sort((a, b) => a.qty - b.qty);
+  const sortedTiers = [...qtyTiers].sort((a, b) => a.qty - b.qty);
   let discountBps = 0;
   for (const t of sortedTiers) if (inputs.quantity >= t.qty) discountBps = t.discountBps;
 
@@ -77,7 +93,7 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
   );
   const totalCents = unitCents * inputs.quantity;
 
-  return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
+  return { baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
 }
 
 /**
@@ -94,19 +110,20 @@ export function canonicalizeOptionValues(
 ): Record<string, string | number> {
   const norm = (s: string) => s.toLowerCase().replace(/[×✕]/g, 'x').replace(/["'()]/g, '').replace(/\s+/g, '');
   const out = { ...options };
-  for (const mod of config.modifiers) {
-    const v = out[mod.key];
-    if (typeof v !== 'string') continue;
-    if (v in mod.values) continue;
+  const resolve = (key: string, candidates: string[]) => {
+    const v = out[key];
+    if (typeof v !== 'string') return;
+    if (candidates.includes(v)) return;
     const target = norm(v);
-    if (!target) continue;
-    const keys = Object.keys(mod.values);
-    const matches = keys.filter((k) => {
+    if (!target) return;
+    const matches = candidates.filter((k) => {
       const nk = norm(k);
       return nk === target || nk.startsWith(target) || target.startsWith(nk);
     });
-    if (matches.length === 1) out[mod.key] = matches[0]!;
-  }
+    if (matches.length === 1) out[key] = matches[0]!;
+  };
+  for (const mod of config.modifiers) resolve(mod.key, Object.keys(mod.values));
+  if (config.sizePriceKey && config.sizePricing) resolve(config.sizePriceKey, Object.keys(config.sizePricing));
   return out;
 }
 

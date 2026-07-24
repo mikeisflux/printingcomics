@@ -54,8 +54,15 @@ export interface PricingConfig {
   /** Product family marker, e.g. "print" — used by the configurator UI. */
   kind?: string;
   /** When true, the site-wide promo discount does NOT apply — the qty-tier
-   *  prices are firm (used for the 11×17 print line). */
+   *  prices are firm (used for the art-print line). */
   ignoreSiteDiscount?: boolean;
+  /** Art prints: the option key whose selected value picks a full per-size
+   *  price curve (e.g. "print_size"). */
+  sizePriceKey?: string;
+  /** Art prints: a complete {baseCents, qtyTiers} per size label. When the
+   *  selected size matches, it REPLACES baseCents/qtyTiers for the whole
+   *  calculation — each size has its own independent quantity curve. */
+  sizePricing?: Record<string, { baseCents: number; qtyTiers: QtyTier[] }>;
 }
 
 export interface PricingInputs {
@@ -78,6 +85,19 @@ export interface PricingBreakdown {
 }
 
 export function computePricing(config: PricingConfig, inputs: PricingInputs): PricingBreakdown {
+  // Art prints: the selected size can carry its own complete price curve, which
+  // replaces the default baseCents/qtyTiers for this calculation. Falls back to
+  // the defaults (= the 11×17 curve) when no size is selected or it's unknown.
+  let baseCents = config.baseCents;
+  let qtyTiers = config.qtyTiers;
+  if (config.sizePricing && config.sizePriceKey) {
+    const sel = inputs.options[config.sizePriceKey];
+    if (typeof sel === 'string' && config.sizePricing[sel]) {
+      baseCents = config.sizePricing[sel]!.baseCents;
+      qtyTiers = config.sizePricing[sel]!.qtyTiers;
+    }
+  }
+
   const modifierCents: Record<string, number> = {};
   let modifierTotal = 0;
   for (const mod of config.modifiers) {
@@ -101,10 +121,10 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
     }
   }
 
-  const combinedListCents = config.baseCents + modifierTotal + pagesCents;
+  const combinedListCents = baseCents + modifierTotal + pagesCents;
 
   // Pick the best qty tier whose qty <= quantity.
-  const sortedTiers = [...config.qtyTiers].sort((a, b) => a.qty - b.qty);
+  const sortedTiers = [...qtyTiers].sort((a, b) => a.qty - b.qty);
   let discountBps = 0;
   for (const t of sortedTiers) {
     if (inputs.quantity >= t.qty) discountBps = t.discountBps;
@@ -116,7 +136,7 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
   );
   const totalCents = unitCents * inputs.quantity;
 
-  return { baseCents: config.baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
+  return { baseCents, modifierCents, pagesCents, combinedListCents, discountBps, siteDiscountBps, unitCents, totalCents };
 }
 
 /**
@@ -126,10 +146,10 @@ export function computePricing(config: PricingConfig, inputs: PricingInputs): Pr
  * miss the `"11×17"` / `"Comic (6.625 × 10.25)"` key and be priced at base.
  *
  * Purely additive: only fills in when there's NO exact match, and only when a
- * single modifier value matches under normalization (unify ×/x, drop spaces,
- * quotes and parens) or as a unique prefix — so it never silently changes an
- * exact selection or picks between ambiguous labels. The storefront always
- * sends exact labels, so this is a no-op there.
+ * single candidate matches under normalization (unify ×/x, drop spaces, quotes
+ * and parens) or as a unique prefix — so it never silently changes an exact
+ * selection or picks between ambiguous labels. Covers both modifier options and
+ * the art-print size key. The storefront always sends exact labels → no-op there.
  */
 export function canonicalizeOptionValues(
   config: PricingConfig,
@@ -137,18 +157,19 @@ export function canonicalizeOptionValues(
 ): Record<string, string | number> {
   const norm = (s: string) => s.toLowerCase().replace(/[×✕]/g, 'x').replace(/["'()]/g, '').replace(/\s+/g, '');
   const out = { ...options };
-  for (const mod of config.modifiers) {
-    const v = out[mod.key];
-    if (typeof v !== 'string') continue;
-    if (v in mod.values) continue; // exact match — leave it
+  const resolve = (key: string, candidates: string[]) => {
+    const v = out[key];
+    if (typeof v !== 'string') return;
+    if (candidates.includes(v)) return; // exact match — leave it
     const target = norm(v);
-    if (!target) continue;
-    const keys = Object.keys(mod.values);
-    const matches = keys.filter((k) => {
+    if (!target) return;
+    const matches = candidates.filter((k) => {
       const nk = norm(k);
       return nk === target || nk.startsWith(target) || target.startsWith(nk);
     });
-    if (matches.length === 1) out[mod.key] = matches[0]!;
-  }
+    if (matches.length === 1) out[key] = matches[0]!;
+  };
+  for (const mod of config.modifiers) resolve(mod.key, Object.keys(mod.values));
+  if (config.sizePriceKey && config.sizePricing) resolve(config.sizePriceKey, Object.keys(config.sizePricing));
   return out;
 }

@@ -281,17 +281,16 @@ Content-Type: application/json
           <Section id="art-prints" title="Art Prints">
             <p>
               The <strong>Art Prints</strong> line is four substrate products, each with a
-              required <code>print_size</code> option. Prints are cut from an 11×17 sheet, so
-              smaller sizes cost proportionally less (a comic is a half sheet; a trading card is
-              1/18th). Prices are <strong>firm</strong> — the site-wide storefront promo never
-              applies, so a quote is exactly what's charged. Prints are ordinary catalog
-              products; they need <strong>no new endpoints</strong>.
+              required <code>print_size</code> option. Each size has its own firm per-unit price
+              (smaller sizes cost less). Prices are <strong>firm</strong> — the site-wide
+              storefront promo never applies, so a quote is exactly what's charged. Prints are
+              ordinary catalog products; they need <strong>no new endpoints</strong>.
             </p>
             <table className="api-table">
               <thead><tr><th>Material</th><th><code>productSlug</code></th><th>Min qty</th><th>Sizes</th></tr></thead>
               <tbody>
-                <tr><td>Silver Metal</td><td><code>art-print-metal-silver</code></td><td>1</td><td>11×17 · Comic · Trading Card</td></tr>
-                <tr><td>Raised Metal</td><td><code>art-print-metal-raised</code></td><td>1</td><td>11×17 · Comic · Trading Card</td></tr>
+                <tr><td>Silver Metal</td><td><code>art-print-metal-silver</code></td><td>1</td><td>11×17 · Comic</td></tr>
+                <tr><td>Raised Metal</td><td><code>art-print-metal-raised</code></td><td>1</td><td>11×17 · Comic</td></tr>
                 <tr><td>Paper (100# Gloss)</td><td><code>art-print-paper-gloss</code></td><td>10</td><td>11×17 · Comic</td></tr>
                 <tr><td>Foil</td><td><code>art-print-foil</code></td><td>5</td><td>11×17 · Comic</td></tr>
               </tbody>
@@ -305,7 +304,7 @@ Content-Type: application/json
             <h3>The <code>print_size</code> option</h3>
             <p>
               Required on every print line. Send the exact value, <em>or</em> a loose form
-              (<code>"11x17"</code>, <code>"comic"</code>, <code>"trading card"</code> — ASCII{' '}
+              (<code>"11x17"</code>, <code>"comic"</code> — ASCII{' '}
               <code>x</code>, any case/spacing) which we resolve to the canonical size. Omitting
               it prices and ships the print as <strong>11×17</strong>. The exact accepted values
               are always live on <code>GET /catalog/products/:slug</code> under{' '}
@@ -316,7 +315,6 @@ Content-Type: application/json
               <tbody>
                 <tr><td><code>11×17</code></td><td>11 × 17 in</td><td>all substrates</td></tr>
                 <tr><td><code>Comic (6.625 × 10.25)</code></td><td>6.625 × 10.25 in</td><td>all substrates</td></tr>
-                <tr><td><code>Trading Card (2.5 × 3.5)</code></td><td>2.5 × 3.5 in</td><td>metal only</td></tr>
               </tbody>
             </table>
 
@@ -325,21 +323,20 @@ Content-Type: application/json
             <table className="api-table">
               <thead><tr><th>Metal size</th><th>Silver</th><th>Raised</th></tr></thead>
               <tbody>
-                <tr><td><code>11×17</code></td><td>$17.67</td><td>$22.67</td></tr>
-                <tr><td><code>Comic</code></td><td>$8.84</td><td>$11.34</td></tr>
-                <tr><td><code>Trading Card</code></td><td>$0.98</td><td>$1.26</td></tr>
+                <tr><td><code>11×17</code></td><td>$17.67</td><td>$17.67</td></tr>
+                <tr><td><code>Comic</code></td><td>$8.20</td><td>$8.20</td></tr>
               </tbody>
             </table>
             <table className="api-table">
               <thead><tr><th>Qty</th><th>Paper 11×17</th><th>Paper Comic</th><th>Foil 11×17</th><th>Foil Comic</th></tr></thead>
               <tbody>
-                <tr><td>min–24</td><td>2.16</td><td>1.08</td><td>5.73</td><td>2.87</td></tr>
-                <tr><td>25–49</td><td>1.72</td><td>0.86</td><td>5.33</td><td>2.67</td></tr>
-                <tr><td>50–99</td><td>1.35</td><td>0.68</td><td>5.00</td><td>2.50</td></tr>
-                <tr><td>100–249</td><td>1.08</td><td>0.54</td><td>4.75</td><td>2.38</td></tr>
-                <tr><td>250–499</td><td>0.87</td><td>0.44</td><td>4.56</td><td>2.28</td></tr>
-                <tr><td>500–999</td><td>0.76</td><td>0.38</td><td>4.46</td><td>2.23</td></tr>
-                <tr><td>1000+</td><td>0.71</td><td>0.35</td><td>4.42</td><td>2.21</td></tr>
+                <tr><td>min–24</td><td>2.16</td><td>1.08</td><td>7.41</td><td>5.17</td></tr>
+                <tr><td>25–49</td><td>1.72</td><td>0.86</td><td>6.97</td><td>4.76</td></tr>
+                <tr><td>50–99</td><td>1.35</td><td>0.68</td><td>6.60</td><td>4.41</td></tr>
+                <tr><td>100–249</td><td>1.08</td><td>0.54</td><td>6.33</td><td>4.14</td></tr>
+                <tr><td>250–499</td><td>0.87</td><td>0.44</td><td>6.12</td><td>3.96</td></tr>
+                <tr><td>500–999</td><td>0.76</td><td>0.38</td><td>6.01</td><td>3.84</td></tr>
+                <tr><td>1000+</td><td>0.71</td><td>0.36</td><td>5.97</td><td>3.81</td></tr>
               </tbody>
             </table>
             <p className="muted">Paper minimum 10; foil minimum 5.</p>
@@ -351,10 +348,10 @@ Content-Type: application/json
               top-level <code>weightGrams</code> is the 11×17 fallback.
             </p>
             <table className="api-table">
-              <thead><tr><th>Material</th><th>11×17</th><th>Comic</th><th>Trading Card</th></tr></thead>
+              <thead><tr><th>Material</th><th>11×17</th><th>Comic</th></tr></thead>
               <tbody>
-                <tr><td>Silver / Raised metal</td><td>164 g</td><td>82 g</td><td>9 g</td></tr>
-                <tr><td>Paper / Foil</td><td>35 g</td><td>18 g</td><td>—</td></tr>
+                <tr><td>Silver / Raised metal</td><td>164 g</td><td>82 g</td></tr>
+                <tr><td>Paper / Foil</td><td>35 g</td><td>18 g</td></tr>
               </tbody>
             </table>
 
@@ -368,7 +365,7 @@ Content-Type: application/json
   ],
   "shippingAddress": { "country": "US", "region": "CA" }
 }
-// → items[0].unitPriceCents = 884, totalCents = 44200 (+ shipping/tax)
+// → items[0].unitPriceCents = 820, totalCents = 41000 (+ shipping/tax)
 
 POST /api/v1/orders
 {
