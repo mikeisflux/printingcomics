@@ -120,6 +120,35 @@ app.use('/uploads/partner', async (req, res, next) => {
   next();
 });
 
+// Every uploaded file is stored under a randomized key, so downloads would
+// save as that gibberish. Look the file up by storage key and attach its
+// ORIGINAL filename via Content-Disposition — `inline` keeps browser previews
+// working while "Save" (including from the PDF viewer) writes e.g.
+// "cover-art.pdf". Files without a MediaFile row fall through unchanged.
+app.use('/uploads', async (req, res, next) => {
+  try {
+    const filename = path.basename(req.path);
+    if (filename) {
+      const { prisma: db } = await import('./db.js');
+      const media = await db.mediaFile.findUnique({
+        where: { filename },
+        select: { originalName: true },
+      });
+      if (media?.originalName) {
+        // ASCII-safe fallback + RFC 5987 UTF-8 name for everything else.
+        const fallback = media.originalName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, "'");
+        const encoded = encodeURIComponent(media.originalName)
+          .replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+        const kind = 'download' in req.query ? 'attachment' : 'inline';
+        res.setHeader('Content-Disposition', `${kind}; filename="${fallback}"; filename*=UTF-8''${encoded}`);
+      }
+    }
+  } catch {
+    // Never let a lookup failure break file serving.
+  }
+  next();
+});
+
 // Public: serve uploaded email attachments (behind auth check in routes)
 app.use('/uploads', express.static(path.resolve(process.env.UPLOADS_DIR ?? './uploads')));
 
