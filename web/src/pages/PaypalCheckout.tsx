@@ -49,19 +49,32 @@ export function PaypalCheckout() {
   interface ShipRate { id: string; name: string; rateCents: number; estimatedDays?: string | null }
   const [shipRates, setShipRates] = useState<ShipRate[]>([]);
   const [shipRateId, setShipRateId] = useState<string | null>(null);
+  const [shipQuoting, setShipQuoting] = useState(false);
+  const [shipWeightOz, setShipWeightOz] = useState<number | null>(null);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (user?.email) setEmail(user.email); }, [user]);
+  // Live shipping quote. Rates depend on the parcel's real weight, so this
+  // re-runs whenever the destination or the cart changes — a flat
+  // country-only lookup would quote 50 books the same as one.
   useEffect(() => {
-    if (!ship.country) return;
-    void fetch(`/api/public/shipping/rates?country=${encodeURIComponent(ship.country)}`, { credentials: 'include' })
-      .then((r) => r.ok ? r.json() : { rates: [] })
-      .then((j: { rates: ShipRate[] }) => {
-        setShipRates(j.rates);
-        if (j.rates.length > 0 && !shipRateId) setShipRateId(j.rates[0]!.id);
-      })
-      .catch(() => setShipRates([]));
-  }, [ship.country]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!ship.country || !ship.postalCode || !cart?.items.length) { setShipRates([]); return; }
+    let cancelled = false;
+    setShipQuoting(true);
+    const t = setTimeout(() => {
+      void api.post<{ shippingOptions: ShipRate[]; shipmentWeightOz?: number }>('/checkout/quote', { shippingAddress: ship })
+        .then((j) => {
+          if (cancelled) return;
+          const rates = j.shippingOptions ?? [];
+          setShipRates(rates);
+          setShipWeightOz(j.shipmentWeightOz ?? null);
+          setShipRateId((cur) => (cur && rates.some((r) => r.id === cur) ? cur : rates[0]?.id ?? null));
+        })
+        .catch(() => { if (!cancelled) setShipRates([]); })
+        .finally(() => { if (!cancelled) setShipQuoting(false); });
+    }, 400); // debounce while the address is being typed
+    return () => { cancelled = true; clearTimeout(t); setShipQuoting(false); };
+  }, [ship.country, ship.postalCode, ship.region, ship.city, ship.line1, cart?.items.length, subtotal()]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch PayPal config from the API (reads from admin settings).
   useEffect(() => {
@@ -288,9 +301,22 @@ export function PaypalCheckout() {
             )}
           </div>
 
-          {shipRates.length > 0 && (
+          {(shipRates.length > 0 || shipQuoting || !!ship.postalCode) && (
             <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontWeight: 600, fontSize: '.9rem', marginBottom: '.35rem' }}>Shipping</div>
+              <div className="spread" style={{ marginBottom: '.35rem' }}>
+                <span style={{ fontWeight: 600, fontSize: '.9rem' }}>Shipping</span>
+                {shipWeightOz != null && (
+                  <span className="muted" style={{ fontSize: '.75rem' }}>
+                    {shipWeightOz >= 16 ? `${(shipWeightOz / 16).toFixed(2)} lb` : `${shipWeightOz.toFixed(1)} oz`}
+                  </span>
+                )}
+              </div>
+              {shipQuoting && <div className="muted" style={{ fontSize: '.85rem' }}>Getting live rates…</div>}
+              {!shipQuoting && shipRates.length === 0 && (
+                <div className="muted" style={{ fontSize: '.85rem' }}>
+                  {ship.postalCode ? 'No rates for this address yet — check the postal code.' : 'Enter your postal code for shipping rates.'}
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
                 {shipRates.map((r) => (
                   <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', fontSize: '.9rem' }}>

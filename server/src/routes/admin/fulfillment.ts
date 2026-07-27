@@ -6,30 +6,11 @@ import {
   epCreateShipment, epBuyShipment, epFetchShipment, epRefundShipment, epTestConnection,
   type EpCreateShipmentInput, type EpAddress,
 } from '../../lib/easypost.js';
+import { perUnitWeightGrams } from '../../lib/shipping-weight.js';
 import { autoPack, type PackageOption } from '../../lib/auto-pack.js';
 import { getEasyPostConfig } from '../../lib/settings.js';
 
 const router = Router();
-
-/**
- * Per-unit shipping weight (grams) for an order line. Art prints price and ship
- * by size: the product carries a `pricingConfig.sizeWeightsGrams` map keyed by
- * the selected `print_size` option, so a comic-size metal print (82 g) isn't
- * billed as a full 11×17 sheet (164 g). Falls back to the product's flat
- * `weightGrams` for everything else.
- */
-function perUnitWeightGrams(item: {
-  options?: unknown;
-  product?: { weightGrams?: number | null; pricingConfig?: unknown } | null;
-}): number {
-  const cfg = item.product?.pricingConfig as { sizeWeightsGrams?: Record<string, number> } | null | undefined;
-  const size = (item.options as Record<string, unknown> | null | undefined)?.['print_size'];
-  if (cfg?.sizeWeightsGrams && typeof size === 'string') {
-    const g = cfg.sizeWeightsGrams[size];
-    if (typeof g === 'number') return g;
-  }
-  return item.product?.weightGrams ?? 0;
-}
 
 // ============ Packages CRUD ============
 

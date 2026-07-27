@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { prisma } from '../../../db.js';
 import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
 import { itemsRequestProof } from '../../proofs.js';
+import { resolveShippingSelection } from '../../shipping-quote.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 
 export interface CreatePaypalOrderInput {
@@ -21,7 +22,14 @@ export interface CreatePaypalOrderResult {
   approveUrl: string | null;
 }
 
-async function computeTotals(cartId: string, couponCode?: string, shippingMethodId?: string, taxRegion?: string, taxCountry?: string) {
+async function computeTotals(
+  cartId: string,
+  couponCode?: string,
+  shippingMethodId?: string,
+  taxRegion?: string,
+  taxCountry?: string,
+  shippingAddress?: any,
+) {
   const cart = await prisma.cart.findUnique({
     where: { id: cartId },
     include: { items: { include: { product: true, variant: true } } },
@@ -36,14 +44,27 @@ async function computeTotals(cartId: string, couponCode?: string, shippingMethod
   const discount = couponEval.discountCents;
   const coupon = couponEval.ok ? couponEval.coupon : null;
 
+  // Re-derive shipping from the cart's real weight — never trust a price sent
+  // by the browser, and resolve live carrier rates (which aren't rows in the
+  // ShippingRate table) instead of silently charging zero.
   let shipping = 0;
   let shippingMethodName: string | undefined;
   if (shippingMethodId) {
-    const rate = await prisma.shippingRate.findUnique({ where: { id: shippingMethodId } });
-    if (rate) {
-      shipping = rate.rateCents;
-      shippingMethodName = rate.name;
-    }
+    const resolved = await resolveShippingSelection({
+      optionId: shippingMethodId,
+      items: cart.items.map((i) => ({ quantity: i.quantity, options: i.options, product: i.product })),
+      address: {
+        line1: shippingAddress?.line1,
+        line2: shippingAddress?.line2,
+        city: shippingAddress?.city,
+        region: shippingAddress?.region ?? taxRegion,
+        postalCode: shippingAddress?.postalCode,
+        country: shippingAddress?.country ?? taxCountry ?? 'US',
+      },
+      subtotalCents: subtotal,
+    });
+    shipping = resolved.cents;
+    shippingMethodName = resolved.name ?? undefined;
   }
 
   let tax = 0;
@@ -71,6 +92,7 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
     input.shippingMethodId,
     input.shippingAddress?.region,
     input.shippingAddress?.country,
+    input.shippingAddress,
   );
 
   // Pre-create the local Order in PENDING state — ties the PayPal order to a

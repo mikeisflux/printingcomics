@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { evaluateCoupon } from '../lib/coupons.js';
+import { quoteShipping } from '../lib/shipping-quote.js';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 
 const router = Router();
@@ -37,14 +38,23 @@ router.post('/quote', async (req, res) => {
   const cart = await findCart(req);
   if (!cart) throw new HttpError(400, 'No cart');
 
-  const zones = await prisma.shippingZone.findMany({
-    where: { countries: { has: shippingAddress.country } },
-    include: { rates: true },
+  // Rate the real parcel: weigh the cart and ask the carrier. (Previously this
+  // listed flat table rates, so 50 books quoted the same as one.)
+  const items = await prisma.cartItem.findMany({
+    where: { cartId: cart.id },
+    include: { product: { select: { name: true, weightGrams: true, pricingConfig: true } } },
   });
-  const options = zones[0]?.rates ?? [];
-
-  const items = await prisma.cartItem.findMany({ where: { cartId: cart.id } });
   const subtotal = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
+
+  const quote = await quoteShipping({
+    items: items.map((i) => ({
+      quantity: i.quantity,
+      options: i.options,
+      product: i.product,
+    })),
+    address: shippingAddress,
+    subtotalCents: subtotal,
+  });
 
   const taxRate = await prisma.taxRate.findFirst({
     where: { region: shippingAddress.region, country: shippingAddress.country },
@@ -54,9 +64,9 @@ router.post('/quote', async (req, res) => {
   res.json({
     subtotalCents: subtotal,
     taxCents,
-    shippingOptions: options.map((o) => ({
-      id: o.id, name: o.name, rateCents: o.rateCents, estimatedDays: o.estimatedDays,
-    })),
+    shippingOptions: quote.options,
+    shipmentWeightOz: Math.round(quote.weightOz * 100) / 100,
+    boxes: quote.boxes,
   });
 });
 
