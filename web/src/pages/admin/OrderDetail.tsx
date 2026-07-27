@@ -114,7 +114,6 @@ function slotLabelOf(p: { kind?: string | null; orderItem?: { name: string } | n
 
 function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
   const [showProof, setShowProof] = useState(false);
-  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofMsg, setProofMsg] = useState('');
   const [showRequest, setShowRequest] = useState(false);
   const [requestMsg, setRequestMsg] = useState('');
@@ -127,11 +126,15 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 
   // Items that can be proofed (the hard-copy-proof fee line is not an item to proof).
   const proofItems = order.items.filter((i) => i.product.slug !== 'hard-copy-proof');
-  const [selItemId, setSelItemId] = useState<string>(proofItems[0]?.id ?? '');
-  const selItem = proofItems.find((i) => i.id === selItemId) ?? proofItems[0];
-  const kindsForSel = selItem ? proofKindsForSlug(selItem.product.slug) : ['artwork'];
-  const [selKind, setSelKind] = useState<string>(kindsForSel[0] ?? 'artwork');
-  const effKind = kindsForSel.includes(selKind) ? selKind : kindsForSel[0]!;
+  // Several lines can share a product name — show the customer's title so
+  // they're distinguishable in the checklist and the queue's dropdowns.
+  const itemLabel = (it: (typeof proofItems)[number]) => {
+    const title = typeof it.options?.title === 'string' ? it.options.title.trim() : '';
+    return title ? `${it.name} — “${title}”` : it.name;
+  };
+
+  // Upload queue: pick many files at once, assign each a slot, send together.
+  const [queue, setQueue] = useState<{ file: File; itemId: string; kind: string }[]>([]);
 
   // Latest proof per slot (proofs arrive newest-first) → per-slot status chips.
   const latestBySlot = new Map<string, (typeof proofs)[number]>();
@@ -145,19 +148,54 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
     : status === 'pending' ? { text: '⏳ awaiting approval', color: '#e08a00' }
     : { text: 'not sent', color: 'var(--muted)' };
 
-  async function uploadProof() {
-    if (!proofFile) return;
+  // Queue newly-picked files, defaulting each to the first still-unsent slot so
+  // a multi-file drop mostly assigns itself.
+  function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    setQueue((cur) => {
+      const next = [...cur];
+      const taken = new Set([
+        ...cur.map((q) => `${q.itemId}:${q.kind}`),
+        ...[...latestBySlot.keys()],
+      ]);
+      for (const file of Array.from(list)) {
+        let itemId = proofItems[0]?.id ?? '';
+        let kind = itemId ? proofKindsForSlug(proofItems[0]!.product.slug)[0]! : 'artwork';
+        outer: for (const it of proofItems) {
+          for (const k of proofKindsForSlug(it.product.slug)) {
+            if (!taken.has(`${it.id}:${k}`)) { itemId = it.id; kind = k; break outer; }
+          }
+        }
+        taken.add(`${itemId}:${kind}`);
+        next.push({ file, itemId, kind });
+      }
+      return next;
+    });
+  }
+
+  async function sendQueue() {
+    if (queue.length === 0) return;
     setBusy(true); setErr(null);
     try {
       const fd = new FormData();
-      fd.append('file', proofFile);
+      for (const q of queue) fd.append('files', q.file);
+      fd.append('assignments', JSON.stringify(queue.map((q) => ({ orderItemId: q.itemId || null, kind: q.kind }))));
       if (proofMsg.trim()) fd.append('message', proofMsg.trim());
-      if (selItem) { fd.append('orderItemId', selItem.id); fd.append('kind', effKind); }
-      const r = await fetch(`/api/admin/orders/${order.id}/proof`, { method: 'POST', credentials: 'include', body: fd });
+      const r = await fetch(`/api/admin/orders/${order.id}/proofs/batch`, { method: 'POST', credentials: 'include', body: fd });
       if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Upload failed' }))).error);
-      setShowProof(false); setProofFile(null); setProofMsg('');
+      setShowProof(false); setQueue([]); setProofMsg('');
       onChange();
     } catch (e: any) { setErr(e.message ?? 'Upload failed'); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteProof(proofId: string) {
+    if (!window.confirm('Delete this proof? The customer’s review link for it will stop working.')) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.del(`/admin/orders/${order.id}/proof/${proofId}`);
+      onChange();
+    } catch (e: any) { setErr(e.message ?? 'Delete failed'); }
     finally { setBusy(false); }
   }
 
@@ -212,29 +250,73 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 
       {showProof && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '1rem', marginBottom: '1rem' }}>
-          {proofItems.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '.75rem', marginBottom: '.5rem' }}>
-              <div>
-                <label>Item this proof is for</label>
-                <select value={selItem?.id ?? ''} onChange={(e) => { setSelItemId(e.target.value); const it = proofItems.find((i) => i.id === e.target.value); if (it) setSelKind(proofKindsForSlug(it.product.slug)[0]!); }}>
-                  {proofItems.map((it) => <option key={it.id} value={it.id}>{it.name} × {it.quantity}</option>)}
-                </select>
+          <label>Proof files — select as many as you want</label>
+          <input
+            type="file"
+            multiple
+            accept="application/pdf,image/*"
+            onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ''; }}
+          />
+          <p className="muted" style={{ fontSize: '.8rem', margin: '.35rem 0 0' }}>
+            Each file gets assigned to a proof slot below. They’re all sent together in one email.
+          </p>
+
+          {queue.length > 0 && (
+            <div style={{ marginTop: '.85rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '.85rem', marginBottom: '.35rem' }}>
+                Queue ({queue.length} file{queue.length === 1 ? '' : 's'})
               </div>
-              <div>
-                <label>Proof type</label>
-                <select value={effKind} onChange={(e) => setSelKind(e.target.value)}>
-                  {kindsForSel.map((k) => <option key={k} value={k}>{PROOF_KIND_LABELS[k]}</option>)}
-                </select>
-              </div>
+              {queue.map((q, idx) => {
+                const it = proofItems.find((i) => i.id === q.itemId);
+                const kinds = it ? proofKindsForSlug(it.product.slug) : ['artwork'];
+                const dupe = queue.some((o, j) => j !== idx && o.itemId === q.itemId && o.kind === q.kind);
+                return (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.4fr 1fr auto', gap: '.5rem', alignItems: 'center', padding: '.35rem 0', borderTop: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: '.82rem', wordBreak: 'break-all' }} title={q.file.name}>
+                      📄 {q.file.name}
+                    </span>
+                    <select
+                      value={q.itemId}
+                      onChange={(e) => setQueue((cur) => cur.map((row, j) => {
+                        if (j !== idx) return row;
+                        const nit = proofItems.find((i) => i.id === e.target.value);
+                        const nkinds = nit ? proofKindsForSlug(nit.product.slug) : ['artwork'];
+                        return { ...row, itemId: e.target.value, kind: nkinds.includes(row.kind) ? row.kind : nkinds[0]! };
+                      }))}
+                      style={{ fontSize: '.8rem' }}
+                    >
+                      {proofItems.map((i) => <option key={i.id} value={i.id}>{itemLabel(i)}</option>)}
+                    </select>
+                    <select
+                      value={q.kind}
+                      onChange={(e) => setQueue((cur) => cur.map((row, j) => (j === idx ? { ...row, kind: e.target.value } : row)))}
+                      style={{ fontSize: '.8rem', borderColor: dupe ? '#c0392b' : undefined }}
+                    >
+                      {kinds.map((k) => <option key={k} value={k}>{PROOF_KIND_LABELS[k]}</option>)}
+                    </select>
+                    <button
+                      className="btn secondary"
+                      style={{ padding: '.15rem .5rem', fontSize: '.75rem' }}
+                      onClick={() => setQueue((cur) => cur.filter((_, j) => j !== idx))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+              {queue.some((q, i) => queue.some((o, j) => j !== i && o.itemId === q.itemId && o.kind === q.kind)) && (
+                <div className="muted" style={{ color: '#c0392b', fontSize: '.8rem', marginTop: '.35rem' }}>
+                  Two files are assigned to the same slot — the later one becomes the newer version.
+                </div>
+              )}
             </div>
           )}
-          <label>Proof file (PDF)</label>
-          <input type="file" accept="application/pdf,image/*" onChange={(e) => setProofFile(e.target.files?.[0] ?? null)} />
-          <label style={{ marginTop: '.5rem' }}>Note to customer (optional)</label>
+
+          <label style={{ marginTop: '.75rem' }}>Note to customer (optional)</label>
           <textarea rows={2} value={proofMsg} onChange={(e) => setProofMsg(e.target.value)} placeholder="Anything the customer should look at…" />
           <div style={{ marginTop: '.6rem' }}>
-            <button className="btn" onClick={uploadProof} disabled={busy || !proofFile}>
-              {busy ? 'Sending…' : selItem ? `Send ${PROOF_KIND_LABELS[effKind]!.toLowerCase()} to customer` : 'Send proof to customer'}
+            <button className="btn" onClick={sendQueue} disabled={busy || queue.length === 0}>
+              {busy ? 'Sending…' : `Send ${queue.length || ''} proof${queue.length === 1 ? '' : 's'} to customer`}
             </button>
           </div>
         </div>
@@ -261,10 +343,22 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
                 <span><strong>{slotLabelOf(p)} v{p.version}</strong> · {p.status.replace(/_/g, ' ')}</span>
                 <span className="muted">{new Date(p.createdAt).toLocaleString()}</span>
               </div>
+              <div className="muted" style={{ fontSize: '.8rem', marginTop: '.15rem', wordBreak: 'break-all' }}>
+                📄 {p.media.originalName}
+                {p.media.size ? <span> · {(p.media.size / 1024 / 1024).toFixed(2)} MB</span> : null}
+              </div>
               <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginTop: '.25rem' }}>
                 <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} target="_blank" rel="noreferrer">Preview</a>
                 <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} download={p.media.originalName}>Download</a>
                 <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} onClick={() => { void navigator.clipboard?.writeText(`${origin}/proof/${p.token}`); }}>Copy review link</button>
+                <button
+                  className="btn secondary"
+                  style={{ padding: '.15rem .5rem', fontSize: '.75rem', color: '#c0392b', borderColor: '#c0392b' }}
+                  disabled={busy}
+                  onClick={() => void deleteProof(p.id)}
+                >
+                  Delete
+                </button>
               </div>
               {p.status === 'approved' && <div style={{ color: 'green', marginTop: '.25rem' }}>Approved by {p.approvedName}{p.decidedAt ? ` on ${new Date(p.decidedAt).toLocaleString()}` : ''}</div>}
               {p.status === 'changes_requested' && p.decisionNote && <div style={{ color: '#c0392b', marginTop: '.25rem' }}>Changes requested: {p.decisionNote}</div>}

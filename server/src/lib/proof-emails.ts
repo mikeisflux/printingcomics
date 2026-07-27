@@ -60,6 +60,47 @@ export async function sendProofReadyEmail(proofId: string) {
   );
 }
 
+/**
+ * One email covering several proofs uploaded together — each row links to its
+ * own review page. Beats sending the customer N separate proof emails for a
+ * multi-item order.
+ */
+export async function sendProofsReadyEmail(proofIds: string[]) {
+  if (proofIds.length === 0) return;
+  if (proofIds.length === 1) return sendProofReadyEmail(proofIds[0]!);
+  const proofs = await prisma.proof.findMany({
+    where: { id: { in: proofIds } },
+    include: { order: true, orderItem: { select: { name: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (proofs.length === 0) return;
+  const order = proofs[0]!.order;
+  const [name, base] = await Promise.all([storeName(), baseUrl()]);
+
+  const rows = proofs
+    .map((p) => {
+      const label = `${proofKindLabel(p.kind)}${p.orderItem ? ` — ${p.orderItem.name}` : ''}`;
+      const link = `${base}/proof/${p.token}`;
+      return `<li style="margin:.5rem 0"><strong>${esc(label)}</strong> (v${p.version})<br>
+        <a href="${link}" style="color:#C61A22;font-weight:600">Review &amp; approve →</a></li>`;
+    })
+    .join('');
+
+  const html = wrap(
+    `<h2 style="color:#C61A22">Your proofs are ready to review</h2>
+     <p>We've prepared <strong>${proofs.length} proofs</strong> for order <strong>${esc(order.number)}</strong>.
+        Please review and approve each one — <strong>nothing goes to print until every proof is approved.</strong></p>
+     ${proofs[0]!.message ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(proofs[0]!.message!)}</p>` : ''}
+     <ul style="padding-left:1.1rem">${rows}</ul>`,
+    name,
+  );
+  await trySend(
+    order.id,
+    { to: { email: order.email }, subject: `${proofs.length} proofs ready for approval — order ${order.number}`, html, tags: [`order:${order.number}`, 'proof-ready'] },
+    `${proofs.length} proofs emailed to ${order.email}`,
+  );
+}
+
 export async function sendMediaRequestEmail(requestId: string) {
   const mr = await prisma.mediaRequest.findUnique({ where: { id: requestId }, include: { order: true } });
   if (!mr) return;

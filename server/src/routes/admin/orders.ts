@@ -10,7 +10,7 @@ import {
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofKindLabel, computeOrderProofStatus } from '../../lib/proofs.js';
-import { sendProofReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
+import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -406,6 +406,122 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
     }).catch(() => undefined);
   }
   res.json({ ok: true, proof });
+});
+
+// ---- Proofing: batch upload — one file per slot, ONE email to the customer ----
+// Multipart: `files` (repeated) + `assignments` (JSON array aligned by index:
+// [{ orderItemId, kind }]) + optional shared `message`. Creates every proof,
+// recomputes the aggregate once, and emails a single summary with all review
+// links, so multi-item orders don't spam the customer proof-by-proof.
+router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: String(req.params.id) } });
+  if (!order) throw new HttpError(404, 'Order not found');
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  if (files.length === 0) throw new HttpError(400, 'No proof files received');
+
+  let assignments: Array<{ orderItemId?: string | null; kind?: string | null }>;
+  try {
+    assignments = JSON.parse(String(req.body?.assignments ?? '[]'));
+  } catch {
+    throw new HttpError(400, 'assignments must be a JSON array');
+  }
+  if (!Array.isArray(assignments) || assignments.length !== files.length) {
+    throw new HttpError(400, 'assignments must have one entry per file');
+  }
+  const rawMessage = req.body?.message;
+  const message = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.trim() : undefined;
+
+  const items = await prisma.orderItem.findMany({ where: { orderId: order.id }, select: { id: true, name: true } });
+  const itemName = new Map(items.map((i) => [i.id, i.name]));
+  for (const a of assignments) {
+    if (a.kind && !['cover', 'interior', 'artwork'].includes(a.kind)) {
+      throw new HttpError(400, 'kind must be "cover", "interior" or "artwork"');
+    }
+    if (a.orderItemId && !itemName.has(a.orderItemId)) {
+      throw new HttpError(400, 'orderItemId does not belong to this order');
+    }
+  }
+
+  const created: Array<{ id: string; token: string; version: number; orderItemId: string | null; kind: string | null; fileUrl: string }> = [];
+  const summaries: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]!;
+    const orderItemId = assignments[i]!.orderItemId ?? null;
+    const kind = assignments[i]!.kind ?? null;
+    const media = await prisma.mediaFile.create({
+      data: {
+        filename: f.filename,
+        originalName: f.originalname,
+        mimeType: f.mimetype,
+        size: f.size,
+        url: `/uploads/proofs/${f.filename}`,
+        folder: '/proofs',
+        tags: ['proof', `order:${order.number}`],
+        uploaderId: req.session?.sub,
+      },
+    });
+    const version = (await prisma.proof.count({ where: { orderId: order.id, orderItemId, kind } })) + 1;
+    const proof = await prisma.proof.create({
+      data: { orderId: order.id, orderItemId, kind, mediaFileId: media.id, version, token: proofToken(), message, status: 'pending' },
+    });
+    created.push({ id: proof.id, token: proof.token, version, orderItemId, kind, fileUrl: media.url });
+    summaries.push(`${proofKindLabel(kind)}${orderItemId ? ` — ${itemName.get(orderItemId)}` : ''} v${version}`);
+  }
+
+  const orderProofStatus = await computeOrderProofStatus(order.id);
+  await prisma.orderStatusEvent.create({
+    data: { orderId: order.id, kind: 'status', message: `${created.length} proof(s) uploaded and emailed for approval: ${summaries.join('; ')}` },
+  });
+  await sendProofsReadyEmail(created.map((c) => c.id));
+
+  if (order.partnerId) {
+    for (const c of created) {
+      const reviewUrl = await proofReviewUrl(c.token);
+      void dispatchPartnerWebhook({
+        partnerId: order.partnerId,
+        event: 'proof.ready',
+        orderId: order.id,
+        payload: {
+          orderId: order.id,
+          number: order.number,
+          orderItemId: c.orderItemId,
+          itemName: c.orderItemId ? itemName.get(c.orderItemId) ?? null : null,
+          kind: c.kind,
+          proofVersion: c.version,
+          status: 'awaiting_approval',
+          orderProofStatus,
+          token: c.token,
+          reviewUrl,
+          fileUrl: c.fileUrl,
+        },
+      }).catch(() => undefined);
+    }
+  }
+  res.json({ ok: true, count: created.length, orderProofStatus });
+});
+
+// ---- Proofing: delete a proof uploaded in error ----
+// Removes the Proof row + its PDF from disk, kills the customer's review link,
+// and recomputes the order's aggregate proof status.
+router.delete('/:id/proof/:proofId', async (req, res) => {
+  const orderId = String(req.params.id);
+  const proof = await prisma.proof.findFirst({
+    where: { id: String(req.params.proofId), orderId },
+    include: { media: true, orderItem: { select: { name: true } } },
+  });
+  if (!proof) throw new HttpError(404, 'Proof not found');
+  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+
+  await prisma.proof.delete({ where: { id: proof.id } });
+  if (proof.media?.url?.startsWith('/uploads/')) {
+    await fs.unlink(path.join(UPLOADS_DIR, proof.media.url.replace(/^\/uploads\//, ''))).catch(() => undefined);
+  }
+  await prisma.mediaFile.delete({ where: { id: proof.mediaFileId } }).catch(() => undefined);
+  const orderProofStatus = await computeOrderProofStatus(orderId);
+  await prisma.orderStatusEvent.create({
+    data: { orderId, kind: 'status', message: `Deleted ${slotLabel} v${proof.version} (file: ${proof.media?.originalName ?? 'unknown'})` },
+  });
+  res.json({ ok: true, orderProofStatus });
 });
 
 // ---- Proofing: request additional / corrected media from the customer ----
