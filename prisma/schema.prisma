@@ -618,6 +618,7 @@ model OrderItem {
 
   shipmentItems ShipmentItem[]
   files         OrderItemFile[]
+  proofs        Proof[]
 
   @@index([orderId])
 }
@@ -642,13 +643,20 @@ model OrderItemFile {
 }
 
 // A PDF proof uploaded by staff for the customer to approve before production.
-// Multiple versions per order (re-uploaded after a change request). The order
-// cannot move into production/shipping until its latest proof is approved.
+// Proofs are per order ITEM (and per kind — books need a cover proof and an
+// interior proof; prints a single artwork proof), each independently versioned
+// after change requests. The order cannot move into production/shipping until
+// every required proof slot's latest version is approved. Legacy rows have
+// orderItemId/kind null (one order-level proof).
 model Proof {
-  id              String    @id @default(cuid())
-  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id              String     @id @default(cuid())
+  order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId         String
-  media           MediaFile @relation(fields: [mediaFileId], references: [id])
+  orderItem       OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  orderItemId     String?
+  // "cover" | "interior" (books) or "artwork" (prints & everything else).
+  kind            String?
+  media           MediaFile  @relation(fields: [mediaFileId], references: [id])
   mediaFileId     String
   version         Int       @default(1)
   status          String    @default("pending") // "pending" | "approved" | "changes_requested"
@@ -662,6 +670,7 @@ model Proof {
   createdAt       DateTime  @default(now())
 
   @@index([orderId])
+  @@index([orderItemId])
 }
 
 // A staff request for the customer to (re-)upload corrected artwork. Emails the

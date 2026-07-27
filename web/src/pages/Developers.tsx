@@ -575,27 +575,43 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
             <p>
               An order that requests any proof is created with{' '}
               <code>proofStatus: "requested"</code> and is <strong>held from production and shipping
-              until the proof is approved</strong>. Our team uploads a proof (emailing the customer a
-              review link); the customer approves it or requests changes.
+              until every proof is approved</strong>. Proofs are <strong>per line item</strong>:
+              comic books and graphic novels get <strong>two</strong> proofs each (a{' '}
+              <code>cover</code> proof and an <code>interior</code> proof); art prints and
+              everything else get one <code>artwork</code> proof. Each proof has its own review
+              link and is approved separately — the order-level <code>proofStatus</code> flips to{' '}
+              <code>approved</code> only when <strong>all</strong> of them are approved.
             </p>
             <Endpoint method="GET" path="/orders/:idOrNumber/proof" scope="orders:read" />
-            <p>Proof status, the customer's review link, and version history:</p>
+            <p>Aggregate status plus every proof (each with its item, kind, and review link):</p>
             <Code>{`GET /api/v1/orders/PCAPI-LK7Z2X-3491/proof
 # →
 # {
-#   "proofStatus": "awaiting_approval",   // null | requested | awaiting_approval | approved | changes_requested
-#   "latestProof": {
-#     "version": 1,
-#     "status": "pending",                // pending | approved | changes_requested
-#     "fileUrl": "/uploads/proofs/....pdf",
-#     "token": "<token>",                 // the creator's approval credential
-#     "reviewUrl": "https://printingcomics.com/proof/<token>",
-#     "approvedName": null,
-#     "decidedAt": null,
-#     "decisionNote": null
-#   },
-#   "proofs": [ { "version": 1, "status": "pending", "createdAt": "..." } ]
+#   "proofStatus": "awaiting_approval",   // aggregate: null | requested | awaiting_approval | approved | changes_requested
+#   "latestProof": { ... },               // most recent upload (same shape as proofs[] entries)
+#   "proofs": [
+#     {
+#       "version": 1,
+#       "status": "pending",              // pending | approved | changes_requested
+#       "orderItemId": "cmitem1…",
+#       "itemName": "Comic Book — Standard (6.625\\" × 10.25\\")",
+#       "kind": "cover",                  // cover | interior | artwork (null on legacy orders)
+#       "fileUrl": "/uploads/proofs/....pdf",
+#       "token": "<token>",               // this proof's approval credential
+#       "reviewUrl": "https://printingcomics.com/proof/<token>",
+#       "approvedName": null, "decidedAt": null, "decisionNote": null,
+#       "createdAt": "..."
+#     },
+#     { "kind": "interior", ... }
+#   ]
 # }`}</Code>
+            <p className="muted">
+              <code>proof.ready</code> / <code>proof.approved</code> /{' '}
+              <code>proof.changes_requested</code> webhook payloads carry the same{' '}
+              <code>orderItemId</code>, <code>itemName</code>, and <code>kind</code>, plus{' '}
+              <code>orderProofStatus</code> — the aggregate after that event — so you know when
+              the whole order is cleared without an extra fetch.
+            </p>
             <h3>Creator approval on your site</h3>
             <p>
               Only the <strong>creator</strong> can approve a proof — never your API key. Approval is

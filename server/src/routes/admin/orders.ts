@@ -9,7 +9,7 @@ import {
   sendOrderCancelledEmail,
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
-import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl } from '../../lib/proofs.js';
+import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofKindLabel, computeOrderProofStatus } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
@@ -104,7 +104,10 @@ router.get('/:id', async (req, res) => {
       project: { select: { id: true, externalProjectId: true, title: true, creatorName: true, creatorEmail: true, status: true } },
       proofs: {
         orderBy: { createdAt: 'desc' },
-        include: { media: { select: { id: true, originalName: true, url: true, size: true, mimeType: true } } },
+        include: {
+          media: { select: { id: true, originalName: true, url: true, size: true, mimeType: true } },
+          orderItem: { select: { id: true, name: true } },
+        },
       },
       mediaRequests: { orderBy: { createdAt: 'desc' } },
     },
@@ -330,6 +333,9 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ---- Proofing: upload a PDF proof for the customer to approve ----
+// Proofs are per line item + kind ("cover"/"interior" for books, "artwork"
+// for prints). orderItemId/kind in the form data pick the slot; omitting both
+// creates a legacy order-level proof. Each slot versions independently.
 router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: String(req.params.id) } });
   if (!order) throw new HttpError(404, 'Order not found');
@@ -337,6 +343,21 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
   if (!f) throw new HttpError(400, 'No proof file received');
   const rawMessage = req.body?.message;
   const message = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.trim() : undefined;
+
+  const rawItemId = req.body?.orderItemId;
+  const orderItemId = typeof rawItemId === 'string' && rawItemId.trim() ? rawItemId.trim() : null;
+  const rawKind = req.body?.kind;
+  const kind = typeof rawKind === 'string' && rawKind.trim() ? rawKind.trim() : null;
+  if (kind && !['cover', 'interior', 'artwork'].includes(kind)) {
+    throw new HttpError(400, 'kind must be "cover", "interior" or "artwork"');
+  }
+  let itemName: string | null = null;
+  if (orderItemId) {
+    const item = await prisma.orderItem.findFirst({ where: { id: orderItemId, orderId: order.id }, select: { name: true } });
+    if (!item) throw new HttpError(400, 'orderItemId does not belong to this order');
+    itemName = item.name;
+  }
+  const slotLabel = `${proofKindLabel(kind)}${itemName ? ` — ${itemName}` : ''}`;
 
   const media = await prisma.mediaFile.create({
     data: {
@@ -350,13 +371,14 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
       uploaderId: req.session?.sub,
     },
   });
-  const version = (await prisma.proof.count({ where: { orderId: order.id } })) + 1;
+  // Version within this slot — each item×kind re-proofs independently.
+  const version = (await prisma.proof.count({ where: { orderId: order.id, orderItemId, kind } })) + 1;
   const proof = await prisma.proof.create({
-    data: { orderId: order.id, mediaFileId: media.id, version, token: proofToken(), message, status: 'pending' },
+    data: { orderId: order.id, orderItemId, kind, mediaFileId: media.id, version, token: proofToken(), message, status: 'pending' },
   });
-  await prisma.order.update({ where: { id: order.id }, data: { proofStatus: 'awaiting_approval' } });
+  const orderProofStatus = await computeOrderProofStatus(order.id);
   await prisma.orderStatusEvent.create({
-    data: { orderId: order.id, kind: 'status', message: `Proof v${version} uploaded and emailed for approval` },
+    data: { orderId: order.id, kind: 'status', message: `${slotLabel} v${version} uploaded and emailed for approval` },
   });
   await sendProofReadyEmail(proof.id);
 
@@ -371,8 +393,12 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
       payload: {
         orderId: order.id,
         number: order.number,
+        orderItemId,
+        itemName,
+        kind,
         proofVersion: version,
         status: 'awaiting_approval',
+        orderProofStatus,
         token: proof.token,
         reviewUrl,
         fileUrl: media.url,

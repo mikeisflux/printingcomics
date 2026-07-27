@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { sendProofApprovedEmail, notifyStaff } from '../lib/proof-emails.js';
+import { computeOrderProofStatus, proofKindLabel } from '../lib/proofs.js';
 import { dispatchPartnerWebhook } from '../lib/partners.js';
 
 const router = Router();
@@ -33,6 +34,7 @@ router.get('/proof/:token', async (req, res) => {
     where: { token: req.params.token },
     include: {
       media: true,
+      orderItem: { select: { name: true } },
       order: { include: { items: { select: { name: true, quantity: true } } } },
     },
   });
@@ -42,6 +44,9 @@ router.get('/proof/:token', async (req, res) => {
       id: proof.id,
       version: proof.version,
       status: proof.status,
+      kind: proof.kind,
+      kindLabel: proofKindLabel(proof.kind),
+      itemName: proof.orderItem?.name ?? null,
       message: proof.message,
       decisionNote: proof.decisionNote,
       approvedName: proof.approvedName,
@@ -56,56 +61,85 @@ router.get('/proof/:token', async (req, res) => {
 
 const approveSchema = z.object({ name: z.string().min(1).max(120), acceptTerms: z.literal(true) });
 router.post('/proof/:token/approve', async (req, res) => {
-  const proof = await prisma.proof.findUnique({ where: { token: req.params.token }, include: { order: true } });
+  const proof = await prisma.proof.findUnique({
+    where: { token: req.params.token },
+    include: { order: true, orderItem: { select: { name: true } } },
+  });
   if (!proof) throw new HttpError(404, 'Proof not found');
   if (proof.status === 'approved') return res.json({ ok: true, already: true });
   const { name } = approveSchema.parse(req.body);
+  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
 
   await prisma.$transaction([
     prisma.proof.update({
       where: { id: proof.id },
       data: { status: 'approved', approvedName: name, approvedTermsAt: new Date(), decidedAt: new Date() },
     }),
-    prisma.order.update({ where: { id: proof.orderId }, data: { proofStatus: 'approved' } }),
     prisma.orderStatusEvent.create({
-      data: { orderId: proof.orderId, kind: 'status', message: `Proof v${proof.version} APPROVED by ${name} (accepted output-responsibility terms)` },
+      data: { orderId: proof.orderId, kind: 'status', message: `${slotLabel} v${proof.version} APPROVED by ${name} (accepted output-responsibility terms)` },
     }),
   ]);
+  // Aggregate: the order only clears when EVERY required proof slot is approved.
+  const orderProofStatus = await computeOrderProofStatus(proof.orderId);
   await sendProofApprovedEmail(proof.id);
   if (proof.order.partnerId) {
     void dispatchPartnerWebhook({
       partnerId: proof.order.partnerId,
       event: 'proof.approved',
       orderId: proof.orderId,
-      payload: { orderId: proof.orderId, number: proof.order.number, proofVersion: proof.version, status: 'approved', approvedName: name },
+      payload: {
+        orderId: proof.orderId,
+        number: proof.order.number,
+        orderItemId: proof.orderItemId,
+        itemName: proof.orderItem?.name ?? null,
+        kind: proof.kind,
+        proofVersion: proof.version,
+        status: 'approved',
+        orderProofStatus,
+        approvedName: name,
+      },
     }).catch(() => undefined);
   }
-  res.json({ ok: true });
+  res.json({ ok: true, orderProofStatus });
 });
 
 const changesSchema = z.object({ note: z.string().min(1).max(2000) });
 router.post('/proof/:token/changes', async (req, res) => {
-  const proof = await prisma.proof.findUnique({ where: { token: req.params.token }, include: { order: true } });
+  const proof = await prisma.proof.findUnique({
+    where: { token: req.params.token },
+    include: { order: true, orderItem: { select: { name: true } } },
+  });
   if (!proof) throw new HttpError(404, 'Proof not found');
   const { note } = changesSchema.parse(req.body);
+  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
 
   await prisma.$transaction([
     prisma.proof.update({ where: { id: proof.id }, data: { status: 'changes_requested', decisionNote: note, decidedAt: new Date() } }),
-    prisma.order.update({ where: { id: proof.orderId }, data: { proofStatus: 'changes_requested' } }),
     prisma.orderStatusEvent.create({
-      data: { orderId: proof.orderId, kind: 'status', message: `Customer requested changes on proof v${proof.version}: ${note}` },
+      data: { orderId: proof.orderId, kind: 'status', message: `Customer requested changes on ${slotLabel} v${proof.version}: ${note}` },
     }),
   ]);
-  await notifyStaff(proof.orderId, `Proof changes requested — order ${proof.order.number}`, `The customer requested changes on proof v${proof.version} for order ${proof.order.number}: ${note}`);
+  const orderProofStatus = await computeOrderProofStatus(proof.orderId);
+  await notifyStaff(proof.orderId, `Proof changes requested — order ${proof.order.number}`, `The customer requested changes on ${slotLabel} v${proof.version} for order ${proof.order.number}: ${note}`);
   if (proof.order.partnerId) {
     void dispatchPartnerWebhook({
       partnerId: proof.order.partnerId,
       event: 'proof.changes_requested',
       orderId: proof.orderId,
-      payload: { orderId: proof.orderId, number: proof.order.number, proofVersion: proof.version, status: 'changes_requested', note },
+      payload: {
+        orderId: proof.orderId,
+        number: proof.order.number,
+        orderItemId: proof.orderItemId,
+        itemName: proof.orderItem?.name ?? null,
+        kind: proof.kind,
+        proofVersion: proof.version,
+        status: 'changes_requested',
+        orderProofStatus,
+        note,
+      },
     }).catch(() => undefined);
   }
-  res.json({ ok: true });
+  res.json({ ok: true, orderProofStatus });
 });
 
 // ---------------- Corrected-media upload (customer, tokenized) ----------------

@@ -1,6 +1,7 @@
 import { prisma } from '../db.js';
 import { sendEmail } from './mailgun.js';
 import { getSetting } from './settings.js';
+import { proofKindLabel } from './proofs.js';
 
 async function storeName(): Promise<string> {
   return (await getSetting<string>('store.name')) ?? 'Printing Comics';
@@ -36,22 +37,26 @@ async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], o
 }
 
 export async function sendProofReadyEmail(proofId: string) {
-  const proof = await prisma.proof.findUnique({ where: { id: proofId }, include: { order: true } });
+  const proof = await prisma.proof.findUnique({
+    where: { id: proofId },
+    include: { order: true, orderItem: { select: { name: true } } },
+  });
   if (!proof) return;
   const [name, base] = await Promise.all([storeName(), baseUrl()]);
   const link = `${base}/proof/${proof.token}`;
+  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
   const html = wrap(
-    `<h2 style="color:#C61A22">Your proof is ready to review</h2>
-     <p>We've prepared a proof for order <strong>${esc(proof.order.number)}</strong>. Please review it carefully and approve it — <strong>nothing goes to print until you approve.</strong></p>
+    `<h2 style="color:#C61A22">Your ${esc(proofKindLabel(proof.kind).toLowerCase())} is ready to review</h2>
+     <p>We've prepared the <strong>${esc(slotLabel)}</strong> for order <strong>${esc(proof.order.number)}</strong>. Please review it carefully and approve it — <strong>nothing goes to print until every proof on your order is approved.</strong></p>
      ${proof.message ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(proof.message)}</p>` : ''}
-     ${btn(link, 'Review your proof')}
+     ${btn(link, 'Review this proof')}
      <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br>${link}</p>`,
     name,
   );
   await trySend(
     proof.orderId,
-    { to: { email: proof.order.email }, subject: `Proof ready for approval — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-ready'] },
-    `Proof v${proof.version} emailed to ${proof.order.email}`,
+    { to: { email: proof.order.email }, subject: `${slotLabel} ready for approval — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-ready'] },
+    `${slotLabel} v${proof.version} emailed to ${proof.order.email}`,
   );
 }
 
@@ -76,19 +81,27 @@ export async function sendMediaRequestEmail(requestId: string) {
 }
 
 export async function sendProofApprovedEmail(proofId: string) {
-  const proof = await prisma.proof.findUnique({ where: { id: proofId }, include: { order: true } });
+  const proof = await prisma.proof.findUnique({
+    where: { id: proofId },
+    include: { order: true, orderItem: { select: { name: true } } },
+  });
   if (!proof) return;
   const name = await storeName();
+  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+  const cleared = proof.order.proofStatus === 'approved';
   const html = wrap(
-    `<h2 style="color:#C61A22">Proof approved — thank you!</h2>
-     <p>Your proof for order <strong>${esc(proof.order.number)}</strong> is approved, and your order is now cleared for production.</p>
+    `<h2 style="color:#C61A22">${esc(slotLabel)} approved — thank you!</h2>
+     <p>Your <strong>${esc(slotLabel)}</strong> for order <strong>${esc(proof.order.number)}</strong> is approved.</p>
+     <p>${cleared
+       ? 'Every proof on this order is now approved — your order is cleared for production.'
+       : 'We’ll send any remaining proofs for this order shortly; production starts once every proof is approved.'}</p>
      <p style="color:#666;font-size:.85rem">Approved by ${esc(proof.approvedName ?? proof.order.email)}.</p>`,
     name,
   );
   await trySend(
     proof.orderId,
-    { to: { email: proof.order.email }, subject: `Proof approved — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-approved'] },
-    `Proof v${proof.version} approval confirmation sent`,
+    { to: { email: proof.order.email }, subject: `${slotLabel} approved — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-approved'] },
+    `${slotLabel} v${proof.version} approval confirmation sent`,
   );
 }
 

@@ -139,7 +139,10 @@ Prints have **no** page/cover/binding options.
 
 Identical to the rest of the API. If a line sets `pdf_proof` or
 `hard_copy_proof`, the order is created `proofStatus: "requested"` and is held
-from production until the creator approves. Subscribe to the `proof.ready` /
-`proof.approved` / `proof.changes_requested` webhooks and let the creator
-approve from your site — see **Orders → Creator approval on your site** in the
-main `/developers` reference.
+from production until every proof is approved. Proofs are **per line item** —
+each print line gets one `artwork` proof (books get `cover` + `interior`),
+each with its own token/review link; the order clears when **all** are
+approved. Subscribe to the `proof.ready` / `proof.approved` /
+`proof.changes_requested` webhooks (payloads carry `orderItemId`, `itemName`,
+`kind`, and the aggregate `orderProofStatus`) and let the creator approve from
+your site — see **Orders → Proofing** in the main `/developers` reference.

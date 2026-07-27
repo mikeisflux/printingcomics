@@ -53,12 +53,100 @@ export async function getOrCreateProofProduct() {
   });
 }
 
+/** True when THIS line item asked for a PDF or hard-copy proof. */
+export function itemRequestsProof(item: { options?: unknown }): boolean {
+  const o = item.options as Record<string, unknown> | null;
+  return !!o && (isProofRequested(o['pdf_proof']) || isProofRequested(o['hard_copy_proof']));
+}
+
 /** True when any line item asked for a PDF or hard-copy proof. */
 export function itemsRequestProof(items: Array<{ options?: unknown }>): boolean {
-  return items.some((i) => {
-    const o = i.options as Record<string, unknown> | null;
-    return !!o && (isProofRequested(o['pdf_proof']) || isProofRequested(o['hard_copy_proof']));
+  return items.some(itemRequestsProof);
+}
+
+export const PROOF_KIND_LABELS: Record<string, string> = {
+  cover: 'Cover proof',
+  interior: 'Interior proof',
+  artwork: 'Artwork proof',
+};
+
+export function proofKindLabel(kind: string | null | undefined): string {
+  return (kind && PROOF_KIND_LABELS[kind]) || 'Proof';
+}
+
+type ItemWithProduct = {
+  options?: unknown;
+  product?: { slug?: string | null; pricingConfig?: unknown } | null;
+};
+
+/**
+ * Which proof kinds an item needs. Books (comics / graphic novels — anything
+ * with page-based pricing) need TWO proofs: cover + interior. Prints and
+ * everything else need one artwork proof. Hard-copy-proof fee lines need none.
+ */
+export function proofKindsForItem(item: ItemWithProduct): string[] {
+  const slug = item.product?.slug ?? '';
+  if (slug === PROOF_PRODUCT_SLUG) return [];
+  const cfg = item.product?.pricingConfig as { kind?: string; pages?: unknown } | null | undefined;
+  if (cfg?.kind === 'print') return ['artwork'];
+  if (cfg?.pages || slug.startsWith('comic-') || slug.startsWith('graphic-novel-')) return ['cover', 'interior'];
+  return ['artwork'];
+}
+
+/**
+ * Recompute an order's aggregate proofStatus from its per-item proof slots
+ * and persist it. A slot = (orderItemId, kind); required slots come from items
+ * that requested a proof, plus any slot staff voluntarily uploaded into.
+ *
+ *   changes_requested — any slot's latest proof has changes requested
+ *   approved          — EVERY slot's latest proof is approved
+ *   awaiting_approval — at least one slot has an undecided uploaded proof
+ *   requested         — slots exist but nothing is uploaded yet
+ *   null              — no proofing on this order
+ *
+ * Orders proofed before per-item slots (proofs with no orderItemId, and none
+ * with one) keep the legacy behavior: the latest order-level proof decides.
+ */
+export async function computeOrderProofStatus(orderId: string): Promise<string | null> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: { include: { product: { select: { slug: true, pricingConfig: true } } } },
+      proofs: { orderBy: { createdAt: 'asc' }, select: { orderItemId: true, kind: true, status: true } },
+    },
   });
+  if (!order) return null;
+
+  let status: string | null;
+  const perItem = order.proofs.filter((p) => p.orderItemId);
+  if (order.proofs.length > 0 && perItem.length === 0) {
+    const latest = order.proofs[order.proofs.length - 1]!;
+    status = latest.status === 'pending' ? 'awaiting_approval' : latest.status;
+  } else {
+    // Latest proof per slot; required slots start empty (no proof yet).
+    const slots = new Map<string, { status: string } | null>();
+    for (const it of order.items) {
+      if (!itemRequestsProof(it)) continue;
+      for (const kind of proofKindsForItem(it)) slots.set(`${it.id}:${kind}`, null);
+    }
+    for (const p of order.proofs) {
+      slots.set(`${p.orderItemId ?? 'order'}:${p.kind ?? 'artwork'}`, { status: p.status });
+    }
+    if (slots.size === 0) {
+      status = null;
+    } else {
+      const latests = [...slots.values()];
+      if (latests.some((l) => l?.status === 'changes_requested')) status = 'changes_requested';
+      else if (latests.every((l) => l?.status === 'approved')) status = 'approved';
+      else if (latests.some((l) => l !== null)) status = 'awaiting_approval';
+      else status = 'requested';
+    }
+  }
+
+  await prisma.order
+    .update({ where: { id: orderId }, data: { proofStatus: status } })
+    .catch(() => undefined);
+  return status;
 }
 
 /**

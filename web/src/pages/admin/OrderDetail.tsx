@@ -69,6 +69,8 @@ interface OrderFull {
   proofStatus?: string | null;
   proofs?: {
     id: string; version: number; status: string; token: string;
+    orderItemId?: string | null; kind?: string | null;
+    orderItem?: { id: string; name: string } | null;
     message: string | null; decisionNote: string | null; approvedName: string | null;
     approvedTermsAt: string | null; decidedAt: string | null; createdAt: string;
     media: { id: string; originalName: string; url: string; size: number; mimeType: string };
@@ -93,6 +95,23 @@ function proofBanner(status: string | null | undefined): { text: string; bg: str
   }
 }
 
+const PROOF_KIND_LABELS: Record<string, string> = {
+  cover: 'Cover proof',
+  interior: 'Interior proof',
+  artwork: 'Artwork proof',
+};
+
+// Books need two proofs (cover + interior); prints and everything else one.
+function proofKindsForSlug(slug: string): string[] {
+  if (slug.startsWith('comic-') || slug.startsWith('graphic-novel-')) return ['cover', 'interior'];
+  return ['artwork'];
+}
+
+function slotLabelOf(p: { kind?: string | null; orderItem?: { name: string } | null }): string {
+  const kind = p.kind ? (PROOF_KIND_LABELS[p.kind] ?? 'Proof') : 'Proof';
+  return p.orderItem ? `${kind} — ${p.orderItem.name}` : kind;
+}
+
 function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
   const [showProof, setShowProof] = useState(false);
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -106,6 +125,26 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
   const proofs = order.proofs ?? [];
   const requests = order.mediaRequests ?? [];
 
+  // Items that can be proofed (the hard-copy-proof fee line is not an item to proof).
+  const proofItems = order.items.filter((i) => i.product.slug !== 'hard-copy-proof');
+  const [selItemId, setSelItemId] = useState<string>(proofItems[0]?.id ?? '');
+  const selItem = proofItems.find((i) => i.id === selItemId) ?? proofItems[0];
+  const kindsForSel = selItem ? proofKindsForSlug(selItem.product.slug) : ['artwork'];
+  const [selKind, setSelKind] = useState<string>(kindsForSel[0] ?? 'artwork');
+  const effKind = kindsForSel.includes(selKind) ? selKind : kindsForSel[0]!;
+
+  // Latest proof per slot (proofs arrive newest-first) → per-slot status chips.
+  const latestBySlot = new Map<string, (typeof proofs)[number]>();
+  for (const p of proofs) {
+    const key = `${p.orderItemId ?? 'order'}:${p.kind ?? 'artwork'}`;
+    if (!latestBySlot.has(key)) latestBySlot.set(key, p);
+  }
+  const slotChip = (status: string | undefined) =>
+    status === 'approved' ? { text: '✓ approved', color: '#1c9b4b' }
+    : status === 'changes_requested' ? { text: '✎ changes requested', color: '#c0392b' }
+    : status === 'pending' ? { text: '⏳ awaiting approval', color: '#e08a00' }
+    : { text: 'not sent', color: 'var(--muted)' };
+
   async function uploadProof() {
     if (!proofFile) return;
     setBusy(true); setErr(null);
@@ -113,6 +152,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
       const fd = new FormData();
       fd.append('file', proofFile);
       if (proofMsg.trim()) fd.append('message', proofMsg.trim());
+      if (selItem) { fd.append('orderItemId', selItem.id); fd.append('kind', effKind); }
       const r = await fetch(`/api/admin/orders/${order.id}/proof`, { method: 'POST', credentials: 'include', body: fd });
       if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Upload failed' }))).error);
       setShowProof(false); setProofFile(null); setProofMsg('');
@@ -143,6 +183,28 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
         <p className="muted" style={{ margin: '.25rem 0 1rem' }}>No proof was requested for this order — you can still send one below.</p>
       )}
 
+      {/* Per-item proof checklist — one slot per item (books: cover + interior). */}
+      {proofItems.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.6rem .9rem', marginBottom: '1rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '.85rem', marginBottom: '.35rem' }}>Proofs needed</div>
+          {proofItems.map((it) => (
+            <div key={it.id} style={{ padding: '.25rem 0', fontSize: '.85rem' }}>
+              <strong>{it.name}</strong>
+              <span style={{ display: 'inline-flex', gap: '.75rem', marginLeft: '.75rem', flexWrap: 'wrap' }}>
+                {proofKindsForSlug(it.product.slug).map((k) => {
+                  const chip = slotChip(latestBySlot.get(`${it.id}:${k}`)?.status);
+                  return (
+                    <span key={k} className="muted" style={{ fontSize: '.8rem' }}>
+                      {PROOF_KIND_LABELS[k]}: <span style={{ color: chip.color, fontWeight: 600 }}>{chip.text}</span>
+                    </span>
+                  );
+                })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <button className="btn" onClick={() => { setShowProof((v) => !v); setShowRequest(false); }}>Upload PDF proof</button>
         <button className="btn secondary" onClick={() => { setShowRequest((v) => !v); setShowProof(false); }}>Request additional media</button>
@@ -150,12 +212,30 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 
       {showProof && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '1rem', marginBottom: '1rem' }}>
+          {proofItems.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '.75rem', marginBottom: '.5rem' }}>
+              <div>
+                <label>Item this proof is for</label>
+                <select value={selItem?.id ?? ''} onChange={(e) => { setSelItemId(e.target.value); const it = proofItems.find((i) => i.id === e.target.value); if (it) setSelKind(proofKindsForSlug(it.product.slug)[0]!); }}>
+                  {proofItems.map((it) => <option key={it.id} value={it.id}>{it.name} × {it.quantity}</option>)}
+                </select>
+              </div>
+              <div>
+                <label>Proof type</label>
+                <select value={effKind} onChange={(e) => setSelKind(e.target.value)}>
+                  {kindsForSel.map((k) => <option key={k} value={k}>{PROOF_KIND_LABELS[k]}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
           <label>Proof file (PDF)</label>
           <input type="file" accept="application/pdf,image/*" onChange={(e) => setProofFile(e.target.files?.[0] ?? null)} />
           <label style={{ marginTop: '.5rem' }}>Note to customer (optional)</label>
           <textarea rows={2} value={proofMsg} onChange={(e) => setProofMsg(e.target.value)} placeholder="Anything the customer should look at…" />
           <div style={{ marginTop: '.6rem' }}>
-            <button className="btn" onClick={uploadProof} disabled={busy || !proofFile}>{busy ? 'Sending…' : 'Send proof to customer'}</button>
+            <button className="btn" onClick={uploadProof} disabled={busy || !proofFile}>
+              {busy ? 'Sending…' : selItem ? `Send ${PROOF_KIND_LABELS[effKind]!.toLowerCase()} to customer` : 'Send proof to customer'}
+            </button>
           </div>
         </div>
       )}
@@ -178,7 +258,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
           {proofs.map((p) => (
             <div key={p.id} style={{ borderTop: '1px solid var(--border)', padding: '.5rem 0', fontSize: '.85rem' }}>
               <div className="spread">
-                <span><strong>v{p.version}</strong> · {p.status.replace(/_/g, ' ')}</span>
+                <span><strong>{slotLabelOf(p)} v{p.version}</strong> · {p.status.replace(/_/g, ' ')}</span>
                 <span className="muted">{new Date(p.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginTop: '.25rem' }}>

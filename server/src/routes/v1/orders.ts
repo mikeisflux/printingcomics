@@ -480,16 +480,21 @@ router.get('/:idOrNumber/proof', requireApiKey('orders:read'), async (req, res) 
   const proofs = await prisma.proof.findMany({
     where: { orderId: order.id },
     orderBy: { createdAt: 'desc' },
-    include: { media: true },
+    include: { media: true, orderItem: { select: { id: true, name: true } } },
   });
   const base = ((await getSetting<string>('store.publicUrl')) || process.env.PUBLIC_URL || '').replace(/\/$/, '');
   const latest = proofs[0];
   res.json({
+    // Aggregate across every proof slot — "approved" only when EVERY required
+    // proof (per item; books have cover + interior) is approved.
     proofStatus: order.proofStatus ?? null,
     latestProof: latest
       ? {
           version: latest.version,
           status: latest.status,
+          orderItemId: latest.orderItemId,
+          itemName: latest.orderItem?.name ?? null,
+          kind: latest.kind,
           fileUrl: latest.media.url,
           // token/reviewUrl let you render the approval on your own site. Only
           // the creator (whoever holds the token) can approve — your API key
@@ -501,7 +506,22 @@ router.get('/:idOrNumber/proof', requireApiKey('orders:read'), async (req, res) 
           decisionNote: latest.decisionNote,
         }
       : null,
-    proofs: proofs.map((p) => ({ version: p.version, status: p.status, createdAt: p.createdAt })),
+    // One entry per uploaded proof version, newest first. Each proof carries
+    // its own token — the creator approves each slot separately.
+    proofs: proofs.map((p) => ({
+      version: p.version,
+      status: p.status,
+      orderItemId: p.orderItemId,
+      itemName: p.orderItem?.name ?? null,
+      kind: p.kind,
+      fileUrl: p.media.url,
+      token: p.token,
+      reviewUrl: base ? `${base}/proof/${p.token}` : null,
+      approvedName: p.approvedName,
+      decidedAt: p.decidedAt,
+      decisionNote: p.decisionNote,
+      createdAt: p.createdAt,
+    })),
   });
 });
 

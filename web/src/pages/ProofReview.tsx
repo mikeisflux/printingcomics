@@ -11,6 +11,9 @@ interface Proof {
   id: string;
   version: number;
   status: 'pending' | 'approved' | 'changes_requested';
+  kind?: string | null;
+  kindLabel?: string | null;
+  itemName?: string | null;
   message: string | null;
   decisionNote: string | null;
   approvedName: string | null;
@@ -171,14 +174,19 @@ export function ProofReview() {
     <div className="container" style={PAGE_STYLE}>
       {/* Header */}
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem' }}>
-        <h1 style={{ margin: 0 }}>Proof for order {order.number}</h1>
+        <h1 style={{ margin: 0 }}>{proof.kindLabel ?? 'Proof'} for order {order.number}</h1>
         <span
           className="badge"
           style={{ background: 'var(--brand)', color: '#fff', fontSize: '.8rem', padding: '.3rem .6rem' }}
         >
-          Proof v{proof.version}
+          {proof.kindLabel ?? 'Proof'} v{proof.version}
         </span>
       </div>
+      {proof.itemName && (
+        <p className="muted" style={{ margin: '.35rem 0 0', fontWeight: 600 }}>
+          Item: {proof.itemName}
+        </p>
+      )}
 
       {/* Reassurance notice */}
       <div
