@@ -119,6 +119,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
   const [requestMsg, setRequestMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const origin = window.location.origin;
   const banner = proofBanner(order.proofStatus);
   const proofs = order.proofs ?? [];
@@ -183,7 +184,13 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
       if (proofMsg.trim()) fd.append('message', proofMsg.trim());
       const r = await fetch(`/api/admin/orders/${order.id}/proofs/batch`, { method: 'POST', credentials: 'include', body: fd });
       if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Upload failed' }))).error);
+      const body = await r.json().catch(() => ({}));
       setShowProof(false); setQueue([]); setProofMsg('');
+      setNotice(
+        body?.email?.sent
+          ? { ok: true, text: `✓ ${body.count} proof${body.count === 1 ? '' : 's'} uploaded and emailed to ${body.email.to}.` }
+          : { ok: false, text: `Proofs uploaded, but the customer email did NOT send${body?.email?.error ? `: ${body.email.error}` : ''}. Check Mailgun settings, then copy the review links to the customer manually.` },
+      );
       onChange();
     } catch (e: any) { setErr(e.message ?? 'Upload failed'); }
     finally { setBusy(false); }
@@ -221,10 +228,31 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
         <p className="muted" style={{ margin: '.25rem 0 1rem' }}>No proof was requested for this order — you can still send one below.</p>
       )}
 
+      {notice && (
+        <div style={{
+          background: notice.ok ? '#eef9f0' : '#fdecea',
+          borderLeft: `4px solid ${notice.ok ? '#1c9b4b' : '#c0392b'}`,
+          borderRadius: 8, padding: '.6rem 1rem', margin: '0 0 1rem', fontSize: '.88rem',
+        }}>
+          {notice.text}
+          <button className="btn secondary" style={{ padding: '.05rem .4rem', fontSize: '.7rem', marginLeft: '.6rem' }} onClick={() => setNotice(null)}>Dismiss</button>
+        </div>
+      )}
+
       {/* Per-item proof checklist — one slot per item (books: cover + interior). */}
       {proofItems.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.6rem .9rem', marginBottom: '1rem' }}>
-          <div style={{ fontWeight: 700, fontSize: '.85rem', marginBottom: '.35rem' }}>Proofs needed</div>
+          <div className="spread" style={{ marginBottom: '.35rem' }}>
+            <span style={{ fontWeight: 700, fontSize: '.85rem' }}>Proofs needed</span>
+            <span className="muted" style={{ fontSize: '.8rem' }}>
+              {(() => {
+                const slots = proofItems.flatMap((it) => proofKindsForSlug(it.product.slug).map((k) => `${it.id}:${k}`));
+                const approved = slots.filter((s) => latestBySlot.get(s)?.status === 'approved').length;
+                const sent = slots.filter((s) => latestBySlot.has(s)).length;
+                return `${approved} of ${slots.length} approved · ${sent} sent · ${proofs.length} upload${proofs.length === 1 ? '' : 's'} total`;
+              })()}
+            </span>
+          </div>
           {proofItems.map((it) => (
             <div key={it.id} style={{ padding: '.25rem 0', fontSize: '.85rem' }}>
               <strong>{it.name}</strong>

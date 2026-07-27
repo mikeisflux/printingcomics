@@ -380,7 +380,7 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
   await prisma.orderStatusEvent.create({
     data: { orderId: order.id, kind: 'status', message: `${slotLabel} v${version} uploaded and emailed for approval` },
   });
-  await sendProofReadyEmail(proof.id);
+  const email = await sendProofReadyEmail(proof.id);
 
   if (order.partnerId) {
     const reviewUrl = await proofReviewUrl(proof.token);
@@ -405,7 +405,7 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
       },
     }).catch(() => undefined);
   }
-  res.json({ ok: true, proof });
+  res.json({ ok: true, proof, email });
 });
 
 // ---- Proofing: batch upload — one file per slot, ONE email to the customer ----
@@ -472,7 +472,7 @@ router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res
   await prisma.orderStatusEvent.create({
     data: { orderId: order.id, kind: 'status', message: `${created.length} proof(s) uploaded and emailed for approval: ${summaries.join('; ')}` },
   });
-  await sendProofsReadyEmail(created.map((c) => c.id));
+  const email = await sendProofsReadyEmail(created.map((c) => c.id));
 
   if (order.partnerId) {
     for (const c of created) {
@@ -497,7 +497,7 @@ router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res
       }).catch(() => undefined);
     }
   }
-  res.json({ ok: true, count: created.length, orderProofStatus });
+  res.json({ ok: true, count: created.length, orderProofStatus, email });
 });
 
 // ---- Proofing: delete a proof uploaded in error ----

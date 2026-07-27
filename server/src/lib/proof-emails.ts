@@ -26,22 +26,31 @@ async function logEvent(orderId: string, message: string) {
   await prisma.orderStatusEvent.create({ data: { orderId, kind: 'email', message } }).catch(() => undefined);
 }
 
-/** Resilient send — never throws (Mailgun may be unconfigured); logs outcome. */
-async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], okMsg: string) {
+export interface EmailResult { sent: boolean; to?: string; error?: string }
+
+/**
+ * Resilient send — never throws (Mailgun may be unconfigured); logs the
+ * outcome AND reports it back so callers can surface "emailed" vs. "FAILED"
+ * in the UI instead of silently appearing to have notified the customer.
+ */
+async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], okMsg: string): Promise<EmailResult> {
   try {
     const { providerRef } = await sendEmail(args);
     await logEvent(orderId, `${okMsg}${providerRef ? ` (${providerRef})` : ''}`);
+    return { sent: true, to: args.to?.email };
   } catch (e: any) {
-    await logEvent(orderId, `Email failed: ${e?.message ?? 'unknown error'}`);
+    const error = e?.message ?? 'unknown error';
+    await logEvent(orderId, `Email failed: ${error}`);
+    return { sent: false, to: args.to?.email, error };
   }
 }
 
-export async function sendProofReadyEmail(proofId: string) {
+export async function sendProofReadyEmail(proofId: string): Promise<EmailResult> {
   const proof = await prisma.proof.findUnique({
     where: { id: proofId },
     include: { order: true, orderItem: { select: { name: true } } },
   });
-  if (!proof) return;
+  if (!proof) return { sent: false, error: 'proof not found' };
   const [name, base] = await Promise.all([storeName(), baseUrl()]);
   const link = `${base}/proof/${proof.token}`;
   const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
@@ -53,7 +62,7 @@ export async function sendProofReadyEmail(proofId: string) {
      <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br>${link}</p>`,
     name,
   );
-  await trySend(
+  return trySend(
     proof.orderId,
     { to: { email: proof.order.email }, subject: `${slotLabel} ready for approval — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-ready'] },
     `${slotLabel} v${proof.version} emailed to ${proof.order.email}`,
@@ -65,15 +74,15 @@ export async function sendProofReadyEmail(proofId: string) {
  * own review page. Beats sending the customer N separate proof emails for a
  * multi-item order.
  */
-export async function sendProofsReadyEmail(proofIds: string[]) {
-  if (proofIds.length === 0) return;
+export async function sendProofsReadyEmail(proofIds: string[]): Promise<EmailResult> {
+  if (proofIds.length === 0) return { sent: false, error: 'no proofs' };
   if (proofIds.length === 1) return sendProofReadyEmail(proofIds[0]!);
   const proofs = await prisma.proof.findMany({
     where: { id: { in: proofIds } },
     include: { order: true, orderItem: { select: { name: true } } },
     orderBy: { createdAt: 'asc' },
   });
-  if (proofs.length === 0) return;
+  if (proofs.length === 0) return { sent: false, error: 'no proofs' };
   const order = proofs[0]!.order;
   const [name, base] = await Promise.all([storeName(), baseUrl()]);
 
@@ -94,7 +103,7 @@ export async function sendProofsReadyEmail(proofIds: string[]) {
      <ul style="padding-left:1.1rem">${rows}</ul>`,
     name,
   );
-  await trySend(
+  return trySend(
     order.id,
     { to: { email: order.email }, subject: `${proofs.length} proofs ready for approval — order ${order.number}`, html, tags: [`order:${order.number}`, 'proof-ready'] },
     `${proofs.length} proofs emailed to ${order.email}`,
@@ -121,12 +130,12 @@ export async function sendMediaRequestEmail(requestId: string) {
   );
 }
 
-export async function sendProofApprovedEmail(proofId: string) {
+export async function sendProofApprovedEmail(proofId: string): Promise<EmailResult> {
   const proof = await prisma.proof.findUnique({
     where: { id: proofId },
     include: { order: true, orderItem: { select: { name: true } } },
   });
-  if (!proof) return;
+  if (!proof) return { sent: false, error: 'proof not found' };
   const name = await storeName();
   const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
   const cleared = proof.order.proofStatus === 'approved';
@@ -139,7 +148,7 @@ export async function sendProofApprovedEmail(proofId: string) {
      <p style="color:#666;font-size:.85rem">Approved by ${esc(proof.approvedName ?? proof.order.email)}.</p>`,
     name,
   );
-  await trySend(
+  return trySend(
     proof.orderId,
     { to: { email: proof.order.email }, subject: `${slotLabel} approved — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-approved'] },
     `${slotLabel} v${proof.version} approval confirmation sent`,
