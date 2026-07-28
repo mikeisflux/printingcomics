@@ -16,6 +16,11 @@ import {
 
 const router = Router();
 
+/** decodeURIComponent that never throws on malformed input. */
+function safeDecode(v: string): string {
+  try { return decodeURIComponent(v); } catch { return v; }
+}
+
 // ---- R2 object storage ----
 router.post('/r2/test', async (_req, res) => {
   const result = await r2Test();
@@ -41,6 +46,19 @@ router.post('/r2/migrate', async (req, res) => {
     throw new HttpError(400, 'Enable R2 and save valid credentials before migrating.');
   }
   const limit = Math.min(Number(req.body?.limit) || 10, 25);
+  // A new click clears prior "missing" verdicts so they're re-checked with the
+  // current (more tolerant) path resolution.
+  if (req.body?.retryMissing) {
+    const tagged = await prisma.mediaFile.findMany({
+      where: { tags: { has: 'missing-file' } },
+      select: { id: true, tags: true },
+    });
+    for (const t of tagged) {
+      await prisma.mediaFile
+        .update({ where: { id: t.id }, data: { tags: t.tags.filter((x) => x !== 'missing-file') } })
+        .catch(() => undefined);
+    }
+  }
 
   const pending = await prisma.mediaFile.findMany({
     where: { url: { startsWith: '/uploads/' }, NOT: { tags: { has: 'missing-file' } } },
@@ -55,10 +73,20 @@ router.post('/r2/migrate', async (req, res) => {
     // `/uploads/<subdir>/<file>?query` → subdir + filename on disk
     const rel = m.url.replace(/^\/uploads\//, '').split('?')[0]!;
     const subdir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
-    const localPath = path.join(UPLOADS_DIR, rel);
-    try {
-      await fs.access(localPath);
-    } catch {
+    // Names with spaces/#/& arrive percent-encoded in the URL but are literal
+    // on disk, so try the decoded form, and the stored filename, before
+    // concluding the file is gone.
+    const candidates = [
+      path.join(UPLOADS_DIR, rel),
+      path.join(UPLOADS_DIR, safeDecode(rel)),
+      path.join(UPLOADS_DIR, subdir, m.filename),
+      path.join(UPLOADS_DIR, subdir, safeDecode(m.filename)),
+    ];
+    let localPath = '';
+    for (const c of candidates) {
+      try { await fs.access(c); localPath = c; break; } catch { /* try next */ }
+    }
+    if (!localPath) {
       // The row outlived its file (deleted from disk, or restored DB without
       // the uploads dir). Tag it so it stops being retried and stops counting
       // as "still local" — the media row is kept for audit/history.
@@ -66,7 +94,7 @@ router.post('/r2/migrate', async (req, res) => {
       await prisma.mediaFile
         .update({ where: { id: m.id }, data: { tags: { push: 'missing-file' } } })
         .catch(() => undefined);
-      failures.push({ id: m.id, name: m.originalName, error: 'file missing on disk' });
+      failures.push({ id: m.id, name: m.originalName, error: `file not found on disk (looked for ${rel})` });
       continue;
     }
     try {
