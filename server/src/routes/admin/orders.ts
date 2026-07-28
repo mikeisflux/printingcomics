@@ -9,6 +9,7 @@ import {
   sendOrderCancelledEmail,
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
+import { publishUpload } from '../../lib/storage.js';
 import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofKindLabel, computeOrderProofStatus } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import multer from 'multer';
@@ -359,13 +360,17 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
   }
   const slotLabel = `${proofKindLabel(kind)}${itemName ? ` — ${itemName}` : ''}`;
 
+  const stored = await publishUpload({
+    subdir: 'proofs', filename: f.filename, localPath: f.path,
+    contentType: f.mimetype, originalName: f.originalname,
+  });
   const media = await prisma.mediaFile.create({
     data: {
       filename: f.filename,
       originalName: f.originalname,
       mimeType: f.mimetype,
       size: f.size,
-      url: `/uploads/proofs/${f.filename}`,
+      url: stored.url,
       folder: '/proofs',
       tags: ['proof', `order:${order.number}`],
       uploaderId: req.session?.sub,
@@ -448,13 +453,17 @@ router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res
     const f = files[i]!;
     const orderItemId = assignments[i]!.orderItemId ?? null;
     const kind = assignments[i]!.kind ?? null;
+    const stored = await publishUpload({
+      subdir: 'proofs', filename: f.filename, localPath: f.path,
+      contentType: f.mimetype, originalName: f.originalname,
+    });
     const media = await prisma.mediaFile.create({
       data: {
         filename: f.filename,
         originalName: f.originalname,
         mimeType: f.mimetype,
         size: f.size,
-        url: `/uploads/proofs/${f.filename}`,
+        url: stored.url,
         folder: '/proofs',
         tags: ['proof', `order:${order.number}`],
         uploaderId: req.session?.sub,

@@ -23,6 +23,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
+import { publishUpload } from '../../lib/storage.js';
 import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
 import { config } from '../../config.js';
@@ -129,13 +130,23 @@ router.post('/', requireApiKey('uploads:write'), upload.single('file'), async (r
     ...(notes ? [`note:${notes}`] : []),
   ];
 
+  // Partner files keep their ?t=<token> guard when served locally; in R2 the
+  // unguessable key + signed/public URL is the capability.
+  const stored = await publishUpload({
+    subdir: PARTNER_SUBDIR,
+    filename: f.filename,
+    localPath: absPath,
+    contentType: f.mimetype,
+    originalName: f.originalname,
+    localQuery: `?t=${accessToken}`,
+  });
   const media = await prisma.mediaFile.create({
     data: {
       filename: f.filename,
       originalName: f.originalname,
       mimeType: f.mimetype,
       size: f.size,
-      url: publicUrl(f.filename, accessToken),
+      url: stored.url,
       folder: '/partner-uploads',
       tags,
       partnerId: req.apiKey!.partnerId ?? undefined,

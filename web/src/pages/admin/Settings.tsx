@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { api } from '../../api/client';
 
-type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'taxes' | 'coupons' | 'backup';
+type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'storage' | 'taxes' | 'coupons' | 'backup';
 
 interface SettingsMap {
   [key: string]: unknown;
@@ -15,7 +15,7 @@ export function AdminSettings() {
       <h1>Settings</h1>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'easypost', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
+          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'easypost', 'storage', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
             <button
               key={s}
               onClick={() => setSection(s)}
@@ -42,6 +42,7 @@ export function AdminSettings() {
       {section === 'seo' && <SeoSection />}
       {section === 'shipping' && <ShippingSection />}
       {section === 'easypost' && <EasyPostSection />}
+      {section === 'storage' && <StorageSection />}
       {section === 'taxes' && <TaxesSection />}
       {section === 'coupons' && <CouponsSection />}
       {section === 'backup' && <BackupSection />}
@@ -347,6 +348,123 @@ function SeoSection() {
         </select>
       </div>
     </div>
+  );
+}
+
+function StorageSection() {
+  const { settings, save } = useSettings();
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  const [status, setStatus] = useState<{ enabled: boolean; local: number; remote: number } | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState<string | null>(null);
+
+  const loadStatus = () => {
+    void api.get<{ enabled: boolean; local: number; remote: number }>('/admin/settings/r2/status')
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  };
+  useEffect(loadStatus, []);
+
+  async function testConnection() {
+    setTesting(true); setTestMsg(null);
+    try {
+      const r = await api.post<{ ok: boolean; message: string }>('/admin/settings/r2/test', {});
+      setTestMsg(r);
+    } catch (e: any) {
+      setTestMsg({ ok: false, message: e?.message ?? 'Test failed' });
+    } finally { setTesting(false); loadStatus(); }
+  }
+
+  // Runs in batches until nothing is left on local disk.
+  async function migrate() {
+    setMigrating(true); setMigrateMsg(null);
+    try {
+      let total = 0;
+      const allFailures: { name: string; error: string }[] = [];
+      for (let pass = 0; pass < 200; pass++) {
+        const r = await api.post<{ migrated: number; remaining: number; failures: { name: string; error: string }[] }>(
+          '/admin/settings/r2/migrate', { limit: 50 },
+        );
+        total += r.migrated;
+        allFailures.push(...(r.failures ?? []));
+        setMigrateMsg(`Moved ${total} file(s)… ${r.remaining} left`);
+        // Stop when finished, or when a pass can't make progress.
+        if (r.remaining === 0 || r.migrated === 0) break;
+      }
+      setMigrateMsg(
+        `Done — moved ${total} file(s) to R2.` +
+        (allFailures.length ? ` ${allFailures.length} could not be moved (${allFailures.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join('; ')}${allFailures.length > 3 ? '…' : ''}).` : ''),
+      );
+    } catch (e: any) {
+      setMigrateMsg(e?.message ?? 'Migration failed');
+    } finally { setMigrating(false); loadStatus(); }
+  }
+
+  return (
+    <>
+      <div className="admin-card">
+        <h3>Cloudflare R2 storage</h3>
+        <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
+          Serves uploads (artwork, proofs, media) from Cloudflare's edge instead of this
+          server's disk — much faster downloads for customers. Create a bucket plus an
+          <em> R2 API token</em> in the Cloudflare dashboard. While this is off, or if R2
+          ever errors, files keep saving locally exactly as before.
+        </p>
+        <Toggle label="Use R2 for new uploads" value={settings['r2.enabled']} onSave={(v) => { save('r2.enabled', v); setTimeout(loadStatus, 300); }} />
+        <Field label="Account ID" value={settings['r2.accountId']} onSave={(v) => save('r2.accountId', v)} />
+        <Field label="Access key ID" type="password" placeholder="paste to update" value={settings['r2.accessKeyId']} onSave={(v) => save('r2.accessKeyId', v)} />
+        <Field label="Secret access key" type="password" placeholder="paste to update" value={settings['r2.secretAccessKey']} onSave={(v) => save('r2.secretAccessKey', v)} />
+        <Field label="Bucket name" value={settings['r2.bucket']} onSave={(v) => save('r2.bucket', v)} />
+        <Field
+          label="Public URL (bucket public domain or custom domain)"
+          placeholder="https://files.printingcomics.com"
+          value={settings['r2.publicBaseUrl']}
+          onSave={(v) => save('r2.publicBaseUrl', v)}
+        />
+        <p className="muted" style={{ fontSize: '.8rem' }}>
+          Leave the public URL blank for a private bucket — links become time-limited
+          signed URLs instead. A public custom domain is faster and cacheable.
+        </p>
+        <Field label="S3 endpoint override (optional)" placeholder="https://<account>.r2.cloudflarestorage.com" value={settings['r2.endpoint']} onSave={(v) => save('r2.endpoint', v)} />
+
+        <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
+          <button className="btn secondary" onClick={testConnection} disabled={testing}>
+            {testing ? 'Testing…' : 'Test connection'}
+          </button>
+          {status && (
+            <span className="muted" style={{ fontSize: '.85rem' }}>
+              {status.remote} file(s) on R2 · {status.local} still local
+            </span>
+          )}
+        </div>
+        {testMsg && (
+          <div className={testMsg.ok ? 'success' : 'error'} style={{ marginTop: '.6rem', fontSize: '.85rem' }}>
+            {testMsg.message}
+          </div>
+        )}
+      </div>
+
+      {/* TEMPORARY: one-time backfill. Remove this card (and the /r2/migrate
+          route) once everything has been moved and "still local" reads 0. */}
+      <div className="admin-card">
+        <h3>Move existing files to R2</h3>
+        <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
+          One-time backfill for files uploaded before R2 was turned on. Copies each one
+          up and repoints its link. Safe to re-run — it only touches files still on local
+          disk, and nothing is deleted from the server until its copy is confirmed.
+        </p>
+        <button className="btn" onClick={migrate} disabled={migrating || !status?.enabled || (status?.local ?? 0) === 0}>
+          {migrating ? 'Moving…' : `Move ${status?.local ?? 0} file(s) to R2`}
+        </button>
+        {!status?.enabled && (
+          <p className="muted" style={{ fontSize: '.8rem', marginTop: '.5rem' }}>
+            Turn on R2 and test the connection first.
+          </p>
+        )}
+        {migrateMsg && <div style={{ marginTop: '.6rem', fontSize: '.85rem' }}>{migrateMsg}</div>}
+      </div>
+    </>
   );
 }
 

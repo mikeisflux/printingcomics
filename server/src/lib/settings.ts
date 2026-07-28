@@ -13,6 +13,8 @@ export const SECRET_KEYS = new Set<string>([
   'anthropic.apiKey',
   'easypost.apiKey',
   'easypost.webhookSecret',
+  'r2.accessKeyId',
+  'r2.secretAccessKey',
 ]);
 
 /**
@@ -58,6 +60,15 @@ export const SETTING_KEYS = {
     fromPostalCode: 'easypost.fromPostalCode',
     fromCountry: 'easypost.fromCountry',
   },
+  r2: {
+    enabled: 'r2.enabled',
+    accountId: 'r2.accountId',
+    accessKeyId: 'r2.accessKeyId',
+    secretAccessKey: 'r2.secretAccessKey',
+    bucket: 'r2.bucket',
+    endpoint: 'r2.endpoint',           // optional override
+    publicBaseUrl: 'r2.publicBaseUrl', // public/custom domain for the bucket
+  },
   mailgun: {
     apiKey: 'mailgun.apiKey',
     domain: 'mailgun.domain',
@@ -88,6 +99,13 @@ function envFallback(key: string): unknown {
     case 'paypal.clientId':     return process.env.PAYPAL_CLIENT_ID ?? '';
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
     case 'paypal.webhookId':    return process.env.PAYPAL_WEBHOOK_ID ?? '';
+    case 'r2.enabled':              return process.env.R2_ENABLED === 'true';
+    case 'r2.accountId':            return process.env.R2_ACCOUNT_ID ?? '';
+    case 'r2.accessKeyId':          return process.env.R2_ACCESS_KEY_ID ?? '';
+    case 'r2.secretAccessKey':      return process.env.R2_SECRET_ACCESS_KEY ?? '';
+    case 'r2.bucket':               return process.env.R2_BUCKET ?? '';
+    case 'r2.endpoint':             return process.env.R2_ENDPOINT ?? '';
+    case 'r2.publicBaseUrl':        return process.env.R2_PUBLIC_BASE_URL ?? '';
     case 'easypost.apiKey':         return process.env.EASYPOST_API_KEY ?? '';
     case 'easypost.baseUrl':        return process.env.EASYPOST_BASE_URL ?? 'https://api.easypost.com/v2';
     case 'easypost.autoBuyOnPaid':  return process.env.EASYPOST_AUTO_BUY === 'true';
@@ -207,6 +225,24 @@ export async function getPaypalConfig() {
     webhookId: webhookId ?? '',
     enableCard: enableCard ?? true,
     enableButton: enableButton ?? true,
+  };
+}
+
+export async function getR2Config() {
+  const keys = [
+    'r2.enabled', 'r2.accountId', 'r2.accessKeyId', 'r2.secretAccessKey',
+    'r2.bucket', 'r2.endpoint', 'r2.publicBaseUrl',
+  ] as const;
+  const values = await Promise.all(keys.map((k) => getSetting<string | boolean>(k)));
+  const v = (i: number) => String((values[i] as string | undefined) ?? '').trim();
+  return {
+    enabled: values[0] === true || values[0] === 'true',
+    accountId: v(1),
+    accessKeyId: v(2),
+    secretAccessKey: v(3),
+    bucket: v(4),
+    endpoint: v(5),
+    publicBaseUrl: v(6),
   };
 }
 

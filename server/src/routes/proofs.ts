@@ -9,6 +9,7 @@ import { HttpError } from '../middleware/error.js';
 import { sendProofApprovedEmail, notifyStaff } from '../lib/proof-emails.js';
 import { computeOrderProofStatus, proofKindLabel, proofSlotLabel } from '../lib/proofs.js';
 import { dispatchPartnerWebhook } from '../lib/partners.js';
+import { publishUpload } from '../lib/storage.js';
 
 const router = Router();
 
@@ -185,13 +186,20 @@ router.post('/media-request/:token/upload', upload.any(), async (req, res) => {
 
   const firstItem = mr.order.items[0];
   for (const f of files) {
+    const stored = await publishUpload({
+      subdir: 'customer',
+      filename: f.filename,
+      localPath: f.path,
+      contentType: f.mimetype,
+      originalName: f.originalname,
+    });
     const media = await prisma.mediaFile.create({
       data: {
         filename: f.filename,
         originalName: f.originalname,
         mimeType: f.mimetype,
         size: f.size,
-        url: `/uploads/customer/${f.filename}`,
+        url: stored.url,
         folder: '/customer-uploads',
         tags: ['customer-upload', 'corrected', `order:${mr.order.number}`],
       },

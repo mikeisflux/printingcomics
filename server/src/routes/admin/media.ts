@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
+import { publishUpload, deleteStored } from '../../lib/storage.js';
 import { HttpError } from '../../middleware/error.js';
 
 const router = Router();
@@ -102,13 +103,20 @@ router.post('/upload', upload.array('files', 50), async (req, res) => {
   const folder = (req.body?.folder as string | undefined) ?? '/';
   const created: any[] = [];
   for (const f of files) {
+    const stored = await publishUpload({
+      subdir: MEDIA_SUBDIR,
+      filename: f.filename,
+      localPath: f.path,
+      contentType: f.mimetype,
+      originalName: f.originalname,
+    });
     const media = await prisma.mediaFile.create({
       data: {
         filename: f.filename,
         originalName: f.originalname,
         mimeType: f.mimetype,
         size: f.size,
-        url: publicUrl(f.filename),
+        url: stored.url,
         folder,
         tags: [],
         uploaderId: req.session?.sub,

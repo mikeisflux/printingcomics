@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../db.js';
+import { publishUpload } from '../lib/storage.js';
 import { HttpError } from '../middleware/error.js';
 
 const router = Router();
@@ -42,13 +43,20 @@ router.post('/customer', upload.any(), async (req, res) => {
 
   const created: Array<{ id: string; url: string; filename: string; size: number; mimeType: string }> = [];
   for (const f of files) {
+    const stored = await publishUpload({
+      subdir: CUSTOMER_SUBDIR,
+      filename: f.filename,
+      localPath: f.path,
+      contentType: f.mimetype,
+      originalName: f.originalname,
+    });
     const media = await prisma.mediaFile.create({
       data: {
         filename: f.filename,
         originalName: f.originalname,
         mimeType: f.mimetype,
         size: f.size,
-        url: publicUrl(f.filename),
+        url: stored.url,
         folder: '/customer-uploads',
         tags: ['customer-upload', ...(productId ? [`product:${productId}`] : []), ...(optionKey ? [`option:${optionKey}`] : [])],
         uploaderId: req.session?.sub,
@@ -56,7 +64,7 @@ router.post('/customer', upload.any(), async (req, res) => {
     });
     created.push({
       id: media.id,
-      url: publicUrl(f.filename),
+      url: stored.url,
       filename: f.originalname,
       size: f.size,
       mimeType: f.mimetype,
