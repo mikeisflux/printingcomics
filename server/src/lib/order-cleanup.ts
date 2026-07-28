@@ -1,5 +1,4 @@
 import { prisma } from '../db.js';
-import { purgeOrderArtwork } from './proofs.js';
 
 /** Abandoned checkouts older than this are auto-deleted. Override with env. */
 const TTL_HOURS = Number(process.env.ABANDONED_ORDER_TTL_HOURS ?? 24);
@@ -28,7 +27,14 @@ export async function purgeAbandonedOrders(hours = TTL_HOURS): Promise<number> {
   let deleted = 0;
   for (const o of orders) {
     try {
-      await purgeOrderArtwork(o.id); // remove any uploaded files/proofs from disk
+      // NOTE: deliberately NOT purging artwork here. An order can sit in
+      // PENDING/PENDING because the customer walked away — or because payment
+      // failed on our side. Those look identical, and deleting the second
+      // customer's uploads destroys work they'd have to redo (a PayPal
+      // credential outage cost one customer 160 MB of artwork this way).
+      // Dropping the order row is reversible for the customer; deleting their
+      // files is not. Artwork is still purged on SHIPPED, where fulfillment is
+      // genuinely complete.
       await prisma.order.delete({ where: { id: o.id } }); // cascades items/payments/events/…
       deleted++;
     } catch (e: any) {

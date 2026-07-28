@@ -164,7 +164,18 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
     return created;
   });
 
-  const accessToken = await getPayPalAccessToken();
+  // From here on the local Order row already exists. If ANY step fails we must
+  // remove it: a payment error would otherwise leave a phantom PENDING order
+  // that looks exactly like an abandoned cart, and ~24h later the abandoned-
+  // order sweep deletes it AND purges the customer's uploaded artwork. That is
+  // precisely how three customer files were lost during a PayPal outage.
+  let accessToken: string;
+  try {
+    accessToken = await getPayPalAccessToken();
+  } catch (e) {
+    await prisma.order.delete({ where: { id: order.id } }).catch(() => undefined);
+    throw e;
+  }
   const amountStr = (totals.total / 100).toFixed(2);
 
   const orderPayload = {
