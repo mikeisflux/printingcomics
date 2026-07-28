@@ -410,23 +410,35 @@ router.post('/shipments/:shipmentId/buy', async (req, res) => {
   const insuranceAmount = ((shipment.insuredValueCents ?? 0) / 100).toFixed(2);
 
   let bought;
-  try {
-    bought = await epBuyShipment(shipment.easypostId, rateId, {
-      insurance: insuranceAmount,
-    });
-  } catch (e: any) {
-    // A funding rejection covers postage AND the separately-underwritten
-    // insurance premium, so say what we asked for — otherwise "insufficient
-    // funds" is baffling when the EasyPost wallet visibly has money in it.
-    if (e?.status === 402) {
-      throw new HttpError(
-        402,
-        `${e.message} This label was requested with insurance for $${insuranceAmount}, ` +
-          `which EasyPost bills separately from postage — if your wallet has funds, check that ` +
-          `your primary payment method is verified and not pending (ACH transfers take 3–5 business days).`,
-      );
+  // Retrying a failed buy is routine (EasyPost 402s can be transient), so
+  // check first whether this shipment ALREADY has postage. Without this, a
+  // purchase that succeeded at EasyPost but failed to save locally would be
+  // bought a second time on the next click — paying twice for one parcel.
+  const existing = await epFetchShipment(shipment.easypostId).catch(() => null);
+  if (existing?.postage_label?.label_url) {
+    bought = existing;
+  } else {
+    try {
+      bought = await epBuyShipment(shipment.easypostId, rateId, {
+        insurance: insuranceAmount,
+      });
+    } catch (e: any) {
+      // A funding rejection covers postage AND the separately-underwritten
+      // insurance premium, so say what we asked for — otherwise "insufficient
+      // funds" is baffling when the EasyPost wallet visibly has money in it.
+      // These can also be transient: retrying often succeeds.
+      if (e?.status === 402) {
+        throw new HttpError(
+          402,
+          `${e.message} This label was requested with insurance for $${insuranceAmount}, ` +
+            `which EasyPost bills separately from postage — if your wallet has funds, check that ` +
+            `your primary payment method is verified and not pending (ACH transfers take 3–5 business days). ` +
+            `These rejections are sometimes transient; clicking Buy again is safe — we re-use an ` +
+            `already-purchased label rather than buying a second one.`,
+        );
+      }
+      throw e;
     }
-    throw e;
   }
 
   const carrier = bought.selected_rate?.carrier ?? null;
