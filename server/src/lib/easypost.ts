@@ -77,6 +77,48 @@ function basicAuth(apiKey: string): string {
   return 'Basic ' + Buffer.from(`${apiKey}:`).toString('base64');
 }
 
+/**
+ * Turn EasyPost's error envelope into something a human can act on.
+ * Their bodies look like:
+ *   {"error":{"code":"PAYMENT_REQUIRED","message":"Insufficient funds…","errors":[]}}
+ * Dumping that raw into an admin alert box tells staff nothing useful.
+ */
+function easypostErrorMessage(status: number, path: string, body: string): string {
+  let code = '';
+  let message = '';
+  let details: string[] = [];
+  try {
+    const parsed = JSON.parse(body);
+    const err = parsed?.error ?? parsed;
+    code = String(err?.code ?? '');
+    message = String(err?.message ?? '');
+    details = Array.isArray(err?.errors)
+      ? err.errors.map((e: any) => e?.message ?? e?.field ?? String(e)).filter(Boolean)
+      : [];
+  } catch {
+    /* non-JSON body — fall through to the raw text */
+  }
+
+  // The one staff will actually hit: no money on the EasyPost account.
+  if (status === 402 || code === 'PAYMENT_REQUIRED') {
+    return (
+      'EasyPost declined the purchase: your EasyPost account is out of funds. ' +
+      'Add a payment method or top up your balance at ' +
+      'https://app.easypost.com/account/settings?tab=billing, then buy the label again. ' +
+      '(Rates are unaffected — nothing was charged and no label was created.)'
+    );
+  }
+  if (status === 401 || status === 403) {
+    return 'EasyPost rejected our API key. Check it in Admin → Settings → EasyPost (test keys only work against test data).';
+  }
+  if (status === 404) {
+    return `EasyPost could not find that resource (${path}). It may have expired — re-fetch rates and try again.`;
+  }
+
+  const parts = [message || body.slice(0, 300) || '(no details)', ...details];
+  return `EasyPost error ${status}: ${parts.join(' — ')}`;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const cfg = await getEasyPostConfig();
   if (!cfg.apiKey) throw new HttpError(503, 'EasyPost not configured (missing API key in admin settings)');
@@ -92,8 +134,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    const truncated = body.length > 600 ? body.slice(0, 600) + '…' : body;
-    throw new HttpError(502, `EasyPost ${res.status} at ${path}: ${truncated || '(empty body)'}`);
+    throw new HttpError(res.status === 402 ? 402 : 502, easypostErrorMessage(res.status, path, body));
   }
   return res.json() as Promise<T>;
 }
