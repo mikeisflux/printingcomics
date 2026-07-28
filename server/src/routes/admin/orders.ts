@@ -533,6 +533,46 @@ router.delete('/:id/proof/:proofId', async (req, res) => {
   res.json({ ok: true, orderProofStatus });
 });
 
+// ---- Proofing: re-send the current proof emails to the customer ----
+// Same tokens, same review links — this just puts a fresh, working email in
+// their inbox. Useful when the original never arrived, was deleted, or (as
+// happened here) went out while click-tracking was rewriting the links.
+router.post('/:id/proofs/resend', async (req, res) => {
+  const orderId = String(req.params.id);
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, email: true } });
+  if (!order) throw new HttpError(404, 'Order not found');
+
+  const proofs = await prisma.proof.findMany({
+    where: { orderId },
+    orderBy: [{ createdAt: 'asc' }],
+    select: { id: true, orderItemId: true, kind: true, version: true, status: true },
+  });
+  if (proofs.length === 0) throw new HttpError(400, 'No proofs have been uploaded for this order yet.');
+
+  // Latest version per slot — never re-send a superseded proof.
+  const latestBySlot = new Map<string, (typeof proofs)[number]>();
+  for (const p of proofs) latestBySlot.set(`${p.orderItemId ?? 'order'}:${p.kind ?? 'artwork'}`, p);
+
+  // Only what still needs a decision; an approved slot doesn't need chasing.
+  const outstanding = [...latestBySlot.values()].filter((p) => p.status !== 'approved');
+  if (outstanding.length === 0) {
+    throw new HttpError(400, 'Every proof on this order is already approved — nothing to re-send.');
+  }
+
+  const email = await sendProofsReadyEmail(outstanding.map((p) => p.id));
+  await prisma.orderStatusEvent.create({
+    data: {
+      orderId,
+      kind: 'email',
+      message: email.sent
+        ? `Re-sent ${outstanding.length} proof link(s) to ${email.to ?? order.email}`
+        : `Failed to re-send proof links: ${email.error ?? 'unknown error'}`,
+    },
+  });
+  if (!email.sent) throw new HttpError(502, `Could not send the email: ${email.error ?? 'unknown error'}`);
+  res.json({ ok: true, count: outstanding.length, to: email.to ?? order.email });
+});
+
 // ---- Proofing: request additional / corrected media from the customer ----
 const requestMediaSchema = z.object({ message: z.string().min(1).max(2000) });
 router.post('/:id/request-media', async (req, res) => {

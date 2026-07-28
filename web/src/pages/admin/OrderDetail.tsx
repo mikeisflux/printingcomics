@@ -418,6 +418,7 @@ export function AdminOrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderFull | null>(null);
+  const [resending, setResending] = useState(false);
   const [tracking, setTracking] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
   const [notes, setNotes] = useState('');
@@ -451,6 +452,24 @@ export function AdminOrderDetail() {
     await api.post(`/admin/orders/${id}/events`, { message: noteDraft.trim(), kind: 'note' });
     setNoteDraft('');
     load();
+  };
+
+  // Re-send the current proof links. Tokens don't change — this just puts a
+  // fresh, working email in the customer's inbox (the original may have gone
+  // out with rewritten tracking links, or never arrived).
+  const resendProofs = async () => {
+    if (!order) return;
+    if (!confirm(`Email the outstanding proof links to ${order.email} again?`)) return;
+    setResending(true);
+    try {
+      const r = await api.post<{ count: number; to: string }>(`/admin/orders/${id}/proofs/resend`, {});
+      alert(`Sent ${r.count} proof link(s) to ${r.to}.`);
+      load();
+    } catch (e: any) {
+      alert(e?.message ?? 'Could not re-send the proof emails.');
+    } finally {
+      setResending(false);
+    }
   };
 
   const refund = async () => {
@@ -545,6 +564,11 @@ export function AdminOrderDetail() {
         <div className="row" style={{ gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
+          {(order.proofs?.length ?? 0) > 0 && (
+            <button className="btn secondary" onClick={resendProofs} disabled={resending}>
+              {resending ? 'Sending…' : 'Resend proof emails'}
+            </button>
+          )}
           {order.paymentStatus === 'CAPTURED' && (
             <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
               Refund via PayPal
