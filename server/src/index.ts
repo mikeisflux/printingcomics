@@ -31,6 +31,7 @@ import aiRoutes from './routes/ai.js';
 import publicRoutes from './routes/public.js';
 import mailgunWebhookRoutes from './routes/webhooks/mailgun.js';
 import paypalWebhookRoutes from './routes/webhooks/paypal.js';
+import fileRoutes from './routes/files.js';
 import easypostWebhookRoutes from './routes/webhooks/easypost.js';
 import v1Routes from './routes/v1/index.js';
 
@@ -82,6 +83,8 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/proofing', proofingRoutes);
+// Stable, never-expiring URLs for stored files (signs R2 links on demand).
+app.use('/api/files', fileRoutes);
 app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);
 app.use('/api/webhooks/paypal', paypalWebhookRoutes);
 app.use('/api/webhooks/easypost', easypostWebhookRoutes);

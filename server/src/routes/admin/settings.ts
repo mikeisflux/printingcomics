@@ -19,7 +19,9 @@ const router = Router();
 // ---- R2 object storage ----
 router.post('/r2/test', async (_req, res) => {
   const result = await r2Test();
-  res.status(result.ok ? 200 : 400).json(result);
+  // `error` is the field the admin client reads on a non-2xx; without it the
+  // real reason gets swallowed and shown as a generic "Request failed".
+  res.status(result.ok ? 200 : 400).json({ ...result, error: result.ok ? undefined : result.message });
 });
 
 /**
@@ -38,7 +40,7 @@ router.post('/r2/migrate', async (req, res) => {
   if (!(await isR2Enabled())) {
     throw new HttpError(400, 'Enable R2 and save valid credentials before migrating.');
   }
-  const limit = Math.min(Number(req.body?.limit) || 50, 200);
+  const limit = Math.min(Number(req.body?.limit) || 10, 25);
 
   const pending = await prisma.mediaFile.findMany({
     where: { url: { startsWith: '/uploads/' } },

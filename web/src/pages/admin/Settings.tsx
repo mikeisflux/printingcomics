@@ -382,9 +382,9 @@ function StorageSection() {
     try {
       let total = 0;
       const allFailures: { name: string; error: string }[] = [];
-      for (let pass = 0; pass < 200; pass++) {
+      for (let pass = 0; pass < 500; pass++) {
         const r = await api.post<{ migrated: number; remaining: number; failures: { name: string; error: string }[] }>(
-          '/admin/settings/r2/migrate', { limit: 50 },
+          '/admin/settings/r2/migrate', { limit: 10 },
         );
         total += r.migrated;
         allFailures.push(...(r.failures ?? []));

@@ -13,7 +13,7 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isR2Enabled, r2Delete, r2Put, r2PublicUrl, r2SignedUrl } from './r2.js';
+import { isR2Enabled, r2Delete, r2PutFile, r2PublicUrl, r2SignedUrl } from './r2.js';
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? './uploads');
 
@@ -56,15 +56,18 @@ export async function publishUpload(args: {
 
   const key = objectKey(args.subdir, args.filename);
   try {
-    const body = await fs.readFile(args.localPath);
-    await r2Put({
+    // Streamed, not buffered — a large print PDF must not be read into memory.
+    await r2PutFile({
       key,
-      body,
+      localPath: args.localPath,
       contentType: args.contentType,
       downloadName: args.originalName,
     });
-    const url = (await r2PublicUrl(key)) ?? (await r2SignedUrl(key, 7 * 24 * 3600));
-    if (!url) return { url: localUrl, storage: 'local' };
+    // Prefer the public domain (permanent + cacheable). Without one, persist a
+    // stable /api/files URL that signs on demand — a stored signed URL would
+    // expire and silently break old proof emails.
+    const publicUrl = await r2PublicUrl(key);
+    const url = publicUrl ?? `/api/files/${key}${args.localQuery ?? ''}`;
     // Uploaded — reclaim the disk copy.
     await fs.unlink(args.localPath).catch(() => undefined);
     return { url, storage: 'r2' };
