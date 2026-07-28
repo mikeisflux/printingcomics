@@ -409,9 +409,25 @@ router.post('/shipments/:shipmentId/buy', async (req, res) => {
   // the buy call (EasyPost accepts insurance on /buy as well).
   const insuranceAmount = ((shipment.insuredValueCents ?? 0) / 100).toFixed(2);
 
-  const bought = await epBuyShipment(shipment.easypostId, rateId, {
-    insurance: insuranceAmount,
-  });
+  let bought;
+  try {
+    bought = await epBuyShipment(shipment.easypostId, rateId, {
+      insurance: insuranceAmount,
+    });
+  } catch (e: any) {
+    // A funding rejection covers postage AND the separately-underwritten
+    // insurance premium, so say what we asked for — otherwise "insufficient
+    // funds" is baffling when the EasyPost wallet visibly has money in it.
+    if (e?.status === 402) {
+      throw new HttpError(
+        402,
+        `${e.message} This label was requested with insurance for $${insuranceAmount}, ` +
+          `which EasyPost bills separately from postage — if your wallet has funds, check that ` +
+          `your primary payment method is verified and not pending (ACH transfers take 3–5 business days).`,
+      );
+    }
+    throw e;
+  }
 
   const carrier = bought.selected_rate?.carrier ?? null;
   const service = bought.selected_rate?.service ?? null;
