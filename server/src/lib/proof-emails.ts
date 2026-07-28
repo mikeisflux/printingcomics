@@ -1,7 +1,7 @@
 import { prisma } from '../db.js';
 import { sendEmail } from './mailgun.js';
 import { getSetting } from './settings.js';
-import { proofKindLabel } from './proofs.js';
+import { proofKindLabel, proofSlotLabel } from './proofs.js';
 
 async function storeName(): Promise<string> {
   return (await getSetting<string>('store.name')) ?? 'Printing Comics';
@@ -50,12 +50,12 @@ async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], o
 export async function sendProofReadyEmail(proofId: string): Promise<EmailResult> {
   const proof = await prisma.proof.findUnique({
     where: { id: proofId },
-    include: { order: true, orderItem: { select: { name: true } } },
+    include: { order: true, orderItem: { select: { name: true, options: true } } },
   });
   if (!proof) return { sent: false, error: 'proof not found' };
   const [name, base] = await Promise.all([storeName(), baseUrl()]);
   const link = `${base}/proof/${proof.token}`;
-  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
   const html = wrap(
     `<h2 style="color:#C61A22">Your ${esc(proofKindLabel(proof.kind).toLowerCase())} is ready to review</h2>
      <p>We've prepared the <strong>${esc(slotLabel)}</strong> for order <strong>${esc(proof.order.number)}</strong>. Please review it carefully and approve it — <strong>nothing goes to print until every proof on your order is approved.</strong></p>
@@ -81,7 +81,7 @@ export async function sendProofsReadyEmail(proofIds: string[]): Promise<EmailRes
   if (proofIds.length === 1) return sendProofReadyEmail(proofIds[0]!);
   const proofs = await prisma.proof.findMany({
     where: { id: { in: proofIds } },
-    include: { order: true, orderItem: { select: { name: true } } },
+    include: { order: true, orderItem: { select: { name: true, options: true } } },
     orderBy: { createdAt: 'asc' },
   });
   if (proofs.length === 0) return { sent: false, error: 'no proofs' };
@@ -90,10 +90,11 @@ export async function sendProofsReadyEmail(proofIds: string[]): Promise<EmailRes
 
   const rows = proofs
     .map((p) => {
-      const label = `${proofKindLabel(p.kind)}${p.orderItem ? ` — ${p.orderItem.name}` : ''}`;
+      const label = proofSlotLabel(p.kind, p.orderItem);
       const link = `${base}/proof/${p.token}`;
-      return `<li style="margin:.5rem 0"><strong>${esc(label)}</strong> (v${p.version})<br>
-        <a href="${link}" style="color:#C61A22;font-weight:600">Review &amp; approve →</a></li>`;
+      return `<li style="margin:.75rem 0"><strong>${esc(label)}</strong> (v${p.version})<br>
+        <a href="${link}" style="color:#C61A22;font-weight:600">Review &amp; approve →</a>
+        <br><span style="color:#888;font-size:.8rem">or paste: <a href="${link}" style="color:#888;word-break:break-all">${link}</a></span></li>`;
     })
     .join('');
 
@@ -135,11 +136,11 @@ export async function sendMediaRequestEmail(requestId: string) {
 export async function sendProofApprovedEmail(proofId: string): Promise<EmailResult> {
   const proof = await prisma.proof.findUnique({
     where: { id: proofId },
-    include: { order: true, orderItem: { select: { name: true } } },
+    include: { order: true, orderItem: { select: { name: true, options: true } } },
   });
   if (!proof) return { sent: false, error: 'proof not found' };
   const name = await storeName();
-  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
   const cleared = proof.order.proofStatus === 'approved';
   const html = wrap(
     `<h2 style="color:#C61A22">${esc(slotLabel)} approved — thank you!</h2>

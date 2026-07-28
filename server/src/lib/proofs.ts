@@ -74,6 +74,26 @@ export function proofKindLabel(kind: string | null | undefined): string {
   return (kind && PROOF_KIND_LABELS[kind]) || 'Proof';
 }
 
+/**
+ * Human label for one proof slot, e.g.
+ *   `Cover proof — Comic Book — Standard (6.625" × 10.25") · "Issue #1"`
+ *
+ * An order can hold several lines of the SAME product, so the product name
+ * alone is ambiguous — the customer sees two identical rows and can't tell
+ * which is which. Append the title they typed in the configurator whenever
+ * it's set.
+ */
+export function proofSlotLabel(
+  kind: string | null | undefined,
+  orderItem?: { name?: string | null; options?: unknown } | null,
+): string {
+  const base = proofKindLabel(kind);
+  if (!orderItem?.name) return base;
+  const title = (orderItem.options as Record<string, unknown> | null | undefined)?.['title'];
+  const suffix = typeof title === 'string' && title.trim() ? ` · “${title.trim()}”` : '';
+  return `${base} — ${orderItem.name}${suffix}`;
+}
+
 type ItemWithProduct = {
   options?: unknown;
   product?: { slug?: string | null; pricingConfig?: unknown } | null;

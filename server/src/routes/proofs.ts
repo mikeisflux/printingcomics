@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { sendProofApprovedEmail, notifyStaff } from '../lib/proof-emails.js';
-import { computeOrderProofStatus, proofKindLabel } from '../lib/proofs.js';
+import { computeOrderProofStatus, proofKindLabel, proofSlotLabel } from '../lib/proofs.js';
 import { dispatchPartnerWebhook } from '../lib/partners.js';
 
 const router = Router();
@@ -28,16 +28,39 @@ const upload = multer({
 export const APPROVAL_TERMS =
   'By approving this proof I confirm I have reviewed it in full and that the artwork, spelling, layout, colors, and dimensions are correct and approved for printing. I understand that once approved I accept responsibility for the final printed output, and that Printing Comics is responsible only for manufacturing defects and physical damage — backed by the Printing Comics 100% Damage Replacement Guarantee: if an order arrives damaged or defective, we will reprint or replace it at no cost.';
 
-// ---------------- Proof review (customer, tokenized) ----------------
-router.get('/proof/:token', async (req, res) => {
+/**
+ * Resolve a review token to the proof the customer should actually be acting
+ * on: the NEWEST version in that slot (same order item + kind).
+ *
+ * Staff re-upload after a change request, and each upload emails a new link —
+ * but customers routinely click the oldest email they can find. Without this
+ * they'd review, and approve, a superseded proof. Returning the current
+ * version also means older emails keep working instead of dead-ending.
+ */
+async function resolveActiveProof(token: string) {
   const proof = await prisma.proof.findUnique({
-    where: { token: req.params.token },
+    where: { token },
+    select: { id: true, orderId: true, orderItemId: true, kind: true },
+  });
+  if (!proof) return null;
+  const latest = await prisma.proof.findFirst({
+    where: { orderId: proof.orderId, orderItemId: proof.orderItemId, kind: proof.kind },
+    orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+    select: { id: true },
+  });
+  return prisma.proof.findUnique({
+    where: { id: latest?.id ?? proof.id },
     include: {
       media: true,
-      orderItem: { select: { name: true } },
+      orderItem: { select: { name: true, options: true } },
       order: { include: { items: { select: { name: true, quantity: true } } } },
     },
   });
+}
+
+// ---------------- Proof review (customer, tokenized) ----------------
+router.get('/proof/:token', async (req, res) => {
+  const proof = await resolveActiveProof(String(req.params.token));
   if (!proof) throw new HttpError(404, 'Proof not found');
   res.json({
     proof: {
@@ -46,7 +69,12 @@ router.get('/proof/:token', async (req, res) => {
       status: proof.status,
       kind: proof.kind,
       kindLabel: proofKindLabel(proof.kind),
+      // Full slot label including the customer's own title, so an order with
+      // two lines of the same product is unambiguous.
+      slotLabel: proofSlotLabel(proof.kind, proof.orderItem),
       itemName: proof.orderItem?.name ?? null,
+      // Present when the link was for an older version we forwarded from.
+      token: proof.token,
       message: proof.message,
       decisionNote: proof.decisionNote,
       approvedName: proof.approvedName,
@@ -61,14 +89,11 @@ router.get('/proof/:token', async (req, res) => {
 
 const approveSchema = z.object({ name: z.string().min(1).max(120), acceptTerms: z.literal(true) });
 router.post('/proof/:token/approve', async (req, res) => {
-  const proof = await prisma.proof.findUnique({
-    where: { token: req.params.token },
-    include: { order: true, orderItem: { select: { name: true } } },
-  });
+  const proof = await resolveActiveProof(String(req.params.token));
   if (!proof) throw new HttpError(404, 'Proof not found');
   if (proof.status === 'approved') return res.json({ ok: true, already: true });
   const { name } = approveSchema.parse(req.body);
-  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
 
   await prisma.$transaction([
     prisma.proof.update({
@@ -105,13 +130,10 @@ router.post('/proof/:token/approve', async (req, res) => {
 
 const changesSchema = z.object({ note: z.string().min(1).max(2000) });
 router.post('/proof/:token/changes', async (req, res) => {
-  const proof = await prisma.proof.findUnique({
-    where: { token: req.params.token },
-    include: { order: true, orderItem: { select: { name: true } } },
-  });
+  const proof = await resolveActiveProof(String(req.params.token));
   if (!proof) throw new HttpError(404, 'Proof not found');
   const { note } = changesSchema.parse(req.body);
-  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
 
   await prisma.$transaction([
     prisma.proof.update({ where: { id: proof.id }, data: { status: 'changes_requested', decisionNote: note, decidedAt: new Date() } }),

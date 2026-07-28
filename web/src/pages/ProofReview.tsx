@@ -13,6 +13,7 @@ interface Proof {
   status: 'pending' | 'approved' | 'changes_requested';
   kind?: string | null;
   kindLabel?: string | null;
+  slotLabel?: string | null;
   itemName?: string | null;
   message: string | null;
   decisionNote: string | null;
@@ -182,9 +183,9 @@ export function ProofReview() {
           {proof.kindLabel ?? 'Proof'} v{proof.version}
         </span>
       </div>
-      {proof.itemName && (
+      {(proof.slotLabel ?? proof.itemName) && (
         <p className="muted" style={{ margin: '.35rem 0 0', fontWeight: 600 }}>
-          Item: {proof.itemName}
+          {proof.slotLabel ?? `Item: ${proof.itemName}`}
         </p>
       )}
 
