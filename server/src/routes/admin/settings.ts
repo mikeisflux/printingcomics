@@ -43,12 +43,13 @@ router.post('/r2/migrate', async (req, res) => {
   const limit = Math.min(Number(req.body?.limit) || 10, 25);
 
   const pending = await prisma.mediaFile.findMany({
-    where: { url: { startsWith: '/uploads/' } },
+    where: { url: { startsWith: '/uploads/' }, NOT: { tags: { has: 'missing-file' } } },
     orderBy: { createdAt: 'asc' },
     take: limit,
   });
 
   let migrated = 0;
+  let missing = 0;
   const failures: { id: string; name: string; error: string }[] = [];
   for (const m of pending) {
     // `/uploads/<subdir>/<file>?query` → subdir + filename on disk
@@ -58,6 +59,13 @@ router.post('/r2/migrate', async (req, res) => {
     try {
       await fs.access(localPath);
     } catch {
+      // The row outlived its file (deleted from disk, or restored DB without
+      // the uploads dir). Tag it so it stops being retried and stops counting
+      // as "still local" — the media row is kept for audit/history.
+      missing++;
+      await prisma.mediaFile
+        .update({ where: { id: m.id }, data: { tags: { push: 'missing-file' } } })
+        .catch(() => undefined);
       failures.push({ id: m.id, name: m.originalName, error: 'file missing on disk' });
       continue;
     }
@@ -70,7 +78,7 @@ router.post('/r2/migrate', async (req, res) => {
         originalName: m.originalName,
       });
       if (stored.storage !== 'r2') {
-        failures.push({ id: m.id, name: m.originalName, error: 'upload fell back to local' });
+        failures.push({ id: m.id, name: m.originalName, error: stored.error ?? 'upload fell back to local' });
         continue;
       }
       await prisma.mediaFile.update({ where: { id: m.id }, data: { url: stored.url } });
@@ -80,14 +88,18 @@ router.post('/r2/migrate', async (req, res) => {
     }
   }
 
-  const remaining = await prisma.mediaFile.count({ where: { url: { startsWith: '/uploads/' } } });
-  res.json({ migrated, remaining, failures, scanned: pending.length });
+  const remaining = await prisma.mediaFile.count({
+    where: { url: { startsWith: '/uploads/' }, NOT: { tags: { has: 'missing-file' } } },
+  });
+  res.json({ migrated, missing, remaining, failures, scanned: pending.length });
 });
 
 /** How many files still live on local disk (drives the migrate button's label). */
 router.get('/r2/status', async (_req, res) => {
   const [local, remote] = await Promise.all([
-    prisma.mediaFile.count({ where: { url: { startsWith: '/uploads/' } } }),
+    prisma.mediaFile.count({
+      where: { url: { startsWith: '/uploads/' }, NOT: { tags: { has: 'missing-file' } } },
+    }),
     prisma.mediaFile.count({ where: { url: { startsWith: 'http' } } }),
   ]);
   res.json({ enabled: await isR2Enabled(), local, remote });

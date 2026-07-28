@@ -93,6 +93,7 @@ async function signedFetch(
   key: string,
   body?: Buffer | NodeJS.ReadableStream,
   extraHeaders: Record<string, string> = {},
+  contentLength?: number,
 ): Promise<Response> {
   const url = new URL(`${cfg.endpoint}/${cfg.bucket}/${key}`);
   const { amz, short } = amzDate(new Date());
@@ -133,9 +134,15 @@ async function signedFetch(
   headers.Authorization =
     `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
+  const wireHeaders: Record<string, string> = { ...headers };
+  if (isStream && typeof contentLength === 'number') {
+    // R2 rejects chunked bodies ("not implemented"), so a stream MUST declare
+    // its length. Sent unsigned — SigV4 doesn't require content-length.
+    wireHeaders['content-length'] = String(contentLength);
+  }
   return fetch(url.toString(), {
     method,
-    headers,
+    headers: wireHeaders,
     body: body as any,
     // Required by undici when streaming a request body.
     ...(isStream ? { duplex: 'half' } : {}),
@@ -165,12 +172,16 @@ export async function r2Put(args: PutObjectArgs): Promise<string> {
 export async function r2PutFile(args: Omit<PutObjectArgs, 'body'> & { localPath: string }): Promise<string> {
   const cfg = await r2Config();
   if (!cfg) throw new Error('R2 is not configured');
-  const { createReadStream } = await import('node:fs');
-  return r2PutWith(cfg, { ...args, body: createReadStream(args.localPath) });
+  const { createReadStream, promises: fsp } = await import('node:fs');
+  const { size } = await fsp.stat(args.localPath);
+  return r2PutWith(cfg, { ...args, body: createReadStream(args.localPath), contentLength: size });
 }
 
 /** Upload against an already-resolved config (used by the connection test). */
-async function r2PutWith(cfg: R2Ready, args: Omit<PutObjectArgs, 'body'> & { body: Buffer | NodeJS.ReadableStream }): Promise<string> {
+async function r2PutWith(
+  cfg: R2Ready,
+  args: Omit<PutObjectArgs, 'body'> & { body: Buffer | NodeJS.ReadableStream; contentLength?: number },
+): Promise<string> {
   // Deliberately NOT signing content-length: undici sets it itself, and a
   // value it recomputes would no longer match the signature.
   const extra: Record<string, string> = {
@@ -187,7 +198,7 @@ async function r2PutWith(cfg: R2Ready, args: Omit<PutObjectArgs, 'body'> & { bod
     extra['content-disposition'] = `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
   }
 
-  const res = await signedFetch(cfg, 'PUT', args.key, args.body, extra);
+  const res = await signedFetch(cfg, 'PUT', args.key, args.body, extra, args.contentLength);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`R2 upload failed (${res.status}): ${text.slice(0, 300)}`);

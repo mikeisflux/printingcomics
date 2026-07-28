@@ -21,6 +21,8 @@ export interface StoredFile {
   /** What to persist as MediaFile.url. */
   url: string;
   storage: 'r2' | 'local';
+  /** Why R2 was skipped, when it was meant to be used. */
+  error?: string;
 }
 
 /** True when a media url points at R2 rather than local disk. */
@@ -72,8 +74,9 @@ export async function publishUpload(args: {
     await fs.unlink(args.localPath).catch(() => undefined);
     return { url, storage: 'r2' };
   } catch (e: any) {
-    console.error('[storage] R2 upload failed, keeping local copy:', e?.message ?? e);
-    return { url: localUrl, storage: 'local' };
+    const error = e?.message ?? String(e);
+    console.error('[storage] R2 upload failed, keeping local copy:', error);
+    return { url: localUrl, storage: 'local', error };
   }
 }
 
