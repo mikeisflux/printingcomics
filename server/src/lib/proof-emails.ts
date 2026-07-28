@@ -35,7 +35,9 @@ export interface EmailResult { sent: boolean; to?: string; error?: string }
  */
 async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], okMsg: string): Promise<EmailResult> {
   try {
-    const { providerRef } = await sendEmail(args);
+    // Never click-track these: the proof / upload link is the entire point of
+    // the email, and a bad cert on the tracking domain hard-blocks the customer.
+    const { providerRef } = await sendEmail({ trackClicks: false, ...args });
     await logEvent(orderId, `${okMsg}${providerRef ? ` (${providerRef})` : ''}`);
     return { sent: true, to: args.to?.email };
   } catch (e: any) {
@@ -59,7 +61,7 @@ export async function sendProofReadyEmail(proofId: string): Promise<EmailResult>
      <p>We've prepared the <strong>${esc(slotLabel)}</strong> for order <strong>${esc(proof.order.number)}</strong>. Please review it carefully and approve it — <strong>nothing goes to print until every proof on your order is approved.</strong></p>
      ${proof.message ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(proof.message)}</p>` : ''}
      ${btn(link, 'Review this proof')}
-     <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br>${link}</p>`,
+     <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br><a href="${link}" style="color:#666;word-break:break-all">${link}</a></p>`,
     name,
   );
   return trySend(
@@ -120,7 +122,7 @@ export async function sendMediaRequestEmail(requestId: string) {
      <p>For order <strong>${esc(mr.order.number)}</strong>, our team needs corrected artwork from you:</p>
      <blockquote style="border-left:3px solid #C61A22;margin:1rem 0;padding:.25rem 1rem;color:#333">${esc(mr.message)}</blockquote>
      ${btn(link, 'Upload corrected files')}
-     <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br>${link}</p>`,
+     <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br><a href="${link}" style="color:#666;word-break:break-all">${link}</a></p>`,
     name,
   );
   await trySend(

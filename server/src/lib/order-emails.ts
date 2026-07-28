@@ -42,6 +42,7 @@ export async function sendOrderConfirmationEmail(orderId: string) {
 
   try {
     const { providerRef } = await sendEmail({
+      trackClicks: false,
       to: { email: order.email },
       subject: `Order ${order.number} confirmed`,
       html,
@@ -81,6 +82,7 @@ export async function sendShippingNotificationEmail(orderId: string) {
 
   try {
     const { providerRef } = await sendEmail({
+      trackClicks: false,
       to: { email: order.email },
       subject: `Order ${order.number} has shipped`,
       html,
@@ -120,6 +122,7 @@ export async function sendOrderCancelledEmail(orderId: string, reason?: string) 
 
   try {
     const { providerRef } = await sendEmail({
+      trackClicks: false,
       to: { email: order.email },
       subject: `Order ${order.number} cancelled`,
       html,

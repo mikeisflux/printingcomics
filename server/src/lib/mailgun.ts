@@ -13,6 +13,15 @@ export interface SendEmailInput {
   params?: Record<string, string>;
   headers?: Record<string, string>;
   tags?: string[];
+  /**
+   * Rewrite links through Mailgun's click-tracking domain. Defaults to true
+   * for campaigns. Set false on transactional mail whose links MUST work:
+   * tracking rewrites `https://printingcomics.com/proof/<token>` to
+   * `https://email.printingcomics.com/c/…`, and if that tracking subdomain's
+   * TLS cert isn't valid the browser hard-blocks the customer with
+   * ERR_CERT_COMMON_NAME_INVALID before they ever reach the page.
+   */
+  trackClicks?: boolean;
 }
 
 export interface SendEmailResult {
@@ -50,10 +59,12 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   form.set('html', input.html);
   if (input.text) form.set('text', input.text);
 
-  // Tracking on (Mailgun injects the pixel + rewrites links for us).
+  // Open tracking is a harmless pixel. Click tracking rewrites every link
+  // through the tracking domain, so it's opt-out per send (see trackClicks).
+  const trackClicks = input.trackClicks !== false;
   form.set('o:tracking', 'yes');
   form.set('o:tracking-opens', 'yes');
-  form.set('o:tracking-clicks', 'htmlonly');
+  form.set('o:tracking-clicks', trackClicks ? 'htmlonly' : 'no');
 
   // Tags for filtering in Mailgun dashboard.
   if (input.tags) for (const tag of input.tags) form.append('o:tag', tag);
