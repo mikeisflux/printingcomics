@@ -70,6 +70,10 @@ authoritative price and reflects any future changes.
 
 ## Per-print shipping weight
 
+Shipping is quoted from live carrier rates against the real parcel weight, so
+quantity changes the shipping price — `POST /pricing/quote` is authoritative and
+also returns `shipmentWeightOz` and `boxes`.
+
 If you estimate shipping yourself, these are the per-unit weights we use. They
 also come back on `GET /catalog/products/:slug` as `sizeWeightsGrams` (keyed by
 `print_size` value); the top-level `weightGrams` is the 11×17 fallback.
@@ -99,7 +103,10 @@ Set `print_size` to price a specific size; omit it to price 11×17.
 ## Submit an order
 
 Upload the print art first (`POST /uploads`, see the main reference), then
-attach the `uploadId` to the line item:
+attach the `uploadId` to the line item. Treat the returned `url` as opaque —
+files may be served from object storage (absolute URL), from a signing
+redirect (`/api/files/…`), or from disk (`/uploads/…?t=…`). Print files are
+deleted once an order ships, so download anything you need to keep first.
 
 ```jsonc
 POST /api/v1/orders

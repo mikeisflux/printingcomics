@@ -264,8 +264,11 @@ Content-Type: application/json
   "subtotalCents": 46750,
   "discountCents": 4675,
   "shippingOptions": [
-    { "id": "shp_…", "name": "USPS Priority", "rateCents": 1499, "estimatedDays": "2-3" }
+    { "id": "ep:UPS:Ground", "name": "UPS Ground", "rateCents": 1011,
+      "estimatedDays": "2 days", "source": "live", "carrier": "UPS", "service": "Ground" }
   ],
+  "shipmentWeightOz": 187.5,
+  "boxes": 1,
   "taxCents": 3473,
   "totalCents": 45548,
   "currency": "USD"
@@ -275,6 +278,31 @@ Content-Type: application/json
               <code>hard_copy_proof</code> adds a separate <code>Hard-Copy Proof — …</code> item
               (that book's single-copy price + $19.95), and <code>pdf_proof</code> is free. So the
               quoted <code>totalCents</code> already reflects any requested proofs.
+            </p>
+
+            <h3>Shipping options are live, weight-based rates</h3>
+            <p>
+              <code>shippingOptions</code> are real carrier rates for the actual parcel, not a flat
+              table. We weigh the basket (art prints by their chosen size; books computed from trim
+              size, page count and stock), pack it into boxes, and rate it — so quantity genuinely
+              changes the shipping price. The quote also returns{' '}
+              <code>shipmentWeightOz</code> and <code>boxes</code> for your own display.
+            </p>
+            <table className="api-table">
+              <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td><code>id</code></td><td>Opaque. Pass it back as <code>shippingRateId</code> on the order — don't parse or synthesize it.</td></tr>
+                <tr><td><code>source</code></td><td><code>"live"</code> for a carrier rate, <code>"table"</code> when falling back to configured flat rates.</td></tr>
+                <tr><td><code>carrier</code> / <code>service</code></td><td>Present on live rates, e.g. <code>UPS</code> / <code>Ground</code>.</td></tr>
+              </tbody>
+            </table>
+            <p>
+              Rates move, so <strong>quote close to order time</strong>. At order creation we
+              re-rate the basket server-side and charge the current price for the carrier + service
+              you selected — a stale or hand-made id is never trusted as a price. If that service is
+              no longer available for the parcel, we fall back to the cheapest current option.
+              Send a complete <code>shippingAddress</code> (postal code included) or you'll only get
+              table rates.
             </p>
           </Section>
 
@@ -559,6 +587,20 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
             <Endpoint method="POST" path="/orders/:idOrNumber/cancel" scope="orders:write" />
             <p>Cancel an order that hasn't shipped yet. Optional body: <code>{`{ "reason": "Backer refunded" }`}</code>.</p>
 
+            <h3 id="file-retention">File retention</h3>
+            <p>
+              Print files and proofs are deleted once an order reaches{' '}
+              <strong><code>SHIPPED</code></strong> — we don't retain customer artwork after
+              fulfillment. Download anything you need to keep <em>before</em> the order ships.
+            </p>
+            <p>
+              The file records stay in the order payload after that, so a line item can list a file
+              whose contents are gone. Those URLs answer <code>410 Gone</code> (not 404) with a
+              message naming the file, which is your signal to ask the creator for a re-upload
+              rather than retry. Artwork shared with another order is never removed while that
+              other order still references it.
+            </p>
+
             <h3 id="order-proofing">Proofing</h3>
             <p>
               Request a pre-production proof by setting proof options on a line item. A{' '}
@@ -820,9 +862,47 @@ POST https://printingcomics.com/api/proofing/proof/<token>/changes
 #   "idempotent": false
 # }`}</Code>
             <p>
-              The <code>url</code> we return contains a per-file access token. Treat the whole
-              URL as a capability — anyone with it can download the file. We accept any file
-              type, but the comic-printing flow expects PDFs preflighted to your spec sheet.
+              The <code>url</code> we return is a capability — anyone holding it can download the
+              file. We accept any file type, but the comic-printing flow expects PDFs preflighted
+              to your spec sheet.
+            </p>
+            <h3>Treat <code>url</code> as opaque</h3>
+            <p>
+              Files are served from object storage (Cloudflare R2) or from our own disk depending
+              on configuration, so <code>url</code> comes back in one of three shapes. Always use
+              the string we return verbatim — never build a file URL yourself, and never assume a
+              prefix:
+            </p>
+            <table className="api-table">
+              <thead><tr><th>Shape</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>https://files.printingcomics.com/…</code></td>
+                  <td>Object storage behind a public CDN domain. Permanent and cacheable.</td>
+                </tr>
+                <tr>
+                  <td><code>/api/files/…</code></td>
+                  <td>Object storage on a private bucket. Resolve it against the site origin; it
+                      redirects (302) to a short-lived signed link, so <strong>follow
+                      redirects</strong> and don't cache the destination.</td>
+                </tr>
+                <tr>
+                  <td><code>/uploads/…?t=…</code></td>
+                  <td>Served from our disk. The <code>t</code> token is required — keep the query
+                      string intact.</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="muted">
+              Re-read <code>GET /uploads/:id</code> (or the order) for a current <code>url</code>
+              rather than storing one long-term. Downloads carry a{' '}
+              <code>Content-Disposition</code> with the original filename, so saving a file keeps
+              the name you uploaded it under instead of our storage key.
+            </p>
+            <p>
+              A file whose contents have been removed — see the retention note under{' '}
+              <a href="#orders">Orders</a> — answers <code>410 Gone</code> with a message naming
+              the file, rather than a generic 404.
             </p>
 
             <Endpoint method="GET" path="/uploads" scope="uploads:read" />
@@ -1100,6 +1180,72 @@ console.log('Send to creator:', payment.approvalUrl);
 //   });`}</Code>
           </Section>
 
+          <Section id="changelog" title="Changelog">
+            <p className="muted">
+              Recent API-visible changes, newest first. Anything not listed here is unchanged.
+            </p>
+
+            <h3>2026-07-29 · Print files</h3>
+            <ul>
+              <li><strong>Treat <code>url</code> as opaque.</strong> Files may now be served from
+                object storage. A file <code>url</code> comes back as an absolute CDN URL, as{' '}
+                <code>/api/files/…</code> (302-redirects to a short-lived signed link — follow
+                redirects, don't cache the destination), or as <code>/uploads/…?t=…</code>. Never
+                construct a file URL yourself. See <a href="#uploads">Uploads</a>.</li>
+              <li><strong>Downloads keep their original filename</strong> via{' '}
+                <code>Content-Disposition</code>, instead of our storage key.</li>
+              <li><strong><code>410 Gone</code></strong> is returned for a file whose contents were
+                removed (with a message naming it), instead of a generic 404. See{' '}
+                <a href="#file-retention">File retention</a>.</li>
+            </ul>
+
+            <h3>2026-07-27 · Shipping &amp; proofs</h3>
+            <ul>
+              <li><strong>Shipping is now live, weight-based rating.</strong>{' '}
+                <code>shippingOptions</code> are real carrier rates for the actual parcel, and the
+                quote adds <code>shipmentWeightOz</code> and <code>boxes</code>. Option{' '}
+                <code>id</code>s are opaque (e.g. <code>ep:UPS:Ground</code>) — pass them back
+                verbatim as <code>shippingRateId</code>. Quantity now genuinely changes shipping
+                cost, so quote close to order time. See <a href="#pricing">Pricing</a>.</li>
+              <li><strong>Proofs are per line item.</strong> Comics and graphic novels require TWO
+                proofs each (<code>cover</code> + <code>interior</code>); prints one{' '}
+                <code>artwork</code> proof. Every proof has its own token and review link, and the
+                order-level <code>proofStatus</code> only reaches <code>approved</code> when all of
+                them are. <code>GET /orders/:id/proof</code> gained{' '}
+                <code>orderItemId</code>, <code>itemName</code>, <code>kind</code>, and a per-proof{' '}
+                <code>token</code>/<code>reviewUrl</code>; the <code>proof.*</code> webhooks carry
+                the same fields plus the aggregate <code>orderProofStatus</code>. See{' '}
+                <a href="#order-proofing">Proofing</a>.</li>
+            </ul>
+
+            <h3>2026-07-24 · Art Prints pricing</h3>
+            <ul>
+              <li><strong>Per-size price charts.</strong> Each <code>print_size</code> carries its
+                own firm price curve — sizes are not derived from one another, so don't compute one
+                from another. Current values are in <a href="#art-prints">Art Prints</a>; a live{' '}
+                <code>POST /pricing/quote</code> is always authoritative.</li>
+            </ul>
+
+            <h3>2026-07-22 · Art Prints restructure (breaking)</h3>
+            <ul>
+              <li><strong>Per-size slugs retired.</strong>{' '}
+                <code>art-print-11x17-silver-metal</code>, <code>-raised-metal</code>,{' '}
+                <code>-paper-gloss</code> and <code>-foil</code> are gone. Use the substrate slug
+                plus a <code>print_size</code> option:{' '}
+                <code>art-print-metal-silver</code>, <code>art-print-metal-raised</code>,{' '}
+                <code>art-print-paper-gloss</code>, <code>art-print-foil</code>. The old slugs map
+                to the new slug with <code>print_size: "11×17"</code>.</li>
+              <li><strong>New required option <code>print_size</code></strong> —{' '}
+                <code>11×17</code> or <code>Comic (6.625 × 10.25)</code>. Loose forms
+                (<code>"11x17"</code>, <code>"comic"</code>) are accepted; omitting it prices as
+                11×17.</li>
+              <li><strong><code>sizeWeightsGrams</code></strong> added to{' '}
+                <code>GET /catalog/products/:slug</code> — per-size shipping weight keyed by{' '}
+                <code>print_size</code>.</li>
+              <li>The storefront category moved to <code>art-prints</code> ("Art Prints").</li>
+            </ul>
+          </Section>
+
           <Section id="support" title="Support">
             <p>
               Questions, scope changes, sandbox keys, or volume pricing — write to{' '}
@@ -1172,6 +1318,7 @@ function Sidebar() {
     ['data-model', 'Data model'],
     ['errors', 'Errors'],
     ['quickstart', 'Quickstart (Node)'],
+    ['changelog', 'Changelog'],
     ['support', 'Support'],
   ];
   return (
