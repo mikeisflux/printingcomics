@@ -188,11 +188,28 @@ export function proofBlocksProduction(proofStatus: string | null | undefined): b
  * swallowed so a stuck file never blocks the status change.
  */
 export async function purgeOrderArtwork(orderId: string): Promise<void> {
+  /**
+   * A MediaFile can be shared by more than one order: if a checkout fails and
+   * the customer retries, both the abandoned attempt and the successful order
+   * link the SAME uploads (they're matched by URL). Purging one order must
+   * never delete a file the other still needs — that silently destroyed a
+   * paying customer's artwork once already.
+   */
+  const stillReferenced = async (mediaFileId: string): Promise<boolean> => {
+    const [otherItems, otherProofs] = await Promise.all([
+      prisma.orderItemFile.count({ where: { mediaFileId, orderItem: { orderId: { not: orderId } } } }),
+      prisma.proof.count({ where: { mediaFileId, orderId: { not: orderId } } }),
+    ]);
+    return otherItems > 0 || otherProofs > 0;
+  };
+
   // Proofs first — Proof references MediaFile, so remove the Proof rows before
   // deleting their media (the relation is Restrict-on-delete).
   const proofs = await prisma.proof.findMany({ where: { orderId }, include: { media: true } });
   await prisma.proof.deleteMany({ where: { orderId } });
+  let keptShared = 0;
   for (const p of proofs) {
+    if (await stillReferenced(p.mediaFileId)) { keptShared++; continue; }
     await unlinkByUrl(p.media?.url);
     await prisma.mediaFile.delete({ where: { id: p.mediaFileId } }).catch(() => undefined);
   }
@@ -209,12 +226,16 @@ export async function purgeOrderArtwork(orderId: string): Promise<void> {
       const isCreatorFile =
         !!m && (m.folder === '/customer-uploads' || m.folder === '/proofs' || (m.tags ?? []).includes('customer-upload'));
       if (!isCreatorFile) continue;
+      // Drop THIS order's link either way, but keep the bytes if anyone else
+      // still points at them.
       await prisma.orderItemFile.delete({ where: { id: f.id } }).catch(() => undefined);
+      if (await stillReferenced(m!.id)) { keptShared++; continue; }
       await unlinkByUrl(m!.url);
       await prisma.mediaFile.delete({ where: { id: m!.id } }).catch(() => undefined);
       removedFiles++;
     }
   }
+  void keptShared;
 
   await prisma.orderStatusEvent
     .create({

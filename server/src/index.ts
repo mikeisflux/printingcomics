@@ -155,6 +155,32 @@ app.use('/uploads', async (req, res, next) => {
 // Public: serve uploaded email attachments (behind auth check in routes)
 app.use('/uploads', express.static(path.resolve(process.env.UPLOADS_DIR ?? './uploads')));
 
+// A tracked file whose bytes are gone answers with something staff can act on
+// rather than a bare "Not found" that looks like a broken link.
+app.use('/uploads', async (req, res, next) => {
+  try {
+    const filename = path.basename(req.path);
+    const { prisma: db } = await import('./db.js');
+    const media = await db.mediaFile.findUnique({
+      where: { filename },
+      select: { originalName: true, size: true, createdAt: true },
+    });
+    if (media) {
+      return res.status(410).json({
+        error:
+          `"${media.originalName}" is no longer stored on the server. The file record remains ` +
+          `(uploaded ${media.createdAt.toISOString().slice(0, 10)}, ${Math.round(media.size / 1048576)} MB) ` +
+          `but its contents were removed. Ask the customer to re-upload this file.`,
+        originalName: media.originalName,
+        gone: true,
+      });
+    }
+  } catch {
+    /* fall through to the generic 404 */
+  }
+  next();
+});
+
 app.use(notFound);
 app.use(errorHandler);
 
