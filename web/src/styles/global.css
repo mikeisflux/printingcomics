@@ -218,3 +218,38 @@ label { font-weight: 600; display: block; margin: .75rem 0 .25rem; font-size: .9
 .api-table th, .api-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 .api-table th { background: var(--bg-alt); font-weight: 600; }
 .api-table code { font-size: .85rem; }
+
+/* ---- Review slider (home page) ---- */
+.pc-review-slide {
+  animation: pc-review-fade .45s ease;
+}
+@keyframes pc-review-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pc-review-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.pc-review-arrow:hover {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+@media (max-width: 640px) {
+  .pc-review-arrow { display: none; }
+}

@@ -1,6 +1,7 @@
 import { Router, raw } from 'express';
 import crypto from 'node:crypto';
 import { prisma } from '../../db.js';
+import { requestReviewForOrder } from '../../lib/reviews.js';
 import { getSetting } from '../../lib/settings.js';
 import { sendShippingNotificationEmail } from '../../lib/order-emails.js';
 
@@ -101,6 +102,13 @@ async function handleTrackerEvent(tracker: any) {
 
   if (Object.keys(orderPatch).length > 0) {
     await prisma.order.update({ where: { id: shipment.orderId }, data: orderPatch });
+  }
+
+  // Carrier confirmed delivery — ask the customer for a review. This is the
+  // path real deliveries take (the admin status dropdown is the manual
+  // fallback). Idempotent per order, and never throws.
+  if (newOrderStatus === 'DELIVERED' && shipment.order.status !== 'DELIVERED') {
+    void requestReviewForOrder(shipment.orderId);
   }
 
   await prisma.orderStatusEvent.create({

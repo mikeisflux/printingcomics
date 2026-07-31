@@ -12,6 +12,7 @@ import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { publishUpload } from '../../lib/storage.js';
 import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofKindLabel, computeOrderProofStatus } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
+import { requestReviewForOrder } from '../../lib/reviews.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -216,6 +217,11 @@ router.patch('/:id', async (req, res) => {
     }
     if (data.status === 'CANCELLED' && before.status !== 'CANCELLED') {
       void sendOrderCancelledEmail(order.id);
+    }
+    if (data.status === 'DELIVERED' && before.status !== 'DELIVERED') {
+      // Ask for a review. Idempotent per order and never throws, so it can't
+      // interfere with the status change itself.
+      void requestReviewForOrder(order.id);
     }
   }
 

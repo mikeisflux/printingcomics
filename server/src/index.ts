@@ -24,6 +24,7 @@ import adminRoutes from './routes/admin/index.js';
 import configRoutes from './routes/config.js';
 import uploadRoutes from './routes/uploads.js';
 import proofingRoutes from './routes/proofs.js';
+import reviewRoutes from './routes/reviews.js';
 import newsletterRoutes from './routes/newsletter.js';
 import accountRoutes from './routes/account.js';
 import contactRoutes from './routes/contact.js';
@@ -83,6 +84,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/proofing', proofingRoutes);
+app.use('/api/reviews', reviewRoutes);
 // Stable, never-expiring URLs for stored files (signs R2 links on demand).
 app.use('/api/files', fileRoutes);
 app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);

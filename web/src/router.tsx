@@ -31,6 +31,7 @@ import { MakeAComic } from './pages/resources/MakeAComic';
 import { FilePrep } from './pages/resources/FilePrep';
 import { Developers } from './pages/Developers';
 import { ProofReview } from './pages/ProofReview';
+import { ReviewForm } from './pages/ReviewForm';
 import { CorrectedUpload } from './pages/CorrectedUpload';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
@@ -55,6 +56,7 @@ import { AdminPartners } from './pages/admin/Partners';
 import { AdminPartnerDetail } from './pages/admin/PartnerDetail';
 import { AdminSiteDiscounts } from './pages/admin/SiteDiscounts';
 import { AdminCoupons } from './pages/admin/Coupons';
+import { AdminReviews } from './pages/admin/Reviews';
 
 export const router = createBrowserRouter([
   {
@@ -96,6 +98,7 @@ export const router = createBrowserRouter([
       { path: 'resources/faq', element: <Faq /> },
       { path: 'developers', element: <Developers /> },
       { path: 'proof/:token', element: <ProofReview /> },
+      { path: 'review/:token', element: <ReviewForm /> },
       { path: 'upload/:token', element: <CorrectedUpload /> },
     ],
   },
@@ -126,6 +129,7 @@ export const router = createBrowserRouter([
       { path: 'settings', element: <AdminSettings /> },
       { path: 'sitediscounts', element: <AdminSiteDiscounts /> },
       { path: 'coupons', element: <AdminCoupons /> },
+      { path: 'reviews', element: <AdminReviews /> },
     ],
   },
   { path: '*', element: <StoreLayout />, children: [{ index: true, element: <NotFound /> }] },

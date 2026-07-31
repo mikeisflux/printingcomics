@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ReviewSlider } from '../components/ReviewSlider';
 import { useDocumentTitle, useMetaDescription } from '../hooks/useDocumentTitle';
 
 export function Home() {
@@ -49,6 +50,9 @@ export function Home() {
       </section>
 
       {/* Featured products */}
+      {/* Customer reviews — renders nothing until some are approved */}
+      <ReviewSlider />
+
       {/* Why us */}
       <section style={{ background: 'var(--bg-alt)', padding: '3rem 0' }}>
         <div className="container">

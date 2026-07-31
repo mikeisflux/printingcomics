@@ -333,6 +333,7 @@ model Order {
   items           OrderItem[]
   payments        Payment[]
   events          OrderStatusEvent[]
+  review          Review?
   shipments       Shipment[]
   proofs          Proof[]
   mediaRequests   MediaRequest[]
@@ -671,6 +672,43 @@ model Proof {
 
   @@index([orderId])
   @@index([orderItemId])
+}
+
+// A customer review, solicited automatically once an order is delivered.
+// Created in `invited` state with an unguessable token so the customer can
+// leave feedback from an email link with no account. Nothing appears on the
+// storefront until staff approve it.
+model Review {
+  id           String    @id @default(cuid())
+  order        Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId      String?   @unique
+  email        String
+  // Display name the customer chose; falls back to the order name.
+  customerName String?
+  rating       Int?      // 1–5, set on submission
+  title        String?
+  body         String?
+  // "invited"  — request emailed, not yet filled in
+  // "pending"  — submitted, awaiting moderation
+  // "approved" — live on the storefront
+  // "rejected" — hidden; keeps the row so we don't re-solicit
+  status       String    @default("invited")
+  token        String    @unique
+  // Pin to the front of the storefront slider.
+  featured     Boolean   @default(false)
+  sortOrder    Int       @default(0)
+  // Optional public reply from the shop.
+  reply        String?
+  adminNote    String?   // internal only, never shown publicly
+  requestedAt  DateTime  @default(now())
+  submittedAt  DateTime?
+  decidedAt    DateTime?
+  decidedById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+  @@index([email])
 }
 
 // A staff request for the customer to (re-)upload corrected artwork. Emails the

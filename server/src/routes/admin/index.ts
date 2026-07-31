@@ -15,6 +15,7 @@ import apiKeys from './api-keys.js';
 import partners from './partners.js';
 import siteDiscounts from './site-discounts.js';
 import coupons from './coupons.js';
+import reviews from './reviews.js';
 import { requireAdmin } from '../../middleware/auth.js';
 
 const router = Router();
@@ -36,5 +37,6 @@ router.use('/api-keys', apiKeys);
 router.use('/partners', partners);
 router.use('/site-discounts', siteDiscounts);
 router.use('/coupons', coupons);
+router.use('/reviews', reviews);
 
 export default router;
