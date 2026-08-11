@@ -25,6 +25,7 @@ const TEMPLATES: Tpl[] = [
   { title: 'Magazine', meta: '8 × 10.5 in', href: '/templates/template-magazine.pdf', use: 'Magazine-format & prestige editions' },
   { title: 'US Letter', meta: '8.5 × 11 in', href: '/templates/template-letter.pdf', use: 'Full-size books & art collections' },
   { title: 'Art Print', meta: '11 × 17 in', href: '/templates/template-art-print.pdf', use: 'Posters & tabloid art prints' },
+  { title: 'Trading Card', meta: '2.5 × 3.5 in', href: '/templates/template-trading-card.pdf', use: 'Collector cards — front & back' },
 ];
 
 /** Nested bleed / trim / safe diagram reused as the "anatomy of a template" figure. */
@@ -121,6 +122,7 @@ export function Templates() {
             ['Magazine', '8 × 10.5 in', 'Prestige formats, anthologies, art-forward books'],
             ['US Letter', '8.5 × 11 in', 'Full-size collections, sketchbooks, art books'],
             ['Art Print', '11 × 17 in', 'Posters, pin-ups and tabloid prints'],
+            ['Trading Card', '2.5 × 3.5 in', 'Collector cards — two pages, front and back'],
           ]}
         />
         <p className="muted" style={{ fontSize: '.9rem' }}>
