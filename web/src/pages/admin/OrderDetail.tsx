@@ -1035,11 +1035,19 @@ function ShipmentBuilder({
   );
   const boxOz = pkg?.emptyWeightOz ?? 0;
   const computedOz = Math.max(0.5, contentOz + boxOz);
-  // Blank = use the computed weight. Staff can bump it for padding, sleeves,
-  // or anything the product weights don't account for.
-  const [weightOverride, setWeightOverride] = useState('');
-  const overrideOz = weightOverride.trim() === '' ? null : Number(weightOverride);
-  const effectiveOz = overrideOz != null && Number.isFinite(overrideOz) && overrideOz > 0 ? overrideOz : computedOz;
+  // The weight field is pre-filled from the allocation and then edited freely:
+  // staff put the box on a scale and type the real number, and THAT is what
+  // gets rated. It keeps tracking the computed weight while untouched, so
+  // changing the allocation still updates it; once edited it stays put until
+  // "Recalculate" is clicked.
+  const [weightInput, setWeightInput] = useState('');
+  const [weightEdited, setWeightEdited] = useState(false);
+  useEffect(() => {
+    if (!weightEdited) setWeightInput(computedOz.toFixed(1));
+  }, [computedOz, weightEdited]);
+
+  const typedOz = Number(weightInput);
+  const effectiveOz = Number.isFinite(typedOz) && typedOz > 0 ? typedOz : computedOz;
   const overMax = pkg?.maxWeightOz != null && effectiveOz > pkg.maxWeightOz;
   const fmtOz = (oz: number) => (oz >= 16 ? `${(oz / 16).toFixed(2)} lb (${oz.toFixed(1)} oz)` : `${oz.toFixed(1)} oz`);
 
@@ -1053,7 +1061,7 @@ function ShipmentBuilder({
       if (!packageId) { alert('Pick a package.'); return; }
       const r = await api.post<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(
         `/admin/fulfillment/orders/${orderId}/shipments`,
-        { packageId, allocations, ...(overrideOz && overrideOz > 0 ? { weightOz: overrideOz } : {}) },
+        { packageId, allocations, weightOz: +effectiveOz.toFixed(2) },
       );
       setShipmentId(r.shipment.id);
       setRates([...r.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate)));
@@ -1118,41 +1126,48 @@ function ShipmentBuilder({
             </tbody>
           </table>
 
-          {/* Parcel weight — this is the number the carrier prices, so it's
-              shown before rates are fetched and can be bumped for packing. */}
+          {/* Total weight: pre-filled from the allocation, edited to whatever the
+              box actually weighs, and used verbatim when fetching rates. */}
           <div
             style={{
               marginTop: '.75rem',
-              padding: '.6rem .8rem',
+              padding: '.75rem .9rem',
               borderRadius: 8,
               background: overMax ? '#fdecea' : 'var(--bg-alt)',
               border: `1px solid ${overMax ? '#c0392b' : 'var(--border)'}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              flexWrap: 'wrap',
-              fontSize: '.9rem',
             }}
           >
-            <span>
-              Parcel weight <strong>{fmtOz(effectiveOz)}</strong>
-              <span className="muted" style={{ fontSize: '.85rem' }}>
-                {' '}— contents {contentOz.toFixed(1)} oz + box {boxOz.toFixed(1)} oz
-                {overrideOz != null && overrideOz > 0 && ` · overridden (computed ${computedOz.toFixed(1)} oz)`}
-              </span>
-            </span>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', marginLeft: 'auto' }}>
-              <span className="muted" style={{ fontSize: '.85rem' }}>Override oz</span>
+            <label style={{ fontWeight: 600, display: 'block', marginBottom: '.35rem' }}>
+              Total shipping weight
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
               <input
                 type="number"
                 min={0}
                 step="0.1"
-                value={weightOverride}
-                onChange={(e) => setWeightOverride(e.target.value)}
-                placeholder={computedOz.toFixed(1)}
-                style={{ width: 90 }}
+                value={weightInput}
+                onChange={(e) => { setWeightInput(e.target.value); setWeightEdited(true); }}
+                style={{ width: 130, fontSize: '1.15rem', fontWeight: 700, padding: '.4rem .5rem' }}
               />
-            </label>
+              <span style={{ fontWeight: 600 }}>oz</span>
+              <span className="muted" style={{ fontSize: '.9rem' }}>
+                = {(effectiveOz / 16).toFixed(2)} lb
+              </span>
+              {weightEdited && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  style={{ padding: '.2rem .55rem', fontSize: '.78rem' }}
+                  onClick={() => { setWeightEdited(false); setWeightInput(computedOz.toFixed(1)); }}
+                >
+                  Recalculate
+                </button>
+              )}
+            </div>
+            <div className="muted" style={{ fontSize: '.82rem', marginTop: '.4rem' }}>
+              Estimated {computedOz.toFixed(1)} oz — contents {contentOz.toFixed(1)} oz + box {boxOz.toFixed(1)} oz.
+              {' '}Weigh the packed box and correct this before fetching rates; the price is quoted on this number.
+            </div>
           </div>
           {overMax && (
             <div className="error" style={{ marginTop: '.4rem', fontSize: '.85rem' }}>
@@ -1161,8 +1176,8 @@ function ShipmentBuilder({
           )}
           {contentOz === 0 && allocatedCount > 0 && (
             <div style={{ marginTop: '.4rem', fontSize: '.85rem', color: '#b45309' }}>
-              These items have no recorded weight, so only the box weight is being rated. Set a weight
-              on the product, or override above, before buying postage.
+              These items have no recorded weight, so the estimate is just the box. Weigh it and enter
+              the real figure above.
             </div>
           )}
 
