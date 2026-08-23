@@ -847,7 +847,7 @@ interface EpRate {
 function ShipmentsSection({ orderId }: { orderId: string }) {
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
   const [remaining, setRemaining] = useState<RemainingItem[]>([]);
-  const [packages, setPackages] = useState<{ id: string; name: string }[]>([]);
+  const [packages, setPackages] = useState<{ id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[]>([]);
   const [building, setBuilding] = useState(false);
   const [autoPacking, setAutoPacking] = useState(false);
   const [autoPackSummary, setAutoPackSummary] = useState<{ boxCount: number; estimatedShippingCents: number; unpacked: number } | null>(null);
@@ -859,7 +859,7 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
   };
   useEffect(() => {
     void load();
-    void api.get<{ items: { id: string; name: string }[] }>('/admin/fulfillment/packages').then((r) => setPackages(r.items));
+    void api.get<{ items: { id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[] }>('/admin/fulfillment/packages').then((r) => setPackages(r.items));
   }, [orderId]);
 
   const remainingCount = remaining.reduce((sum, r) => sum + r.remaining, 0);
@@ -1010,7 +1010,7 @@ function ShipmentBuilder({
 }: {
   orderId: string;
   remaining: RemainingItem[];
-  packages: { id: string; name: string }[];
+  packages: { id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[];
   onCancel: () => void;
   onDone: () => void | Promise<void>;
 }) {
@@ -1026,6 +1026,23 @@ function ShipmentBuilder({
   const allocatedValueCents = remaining.reduce((sum, r) => sum + (qtys[r.orderItemId] ?? 0) * r.unitPriceCents, 0);
   const allocatedCount = remaining.reduce((sum, r) => sum + (qtys[r.orderItemId] ?? 0), 0);
 
+  // Parcel weight is what the carrier actually prices, so show it before rates
+  // are fetched — underpaying postage gets a package returned or surcharged.
+  const GRAMS_PER_OZ = 28.3495;
+  const pkg = packages.find((p) => p.id === packageId);
+  const contentOz = remaining.reduce(
+    (sum, r) => sum + ((qtys[r.orderItemId] ?? 0) * (r.weightGramsEach ?? 0)) / GRAMS_PER_OZ, 0,
+  );
+  const boxOz = pkg?.emptyWeightOz ?? 0;
+  const computedOz = Math.max(0.5, contentOz + boxOz);
+  // Blank = use the computed weight. Staff can bump it for padding, sleeves,
+  // or anything the product weights don't account for.
+  const [weightOverride, setWeightOverride] = useState('');
+  const overrideOz = weightOverride.trim() === '' ? null : Number(weightOverride);
+  const effectiveOz = overrideOz != null && Number.isFinite(overrideOz) && overrideOz > 0 ? overrideOz : computedOz;
+  const overMax = pkg?.maxWeightOz != null && effectiveOz > pkg.maxWeightOz;
+  const fmtOz = (oz: number) => (oz >= 16 ? `${(oz / 16).toFixed(2)} lb (${oz.toFixed(1)} oz)` : `${oz.toFixed(1)} oz`);
+
   async function getRates() {
     setBusy(true);
     try {
@@ -1036,7 +1053,7 @@ function ShipmentBuilder({
       if (!packageId) { alert('Pick a package.'); return; }
       const r = await api.post<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(
         `/admin/fulfillment/orders/${orderId}/shipments`,
-        { packageId, allocations },
+        { packageId, allocations, ...(overrideOz && overrideOz > 0 ? { weightOz: overrideOz } : {}) },
       );
       setShipmentId(r.shipment.id);
       setRates([...r.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate)));
@@ -1073,12 +1090,13 @@ function ShipmentBuilder({
 
           <label style={{ marginTop: '.75rem', display: 'block', fontWeight: 600 }}>Allocate items to this box</label>
           <table className="admin-table">
-            <thead><tr><th>Item</th><th>Unit</th><th>Remaining</th><th>This box</th><th>Subtotal</th></tr></thead>
+            <thead><tr><th>Item</th><th>Unit</th><th>Weight ea.</th><th>Remaining</th><th>This box</th><th>Subtotal</th></tr></thead>
             <tbody>
               {remaining.map((r) => (
                 <tr key={r.orderItemId} style={{ opacity: r.remaining === 0 ? 0.4 : 1 }}>
                   <td>{r.name}</td>
                   <td>{formatMoney(r.unitPriceCents)}</td>
+                  <td>{r.weightGramsEach ? `${(r.weightGramsEach / 28.3495).toFixed(1)} oz` : <span className="muted">—</span>}</td>
                   <td>{r.remaining} / {r.totalQuantity}</td>
                   <td>
                     <input
@@ -1099,6 +1117,54 @@ function ShipmentBuilder({
               ))}
             </tbody>
           </table>
+
+          {/* Parcel weight — this is the number the carrier prices, so it's
+              shown before rates are fetched and can be bumped for packing. */}
+          <div
+            style={{
+              marginTop: '.75rem',
+              padding: '.6rem .8rem',
+              borderRadius: 8,
+              background: overMax ? '#fdecea' : 'var(--bg-alt)',
+              border: `1px solid ${overMax ? '#c0392b' : 'var(--border)'}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+              flexWrap: 'wrap',
+              fontSize: '.9rem',
+            }}
+          >
+            <span>
+              Parcel weight <strong>{fmtOz(effectiveOz)}</strong>
+              <span className="muted" style={{ fontSize: '.85rem' }}>
+                {' '}— contents {contentOz.toFixed(1)} oz + box {boxOz.toFixed(1)} oz
+                {overrideOz != null && overrideOz > 0 && ` · overridden (computed ${computedOz.toFixed(1)} oz)`}
+              </span>
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', marginLeft: 'auto' }}>
+              <span className="muted" style={{ fontSize: '.85rem' }}>Override oz</span>
+              <input
+                type="number"
+                min={0}
+                step="0.1"
+                value={weightOverride}
+                onChange={(e) => setWeightOverride(e.target.value)}
+                placeholder={computedOz.toFixed(1)}
+                style={{ width: 90 }}
+              />
+            </label>
+          </div>
+          {overMax && (
+            <div className="error" style={{ marginTop: '.4rem', fontSize: '.85rem' }}>
+              Over this package's {pkg?.maxWeightOz} oz limit — split it across boxes or pick a bigger package.
+            </div>
+          )}
+          {contentOz === 0 && allocatedCount > 0 && (
+            <div style={{ marginTop: '.4rem', fontSize: '.85rem', color: '#b45309' }}>
+              These items have no recorded weight, so only the box weight is being rated. Set a weight
+              on the product, or override above, before buying postage.
+            </div>
+          )}
 
           <div className="spread" style={{ marginTop: '.75rem', fontSize: '.9rem' }}>
             <span>

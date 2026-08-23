@@ -153,6 +153,10 @@ router.get('/orders/:orderId/shipments', async (req, res) => {
 
 const createSchema = z.object({
   packageId: z.string(),
+  // Optional staff override, in ounces. Product weights can't know about
+  // padding, sleeves or toppers, and under-declaring gets a parcel surcharged
+  // or returned — so let the person holding the box correct it.
+  weightOz: z.number().positive().max(1120).optional(),
   allocations: z.array(z.object({
     orderItemId: z.string(),
     quantity: z.number().int().positive(),
@@ -163,7 +167,7 @@ const createSchema = z.object({
  *  return the rates. The Shipment is persisted in CREATED status; no label
  *  is purchased yet. */
 router.post('/orders/:orderId/shipments', async (req, res) => {
-  const { packageId, allocations } = createSchema.parse(req.body);
+  const { packageId, allocations, weightOz } = createSchema.parse(req.body);
 
   const order = await prisma.order.findUnique({
     where: { id: req.params.orderId },
@@ -194,7 +198,9 @@ router.post('/orders/:orderId/shipments', async (req, res) => {
     contentWeightOz += perUnitOz * a.quantity;
     insuredValueCents += (item.unitPriceCents as number) * a.quantity;
   }
-  const totalWeightOz = Math.max(0.5, +(contentWeightOz + pkg.emptyWeightOz).toFixed(2));
+  const totalWeightOz = weightOz
+    ? +weightOz.toFixed(2)
+    : Math.max(0.5, +(contentWeightOz + pkg.emptyWeightOz).toFixed(2));
 
   const from = await fromAddress();
   const to = toAddressFromOrder(order);
