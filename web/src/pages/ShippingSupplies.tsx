@@ -562,7 +562,7 @@ export function ShippingSupplies() {
               <Link key={p.id} to={`/product/${p.slug}`} className="ca-product">
                 <div className="ca-product-img">
                   {p.image ? (
-                    <img src={p.image} alt={p.name} />
+                    <img src={p.image} alt={p.name} loading="lazy" decoding="async" />
                   ) : (
                     <span className="ca-placeholder" aria-hidden="true">🛡</span>
                   )}

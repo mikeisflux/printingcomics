@@ -790,7 +790,7 @@ const SUPPLIES: SupplyDef[] = [
       + 'sized for sellers and creators shipping in volume.',
     priceCents: cents(19.99),
     weightGrams: armorPackGrams(20),
-    image: '/products/comic-armor-20-pack.png',
+    image: '/products/comic-armor-20-pack.webp',
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
       { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },

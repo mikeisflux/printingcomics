@@ -9,20 +9,24 @@ admin photo uploaded through the media library is never overwritten, and a
 missing file leaves the storefront placeholder in place rather than a broken
 image.
 
-## Expected filenames
+The filename in `seed-cws.ts` must match exactly, extension included. Adding a
+photo in a different format means updating the `image:` path for that product.
+
+## Current files
 
 | File | Product |
 |---|---|
 | `comic-armor-10-pack.webp` | Comic Armor — 10 Pack |
-| `comic-armor-20-pack.png`  | Comic Armor — 20 Pack |
+| `comic-armor-20-pack.webp` | Comic Armor — 20 Pack |
 
-Sources on the Comic Armor site (these hosts are blocked from the build
-container's egress proxy, so they have to be downloaded by hand):
+The T-mailer packs have no photo yet and fall back to the placeholder.
 
-- 10 pack — `https://comicarmor.com/wp-content/uploads/2025/12/3.webp`
-- 20 pack — `https://comicarmor.com/wp-content/uploads/2025/12/shot_20251227004822.png`
+## Guidelines
 
-Drop the files in with those names, then re-run `npm run db:seed:cws`.
+Square, 1080×1080 or larger: the storefront card renders them in a 1:1 box with
+`object-fit: cover`, so anything else gets cropped from the centre.
 
-Square-ish crops look best: the storefront card renders them in a 1:1 box with
-`object-fit: cover`.
+Keep them under ~200 KB where you can. These are served uncompressed exactly as
+committed — there is no build step that resizes or re-encodes them.
+
+After adding or replacing a file, re-run `npm run db:seed:cws`.
