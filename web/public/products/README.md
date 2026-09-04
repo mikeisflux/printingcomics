@@ -9,17 +9,26 @@ admin photo uploaded through the media library is never overwritten, and a
 missing file leaves the storefront placeholder in place rather than a broken
 image.
 
-The filename in `seed-cws.ts` must match exactly, extension included. Adding a
-photo in a different format means updating the `image:` path for that product.
+A product can have several photos. The first entry in its `images:` array is
+the card thumbnail; the rest become a thumbnail strip on the product page.
+
+Filenames in `seed-cws.ts` must match exactly, extension included. Adding a
+photo in a different format means updating that product's `images:` paths.
 
 ## Current files
 
-| File | Product |
+| File | Used by |
 |---|---|
 | `comic-armor-10-pack.webp` | Comic Armor — 10 Pack |
 | `comic-armor-20-pack.webp` | Comic Armor — 20 Pack |
+| `T-Fold_Comic_Mailer_1.jpg` | every T-Mailer pack — folded shallow (thumbnail) |
+| `T-Fold_Comic_Mailer_2.jpg` | every T-Mailer pack — folded deep |
+| `T-Fold_Comic_Mailer_3.jpg` | every T-Mailer pack — score ladder, open |
+| `T-Fold_Comic_Mailer.jpg` | every T-Mailer pack — flat blank, as it ships |
 
-The T-mailer packs have no photo yet and fall back to the placeholder.
+All five T-Mailer pack sizes share the same four photos (`TMAILER_IMAGES`),
+ordered so the two fold depths sit next to each other — that pairing is what
+shows "adjustable" at a glance.
 
 ## Guidelines
 

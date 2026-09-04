@@ -658,9 +658,10 @@ interface SupplyDef {
   /** Per-unit shipping weight. Checkout rates live carrier prices off this,
    *  so a wrong figure here shows up as wrong postage at checkout. */
   weightGrams: number;
-  /** Public path under web/public, e.g. `/products/comic-armor-10-pack.webp`.
-   *  Only seeded once the file actually exists — see seedSupplyImage. */
-  image?: string;
+  /** Public paths under web/public, e.g. `/products/comic-armor-10-pack.webp`.
+   *  First one is the card thumbnail. Only the files that actually exist are
+   *  seeded — see seedSupplyImages. */
+  images?: string[];
   /** Sold before stock lands. `backorderEta` is the estimated arrival shown
    *  to the buyer on the product page, in the cart and on the confirmation. */
   backorder?: boolean;
@@ -669,19 +670,20 @@ interface SupplyDef {
 }
 
 /**
- * Attach a packaged product photo, but only if the file is really in
+ * Attach the packaged product photos, but only the files really present in
  * web/public. Seeding a ProductImage row for a missing file would put a
  * broken image on the storefront, which is worse than the placeholder the
  * card falls back to.
  */
-async function seedSupplyImage(productId: string, def: SupplyDef) {
-  if (!def.image) return;
-  if (!existsSync(`web/public${def.image}`)) {
-    console.warn(`  ${def.slug}: no image at web/public${def.image} — leaving it without a photo`);
-    return;
-  }
-  await prisma.productImage.create({
-    data: { productId, url: def.image, alt: def.name, sortOrder: 0 },
+async function seedSupplyImages(productId: string, def: SupplyDef) {
+  const present = (def.images ?? []).filter((url) => {
+    if (existsSync(`web/public${url}`)) return true;
+    console.warn(`  ${def.slug}: no image at web/public${url} — skipping it`);
+    return false;
+  });
+  if (present.length === 0) return;
+  await prisma.productImage.createMany({
+    data: present.map((url, i) => ({ productId, url, alt: def.name, sortOrder: i })),
   });
 }
 
@@ -734,24 +736,50 @@ function undercutCents(listUSD: number): number {
   return Math.round(cents(listUSD) * (1 - TMAILER_UNDERCUT));
 }
 
+/**
+ * Ordered so the first frame is the card thumbnail, then the two fold depths
+ * back to back — that pairing is what sells "adjustable" at a glance.
+ */
+const TMAILER_IMAGES = [
+  '/products/T-Fold_Comic_Mailer_1.jpg',  // folded shallow — a single issue
+  '/products/T-Fold_Comic_Mailer_2.jpg',  // folded deep — a full stack
+  '/products/T-Fold_Comic_Mailer_3.jpg',  // the score ladder, open
+  '/products/T-Fold_Comic_Mailer.jpg',    // flat blank, as it ships
+];
+
 function tmailerSupplies(): SupplyDef[] {
   return GEMINI_TMAILER_LIST.map((t) => ({
     slug: `t-mailer-${t.qty}-pack`,
     name: `Adjustable Foldable T-Mailer — ${t.qty} Pack`,
     sku: `TMAIL-${t.qty}`,
-    shortDescription: `${t.qty} adjustable fold-to-fit T-mailers for comics, trades and graphic novels.`,
+    shortDescription:
+      'Four mailers in one box — set the depth and ship anywhere from 1 to 10 comics '
+      + `in the same mailer. ${t.qty} per pack.`,
     description:
-      'An adjustable, foldable T-mailer that folds down to the exact thickness of what you are '
-      + 'shipping, so one mailer covers a single issue or a stack of trades. Score lines let you set '
-      + 'the depth, and the locking flaps hold it tight with no void fill. '
+      'ONE MAILER. FOUR DEPTHS.\n\n'
+      + 'Every other mailer makes you guess. Buy one size for single issues, another for a '
+      + 'small stack, another for a fat run — and eat the shipping on whichever box you '
+      + 'guessed wrong. The T-Fold has a ladder of score lines built into the blank, so you '
+      + 'set the depth at the bench: one bagged and boarded issue, or ten. Same mailer, '
+      + 'every time.\n\n'
+      + 'FOLD IT TO FIT. The walls close on the actual thickness of what you are shipping, so '
+      + 'the contents sit tight with nothing to rattle around in. No void fill, no bubble '
+      + 'wrap, no packing peanuts to buy or store.\n\n'
+      + 'SHIPS FLAT, STORES FLAT. Heavy kraft corrugated that stacks on a shelf until you '
+      + 'need it, then folds up in seconds — no tape gun required to hold the shape.\n\n'
+      + 'STOP BUYING FOUR SKUs. One box on the shelf covers the whole range, which means less '
+      + 'money tied up in packaging and no more running out of the one size you needed.\n\n'
       + `${t.qty} mailers per pack.`,
     priceCents: undercutCents(t.listUSD),
     weightGrams: t.qty * TMAILER_UNIT_WEIGHT_GRAMS,
     backorder: true,
     backorderEta: TMAILER_ETA,
+    images: TMAILER_IMAGES,
     faq: [
-      { q: 'What thickness does it adjust to?', a: 'Fold along the score lines to match the stack — a single bagged comic up to a run of trades.' },
-      { q: 'Do I still need void fill?', a: 'No. Folding it to the exact depth is what keeps the contents from shifting.' },
+      { q: 'How many comics fit in one mailer?', a: 'Anywhere from 1 to 10. Fold along whichever score line matches your stack — that is the whole point of the design.' },
+      { q: 'Why is it called a T-Fold?', a: 'The flat blank is die-cut in a T. That extra panel is what wraps and locks the mailer closed at any depth, instead of only one fixed thickness.' },
+      { q: 'Do I still need bubble wrap or void fill?', a: 'No. Folding it down to the exact thickness is what stops the contents shifting, so there is nothing to pad out.' },
+      { q: 'Does it ship flat?', a: 'Yes — flat blanks that stack on a shelf and fold up in seconds when you need one.' },
     ],
   }));
 }
@@ -775,7 +803,7 @@ const SUPPLIES: SupplyDef[] = [
       + 'no corner dings. Ten sleeves per pack.',
     priceCents: cents(9.99),
     weightGrams: armorPackGrams(10),
-    image: '/products/comic-armor-10-pack.webp',
+    images: ['/products/comic-armor-10-pack.webp'],
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
       { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
@@ -790,7 +818,7 @@ const SUPPLIES: SupplyDef[] = [
       + 'sized for sellers and creators shipping in volume.',
     priceCents: cents(19.99),
     weightGrams: armorPackGrams(20),
-    image: '/products/comic-armor-20-pack.webp',
+    images: ['/products/comic-armor-20-pack.webp'],
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
       { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
@@ -838,7 +866,7 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
   // Only when the product has no photo at all — never clobber one an admin
   // uploaded through the media library.
   if ((await prisma.productImage.count({ where: { productId } })) === 0) {
-    await seedSupplyImage(productId, def);
+    await seedSupplyImages(productId, def);
   }
 }
 

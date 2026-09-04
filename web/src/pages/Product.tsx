@@ -49,6 +49,64 @@ interface ProductDetail {
   options: ProductOption[];
 }
 
+/**
+ * Product photos: one main frame plus a thumbnail strip. The strip only
+ * appears when there is more than one photo, so single-image products look
+ * exactly as they did before.
+ */
+function Gallery({ images, name }: { images: { id: string; url: string; alt?: string | null }[]; name: string }) {
+  const [active, setActive] = useState(0);
+  // A different product can have fewer images than the one before it.
+  const index = Math.min(active, Math.max(0, images.length - 1));
+  const main = images[index];
+
+  if (!main) {
+    return <div style={{ aspectRatio: '3/4', background: 'var(--bg-alt)', borderRadius: 'var(--radius)' }} />;
+  }
+
+  return (
+    <div>
+      <img
+        src={main.url}
+        alt={main.alt || name}
+        style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', borderRadius: 'var(--radius)', display: 'block' }}
+      />
+      {images.length > 1 && (
+        <div style={{ display: 'flex', gap: '.5rem', marginTop: '.5rem', flexWrap: 'wrap' }}>
+          {images.map((img, i) => (
+            <button
+              key={img.id}
+              type="button"
+              aria-label={`Show photo ${i + 1} of ${images.length}`}
+              aria-current={i === index}
+              onClick={() => setActive(i)}
+              style={{
+                padding: 0,
+                width: 62,
+                height: 62,
+                cursor: 'pointer',
+                borderRadius: 'var(--radius)',
+                overflow: 'hidden',
+                background: 'none',
+                border: i === index ? '2px solid var(--brand)' : '2px solid transparent',
+                opacity: i === index ? 1 : .65,
+              }}
+            >
+              <img
+                src={img.url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** "October 2, 2026" — fixed to UTC so the stored date can't drift a day. */
 export function formatEta(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -136,6 +194,10 @@ export function Product() {
     });
   }, [product, selections]);
 
+  // Stock goods carry no pricingConfig and no options: priceCents is the
+  // whole story, so the configurator's summary has nothing to compute.
+  const isFlatPriced = !!product && !product.pricingConfig && product.options.length === 0;
+
   const breakdown = useMemo(() => {
     if (!product?.pricingConfig) return null;
     // Convert selections into pricing inputs (strings + numbers only).
@@ -174,11 +236,7 @@ export function Product() {
     <div className="container" style={{ padding: '1.5rem 1.25rem', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
       {/* LEFT — image gallery + trust + FAQ */}
       <aside>
-        {product.images[0] ? (
-          <img src={product.images[0].url} alt={product.name} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
-        ) : (
-          <div style={{ aspectRatio: '3/4', background: 'var(--bg-alt)', borderRadius: 'var(--radius)' }} />
-        )}
+        <Gallery images={product.images} name={product.name} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginTop: '1rem' }}>
           <div className="admin-card" style={{ textAlign: 'center', padding: '1rem .5rem' }}>
@@ -191,11 +249,14 @@ export function Product() {
           </div>
         </div>
 
-        <div className="admin-card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem' }}>%</div>
-          <div style={{ fontWeight: 700 }}>Print More. Pay Less.</div>
-          <a href="#bulk-pricing">Click to View Bulk Pricing ↗</a>
-        </div>
+        {/* Stock goods are one flat price — there is no bulk ladder to link to. */}
+        {!isFlatPriced && (
+          <div className="admin-card" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem' }}>%</div>
+            <div style={{ fontWeight: 700 }}>Print More. Pay Less.</div>
+            <a href="#bulk-pricing">Click to View Bulk Pricing ↗</a>
+          </div>
+        )}
 
         {product.templateUrl && (
           <div className="admin-card">
@@ -231,6 +292,13 @@ export function Product() {
       <div>
         <h1 style={{ marginBottom: '.25rem' }}>{product.name}</h1>
         {product.shortDescription && <p className="muted">{product.shortDescription}</p>}
+        {product.description && (
+          <div style={{ marginTop: '1rem', lineHeight: 1.7 }}>
+            {product.description.split(/\n\s*\n/).map((para, i) => (
+              <p key={i} style={{ margin: '0 0 .85rem' }}>{para}</p>
+            ))}
+          </div>
+        )}
 
         {/* Title input (non-sectioned) */}
         {nonSectionOpts.map((opt) => (
@@ -290,6 +358,12 @@ export function Product() {
             );
           })}
         </div>
+
+        {isFlatPriced && (
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '1rem' }}>
+            {formatMoney(product.priceCents)}
+          </div>
+        )}
 
         {/* Qty + Add to cart */}
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
@@ -364,6 +438,16 @@ export function Product() {
               </div>
               <div className="spread" style={{ fontWeight: 700, fontSize: '1.1rem', marginTop: '.5rem' }}>
                 <span>Total:</span><span>{formatMoney(breakdown.totalCents)}</span>
+              </div>
+            </div>
+          ) : isFlatPriced ? (
+            <div style={{ marginTop: '1rem', fontSize: '.95rem' }}>
+              <div className="spread">
+                <span><strong>{product.name}</strong><br /><span className="muted">{formatMoney(product.priceCents)} each × {qty}</span></span>
+                <span>Sub Total: <strong>{formatMoney(product.priceCents * qty)}</strong></span>
+              </div>
+              <div className="spread" style={{ fontWeight: 700, fontSize: '1.1rem', marginTop: '.5rem', borderTop: '1px solid var(--border)', paddingTop: '.5rem' }}>
+                <span>Total:</span><span>{formatMoney(product.priceCents * qty)}</span>
               </div>
             </div>
           ) : (
