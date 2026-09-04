@@ -756,6 +756,14 @@ function tmailerSupplies(): SupplyDef[] {
   }));
 }
 
+/**
+ * Per-insert shipping weight for Comic Armor, measured on a scale at 0.8 oz.
+ * Same reasoning as the T-mailer: kept in the unit it was weighed in, and the
+ * pack weights are derived so there is one number to correct, not two.
+ */
+const ARMOR_UNIT_WEIGHT_OZ = 0.8;
+const armorPackGrams = (count: number) => Math.round(count * ARMOR_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
+
 const SUPPLIES: SupplyDef[] = [
   {
     slug: 'comic-armor-10-pack',
@@ -766,7 +774,7 @@ const SUPPLIES: SupplyDef[] = [
       + 'Slide the bagged and boarded comic in, seal it, and ship — no loose bubble wrap, no shifting, '
       + 'no corner dings. Ten sleeves per pack.',
     priceCents: cents(9.99),
-    weightGrams: 140,
+    weightGrams: armorPackGrams(10),
     image: '/products/comic-armor-10-pack.webp',
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
@@ -781,7 +789,7 @@ const SUPPLIES: SupplyDef[] = [
       'The 20-pack of Comic Armor protective sleeves. Same cushioned protection as the 10-pack, '
       + 'sized for sellers and creators shipping in volume.',
     priceCents: cents(19.99),
-    weightGrams: 270,
+    weightGrams: armorPackGrams(20),
     image: '/products/comic-armor-20-pack.png',
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
