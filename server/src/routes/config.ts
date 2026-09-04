@@ -21,9 +21,14 @@ router.get('/paypal', async (_req, res) => {
  * Storefront config for the Shipping Supplies (Comic Armor) landing page.
  * The hero video lives in Settings so it can be swapped without a deploy.
  */
+const COMIC_ARMOR_VIDEO = 'https://www.youtube.com/watch?v=m5qpEu0waaU';
+
 router.get('/shipping-supplies', async (_req, res) => {
-  const heroVideoUrl = (await getSetting<string>('shippingSupplies.heroVideoUrl', '')) ?? '';
-  res.json({ heroVideoUrl: String(heroVideoUrl).trim() });
+  // Defaults to the Comic Armor demo so the page ships with its video.
+  // Settings overrides it; clearing the field falls back here again, since
+  // getSetting treats an empty string as unset.
+  const url = await getSetting<string>('shippingSupplies.heroVideoUrl', COMIC_ARMOR_VIDEO);
+  res.json({ heroVideoUrl: String(url ?? '').trim() });
 });
 
 router.get('/site-discount', async (_req, res) => {

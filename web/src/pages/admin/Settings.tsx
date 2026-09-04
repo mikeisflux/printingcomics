@@ -199,8 +199,9 @@ function StoreSection() {
 
       <h3 style={{ marginTop: '1.5rem' }}>Shipping Supplies page</h3>
       <p className="muted" style={{ fontSize: '.85rem', marginTop: '-.4rem' }}>
-        Paste the Comic Armor demo video link. It plays as the first hero slide and in the
-        “Watch demo” band on <code>/shop/shipping-supplies</code>. Leave blank to hide both.
+        The video that plays as the first hero slide and in the “Watch demo” band on{' '}
+        <code>/shop/shipping-supplies</code>. Paste a different link to swap it; clearing the
+        field restores the Comic Armor demo.
       </p>
       <Field
         label="Hero video URL (YouTube or direct .mp4)"
