@@ -72,6 +72,7 @@ async function ensureCategories() {
     { slug: 'zines', name: 'Zines', description: 'Short-run zines.' },
     { slug: 'artist-tools', name: 'Artist Tools', description: 'Sample packs, templates, resources.' },
     { slug: 'art-prints', name: 'Art Prints', description: 'Metal, paper and foil art prints — full 11×17 or comic size.' },
+    { slug: 'shipping-supplies', name: 'Shipping Supplies', description: 'Protective mailers and packaging for shipping comics safely.' },
   ];
   const byslug: Record<string, string> = {};
   for (let i = 0; i < cats.length; i++) {

@@ -48,6 +48,7 @@ export function StoreLayout() {
                 { to: '/shop/graphic-novels', label: 'Graphic Novels' },
                 { to: '/shop/art-prints', label: 'Art Prints' },
                 { to: '/shop/artist-tools', label: 'Artist Tools' },
+                { to: '/shop/shipping-supplies', label: 'Shipping Supplies' },
               ]}
             />
             <Link to="/crowdfunding">Crowdfunding</Link>
@@ -130,6 +131,7 @@ export function StoreLayout() {
                 <li><Link to="/shop/comic-books">Comic Books</Link></li>
                 <li><Link to="/shop/graphic-novels">Graphic Novels</Link></li>
                 <li><Link to="/shop/art-prints">Art Prints</Link></li>
+                <li><Link to="/shop/shipping-supplies">Shipping Supplies</Link></li>
                 <li><Link to="/shop/artist-tools">Artist Tools</Link></li>
               </ul>
             </div>

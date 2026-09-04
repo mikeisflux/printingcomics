@@ -65,6 +65,10 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Home /> },
       { path: 'shop', element: <Shop /> },
+      // Stock goods (mailers, packaging) are bought off a normal product grid —
+      // they have no artwork, proofs or file prep, so they must NOT go through
+      // the print configurator that every made-to-order category uses.
+      { path: 'shop/shipping-supplies', element: <Shop /> },
       { path: 'shop/:category', element: <CategoryConfigure /> },
       { path: 'product/:slug', element: <Product /> },
       { path: 'cart', element: <CartPage /> },
