@@ -660,6 +660,56 @@ interface SupplyDef {
   faq?: { q: string; a: string }[];
 }
 
+// ---------------------------------------------------------------------------
+// Adjustable foldable T-mailer.
+//
+// Priced a flat 20% under Gemini's list price at the same pack size, so the
+// ladder below is the ONLY thing to edit: paste Gemini's quantity/price table
+// into GEMINI_TMAILER_LIST and the per-pack products follow automatically.
+//
+// It is intentionally empty. Until real Gemini figures are in here the
+// products are skipped rather than seeded at a guessed price — these get sold
+// to customers, so a made-up number would be a real mispricing.
+// ---------------------------------------------------------------------------
+const TMAILER_UNDERCUT = 0.20;
+
+interface CompetitorTier {
+  /** Mailers per pack. */
+  qty: number;
+  /** Gemini's list price for that pack, in dollars. */
+  listUSD: number;
+  /** Shipping weight of the whole pack, in grams. */
+  packWeightGrams: number;
+}
+
+const GEMINI_TMAILER_LIST: CompetitorTier[] = [
+  // e.g. { qty: 25, listUSD: 24.95, packWeightGrams: 1600 },
+];
+
+/** 20% under list, rounded down to the cent so we never land above the target. */
+function undercutPrice(listUSD: number): number {
+  return Math.floor(listUSD * (1 - TMAILER_UNDERCUT) * 100) / 100;
+}
+
+function tmailerSupplies(): SupplyDef[] {
+  return GEMINI_TMAILER_LIST.map((t) => ({
+    slug: `t-mailer-${t.qty}-pack`,
+    name: `Adjustable Foldable T-Mailer — ${t.qty} Pack`,
+    shortDescription: `${t.qty} adjustable fold-to-fit T-mailers for comics, trades and graphic novels.`,
+    description:
+      'An adjustable, foldable T-mailer that folds down to the exact thickness of what you are '
+      + 'shipping, so one mailer covers a single issue or a stack of trades. Score lines let you set '
+      + 'the depth, and the locking flaps hold it tight with no void fill. '
+      + `${t.qty} mailers per pack.`,
+    priceUSD: undercutPrice(t.listUSD),
+    weightGrams: Math.round(t.packWeightGrams),
+    faq: [
+      { q: 'What thickness does it adjust to?', a: 'Fold along the score lines to match the stack — a single bagged comic up to a run of trades.' },
+      { q: 'Do I still need void fill?', a: 'No. Folding it to the exact depth is what keeps the contents from shifting.' },
+    ],
+  }));
+}
+
 const SUPPLIES: SupplyDef[] = [
   {
     slug: 'comic-armor-10-pack',
@@ -801,7 +851,15 @@ async function main() {
   }
 
   // Shipping supplies (stock goods).
-  for (const def of SUPPLIES) {
+  const tmailers = tmailerSupplies();
+  if (tmailers.length === 0) {
+    console.warn(
+      '  skipping the adjustable T-mailer: GEMINI_TMAILER_LIST in prisma/seed-cws.ts is empty. '
+      + "Add Gemini's pack sizes and list prices there and re-run — pricing is derived at "
+      + `${Math.round(TMAILER_UNDERCUT * 100)}% under list.`,
+    );
+  }
+  for (const def of [...SUPPLIES, ...tmailers]) {
     await buildSupplyProduct(def, categoryIds['shipping-supplies']!);
     console.log(`  built ${def.slug}`);
   }

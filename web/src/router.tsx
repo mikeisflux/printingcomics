@@ -5,6 +5,7 @@ import { AdminLayout } from './components/AdminLayout';
 
 import { Home } from './pages/Home';
 import { Shop } from './pages/Shop';
+import { ShippingSupplies } from './pages/ShippingSupplies';
 import { CategoryConfigure } from './pages/CategoryConfigure';
 import { Product } from './pages/Product';
 import { CartPage } from './pages/CartPage';
@@ -68,7 +69,7 @@ export const router = createBrowserRouter([
       // Stock goods (mailers, packaging) are bought off a normal product grid —
       // they have no artwork, proofs or file prep, so they must NOT go through
       // the print configurator that every made-to-order category uses.
-      { path: 'shop/shipping-supplies', element: <Shop /> },
+      { path: 'shop/shipping-supplies', element: <ShippingSupplies /> },
       { path: 'shop/:category', element: <CategoryConfigure /> },
       { path: 'product/:slug', element: <Product /> },
       { path: 'cart', element: <CartPage /> },

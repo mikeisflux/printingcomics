@@ -1185,6 +1185,23 @@ console.log('Send to creator:', payment.approvalUrl);
               Recent API-visible changes, newest first. Anything not listed here is unchanged.
             </p>
 
+            <h3>2026-09-04 · Shipping supplies (stock goods)</h3>
+            <ul>
+              <li><strong>New category <code>shipping-supplies</code></strong> — Comic Armor
+                protective sleeves and the adjustable foldable T-mailer. Reachable the usual way:{' '}
+                <code>GET /catalog/products?category=shipping-supplies</code>.</li>
+              <li><strong>These are stock goods, not print jobs.</strong> They come back with{' '}
+                <code>madeToOrder: false</code>, no <code>pricingConfig</code>, and no options.
+                Charge <code>priceCents</code> as-is — there is no quantity ladder to walk, the
+                site-wide print promotion does not apply, and there is no artwork upload or file-prep
+                step. They carry no <code>pdf_proof</code>/<code>hard_copy_proof</code> option, so an
+                order of only these products never enters proofing and its <code>proofStatus</code>{' '}
+                stays <code>null</code>.</li>
+              <li><strong>Shipping still rates by weight.</strong> Each pack carries a real{' '}
+                <code>weightGrams</code>, so <code>POST /pricing/quote</code> returns live carrier
+                rates for a mixed cart of printing and supplies exactly as it does today.</li>
+            </ul>
+
             <h3>2026-07-29 · Print files</h3>
             <ul>
               <li><strong>Treat <code>url</code> as opaque.</strong> Files may now be served from

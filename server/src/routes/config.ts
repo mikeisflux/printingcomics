@@ -17,6 +17,15 @@ router.get('/paypal', async (_req, res) => {
   });
 });
 
+/**
+ * Storefront config for the Shipping Supplies (Comic Armor) landing page.
+ * The hero video lives in Settings so it can be swapped without a deploy.
+ */
+router.get('/shipping-supplies', async (_req, res) => {
+  const heroVideoUrl = (await getSetting<string>('shippingSupplies.heroVideoUrl', '')) ?? '';
+  res.json({ heroVideoUrl: String(heroVideoUrl).trim() });
+});
+
 router.get('/site-discount', async (_req, res) => {
   const raw = await getSetting<number | string>('pricing.siteDiscountBps', 0);
   const bps = Math.max(0, Math.min(9999, Number(raw) || 0));

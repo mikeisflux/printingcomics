@@ -196,6 +196,18 @@ function StoreSection() {
       </div>
       <Field label="Logo URL" value={settings['store.logoUrl']} onSave={(v) => save('store.logoUrl', v)} />
       <Field label="Currency" value={settings['store.currency']} onSave={(v) => save('store.currency', v)} placeholder="USD" />
+
+      <h3 style={{ marginTop: '1.5rem' }}>Shipping Supplies page</h3>
+      <p className="muted" style={{ fontSize: '.85rem', marginTop: '-.4rem' }}>
+        Paste the Comic Armor demo video link. It plays as the first hero slide and in the
+        “Watch demo” band on <code>/shop/shipping-supplies</code>. Leave blank to hide both.
+      </p>
+      <Field
+        label="Hero video URL (YouTube or direct .mp4)"
+        value={settings['shippingSupplies.heroVideoUrl']}
+        onSave={(v) => save('shippingSupplies.heroVideoUrl', v)}
+        placeholder="https://www.youtube.com/watch?v=…"
+      />
     </div>
   );
 }

@@ -26,8 +26,14 @@ interface Category {
 
 type SortKey = 'newest' | 'price-asc' | 'price-desc' | 'name';
 
-export function Shop() {
-  const { category } = useParams();
+/**
+ * Product grid. Normally reads the category from the route param, but a fixed
+ * `categorySlug` can be passed for categories mounted on a static path — without
+ * it those render with no category and list the ENTIRE catalog.
+ */
+export function Shop({ categorySlug }: { categorySlug?: string } = {}) {
+  const params0 = useParams();
+  const category = categorySlug ?? params0.category;
   const [params] = useSearchParams();
   const [products, setProducts] = useState<ProductCard[]>([]);
   const [allCats, setAllCats] = useState<Category[]>([]);
