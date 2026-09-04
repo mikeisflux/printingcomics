@@ -698,11 +698,14 @@ async function seedSupplyImage(productId: string, def: SupplyDef) {
 const TMAILER_UNDERCUT = 0.20;
 
 /**
- * Per-mailer shipping weight, in grams. ESTIMATE for a comic-size corrugated
- * fold-flat mailer — checkout rates live postage off this, so weigh one and
- * correct this single number rather than editing each pack.
+ * Per-mailer shipping weight. Measured on a scale at 5.5 oz each; kept in
+ * ounces because that's the unit it was weighed in, and converted once here.
+ * Checkout rates live postage off this, so correct this single number rather
+ * than editing each pack.
  */
-const TMAILER_UNIT_WEIGHT_GRAMS = 65;
+const GRAMS_PER_OZ = 28.3495;
+const TMAILER_UNIT_WEIGHT_OZ = 5.5;
+const TMAILER_UNIT_WEIGHT_GRAMS = Math.round(TMAILER_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
 
 /** First production run lands 2 Oct 2026; until then these sell on backorder.
  *  Noon UTC so the date reads as 2 Oct in every US timezone. */
