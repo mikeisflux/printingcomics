@@ -642,6 +642,89 @@ async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Shipping Supplies — stock goods, not made-to-order printing. No artwork,
+// proofs or file prep, so these are plain catalog products with a flat price:
+// without a pricingConfig the cart charges priceCents as-is, and the
+// site-wide print promo doesn't apply to them.
+// ---------------------------------------------------------------------------
+interface SupplyDef {
+  slug: string;
+  name: string;
+  shortDescription: string;
+  description: string;
+  priceUSD: number;
+  /** Per-unit shipping weight. Checkout rates live carrier prices off this,
+   *  so a wrong figure here shows up as wrong postage at checkout. */
+  weightGrams: number;
+  faq?: { q: string; a: string }[];
+}
+
+const SUPPLIES: SupplyDef[] = [
+  {
+    slug: 'comic-armor-10-pack',
+    name: 'Comic Armor — 10 Pack',
+    shortDescription: 'Ten Comic Armor protective sleeves for shipping and storing comics.',
+    description:
+      'Comic Armor wraps each book in a cushioned protective sleeve so it survives the trip. '
+      + 'Slide the bagged and boarded comic in, seal it, and ship — no loose bubble wrap, no shifting, '
+      + 'no corner dings. Ten sleeves per pack.',
+    priceUSD: 9.99,
+    weightGrams: 140,
+    faq: [
+      { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
+      { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
+    ],
+  },
+  {
+    slug: 'comic-armor-20-pack',
+    name: 'Comic Armor — 20 Pack',
+    shortDescription: 'Twenty Comic Armor protective sleeves — the better value per sleeve.',
+    description:
+      'The 20-pack of Comic Armor protective sleeves. Same cushioned protection as the 10-pack, '
+      + 'sized for sellers and creators shipping in volume.',
+    priceUSD: 19.99,
+    weightGrams: 270,
+    faq: [
+      { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
+      { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
+    ],
+  },
+];
+
+async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
+  // Reuse the existing row so cart / order references survive a re-seed.
+  const existing = await prisma.product.findUnique({ where: { slug: def.slug }, select: { id: true } });
+  const data = {
+    slug: def.slug,
+    name: def.name,
+    shortDescription: def.shortDescription,
+    description: def.description,
+    priceCents: cents(def.priceUSD),
+    hasVariants: false,
+    // Stock item, not printed to order — no proof or artwork workflow.
+    madeToOrder: false,
+    active: true,
+    minQuantity: 1,
+    weightGrams: def.weightGrams,
+    // No pricingConfig on purpose: flat price, no configurator, no promo.
+    seoTitle: def.name,
+    seoDescription: def.shortDescription,
+    faq: (def.faq ?? []) as any,
+    categories: { create: [{ category: { connect: { id: categoryId } } }] },
+  };
+
+  if (existing) {
+    await prisma.$transaction(async (tx) => {
+      await tx.productOption.deleteMany({ where: { productId: existing.id } });
+      await tx.productCategory.deleteMany({ where: { productId: existing.id } });
+      await tx.product.update({ where: { id: existing.id }, data });
+    }, { timeout: 30000 });
+  } else {
+    await prisma.product.create({ data });
+  }
+}
+
 async function main() {
   const categoryIds = await ensureCategories();
 
@@ -714,6 +797,12 @@ async function main() {
   // Art prints — one product per substrate, size chosen in the configurator.
   for (const def of SUBSTRATES) {
     await buildSubstrateProduct(def, categoryIds['art-prints']!);
+    console.log(`  built ${def.slug}`);
+  }
+
+  // Shipping supplies (stock goods).
+  for (const def of SUPPLIES) {
+    await buildSupplyProduct(def, categoryIds['shipping-supplies']!);
     console.log(`  built ${def.slug}`);
   }
 
