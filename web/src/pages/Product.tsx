@@ -39,12 +39,21 @@ interface ProductDetail {
   description?: string | null;
   priceCents: number;
   minQuantity: number;
+  backorder?: boolean;
+  backorderEta?: string | null;
   volumeTiers?: { minQty: number; pricePerUnitCents: number }[] | null;
   templateUrl?: string | null;
   faq?: { q: string; a: string }[] | null;
   pricingConfig?: PricingConfig | null;
   images: { id: string; url: string; alt?: string | null }[];
   options: ProductOption[];
+}
+
+/** "October 2, 2026" — fixed to UTC so the stored date can't drift a day. */
+export function formatEta(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
 }
 
 function keyOf(opt: ProductOption): string {
@@ -306,9 +315,19 @@ export function Product() {
         </div>
         {error && <div className="error">{error}</div>}
 
-        <div className="admin-card" style={{ marginTop: '1rem', background: 'rgba(30, 116, 252, 0.08)' }}>
-          🚚 Your order will ship in approximately 5 business days pending proof approval.
-        </div>
+        {product.backorder ? (
+          <div className="admin-card" style={{ marginTop: '1rem', background: 'rgba(217, 119, 6, 0.12)', border: '1px solid #b45309' }}>
+            <strong>⏳ On backorder.</strong>{' '}
+            {product.backorderEta
+              ? <>You can order now — this ships when stock arrives, estimated <strong>{formatEta(product.backorderEta)}</strong>.</>
+              : <>You can order now — this ships as soon as stock arrives.</>}{' '}
+            Anything else in your order ships on its normal schedule.
+          </div>
+        ) : (
+          <div className="admin-card" style={{ marginTop: '1rem', background: 'rgba(30, 116, 252, 0.08)' }}>
+            🚚 Your order will ship in approximately 5 business days pending proof approval.
+          </div>
+        )}
 
         {/* Order summary */}
         <details open className="admin-card" id="bulk-pricing" style={{ marginTop: '1rem' }}>

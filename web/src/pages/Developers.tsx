@@ -1188,7 +1188,11 @@ console.log('Send to creator:', payment.approvalUrl);
             <h3>2026-09-04 · Shipping supplies (stock goods)</h3>
             <ul>
               <li><strong>New category <code>shipping-supplies</code></strong> — Comic Armor
-                protective sleeves and the adjustable foldable T-mailer. Reachable the usual way:{' '}
+                protective sleeves (<code>comic-armor-10-pack</code>,{' '}
+                <code>comic-armor-20-pack</code>) and the adjustable foldable T-mailer, sold in
+                10 / 25 / 50 / 100 / 135 packs as{' '}
+                <code>t-mailer-<var>N</var>-pack</code> (SKU <code>TMAIL-<var>N</var></code>).
+                Each pack size is its own product, not a variant. Reachable the usual way:{' '}
                 <code>GET /catalog/products?category=shipping-supplies</code>.</li>
               <li><strong>These are stock goods, not print jobs.</strong> They come back with{' '}
                 <code>madeToOrder: false</code>, no <code>pricingConfig</code>, and no options.
@@ -1200,6 +1204,14 @@ console.log('Send to creator:', payment.approvalUrl);
               <li><strong>Shipping still rates by weight.</strong> Each pack carries a real{' '}
                 <code>weightGrams</code>, so <code>POST /pricing/quote</code> returns live carrier
                 rates for a mixed cart of printing and supplies exactly as it does today.</li>
+              <li><strong>New product fields <code>backorder</code> and{' '}
+                <code>backorderEta</code></strong> (ISO date, nullable) on every catalog product.
+                A backordered product is fully orderable — stock is not enforced — but it does not
+                ship until the ETA, so surface the wait to your buyer before they check out. The
+                T-mailer packs ship on backorder for their first run. An order mixing backordered
+                and in-stock lines may go out in more than one parcel, so expect{' '}
+                <code>order.shipped</code> to fire per shipment with its own tracking number
+                rather than exactly once.</li>
             </ul>
 
             <h3>2026-07-29 · Print files</h3>

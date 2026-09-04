@@ -20,6 +20,9 @@ interface ProductDraft {
   sku: string;
   stock: number;
   madeToOrder: boolean;
+  backorder: boolean;
+  /** yyyy-mm-dd for <input type="date">; '' when unset. */
+  backorderEta: string;
   active: boolean;
   minQuantity: number;
   weightGrams: number;
@@ -33,7 +36,8 @@ interface ProductDraft {
 const emptyDraft: ProductDraft = {
   slug: '', name: '', shortDescription: '', description: '',
   priceCents: 0, hasVariants: false, sku: '', stock: 0,
-  madeToOrder: true, active: true, minQuantity: 1, weightGrams: 0,
+  madeToOrder: true, backorder: false, backorderEta: '',
+  active: true, minQuantity: 1, weightGrams: 0,
   volumeTiers: [], seoTitle: '', seoDescription: '',
   categoryIds: [], images: [],
 };
@@ -69,6 +73,8 @@ export function AdminProductEdit() {
         hasVariants: p.hasVariants,
         sku: p.sku ?? '',
         stock: p.stock,
+        backorder: p.backorder ?? false,
+        backorderEta: p.backorderEta ? String(p.backorderEta).slice(0, 10) : '',
         madeToOrder: p.madeToOrder,
         active: p.active,
         minQuantity: p.minQuantity,
@@ -212,6 +218,31 @@ export function AdminProductEdit() {
           <div>
             <label>Min quantity</label>
             <input type="number" value={draft.minQuantity} onChange={(e) => setDraft({ ...draft, minQuantity: Number(e.target.value) })} />
+          </div>
+        </div>
+        <div className="grid-2">
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.backorder}
+                onChange={(e) => setDraft({ ...draft, backorder: e.target.checked })}
+                style={{ width: 'auto' }}
+              />{' '}
+              On backorder
+            </label>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
+              Still buyable — the storefront, cart and confirmation email say it ships later.
+            </p>
+          </div>
+          <div>
+            <label>Estimated arrival</label>
+            <input
+              type="date"
+              value={draft.backorderEta}
+              disabled={!draft.backorder}
+              onChange={(e) => setDraft({ ...draft, backorderEta: e.target.value })}
+            />
           </div>
         </div>
         <div className="row">

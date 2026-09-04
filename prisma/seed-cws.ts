@@ -11,7 +11,7 @@
  */
 
 import 'dotenv/config';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../server/src/generated/prisma/client.js';
@@ -653,56 +653,99 @@ interface SupplyDef {
   name: string;
   shortDescription: string;
   description: string;
-  priceUSD: number;
+  priceCents: number;
+  sku?: string;
   /** Per-unit shipping weight. Checkout rates live carrier prices off this,
    *  so a wrong figure here shows up as wrong postage at checkout. */
   weightGrams: number;
+  /** Public path under web/public, e.g. `/products/comic-armor-10-pack.webp`.
+   *  Only seeded once the file actually exists — see seedSupplyImage. */
+  image?: string;
+  /** Sold before stock lands. `backorderEta` is the estimated arrival shown
+   *  to the buyer on the product page, in the cart and on the confirmation. */
+  backorder?: boolean;
+  backorderEta?: Date;
   faq?: { q: string; a: string }[];
+}
+
+/**
+ * Attach a packaged product photo, but only if the file is really in
+ * web/public. Seeding a ProductImage row for a missing file would put a
+ * broken image on the storefront, which is worse than the placeholder the
+ * card falls back to.
+ */
+async function seedSupplyImage(productId: string, def: SupplyDef) {
+  if (!def.image) return;
+  if (!existsSync(`web/public${def.image}`)) {
+    console.warn(`  ${def.slug}: no image at web/public${def.image} — leaving it without a photo`);
+    return;
+  }
+  await prisma.productImage.create({
+    data: { productId, url: def.image, alt: def.name, sortOrder: 0 },
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Adjustable foldable T-mailer.
 //
-// Priced a flat 20% under Gemini's list price at the same pack size, so the
-// ladder below is the ONLY thing to edit: paste Gemini's quantity/price table
-// into GEMINI_TMAILER_LIST and the per-pack products follow automatically.
+// Same quantity breaks as Gemini's Comic Flash Mailers, priced a flat 20%
+// under their list price at each break. GEMINI_TMAILER_LIST is the only thing
+// to edit when their prices move — ours are derived, never typed in, so the
+// two can't drift apart.
 //
-// It is intentionally empty. Until real Gemini figures are in here the
-// products are skipped rather than seeded at a guessed price — these get sold
-// to customers, so a made-up number would be a real mispricing.
+// Gemini list checked 2026-09-04 (geminicomicsupply.com, Comic Flash Mailers).
 // ---------------------------------------------------------------------------
 const TMAILER_UNDERCUT = 0.20;
+
+/**
+ * Per-mailer shipping weight, in grams. ESTIMATE for a comic-size corrugated
+ * fold-flat mailer — checkout rates live postage off this, so weigh one and
+ * correct this single number rather than editing each pack.
+ */
+const TMAILER_UNIT_WEIGHT_GRAMS = 65;
+
+/** First production run lands 2 Oct 2026; until then these sell on backorder.
+ *  Noon UTC so the date reads as 2 Oct in every US timezone. */
+const TMAILER_ETA = new Date('2026-10-02T12:00:00Z');
 
 interface CompetitorTier {
   /** Mailers per pack. */
   qty: number;
   /** Gemini's list price for that pack, in dollars. */
   listUSD: number;
-  /** Shipping weight of the whole pack, in grams. */
-  packWeightGrams: number;
 }
 
 const GEMINI_TMAILER_LIST: CompetitorTier[] = [
-  // e.g. { qty: 25, listUSD: 24.95, packWeightGrams: 1600 },
+  { qty: 10,  listUSD: 24.95 },
+  { qty: 25,  listUSD: 39.95 },
+  { qty: 50,  listUSD: 64.95 },
+  { qty: 100, listUSD: 89.95 },
+  { qty: 135, listUSD: 109.95 },
 ];
 
-/** 20% under list, rounded down to the cent so we never land above the target. */
-function undercutPrice(listUSD: number): number {
-  return Math.floor(listUSD * (1 - TMAILER_UNDERCUT) * 100) / 100;
+/**
+ * 20% under list. Done in integer cents: 24.95 * 0.8 lands on
+ * 19.959999999999997 in floating point, which floors to the wrong cent.
+ */
+function undercutCents(listUSD: number): number {
+  return Math.round(cents(listUSD) * (1 - TMAILER_UNDERCUT));
 }
 
 function tmailerSupplies(): SupplyDef[] {
   return GEMINI_TMAILER_LIST.map((t) => ({
     slug: `t-mailer-${t.qty}-pack`,
     name: `Adjustable Foldable T-Mailer — ${t.qty} Pack`,
+    sku: `TMAIL-${t.qty}`,
     shortDescription: `${t.qty} adjustable fold-to-fit T-mailers for comics, trades and graphic novels.`,
     description:
       'An adjustable, foldable T-mailer that folds down to the exact thickness of what you are '
       + 'shipping, so one mailer covers a single issue or a stack of trades. Score lines let you set '
       + 'the depth, and the locking flaps hold it tight with no void fill. '
       + `${t.qty} mailers per pack.`,
-    priceUSD: undercutPrice(t.listUSD),
-    weightGrams: Math.round(t.packWeightGrams),
+    priceCents: undercutCents(t.listUSD),
+    weightGrams: t.qty * TMAILER_UNIT_WEIGHT_GRAMS,
+    backorder: true,
+    backorderEta: TMAILER_ETA,
     faq: [
       { q: 'What thickness does it adjust to?', a: 'Fold along the score lines to match the stack — a single bagged comic up to a run of trades.' },
       { q: 'Do I still need void fill?', a: 'No. Folding it to the exact depth is what keeps the contents from shifting.' },
@@ -719,8 +762,9 @@ const SUPPLIES: SupplyDef[] = [
       'Comic Armor wraps each book in a cushioned protective sleeve so it survives the trip. '
       + 'Slide the bagged and boarded comic in, seal it, and ship — no loose bubble wrap, no shifting, '
       + 'no corner dings. Ten sleeves per pack.',
-    priceUSD: 9.99,
+    priceCents: cents(9.99),
     weightGrams: 140,
+    image: '/products/comic-armor-10-pack.webp',
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
       { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
@@ -733,8 +777,9 @@ const SUPPLIES: SupplyDef[] = [
     description:
       'The 20-pack of Comic Armor protective sleeves. Same cushioned protection as the 10-pack, '
       + 'sized for sellers and creators shipping in volume.',
-    priceUSD: 19.99,
+    priceCents: cents(19.99),
     weightGrams: 270,
+    image: '/products/comic-armor-20-pack.png',
     faq: [
       { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
       { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
@@ -750,13 +795,16 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     name: def.name,
     shortDescription: def.shortDescription,
     description: def.description,
-    priceCents: cents(def.priceUSD),
+    priceCents: def.priceCents,
+    sku: def.sku ?? null,
     hasVariants: false,
     // Stock item, not printed to order — no proof or artwork workflow.
     madeToOrder: false,
     active: true,
     minQuantity: 1,
     weightGrams: def.weightGrams,
+    backorder: def.backorder ?? false,
+    backorderEta: def.backorderEta ?? null,
     // No pricingConfig on purpose: flat price, no configurator, no promo.
     seoTitle: def.name,
     seoDescription: def.shortDescription,
@@ -764,14 +812,22 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     categories: { create: [{ category: { connect: { id: categoryId } } }] },
   };
 
+  let productId: string;
   if (existing) {
     await prisma.$transaction(async (tx) => {
       await tx.productOption.deleteMany({ where: { productId: existing.id } });
       await tx.productCategory.deleteMany({ where: { productId: existing.id } });
       await tx.product.update({ where: { id: existing.id }, data });
     }, { timeout: 30000 });
+    productId = existing.id;
   } else {
-    await prisma.product.create({ data });
+    productId = (await prisma.product.create({ data, select: { id: true } })).id;
+  }
+
+  // Only when the product has no photo at all — never clobber one an admin
+  // uploaded through the media library.
+  if ((await prisma.productImage.count({ where: { productId } })) === 0) {
+    await seedSupplyImage(productId, def);
   }
 }
 
@@ -851,15 +907,7 @@ async function main() {
   }
 
   // Shipping supplies (stock goods).
-  const tmailers = tmailerSupplies();
-  if (tmailers.length === 0) {
-    console.warn(
-      '  skipping the adjustable T-mailer: GEMINI_TMAILER_LIST in prisma/seed-cws.ts is empty. '
-      + "Add Gemini's pack sizes and list prices there and re-run — pricing is derived at "
-      + `${Math.round(TMAILER_UNDERCUT * 100)}% under list.`,
-    );
-  }
-  for (const def of [...SUPPLIES, ...tmailers]) {
+  for (const def of [...SUPPLIES, ...tmailerSupplies()]) {
     await buildSupplyProduct(def, categoryIds['shipping-supplies']!);
     console.log(`  built ${def.slug}`);
   }

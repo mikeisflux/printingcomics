@@ -32,6 +32,10 @@ function serializeProduct(p: any, opts: { full: boolean }) {
         ? (p.pricingConfig.sizeWeightsGrams ?? null)
         : null,
     madeToOrder: p.madeToOrder,
+    // Orderable now, but not shipping until `backorderEta`. Surface the wait
+    // to your buyer — we don't hold the rest of the order for it.
+    backorder: p.backorder ?? false,
+    backorderEta: p.backorderEta ?? null,
     hasVariants: p.hasVariants,
     sku: p.sku,
     templateUrl: p.templateUrl,

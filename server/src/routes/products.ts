@@ -41,6 +41,8 @@ router.get('/', async (req, res) => {
       shortDescription: p.shortDescription,
       priceCents: p.priceCents,
       hasVariants: p.hasVariants,
+      backorder: p.backorder,
+      backorderEta: p.backorderEta,
       image: p.images[0]?.url ?? null,
       categories: p.categories.map((pc) => pc.category.slug),
     })),

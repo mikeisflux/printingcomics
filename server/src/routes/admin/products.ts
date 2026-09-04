@@ -20,6 +20,19 @@ const productWriteSchema = z.object({
   sku: z.string().optional(),
   stock: z.number().int().min(0).optional(),
   madeToOrder: z.boolean().optional(),
+  backorder: z.boolean().optional(),
+  // The editor sends `yyyy-mm-dd` (or '' to clear). Anchor bare dates at noon
+  // UTC so they read as the same calendar day across US timezones. Omitting
+  // the field leaves the stored value alone; sending '' or null clears it.
+  backorderEta: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (!v) return null;
+      const d = new Date(v.includes('T') ? v : `${v}T12:00:00Z`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }),
   active: z.boolean().optional(),
   minQuantity: z.number().int().min(1).optional(),
   weightGrams: z.number().int().min(0).optional(),

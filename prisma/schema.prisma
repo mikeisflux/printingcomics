@@ -142,6 +142,12 @@ model Product {
   stock           Int      @default(0)
   // True for custom-print products where stock is not tracked.
   madeToOrder     Boolean  @default(false)
+  // Sold ahead of stock arriving. Stock is not enforced at checkout either
+  // way; this is what makes the wait explicit to the buyer instead of
+  // letting them assume it ships today.
+  backorder       Boolean  @default(false)
+  // Estimated arrival, shown on the product page, cart and confirmation.
+  backorderEta    DateTime?
   active          Boolean  @default(true)
   minQuantity     Int      @default(1)
   weightGrams     Int      @default(0)

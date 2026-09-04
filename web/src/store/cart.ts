@@ -13,6 +13,8 @@ export interface CartItem {
     slug: string;
     name: string;
     images: { url: string }[];
+    backorder?: boolean;
+    backorderEta?: string | null;
   };
   variant?: { id: string; label: string } | null;
 }
