@@ -480,15 +480,32 @@ export function AdminOrderDetail() {
       '',
     );
     if (input === null) return;
-    const note = prompt('Note to customer (optional)') ?? undefined;
-    const amountCents = input ? Math.round(Number(input) * 100) : undefined;
+    // "$12.50" or "12,50" used to become NaN → null on the wire → a validation
+    // error that looked like the refund itself had failed.
+    const cleaned = input.replace(/[^0-9.]/g, '');
+    const amountCents = cleaned ? Math.round(Number(cleaned) * 100) : undefined;
+    if (input.trim() && !(amountCents! > 0)) {
+      alert('Enter a dollar amount like 12.50, or leave it blank for a full refund.');
+      return;
+    }
+    if (amountCents && amountCents > fullAmount) {
+      alert(`That is more than the ${formatMoney(fullAmount)} this order was charged.`);
+      return;
+    }
+    const note = prompt('Note to customer (optional)') || undefined;
     if (!confirm(amountCents ? `Refund ${formatMoney(amountCents)}?` : `Refund full amount ${formatMoney(fullAmount)}?`)) return;
     try {
-      await api.post(`/admin/orders/${id}/refund`, { amountCents, note });
-      alert('Refund issued.');
+      const r = await api.post<{ refund: { refundId: string; status: string; refundedCents: number } }>(
+        `/admin/orders/${id}/refund`, { amountCents, note },
+      );
+      alert(`Refunded ${formatMoney(r.refund.refundedCents)} — PayPal refund ${r.refund.refundId} (${r.refund.status}).`);
       load();
     } catch (e: any) {
-      alert(e.message);
+      // Show PayPal's issue code and debug id when we have them: that is
+      // exactly what PayPal support asks for, and what to grep the logs by.
+      const d = e?.details ?? {};
+      const extra = [d.issue, d.debugId ? `PayPal debug id ${d.debugId}` : null].filter(Boolean).join(', ');
+      alert(`Refund failed: ${e?.message ?? 'unknown error'}${extra ? `\n\n(${extra})` : ''}`);
     }
   };
 

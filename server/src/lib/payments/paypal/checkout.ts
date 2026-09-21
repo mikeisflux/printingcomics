@@ -4,6 +4,8 @@ import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
 import { itemsRequestProof } from '../../proofs.js';
 import { resolveShippingSelection } from '../../shipping-quote.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
+import { paypalHttpError, paypalNetworkError } from './errors.js';
+import { HttpError } from '../../../middleware/error.js';
 
 export interface CreatePaypalOrderInput {
   cartId: string;
@@ -34,7 +36,9 @@ async function computeTotals(
     where: { id: cartId },
     include: { items: { include: { product: true, variant: true } } },
   });
-  if (!cart || cart.items.length === 0) throw new Error('Cart is empty');
+  if (!cart || cart.items.length === 0) {
+    throw new HttpError(400, 'Your cart is empty. Add something to it and come back to checkout.');
+  }
 
   const subtotal = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
@@ -209,21 +213,26 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
     },
   };
 
-  const res = await fetch(`${config.baseUrl}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'PayPal-Request-Id': order.id,
-    },
-    body: JSON.stringify(orderPayload),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.baseUrl}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'PayPal-Request-Id': order.id,
+      },
+      body: JSON.stringify(orderPayload),
+    });
+  } catch (e) {
+    await prisma.order.delete({ where: { id: order.id } }).catch(() => undefined);
+    throw paypalNetworkError('order creation', e);
+  }
 
   if (!res.ok) {
-    const errBody = await res.text();
-    // Clean up the order we just created
+    // Clean up the order we just created, then surface PayPal's actual reason.
     await prisma.order.delete({ where: { id: order.id } }).catch(() => undefined);
-    throw new Error(`PayPal order creation failed: ${errBody}`);
+    throw await paypalHttpError(res, 'order creation');
   }
 
   const paypalOrder = (await res.json()) as { id: string; links?: { href: string; rel: string; method: string }[] };

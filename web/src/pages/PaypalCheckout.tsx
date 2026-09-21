@@ -7,7 +7,7 @@ import {
   PayPalScriptProvider,
   usePayPalCardFields,
 } from '@paypal/react-paypal-js';
-import { api, formatMoney } from '../api/client';
+import { api, ApiError, formatMoney } from '../api/client';
 import { useCart } from '../store/cart';
 import { useAuth } from '../store/auth';
 import { formatCartItemOptions } from '../lib/cart-options';
@@ -129,22 +129,36 @@ export function PaypalCheckout() {
 
   const createOrder = async (): Promise<string> => {
     setError(null);
-    const r = await api.post<{ paypalOrderId: string; orderNumber: string }>('/checkout/paypal/create', {
-      email,
-      shippingAddress: ship,
-      billingAddress: sameAsShip ? ship : bill,
-      shippingRateId: shipRateId,
-      couponCode: appliedCoupon?.code,
-    });
-    return r.paypalOrderId;
+    try {
+      const r = await api.post<{ paypalOrderId: string; orderNumber: string }>('/checkout/paypal/create', {
+        email,
+        shippingAddress: ship,
+        billingAddress: sameAsShip ? ship : bill,
+        shippingRateId: shipRateId,
+        couponCode: appliedCoupon?.code,
+      });
+      return r.paypalOrderId;
+    } catch (e: any) {
+      // The SDK swallows this rejection into a generic onError; show the
+      // server's actual reason first, then let the SDK abort the flow.
+      setError(describeError(e));
+      throw e;
+    }
   };
 
-  const onApprove = async (data: { orderID: string }) => {
+  const onApprove = async (data: { orderID: string }, actions?: { restart?: () => unknown }) => {
+    setError(null);
     try {
       const r = await api.post<{ orderNumber: string }>(`/checkout/paypal/capture/${data.orderID}`);
       navigate(`/order/${r.orderNumber}`);
     } catch (e: any) {
-      setError(e.message ?? 'Capture failed');
+      setError(describeError(e));
+      // PayPal's documented handling for a declined instrument: restart the
+      // approval so the buyer can pick a different card or funding source,
+      // instead of leaving them on a dead button.
+      if (e instanceof ApiError && (e.details as any)?.issue === 'INSTRUMENT_DECLINED' && actions?.restart) {
+        void actions.restart();
+      }
     }
   };
 
@@ -216,7 +230,7 @@ export function PaypalCheckout() {
                   style={{ layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' }}
                   createOrder={createOrder}
                   onApprove={onApprove}
-                  onError={(err) => setError(String(err))}
+                  onError={(err) => setError((prev) => prev ?? describeError(err))}
                 />
               </div>
             )}
@@ -224,9 +238,9 @@ export function PaypalCheckout() {
             {enableCard && (
               <div className="admin-card">
                 <h4>Pay with card</h4>
-                <PayPalCardFieldsProvider createOrder={createOrder} onApprove={onApprove} onError={(err) => setError(String(err))}>
+                <PayPalCardFieldsProvider createOrder={createOrder} onApprove={onApprove} onError={(err) => setError((prev) => prev ?? describeError(err))}>
                   <PayPalCardFieldsForm />
-                  <SubmitCardButton />
+                  <SubmitCardButton onError={(msg) => setError(msg)} />
                 </PayPalCardFieldsProvider>
               </div>
             )}
@@ -364,15 +378,32 @@ export function PaypalCheckout() {
   );
 }
 
-function SubmitCardButton() {
+/** One line a buyer can act on, from whatever shape the SDK or our API threw. */
+function describeError(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message || 'Payment failed. Please try again.';
+  if (typeof err === 'string') return err;
+  const m = (err as any)?.message;
+  return typeof m === 'string' && m ? m : 'Payment failed. Please try again.';
+}
+
+function SubmitCardButton({ onError }: { onError: (message: string) => void }) {
   const { cardFieldsForm } = usePayPalCardFields();
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
     if (!cardFieldsForm) return;
     setSubmitting(true);
-    try { await cardFieldsForm.submit(); }
-    catch (e) { console.error(e); }
-    finally { setSubmitting(false); }
+    try {
+      const state = await cardFieldsForm.getState();
+      if (!state.isFormValid) {
+        onError('Please check the card number, expiry and security code.');
+        return;
+      }
+      await cardFieldsForm.submit();
+    } catch (e) {
+      console.error('[card-fields] submit failed', e);
+      onError(describeError(e));
+    } finally { setSubmitting(false); }
   };
   return (
     <button className="btn" style={{ marginTop: '1rem', width: '100%' }} onClick={submit} disabled={submitting}>

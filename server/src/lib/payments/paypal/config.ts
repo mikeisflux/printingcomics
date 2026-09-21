@@ -24,7 +24,7 @@ export async function getPayPalConfig(): Promise<PayPalConfig> {
   const mode = settings.environment || 'sandbox';
 
   if (!clientId || !clientSecret) {
-    throw new Error('PayPal credentials not configured. Set them in Admin → Settings → Payments.');
+    throw new HttpError(503, 'PayPal credentials not configured. Set them in Admin → Settings → Payments.');
   }
 
   const baseUrl =

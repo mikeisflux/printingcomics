@@ -124,15 +124,24 @@ router.post('/paypal/create', async (req, res) => {
     notes: data.notes,
   });
 
-  // Empty the cart now — the local order owns the line items.
-  await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
-
+  // The cart is deliberately NOT emptied here. The PayPal SDK calls this
+  // endpoint afresh on every click of the Pay button, so emptying the cart
+  // before the buyer has actually paid meant one declined card, closed popup
+  // or failed 3-D Secure prompt left them with an empty cart and a 500 on
+  // every retry. The order row already holds its own copy of the lines; the
+  // cart is cleared once the capture succeeds below.
   res.json(result);
 });
 
 // ---- Capture after buyer approves on PayPal ----
 router.post('/paypal/capture/:paypalOrderId', async (req, res) => {
   const result = await capturePaypalOrder(req.params.paypalOrderId);
+
+  if (result.status === 'COMPLETED') {
+    const cart = await findCart(req);
+    if (cart) await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+  }
+
   res.json(result);
 });
 

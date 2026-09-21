@@ -289,8 +289,10 @@ router.post('/:id/events', async (req, res) => {
 
 // Refund the full or partial capture amount via PayPal.
 const refundSchema = z.object({
-  amountCents: z.number().int().min(1).optional(),
-  note: z.string().max(255).optional(),
+  // null arrives when the admin UI's prompt parses to NaN and JSON turns it
+  // into null — treat that as "full refund", not a validation failure.
+  amountCents: z.number().int().min(1).optional().nullable().transform((v) => v ?? undefined),
+  note: z.string().max(255).optional().nullable().transform((v) => v || undefined),
 });
 
 router.post('/:id/refund', async (req, res) => {
@@ -299,9 +301,19 @@ router.post('/:id/refund', async (req, res) => {
     where: { orderId: req.params.id, provider: 'paypal', status: 'CAPTURED' },
     orderBy: { createdAt: 'desc' },
   });
-  if (!payment?.providerRef) throw new HttpError(400, 'No captured PayPal payment to refund.');
+  if (!payment) {
+    // Say which state it's actually in — "no captured payment" on its own
+    // sent people to the logs.
+    const latest = await prisma.payment.findFirst({ where: { orderId: req.params.id }, orderBy: { createdAt: 'desc' } });
+    throw new HttpError(
+      409,
+      latest
+        ? `This order's latest payment is ${latest.status} (${latest.provider}) — only a CAPTURED PayPal payment can be refunded.`
+        : 'This order has no payment on record to refund.',
+    );
+  }
   const result = await refundPaypalCapture({
-    captureId: payment.providerRef,
+    paymentId: payment.id,
     amountCents: data.amountCents,
     note: data.note,
   });
@@ -309,7 +321,7 @@ router.post('/:id/refund', async (req, res) => {
     data: {
       orderId: req.params.id,
       kind: 'payment',
-      message: `Refunded ${data.amountCents ? `$${(data.amountCents / 100).toFixed(2)}` : 'full amount'}${data.note ? ` — ${data.note}` : ''}`,
+      message: `Refunded $${(result.refundedCents / 100).toFixed(2)} via PayPal (${result.refundId}, ${result.status})${data.note ? ` — ${data.note}` : ''}`,
       actorId: req.session?.sub,
     },
   });

@@ -1,5 +1,7 @@
 import { prisma } from '../../../db.js';
+import { HttpError } from '../../../middleware/error.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
+import { paypalHttpError, paypalNetworkError } from './errors.js';
 import { sendOrderConfirmationEmail } from '../../order-emails.js';
 import { dispatchPartnerWebhook } from '../../partners.js';
 
@@ -16,36 +18,51 @@ export interface CaptureResult {
  *
  * Uses CAS (compare-and-set) via updateMany to prevent double-capture on
  * concurrent callbacks (browser return + webhook can race).
+ *
+ * Every PayPal failure surfaces as an HttpError with the buyer-facing reason
+ * (a declined card is a 402 "card declined", not a 500) and the full PayPal
+ * body goes to the log under `[paypal] capture failed`.
  */
 export async function capturePaypalOrder(paypalOrderId: string): Promise<CaptureResult> {
   const config = await getPayPalConfig();
   const accessToken = await getPayPalAccessToken();
 
-  const res = await fetch(`${config.baseUrl}/v2/checkout/orders/${paypalOrderId}/capture`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'PayPal-Request-Id': `capture_${paypalOrderId}`,
-    },
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`PayPal capture failed: ${errBody}`);
+  let res: Response;
+  try {
+    res = await fetch(`${config.baseUrl}/v2/checkout/orders/${paypalOrderId}/capture`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'PayPal-Request-Id': `capture_${paypalOrderId}`,
+      },
+    });
+  } catch (e) {
+    throw paypalNetworkError('capture', e);
   }
+
+  if (!res.ok) throw await paypalHttpError(res, 'capture');
 
   const data = (await res.json()) as any;
   const status: string = data.status;
-  const captureId: string = data.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? paypalOrderId;
+  const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+  const captureId: string = capture?.id ?? paypalOrderId;
+  const captureStatus: string | undefined = capture?.status;
   const customId: string | undefined = data.purchase_units?.[0]?.custom_id;
 
   const payment = await prisma.payment.findFirst({
     where: { providerRef: paypalOrderId },
     include: { order: true },
   });
-  if (!payment) throw new Error(`No local payment found for PayPal order ${paypalOrderId}`);
+  if (!payment) {
+    console.error('[paypal] capture succeeded at PayPal but no local payment row matches', { paypalOrderId, captureId });
+    throw new HttpError(404, 'Payment went through but we could not match it to an order. Please contact us with this reference: ' + captureId);
+  }
 
+  // A card capture can come back COMPLETED at the order level while the
+  // capture itself is PENDING (bank review). Treat that as paid — PayPal will
+  // send PAYMENT.CAPTURE.DENIED if it falls through — but keep the status so
+  // an admin can see why a refund is refused until it settles.
   if (status === 'COMPLETED') {
     // CAS: only mark PAID once.
     const cas = await prisma.order.updateMany({
@@ -67,7 +84,7 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
           kind: 'payment',
           fromStatus: 'PENDING',
           toStatus: 'CAPTURED',
-          message: `PayPal capture ${captureId} completed`,
+          message: `PayPal capture ${captureId} completed${captureStatus && captureStatus !== 'COMPLETED' ? ` (capture status: ${captureStatus})` : ''}`,
         },
       });
       await prisma.orderStatusEvent.create({
@@ -101,11 +118,19 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
           }).catch(() => undefined);
         }
       }
+    } else if (payment.status === 'CAPTURED' && payment.providerRef === paypalOrderId) {
+      // The webhook flipped the order first but only knew the PayPal order
+      // id. Store the real capture id so a refund targets the right thing.
+      await prisma.payment.update({ where: { id: payment.id }, data: { providerRef: captureId, rawPayload: data } });
     }
   } else {
     await prisma.payment.update({
       where: { id: payment.id },
       data: { status: 'FAILED', rawPayload: data },
+    });
+    console.error('[paypal] capture returned non-COMPLETED status', { paypalOrderId, status, captureStatus });
+    throw new HttpError(402, `PayPal did not complete the payment (status ${status}). No charge was made — please try again.`, {
+      issue: status, stage: 'capture',
     });
   }
 

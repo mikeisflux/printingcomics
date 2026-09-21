@@ -87,9 +87,12 @@ router.post('/', async (req, res) => {
         where: { id: payment.orderId, paymentStatus: 'PENDING' },
         data: { paymentStatus: 'CAPTURED', status: 'PAID' },
       });
+      // For this event `resource` IS the capture, so resource.id is the
+      // capture id. Store it: a refund has to target the capture, and a row
+      // that only ever held the checkout order id 404s at refund time.
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { status: 'CAPTURED', rawPayload: resource },
+        data: { status: 'CAPTURED', providerRef: captureId ?? payment.providerRef, rawPayload: resource },
       });
       await prisma.orderStatusEvent.create({
         data: {

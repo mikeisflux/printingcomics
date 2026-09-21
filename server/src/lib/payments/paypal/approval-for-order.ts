@@ -13,7 +13,9 @@
  * order so the link the partner gets is always live.
  */
 import { prisma } from '../../../db.js';
+import { HttpError } from '../../../middleware/error.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
+import { paypalHttpError, paypalNetworkError } from './errors.js';
 
 export interface CreatePaypalApprovalForOrderInput {
   orderId: string;
@@ -40,10 +42,10 @@ export async function createPaypalApprovalForOrder(
   const order = await prisma.order.findUnique({
     where: { id: input.orderId },
   });
-  if (!order) throw new Error(`Order ${input.orderId} not found`);
-  if (order.totalCents <= 0) throw new Error(`Order ${order.number} has zero total — nothing to charge`);
+  if (!order) throw new HttpError(404, `Order ${input.orderId} not found`);
+  if (order.totalCents <= 0) throw new HttpError(400, `Order ${order.number} has zero total — nothing to charge`);
   if (order.paymentStatus === 'CAPTURED') {
-    throw new Error(`Order ${order.number} is already paid`);
+    throw new HttpError(409, `Order ${order.number} is already paid`);
   }
 
   // Drop any prior PENDING paypal Payment rows so we don't accumulate
@@ -93,20 +95,22 @@ export async function createPaypalApprovalForOrder(
     },
   };
 
-  const res = await fetch(`${config.baseUrl}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'PayPal-Request-Id': `${order.id}-${Date.now()}`,
-    },
-    body: JSON.stringify(orderPayload),
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`PayPal order creation failed: ${errBody}`);
+  let res: Response;
+  try {
+    res = await fetch(`${config.baseUrl}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'PayPal-Request-Id': `${order.id}-${Date.now()}`,
+      },
+      body: JSON.stringify(orderPayload),
+    });
+  } catch (e) {
+    throw paypalNetworkError('order creation', e);
   }
+
+  if (!res.ok) throw await paypalHttpError(res, 'order creation');
 
   const paypalOrder = (await res.json()) as {
     id: string;
@@ -114,7 +118,8 @@ export async function createPaypalApprovalForOrder(
   };
   const approveLink = paypalOrder.links?.find((l) => l.rel === 'payer-action' || l.rel === 'approve');
   if (!approveLink?.href) {
-    throw new Error('PayPal did not return an approval URL');
+    console.error('[paypal] order created but no approve link', { paypalOrderId: paypalOrder.id, links: paypalOrder.links });
+    throw new HttpError(502, 'PayPal did not return an approval URL');
   }
 
   await prisma.payment.create({
