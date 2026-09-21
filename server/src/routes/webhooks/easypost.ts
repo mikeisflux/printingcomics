@@ -22,13 +22,37 @@ import { sendShippingNotificationEmail } from '../../lib/order-emails.js';
 
 const router = Router();
 
+/**
+ * The exact bytes EasyPost signed. The app-wide `express.json()` in index.ts
+ * runs before this router and has already parsed the body — so `req.body` is
+ * an Object here and the route-level `raw()` parser below finds nothing left
+ * to read. index.ts stashes the untouched bytes as `req.rawBody` for exactly
+ * this reason; that is the only thing an HMAC can be computed over
+ * (re-serialising the parsed object would not reproduce the original
+ * whitespace and would never match).
+ */
+export function rawBodyOf(req: { body?: unknown; rawBody?: unknown }): Buffer | null {
+  if (Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.rawBody === 'string') return Buffer.from(req.rawBody, 'utf8');
+  if (Buffer.isBuffer(req.rawBody)) return req.rawBody;
+  if (typeof req.body === 'string') return Buffer.from(req.body, 'utf8');
+  return null;
+}
+
 router.post(
   '/',
   raw({ type: '*/*', limit: '1mb' }),
   async (req, res) => {
     const secret = (await getSetting<string>('easypost.webhookSecret')) || '';
-    const rawBody: Buffer = req.body as Buffer;
+    const rawBody = rawBodyOf(req as any);
     const signature = (req.headers['x-hmac-signature'] as string | undefined) ?? '';
+
+    if (!rawBody) {
+      // Fail closed and say why — this used to be a TypeError deep in
+      // Hmac.update that told nobody anything.
+      console.error('[easypost-webhook] no raw body available to verify; check the body parser order in index.ts');
+      return res.status(500).json({ error: 'raw body unavailable' });
+    }
 
     if (secret) {
       const normalized = secret.normalize('NFKD');

@@ -113,8 +113,9 @@ export async function paypalHttpError(res: Response, stage: string): Promise<Htt
   try { body = JSON.parse(text) as PayPalErrorBody; } catch { /* PayPal sometimes returns HTML on 5xx */ }
 
   const issue = body.details?.[0]?.issue ?? body.name ?? body.error ?? `HTTP_${res.status}`;
+  const field = body.details?.[0]?.field;
   const description = body.details?.[0]?.description ?? body.message ?? body.error_description ?? text.slice(0, 300);
-  const details = { issue, debugId: body.debug_id ?? null, stage };
+  const details = { issue, field: field ?? null, debugId: body.debug_id ?? null, stage };
 
   console.error(`[paypal] ${stage} failed`, {
     status: res.status,
@@ -130,7 +131,9 @@ export async function paypalHttpError(res: Response, stage: string): Promise<Htt
   if (res.status >= 500) {
     return new HttpError(502, 'PayPal is having trouble right now. Please try again in a moment.', details);
   }
-  return new HttpError(502, `PayPal rejected the ${stage}: ${issue}${description ? ` — ${description}` : ''}`, details);
+  // A schema rejection (INVALID_REQUEST / INVALID_STRING_LENGTH / …) is a bug
+  // in what WE sent, so name the field — that is the whole diagnosis.
+  return new HttpError(502, `PayPal rejected the ${stage}: ${issue}${field ? ` on ${field}` : ''}${description ? ` — ${description}` : ''}`, details);
 }
 
 /** For when `fetch` itself throws (DNS, TLS, timeout) rather than PayPal answering. */
