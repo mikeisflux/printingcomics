@@ -64,5 +64,8 @@ npm run db:studio                    # Prisma Studio
 - Page / cover / embellishment prices live in `prisma/pricing/cws-pricing.json`
   (mirrors the `*_discount_log.xlsx` spreadsheets). `prisma/seed-cws.ts` compiles
   that JSON into each product's `pricingConfig`.
-- After editing pricing data or `seed-cws.ts`, re-run `npm run db:seed:cws` —
-  existing products keep their old `pricingConfig` until re-seeded.
+- After editing pricing data or `seed-cws.ts`, existing products keep their old
+  `pricingConfig` until re-seeded. `npm run deploy` does this automatically —
+  it hashes `seed-cws.ts` + `prisma/pricing/*.json` and re-runs `db:seed:cws`
+  whenever that differs from the last successful seed (tracked in the
+  gitignored `.deploy-state`). Locally, run `npm run db:seed:cws` by hand.
