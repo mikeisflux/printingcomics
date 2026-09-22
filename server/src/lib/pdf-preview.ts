@@ -3,11 +3,15 @@
  *
  * Print-production PDFs — CMYK, transparency groups, JPEG 2000 images, spot
  * colours — are exactly what comic artwork exports contain, and the PDF
- * engines built into Chrome and Edge render many of them as solid black
- * pages. The downloaded file is fine; only the browser's rendering is wrong.
- * So nothing on the site embeds a PDF in the browser any more. Pages are
- * rasterised here with poppler (`pdftoppm`, which handles CMYK and
- * transparency through Little CMS) and served as PNGs.
+ * viewers built into browsers (pdf.js in Firefox, PDFium in Chrome and Edge)
+ * render many of them as solid black pages. The file is fine — desktop apps
+ * open it — only the browser's rendering is wrong. So nothing on the site
+ * embeds a PDF in the browser any more. Pages are rasterised here with
+ * poppler (`pdftoppm`, which handles CMYK and transparency through Little
+ * CMS) and served as PNGs.
+ *
+ * These renders are pictures for the screen only. The stored file is never
+ * modified or converted; a download is byte-for-byte the upload.
  *
  * Renders are cached on disk under <uploads>/previews/<mediaId>/ so each
  * page is rendered once. Requires `poppler-utils` on the server:

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../../api/client';
 import { PdfPreview } from '../../components/PdfPreview';
+import { downloadHref } from '../../lib/files';
 import { useToast, useConfirm, usePrompt, errorMessage } from '../../components/admin/ui';
 
 interface MediaFile {
@@ -255,7 +256,7 @@ export function AdminMedia() {
                       <a
                         className="btn secondary"
                         style={{ fontSize: '.72rem', padding: '.2rem .45rem' }}
-                        href={f.url}
+                        href={downloadHref(f.url)}
                         download={f.originalName}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -337,7 +338,7 @@ function EditDialog({ file, onClose, onSaved }: { file: MediaFile; onClose: () =
         </div>
         <div className="row" style={{ marginBottom: '1rem', gap: '.5rem' }}>
           <a className="btn" href={file.url} target="_blank" rel="noreferrer">Open in new tab</a>
-          <a className="btn secondary" href={file.url} download={file.originalName}>Download</a>
+          <a className="btn secondary" href={downloadHref(file.url)} download={file.originalName}>Download</a>
         </div>
         <label>Display name</label>
         <input value={form.originalName} onChange={(e) => setForm({ ...form, originalName: e.target.value })} />

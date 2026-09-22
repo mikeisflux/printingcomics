@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { downloadHref } from '../lib/files';
 
 /**
  * Shows a stored file without handing a PDF to the browser's own viewer.
  * Print-production PDFs (CMYK, transparency, JPEG 2000) render as solid black
- * in Chrome's and Edge's built-in engines while the file itself is fine; the
- * server rasterises pages with poppler instead (/api/previews) and we show
- * PNGs. Images are shown directly.
+ * in the viewers built into Firefox, Chrome and Edge while the file itself is
+ * fine; the server rasterises pages with poppler instead (/api/previews) and
+ * we show PNGs — pictures for the screen. The stored file is never modified;
+ * Download saves the exact original.
  */
 
 interface Info { kind: 'pdf' | 'image' | 'other'; available: boolean; reason: string | null; pages: number }
@@ -46,21 +48,23 @@ export function PdfPreview({
     return () => window.removeEventListener('keydown', h);
   }, [info]);
 
-  // Download is the reliable action. The raw-PDF link is still offered, but
-  // named for what it does: it hands the file to the browser's own viewer,
-  // which is the thing that shows print PDFs as black pages.
+  // One download: the untouched original, forced to save to disk (see
+  // lib/files.ts). No "open in browser" for PDFs — that is the viewer that
+  // shows print PDFs as black pages, and it is why this component exists.
+  const isPdf = info?.kind === 'pdf';
   const links = (
-    <div className="row" style={{ marginTop: '.75rem', flexWrap: 'wrap', gap: '.5rem' }}>
-      <a className="btn sm" href={fileUrl} download={fileName}>Download</a>
-      <a
-        className="btn secondary sm"
-        href={fileUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Opens in the browser's own PDF viewer, which often shows print-production PDFs as black pages. Download is the reliable option."
-      >
-        {info?.kind === 'image' ? 'Open full size' : 'Open raw PDF in browser'}
-      </a>
+    <div style={{ marginTop: '.75rem' }}>
+      <div className="row" style={{ flexWrap: 'wrap', gap: '.5rem' }}>
+        <a className="btn sm" href={downloadHref(fileUrl)} download={fileName}>Download {isPdf ? 'original PDF' : 'file'}</a>
+        {info?.kind === 'image' && (
+          <a className="btn secondary sm" href={fileUrl} target="_blank" rel="noopener noreferrer">Open full size</a>
+        )}
+      </div>
+      {isPdf && (
+        <p className="muted" style={{ fontSize: '.78rem', margin: '.5rem 0 0' }}>
+          This preview is a picture of each page rendered on our server. The file is never changed — Download saves exactly what was uploaded. Browser PDF viewers (Firefox, Chrome, Edge) can show print-production PDFs as black pages; open the download in Acrobat, Preview or another desktop app.
+        </p>
+      )}
     </div>
   );
 
@@ -161,7 +165,7 @@ export function FilePreviewModal({
         ) : lookupError ? (
           <div>
             <div className="error">{lookupError}</div>
-            <a className="btn sm" href={media.url} download={media.originalName}>Download</a>
+            <a className="btn sm" href={downloadHref(media.url)} download={media.originalName}>Download</a>
           </div>
         ) : (
           <p className="muted">Finding the file…</p>

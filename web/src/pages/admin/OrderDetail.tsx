@@ -6,6 +6,7 @@ import { StatusBadge } from '../Account';
 import { OptionControl, keyOf, type ProductOption } from '../Product';
 import { PageHeader, errorMessage, useConfirm, useToast } from '../../components/admin/ui';
 import { FilePreviewModal } from '../../components/PdfPreview';
+import { downloadHref } from '../../lib/files';
 
 interface OrderEvent {
   id: string;
@@ -406,7 +407,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
               </div>
               <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginTop: '.25rem' }}>
                 <button type="button" className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} onClick={() => setPreviewMedia(p.media)}>Preview</button>
-                <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} download={p.media.originalName}>Download</a>
+                <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={downloadHref(p.media.url)} download={p.media.originalName}>Download</a>
                 <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} onClick={() => { void navigator.clipboard?.writeText(`${origin}/proof/${p.token}`); }}>Copy review link</button>
                 <button
                   className="btn secondary"
@@ -727,7 +728,7 @@ export function AdminOrderDetail() {
                                     >
                                       {linked?.media.originalName ?? name}
                                     </button>
-                                    {' '}<a href={u} download={linked?.media.originalName ?? name} title="Save to your computer" style={{ fontSize: '.75rem' }}>save</a>
+                                    {' '}<a href={downloadHref(u)} download={linked?.media.originalName ?? name} title="Save to your computer" style={{ fontSize: '.75rem' }}>save</a>
                                   </span>
                                 );
                               })
@@ -784,7 +785,7 @@ export function AdminOrderDetail() {
                               <span className="muted">({formatBytes(f.media.size)})</span>
                             </button>
                             <a
-                              href={f.media.url}
+                              href={downloadHref(f.media.url)}
                               download={f.media.originalName}
                               title="Download"
                               style={{ padding: '.3rem .5rem', borderLeft: '1px solid var(--border)', textDecoration: 'none', color: 'var(--brand)', fontWeight: 700 }}

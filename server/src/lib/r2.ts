@@ -222,7 +222,11 @@ export async function r2Delete(key: string): Promise<boolean> {
  * A time-limited GET URL, for buckets without a public domain. Query-string
  * SigV4 so the browser can fetch it directly (no proxying through the API).
  */
-export async function r2SignedUrl(key: string, expiresSeconds = 3600): Promise<string | null> {
+export async function r2SignedUrl(
+  key: string,
+  expiresSeconds = 3600,
+  opts: { contentDisposition?: string; contentType?: string } = {},
+): Promise<string | null> {
   const cfg = await r2Config();
   if (!cfg) return null;
   const { amz, short } = amzDate(new Date());
@@ -236,6 +240,11 @@ export async function r2SignedUrl(key: string, expiresSeconds = 3600): Promise<s
     'X-Amz-Expires': String(expiresSeconds),
     'X-Amz-SignedHeaders': 'host',
   };
+  // S3-style response overrides. `attachment` is what makes a browser save
+  // the file instead of opening it in its own (PDF) viewer; it has to be part
+  // of the signed query, so it is set here rather than appended afterwards.
+  if (opts.contentDisposition) params['response-content-disposition'] = opts.contentDisposition;
+  if (opts.contentType) params['response-content-type'] = opts.contentType;
   const canonicalQuery = Object.keys(params)
     .sort()
     .map((k) => `${uriEncode(k)}=${uriEncode(params[k]!)}`)
