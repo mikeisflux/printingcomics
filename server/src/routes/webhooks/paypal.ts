@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../db.js';
 import { getPayPalAccessToken, getPayPalConfig } from '../../lib/payments/paypal/config.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
+import { settleAdjustment } from '../../lib/order-adjustments.js';
 
 const router = Router();
 
@@ -101,6 +102,14 @@ router.post('/', async (req, res) => {
           message: `PayPal webhook confirmed capture ${captureId}`,
         },
       });
+      // A balance payment for a post-order change carries the adjustment id
+      // as custom_id. Settle it here too, so the change is applied even if
+      // the customer closed the tab before the browser's capture call ran.
+      if (typeof resource.custom_id === 'string' && captureId) {
+        await settleAdjustment(resource.custom_id, captureId, resource).catch((e: any) =>
+          console.warn('[paypal-webhook] settleAdjustment failed:', e?.message ?? e),
+        );
+      }
       // First-mover wins → fire partner webhook only if WE flipped the order.
       if (cas.count > 0 && payment.order.partnerId) {
         const refreshed = await prisma.order.findUnique({

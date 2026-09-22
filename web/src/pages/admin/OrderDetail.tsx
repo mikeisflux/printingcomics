@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { formatCartItemOptions } from '../../lib/cart-options';
 import { StatusBadge } from '../Account';
+import { OptionControl, keyOf, type ProductOption } from '../Product';
 
 interface OrderEvent {
   id: string;
@@ -12,6 +13,22 @@ interface OrderEvent {
   toStatus?: string | null;
   actorName?: string | null;
   createdAt: string;
+}
+
+interface AdjustmentDiff { key: string; label: string; from: string; to: string }
+interface AdjustmentChange {
+  orderItemId: string; itemName: string; quantity: number;
+  before: { options: Record<string, unknown>; unitPriceCents: number; totalCents: number };
+  after: { options: Record<string, unknown>; unitPriceCents: number; totalCents: number };
+  diff: AdjustmentDiff[];
+}
+interface AdjustmentTotals { subtotalCents: number; discountCents: number; taxCents: number; shippingCents: number; totalCents: number }
+interface AdjustmentRow {
+  id: string; token: string; status: 'pending' | 'paid' | 'applied' | 'cancelled';
+  amountCents: number; note: string | null;
+  changes: AdjustmentChange[];
+  totals: { before: AdjustmentTotals; after: AdjustmentTotals };
+  createdAt: string; paidAt: string | null; appliedAt: string | null; expiresAt: string;
 }
 
 interface OrderFull {
@@ -34,7 +51,12 @@ interface OrderFull {
     product: {
       slug: string;
       images: { url: string }[];
-      options: { id: string; name: string; internalKey?: string | null; type: string; values: { label: string; subLabel?: string | null }[] }[];
+      options: {
+        id: string; name: string; internalKey?: string | null; type: string;
+        required?: boolean; section?: string | null; helpText?: string | null; longDescription?: string | null;
+        dependsOnOptionId?: string | null; dependsOnValue?: string | null; sortOrder?: number;
+        values: { id?: string; label: string; subLabel?: string | null; imageUrl?: string | null; priceModifierCents?: number; sortOrder?: number }[];
+      }[];
     };
     files?: {
       id: string;
@@ -52,6 +74,7 @@ interface OrderFull {
     }[];
   }[];
   payments: { id: string; provider: string; providerRef?: string | null; amountCents: number; status: string; createdAt: string }[];
+  adjustments?: AdjustmentRow[];
   events: OrderEvent[];
   user?: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
   apiKey?: { id: string; name: string; prefix: string } | null;
@@ -425,6 +448,8 @@ export function AdminOrderDetail() {
   const [noteDraft, setNoteDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+
   const load = () => {
     if (!id) return;
     void api.get<{ order: OrderFull }>(`/admin/orders/${id}`).then((r) => {
@@ -657,6 +682,22 @@ export function AdminOrderDetail() {
 
       <ShipmentsSection orderId={order.id} />
 
+      {editingItemId && (() => {
+        const item = order.items.find((x) => x.id === editingItemId);
+        return item ? (
+          <ItemOptionsEditor
+            order={order}
+            item={item}
+            onClose={() => setEditingItemId(null)}
+            onDone={() => { setEditingItemId(null); load(); }}
+          />
+        ) : null;
+      })()}
+
+      {order.adjustments && order.adjustments.length > 0 && (
+        <AdjustmentsCard orderId={order.id} adjustments={order.adjustments} onChange={load} />
+      )}
+
       <div className="admin-card">
         <h3>Items</h3>
         <table className="admin-table">
@@ -680,6 +721,17 @@ export function AdminOrderDetail() {
                       <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
                         {pairs.map((p, j) => <li key={j}>{p.label}: {p.value}</li>)}
                       </ul>
+                    )}
+                    {order.paymentStatus === 'CAPTURED' && i.product.options.length > 0 && (
+                      <button
+                        className="btn secondary"
+                        style={{ marginTop: '.5rem', padding: '.25rem .6rem', fontSize: '.8rem' }}
+                        disabled={!!order.adjustments?.some((a) => a.status === 'pending')}
+                        title={order.adjustments?.some((a) => a.status === 'pending') ? 'Cancel the pending payment request first' : 'Change this item\'s selections and bill the difference'}
+                        onClick={() => setEditingItemId(i.id)}
+                      >
+                        ✎ Edit options
+                      </button>
                     )}
                     {i.files && i.files.length > 0 && (
                       <div style={{ marginTop: '.4rem', display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
@@ -1263,4 +1315,228 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+// ---------------------------------------------------------------------------
+// Post-order item changes + "pay the difference"
+// ---------------------------------------------------------------------------
+
+type ItemOf<O> = O extends { items: (infer I)[] } ? I : never;
+type OrderItemRow = ItemOf<OrderFull>;
+
+interface AdjustmentPreview {
+  changes: AdjustmentChange[];
+  before: AdjustmentTotals;
+  after: AdjustmentTotals;
+  amountCents: number;
+}
+
+function signed(cents: number): string {
+  return `${cents < 0 ? '−' : cents > 0 ? '+' : ''}${formatMoney(Math.abs(cents))}`;
+}
+
+/**
+ * Change one item's selections with the same controls the customer used, see
+ * the repriced result, then either bill the difference or apply a no-charge /
+ * credit change immediately.
+ */
+function ItemOptionsEditor({ order, item, onClose, onDone }: {
+  order: OrderFull; item: OrderItemRow; onClose: () => void; onDone: () => void;
+}) {
+  const options = [...item.product.options]
+    .filter((o) => o.type !== 'UPLOAD') // artwork is replaced through the proofing flow, not here
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) as unknown as ProductOption[];
+
+  const [sel, setSel] = useState<Record<string, string | number | boolean>>(() => ({ ...(item.options ?? {}) }));
+  const [preview, setPreview] = useState<AdjustmentPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty = JSON.stringify(sel) !== JSON.stringify(item.options ?? {});
+
+  // Reprice on every change, debounced, through the real engine on the server.
+  useEffect(() => {
+    if (!dirty) { setPreview(null); setPreviewError(null); return; }
+    const t = window.setTimeout(() => {
+      api.post<{ preview: AdjustmentPreview }>(`/admin/orders/${order.id}/adjustments/preview`, {
+        changes: [{ orderItemId: item.id, options: sel }],
+      })
+        .then((r) => { setPreview(r.preview); setPreviewError(null); })
+        .catch((e: any) => { setPreview(null); setPreviewError(e?.message ?? 'Could not price this change'); });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [sel, dirty, order.id, item.id]);
+
+  const change = preview?.changes[0];
+  const delta = preview?.amountCents ?? 0;
+
+  const submit = async () => {
+    if (!preview || !change || change.diff.length === 0) return;
+    const action = delta > 0
+      ? `Send ${order.email} a request to pay ${formatMoney(delta)}? The change is applied once they pay.`
+      : delta < 0
+        ? `Apply this change now? The customer will be owed ${formatMoney(-delta)} — refund it from the Payments panel afterwards.`
+        : 'Apply this change now? There is no difference in price.';
+    if (!confirm(action)) return;
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ applied: boolean; payUrl: string | null }>(`/admin/orders/${order.id}/adjustments`, {
+        changes: [{ orderItemId: item.id, options: sel }],
+        note: note.trim() || undefined,
+      });
+      if (r.applied) alert('Change applied to the order.');
+      else alert(`Payment request sent to ${order.email}.${r.payUrl ? `\n\nLink (also in the email):\n${r.payUrl}` : '\n\nNo public site URL is set in Settings → Store, so the email has no link — set it and use Resend.'}`);
+      onDone();
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save the change');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '2rem 1rem' }}
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <div className="admin-card" style={{ width: 'min(920px, 100%)', margin: 0, background: '#fff' }}>
+        <div className="spread" style={{ alignItems: 'flex-start' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Edit options — {item.name}</h3>
+            <div className="muted" style={{ fontSize: '.85rem' }}>Qty {item.quantity} · currently {formatMoney(item.unitPriceCents)} each</div>
+          </div>
+          <button className="btn secondary" onClick={onClose} disabled={busy}>Close</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(260px, 2fr)', gap: '1.5rem', marginTop: '1rem' }}>
+          <div style={{ display: 'grid', gap: '1.25rem' }}>
+            {options.map((opt) => (
+              <OptionControl
+                key={opt.id}
+                opt={opt}
+                value={sel[keyOf(opt)] as any}
+                onChange={(v) => setSel((s) => ({ ...s, [keyOf(opt)]: v }))}
+              />
+            ))}
+          </div>
+
+          <aside style={{ position: 'sticky', top: '1rem', alignSelf: 'start' }}>
+            <div className="admin-card" style={{ background: 'var(--bg-alt)', margin: 0 }}>
+              <h4 style={{ marginTop: 0 }}>Repriced</h4>
+              {!dirty && <p className="muted" style={{ margin: 0 }}>Change something to see the new price.</p>}
+              {dirty && !preview && !previewError && <p className="muted" style={{ margin: 0 }}>Pricing…</p>}
+              {previewError && <div className="error">{previewError}</div>}
+              {preview && change && (
+                <table style={{ width: '100%', fontSize: '.9rem' }}>
+                  <tbody>
+                    <tr><td>Unit</td><td style={{ textAlign: 'right' }}>{formatMoney(change.before.unitPriceCents)} → <strong>{formatMoney(change.after.unitPriceCents)}</strong></td></tr>
+                    <tr><td>Line × {change.quantity}</td><td style={{ textAlign: 'right' }}>{formatMoney(change.before.totalCents)} → <strong>{formatMoney(change.after.totalCents)}</strong></td></tr>
+                    {preview.after.taxCents !== preview.before.taxCents && (
+                      <tr><td>Tax</td><td style={{ textAlign: 'right' }}>{formatMoney(preview.before.taxCents)} → {formatMoney(preview.after.taxCents)}</td></tr>
+                    )}
+                    <tr><td>Order total</td><td style={{ textAlign: 'right' }}>{formatMoney(preview.before.totalCents)} → <strong>{formatMoney(preview.after.totalCents)}</strong></td></tr>
+                    <tr style={{ fontWeight: 800, fontSize: '1.1rem' }}>
+                      <td style={{ paddingTop: '.5rem' }}>{delta > 0 ? 'Customer owes' : delta < 0 ? 'Customer is owed' : 'Difference'}</td>
+                      <td style={{ paddingTop: '.5rem', textAlign: 'right', color: delta > 0 ? '#b91c1c' : delta < 0 ? '#166534' : 'inherit' }}>{signed(delta)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+              {change && change.diff.length > 0 && (
+                <ul className="muted" style={{ fontSize: '.8rem', margin: '.75rem 0 0', paddingLeft: '1rem' }}>
+                  {change.diff.map((d) => <li key={d.key}>{d.label}: {d.from} → <strong>{d.to}</strong></li>)}
+                </ul>
+              )}
+            </div>
+
+            <label style={{ marginTop: '1rem', fontSize: '.85rem' }}>Note to the customer (optional)</label>
+            <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Your files need the heavier cover to print cleanly — here's the difference." />
+
+            {error && <div className="error" style={{ marginTop: '.5rem' }}>{error}</div>}
+
+            <button
+              className="btn"
+              style={{ width: '100%', marginTop: '.75rem' }}
+              disabled={busy || !preview || !change || change.diff.length === 0}
+              onClick={submit}
+            >
+              {busy ? 'Working…'
+                : !change || change.diff.length === 0 ? 'No change yet'
+                : delta > 0 ? `Send payment request for ${formatMoney(delta)}`
+                : delta < 0 ? `Apply — customer owed ${formatMoney(-delta)}`
+                : 'Apply change (no price difference)'}
+            </button>
+            <p className="muted" style={{ fontSize: '.78rem', marginTop: '.5rem' }}>
+              Priced at today's list, scaled to the same rate the customer paid on this line — so the difference is only the option change.
+            </p>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdjustmentsCard({ orderId, adjustments, onChange }: { orderId: string; adjustments: AdjustmentRow[]; onChange: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const act = async (a: AdjustmentRow, what: 'resend' | 'cancel') => {
+    if (what === 'cancel' && !confirm('Cancel this payment request? The order stays as it was.')) return;
+    setBusy(a.id);
+    try {
+      const r = await api.post<{ ok: boolean; payUrl?: string | null }>(`/admin/orders/${orderId}/adjustments/${a.id}/${what}`);
+      if (what === 'resend') alert(`Sent.${r.payUrl ? `\n\n${r.payUrl}` : ''}`);
+      onChange();
+    } catch (e: any) { alert(e?.message ?? 'Failed'); } finally { setBusy(null); }
+  };
+  const copyLink = async (a: AdjustmentRow) => {
+    try {
+      const r = await api.post<{ ok: boolean; payUrl?: string | null }>(`/admin/orders/${orderId}/adjustments/${a.id}/resend`);
+      if (r.payUrl) { await navigator.clipboard?.writeText(r.payUrl); alert('Pay link copied (and the email re-sent).'); }
+      else alert('No public site URL is set in Settings → Store, so there is no link to copy.');
+    } catch (e: any) { alert(e?.message ?? 'Failed'); }
+  };
+  const tone: Record<AdjustmentRow['status'], string> = { pending: '#b45309', paid: '#166534', applied: '#166534', cancelled: '#6b7280' };
+
+  return (
+    <div className="admin-card">
+      <h3>Order changes</h3>
+      <div style={{ display: 'grid', gap: '.75rem' }}>
+        {adjustments.map((a) => (
+          <div key={a.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '.75rem 1rem' }}>
+            <div className="spread" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '.5rem' }}>
+              <div>
+                <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '.75rem', letterSpacing: '.05em', color: tone[a.status] }}>{a.status}</span>
+                <span style={{ marginLeft: '.6rem', fontWeight: 700 }}>{signed(a.amountCents)}</span>
+                <span className="muted" style={{ marginLeft: '.6rem', fontSize: '.85rem' }}>
+                  {new Date(a.createdAt).toLocaleString()}
+                  {a.paidAt && ` · paid ${new Date(a.paidAt).toLocaleString()}`}
+                  {a.status === 'pending' && ` · link expires ${new Date(a.expiresAt).toLocaleDateString()}`}
+                </span>
+              </div>
+              {a.status === 'pending' && (
+                <div className="row" style={{ gap: '.4rem' }}>
+                  <button className="btn secondary" style={{ padding: '.25rem .6rem', fontSize: '.8rem' }} disabled={busy === a.id} onClick={() => copyLink(a)}>Copy pay link</button>
+                  <button className="btn secondary" style={{ padding: '.25rem .6rem', fontSize: '.8rem' }} disabled={busy === a.id} onClick={() => act(a, 'resend')}>Resend email</button>
+                  <button className="btn secondary" style={{ padding: '.25rem .6rem', fontSize: '.8rem', color: '#b91c1c', borderColor: '#b91c1c' }} disabled={busy === a.id} onClick={() => act(a, 'cancel')}>Cancel</button>
+                </div>
+              )}
+            </div>
+            <ul className="muted" style={{ fontSize: '.85rem', margin: '.4rem 0 0', paddingLeft: '1rem' }}>
+              {a.changes.map((c) => (
+                <li key={c.orderItemId}>
+                  <strong>{c.itemName}</strong>: {c.diff.map((d) => `${d.label} ${d.from} → ${d.to}`).join(', ')}
+                  {' '}<span>({formatMoney(c.before.totalCents)} → {formatMoney(c.after.totalCents)})</span>
+                </li>
+              ))}
+            </ul>
+            {a.note && <div className="muted" style={{ fontSize: '.85rem', marginTop: '.35rem', fontStyle: 'italic' }}>"{a.note}"</div>}
+            {a.status === 'applied' && a.amountCents < 0 && (
+              <div style={{ fontSize: '.85rem', marginTop: '.35rem', color: '#166534' }}>Customer is owed {formatMoney(-a.amountCents)} — use "Refund via PayPal" in Payments.</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

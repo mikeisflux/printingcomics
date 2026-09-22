@@ -13,6 +13,8 @@ import { publishUpload } from '../../lib/storage.js';
 import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofKindLabel, computeOrderProofStatus } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import { requestReviewForOrder } from '../../lib/reviews.js';
+import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl } from '../../lib/order-adjustments.js';
+import { sendAdjustmentRequestEmail } from '../../lib/order-emails.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -112,10 +114,54 @@ router.get('/:id', async (req, res) => {
         },
       },
       mediaRequests: { orderBy: { createdAt: 'desc' } },
+      adjustments: { orderBy: { createdAt: 'desc' } },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
   res.json({ order });
+});
+
+// ---- Post-order item changes + "pay the difference" requests ----
+const optionValue = z.union([z.string(), z.number(), z.boolean()]);
+const changesSchema = z.array(z.object({
+  orderItemId: z.string().min(1),
+  options: z.record(z.string(), optionValue),
+})).min(1);
+
+router.post('/:id/adjustments/preview', async (req, res) => {
+  const { changes } = z.object({ changes: changesSchema }).parse(req.body);
+  res.json({ preview: await previewAdjustment(req.params.id, changes) });
+});
+
+router.post('/:id/adjustments', async (req, res) => {
+  const { changes, note, send } = z.object({
+    changes: changesSchema,
+    note: z.string().max(1000).optional(),
+    send: z.boolean().optional().default(true),
+  }).parse(req.body);
+  const actor = req.session as { sub?: string; name?: string; email?: string } | undefined;
+  const result = await createAdjustment({
+    orderId: req.params.id,
+    changes,
+    note,
+    actorId: actor?.sub,
+    actorName: actor?.name ?? actor?.email,
+  });
+  if (!result.applied && send && result.adjustment) void sendAdjustmentRequestEmail(result.adjustment.id);
+  res.json(result);
+});
+
+router.post('/:id/adjustments/:adjId/resend', async (req, res) => {
+  const adj = await prisma.orderAdjustment.findFirst({ where: { id: req.params.adjId, orderId: req.params.id } });
+  if (!adj) throw new HttpError(404, 'Adjustment not found');
+  if (adj.status !== 'pending') throw new HttpError(409, 'Only a pending payment request can be re-sent.');
+  await sendAdjustmentRequestEmail(adj.id);
+  res.json({ ok: true, payUrl: await adjustmentPayUrl(adj.token) });
+});
+
+router.post('/:id/adjustments/:adjId/cancel', async (req, res) => {
+  await cancelAdjustment(req.params.id, req.params.adjId, req.session?.sub);
+  res.json({ ok: true });
 });
 
 const updateSchema = z.object({

@@ -735,3 +735,8 @@ function UploadControl({
     </div>
   );
 }
+
+// The admin order editor renders the same controls the customer used, so a
+// staff-made change looks like the choice the customer would have made.
+export { OptionControl, keyOf };
+export type { ProductOption, ProductOptionValue, OptionType };

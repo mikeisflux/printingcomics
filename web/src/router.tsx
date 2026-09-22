@@ -6,6 +6,7 @@ import { AdminLayout } from './components/AdminLayout';
 import { Home } from './pages/Home';
 import { Shop } from './pages/Shop';
 import { ShippingSupplies } from './pages/ShippingSupplies';
+import { AdjustmentPay } from './pages/AdjustmentPay';
 import { CategoryConfigure } from './pages/CategoryConfigure';
 import { Product } from './pages/Product';
 import { CartPage } from './pages/CartPage';
@@ -104,6 +105,7 @@ export const router = createBrowserRouter([
       { path: 'developers', element: <Developers /> },
       { path: 'proof/:token', element: <ProofReview /> },
       { path: 'review/:token', element: <ReviewForm /> },
+      { path: 'pay/:token', element: <AdjustmentPay /> },
       { path: 'upload/:token', element: <CorrectedUpload /> },
     ],
   },

@@ -338,6 +338,7 @@ model Order {
 
   items           OrderItem[]
   payments        Payment[]
+  adjustments     OrderAdjustment[]
   events          OrderStatusEvent[]
   review          Review?
   shipments       Shipment[]
@@ -800,9 +801,46 @@ model Payment {
   status          PaymentStatus @default(PENDING)
   rawPayload      Json?
   createdAt       DateTime      @default(now())
+  // Set when this payment collects the balance for a post-order change.
+  adjustment      OrderAdjustment?
 
   @@index([orderId])
   @@index([providerRef])
+}
+
+// A staff-made change to a paid order's items (cover, paper, page count …),
+// repriced through the pricing engine. When the new price is higher the
+// change waits in `pending` until the customer pays the difference through
+// the tokenized /pay/<token> link; then it is `applied` to the order. A
+// change that costs the same or less is applied immediately and the credit
+// is left for staff to refund.
+model OrderAdjustment {
+  id            String    @id @default(cuid())
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId       String
+  // Unguessable token for the customer's no-login pay link.
+  token         String    @unique
+  // "pending" | "paid" | "applied" | "cancelled"
+  status        String    @default("pending")
+  // after.total − before.total. Positive = customer owes it.
+  amountCents   Int
+  // Staff's reason, shown to the customer.
+  note          String?
+  // ItemChange[] — per item: before/after options + prices, and the diff.
+  changes       Json
+  // { before: Totals, after: Totals } snapshot the change was priced against.
+  totals        Json
+  paypalOrderId String?
+  payment       Payment?  @relation(fields: [paymentId], references: [id])
+  paymentId     String?   @unique
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  paidAt        DateTime?
+  appliedAt     DateTime?
+  expiresAt     DateTime
+
+  @@index([orderId])
+  @@index([status])
 }
 
 model ShippingZone {
