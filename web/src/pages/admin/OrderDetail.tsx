@@ -457,7 +457,7 @@ export function AdminOrderDetail() {
   const [saving, setSaving] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [previewMedia, setPreviewMedia] = useState<{ id: string; url: string; originalName: string } | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<{ id?: string; url: string; originalName: string } | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -714,10 +714,20 @@ export function AdminOrderDetail() {
                               // below for name/size when it isn't).
                               p.urls.map((u, k) => {
                                 const name = u.split('?')[0]!.split('/').pop() ?? u;
+                                // Prefer the linked file row (has the original name); fall back to a URL lookup.
+                                const linked = i.files?.find((f) => f.media.url === u || f.media.url.split('?')[0] === u.split('?')[0]);
                                 return (
                                   <span key={k} style={{ marginRight: '.6rem', whiteSpace: 'nowrap' }}>
-                                    📎 <a href={u} target="_blank" rel="noreferrer" title="Open in a new tab">{name}</a>
-                                    {' '}<a href={u} download={name} title="Save to your computer" style={{ fontSize: '.75rem' }}>save</a>
+                                    📎{' '}
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewMedia(linked ? linked.media : { url: u, originalName: name })}
+                                      title="Preview"
+                                      style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'var(--brand)', cursor: 'pointer' }}
+                                    >
+                                      {linked?.media.originalName ?? name}
+                                    </button>
+                                    {' '}<a href={u} download={linked?.media.originalName ?? name} title="Save to your computer" style={{ fontSize: '.75rem' }}>save</a>
                                   </span>
                                 );
                               })

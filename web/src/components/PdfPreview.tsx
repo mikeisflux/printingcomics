@@ -46,10 +46,21 @@ export function PdfPreview({
     return () => window.removeEventListener('keydown', h);
   }, [info]);
 
+  // Download is the reliable action. The raw-PDF link is still offered, but
+  // named for what it does: it hands the file to the browser's own viewer,
+  // which is the thing that shows print PDFs as black pages.
   const links = (
     <div className="row" style={{ marginTop: '.75rem', flexWrap: 'wrap', gap: '.5rem' }}>
-      <a className="btn secondary sm" href={fileUrl} target="_blank" rel="noopener noreferrer">Open original</a>
-      <a className="btn secondary sm" href={fileUrl} download={fileName}>Download</a>
+      <a className="btn sm" href={fileUrl} download={fileName}>Download</a>
+      <a
+        className="btn secondary sm"
+        href={fileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Opens in the browser's own PDF viewer, which often shows print-production PDFs as black pages. Download is the reliable option."
+      >
+        {info?.kind === 'image' ? 'Open full size' : 'Open raw PDF in browser'}
+      </a>
     </div>
   );
 
@@ -109,14 +120,29 @@ export function PdfPreview({
   );
 }
 
-/** A modal around PdfPreview for the admin's file chips. */
+/**
+ * A modal around PdfPreview for the admin's file chips. Can start from just a
+ * URL (the option summary only has that); the file is then looked up by it.
+ */
 export function FilePreviewModal({
   media, token, onClose,
 }: {
-  media: { id: string; url: string; originalName: string };
+  media: { id?: string; url: string; originalName: string };
   token?: string;
   onClose: () => void;
 }) {
+  const [resolved, setResolved] = useState<{ id: string; url: string; originalName: string } | null>(media.id ? { id: media.id, url: media.url, originalName: media.originalName } : null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (media.id) return;
+    let alive = true;
+    api.get<{ media: { id: string; url: string; originalName: string } }>(`/previews/lookup?url=${encodeURIComponent(media.url)}`)
+      .then((r) => { if (alive) setResolved(r.media); })
+      .catch((e: any) => { if (alive) setLookupError(e?.message ?? 'Could not find this file'); });
+    return () => { alive = false; };
+  }, [media.id, media.url]);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
@@ -127,10 +153,19 @@ export function FilePreviewModal({
     <div className="pc-dialog-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="pc-dialog" role="dialog" aria-modal="true" style={{ width: 'min(960px, 100%)', maxHeight: '92vh', overflowY: 'auto' }}>
         <div className="spread" style={{ marginBottom: '.75rem' }}>
-          <h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{media.originalName}</h3>
+          <h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{resolved?.originalName ?? media.originalName}</h3>
           <button type="button" className="btn secondary sm" onClick={onClose}>Close</button>
         </div>
-        <PdfPreview mediaId={media.id} token={token} fileUrl={media.url} fileName={media.originalName} maxHeight={720} />
+        {resolved ? (
+          <PdfPreview mediaId={resolved.id} token={token} fileUrl={resolved.url} fileName={resolved.originalName} maxHeight={720} />
+        ) : lookupError ? (
+          <div>
+            <div className="error">{lookupError}</div>
+            <a className="btn sm" href={media.url} download={media.originalName}>Download</a>
+          </div>
+        ) : (
+          <p className="muted">Finding the file…</p>
+        )}
       </div>
     </div>
   );

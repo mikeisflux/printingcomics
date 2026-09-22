@@ -28,6 +28,24 @@ async function allowed(req: Request, mediaId: string): Promise<boolean> {
   return (await prisma.proof.count({ where: { orderId: proof.orderId, mediaFileId: mediaId } })) > 0;
 }
 
+/**
+ * The order page's option summary only knows a file's URL. Resolve it to the
+ * MediaFile so the same preview can open from there. The storage filename is
+ * unique and is always the URL's last path segment, whatever the backend.
+ */
+router.get('/lookup', async (req, res) => {
+  const role = req.session?.role;
+  if (role !== 'ADMIN' && role !== 'STAFF') throw new HttpError(403, 'Staff only');
+  const url = String(req.query.url ?? '');
+  if (!url) throw new HttpError(400, 'url is required');
+  const filename = decodeURIComponent(url.split('?')[0]!.split('/').pop() ?? '');
+  const media =
+    (filename ? await prisma.mediaFile.findUnique({ where: { filename }, select: { id: true, url: true, originalName: true, mimeType: true } }) : null)
+    ?? (await prisma.mediaFile.findFirst({ where: { url }, select: { id: true, url: true, originalName: true, mimeType: true } }));
+  if (!media) throw new HttpError(404, 'No stored file matches that link');
+  res.json({ media });
+});
+
 router.get('/:mediaId/info', async (req, res) => {
   const id = String(req.params.mediaId);
   if (!(await allowed(req, id))) throw new HttpError(403, 'Not allowed to view this file');
