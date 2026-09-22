@@ -10,10 +10,10 @@ import {
 } from '../../lib/order-emails.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { publishUpload } from '../../lib/storage.js';
-import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofKindLabel, computeOrderProofStatus } from '../../lib/proofs.js';
+import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofSlotLabel, computeOrderProofStatus, itemTitle, PROOF_PRODUCT_SLUG } from '../../lib/proofs.js';
 import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import { requestReviewForOrder } from '../../lib/reviews.js';
-import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl } from '../../lib/order-adjustments.js';
+import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl, optionKey } from '../../lib/order-adjustments.js';
 import { backfillOrderUploads } from '../../lib/order-files.js';
 import { sendAdjustmentRequestEmail } from '../../lib/order-emails.js';
 import multer from 'multer';
@@ -116,7 +116,7 @@ router.get('/:id', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: {
           media: { select: { id: true, originalName: true, url: true, size: true, mimeType: true } },
-          orderItem: { select: { id: true, name: true } },
+          orderItem: { select: { id: true, name: true, options: true } },
         },
       },
       mediaRequests: { orderBy: { createdAt: 'desc' } },
@@ -168,6 +168,67 @@ router.post('/:id/adjustments/:adjId/resend', async (req, res) => {
 router.post('/:id/adjustments/:adjId/cancel', async (req, res) => {
   await cancelAdjustment(req.params.id, req.params.adjId, req.session?.sub);
   res.json({ ok: true });
+});
+
+// ---- Rename: change a free-text option (the "Title of Comic") on one line ----
+// Text fields never affect price, so there is nothing to reprice or bill —
+// they are edited in place. Priced selections go through the adjustment flow
+// above. Titles must be unique within the order: they are how staff, the
+// proof queue and the customer's proof emails tell twelve identical
+// "Comic Book — Standard" lines apart.
+const textSchema = z.object({
+  key: z.string().min(1).max(100),
+  value: z.string().max(200),
+});
+
+router.patch('/:id/items/:itemId/text', async (req, res) => {
+  const { key, value } = textSchema.parse(req.body);
+  const orderId = String(req.params.id);
+  const item = await prisma.orderItem.findFirst({
+    where: { id: String(req.params.itemId), orderId },
+    include: { product: { select: { options: { select: { name: true, internalKey: true, type: true, required: true } } } } },
+  });
+  if (!item) throw new HttpError(404, 'Order item not found');
+
+  const opt = item.product.options.find((o) => optionKey(o) === key);
+  if (!opt) throw new HttpError(400, 'That option does not exist on this product.');
+  if (opt.type !== 'TEXT') throw new HttpError(400, `${opt.name} affects the price — change it with "Edit options" so the difference can be billed.`);
+
+  const next = value.trim();
+  if (!next && opt.required) throw new HttpError(400, `${opt.name} cannot be blank.`);
+
+  if (key === 'title' && next) {
+    const siblings = await prisma.orderItem.findMany({
+      where: { orderId, id: { not: item.id }, product: { slug: { not: PROOF_PRODUCT_SLUG } } },
+      select: { name: true, options: true },
+    });
+    const clash = siblings.find((s) => itemTitle(s).toLowerCase() === next.toLowerCase());
+    if (clash) throw new HttpError(409, `Another item on this order is already titled “${next}”. Each book needs its own title — add the issue, volume or cover to tell them apart.`);
+  }
+
+  const before = (item.options && typeof item.options === 'object' && !Array.isArray(item.options))
+    ? { ...(item.options as Record<string, unknown>) }
+    : {};
+  const previous = typeof before[key] === 'string' ? (before[key] as string).trim() : '';
+  if (previous === next) { res.json({ item: { id: item.id, options: before } }); return; }
+
+  const after = { ...before };
+  if (next) after[key] = next; else delete after[key];
+
+  const actor = req.session as { sub?: string; name?: string; email?: string } | undefined;
+  const [updated] = await prisma.$transaction([
+    prisma.orderItem.update({ where: { id: item.id }, data: { options: after as object }, select: { id: true, options: true } }),
+    prisma.orderStatusEvent.create({
+      data: {
+        orderId,
+        kind: 'note',
+        message: `${opt.name} changed ${previous ? `from “${previous}” ` : ''}to “${next || '(blank)'}” — ${item.name} × ${item.quantity}`,
+        actorId: actor?.sub,
+        actorName: actor?.name ?? actor?.email,
+      },
+    }),
+  ]);
+  res.json({ item: updated });
 });
 
 const updateSchema = z.object({
@@ -423,12 +484,13 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
     throw new HttpError(400, 'kind must be "cover", "interior" or "artwork"');
   }
   let itemName: string | null = null;
+  let slotLabel = proofSlotLabel(kind, null);
   if (orderItemId) {
-    const item = await prisma.orderItem.findFirst({ where: { id: orderItemId, orderId: order.id }, select: { name: true } });
+    const item = await prisma.orderItem.findFirst({ where: { id: orderItemId, orderId: order.id }, select: { name: true, options: true } });
     if (!item) throw new HttpError(400, 'orderItemId does not belong to this order');
     itemName = item.name;
+    slotLabel = proofSlotLabel(kind, item);
   }
-  const slotLabel = `${proofKindLabel(kind)}${itemName ? ` — ${itemName}` : ''}`;
 
   const stored = await publishUpload({
     subdir: 'proofs', filename: f.filename, localPath: f.path,
@@ -506,8 +568,9 @@ router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res
   const rawMessage = req.body?.message;
   const message = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.trim() : undefined;
 
-  const items = await prisma.orderItem.findMany({ where: { orderId: order.id }, select: { id: true, name: true } });
+  const items = await prisma.orderItem.findMany({ where: { orderId: order.id }, select: { id: true, name: true, options: true } });
   const itemName = new Map(items.map((i) => [i.id, i.name]));
+  const itemById = new Map(items.map((i) => [i.id, i]));
   for (const a of assignments) {
     if (a.kind && !['cover', 'interior', 'artwork'].includes(a.kind)) {
       throw new HttpError(400, 'kind must be "cover", "interior" or "artwork"');
@@ -544,7 +607,7 @@ router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res
       data: { orderId: order.id, orderItemId, kind, mediaFileId: media.id, version, token: proofToken(), message, status: 'pending' },
     });
     created.push({ id: proof.id, token: proof.token, version, orderItemId, kind, fileUrl: media.url });
-    summaries.push(`${proofKindLabel(kind)}${orderItemId ? ` — ${itemName.get(orderItemId)}` : ''} v${version}`);
+    summaries.push(`${proofSlotLabel(kind, orderItemId ? itemById.get(orderItemId) : null)} v${version}`);
   }
 
   const orderProofStatus = await computeOrderProofStatus(order.id);
@@ -586,10 +649,10 @@ router.delete('/:id/proof/:proofId', async (req, res) => {
   const orderId = String(req.params.id);
   const proof = await prisma.proof.findFirst({
     where: { id: String(req.params.proofId), orderId },
-    include: { media: true, orderItem: { select: { name: true } } },
+    include: { media: true, orderItem: { select: { name: true, options: true } } },
   });
   if (!proof) throw new HttpError(404, 'Proof not found');
-  const slotLabel = `${proofKindLabel(proof.kind)}${proof.orderItem ? ` — ${proof.orderItem.name}` : ''}`;
+  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
 
   await prisma.proof.delete({ where: { id: proof.id } });
   if (proof.media?.url?.startsWith('/uploads/')) {

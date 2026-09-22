@@ -96,7 +96,7 @@ interface OrderFull {
   proofs?: {
     id: string; version: number; status: string; token: string;
     orderItemId?: string | null; kind?: string | null;
-    orderItem?: { id: string; name: string } | null;
+    orderItem?: { id: string; name: string; options?: any } | null;
     message: string | null; decisionNote: string | null; approvedName: string | null;
     approvedTermsAt: string | null; decidedAt: string | null; createdAt: string;
     media: { id: string; originalName: string; url: string; size: number; mimeType: string };
@@ -133,9 +133,24 @@ function proofKindsForSlug(slug: string): string[] {
   return ['artwork'];
 }
 
-function slotLabelOf(p: { kind?: string | null; orderItem?: { name: string } | null }): string {
+/** The customer's "Title of Comic" for a line, trimmed, or ''. */
+function titleOf(item: { options?: any } | null | undefined): string {
+  const t = item?.options?.title;
+  return typeof t === 'string' ? t.trim() : '';
+}
+
+// A line is named by its title first — `“Issue #1” · Comic Book — Standard…`.
+// Twelve lines of the same product are indistinguishable by product name,
+// which is the whole reason titles exist (the server labels proofs the same way).
+function labelOf(item: { name: string; options?: any } | null | undefined): string {
+  if (!item) return '';
+  const t = titleOf(item);
+  return t ? `“${t}” · ${item.name}` : item.name;
+}
+
+function slotLabelOf(p: { kind?: string | null; orderItem?: { name: string; options?: any } | null }): string {
   const kind = p.kind ? (PROOF_KIND_LABELS[p.kind] ?? 'Proof') : 'Proof';
-  return p.orderItem ? `${kind} — ${p.orderItem.name}` : kind;
+  return p.orderItem ? `${kind} — ${labelOf(p.orderItem)}` : kind;
 }
 
 function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
@@ -155,12 +170,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 
   // Items that can be proofed (the hard-copy-proof fee line is not an item to proof).
   const proofItems = order.items.filter((i) => i.product.slug !== 'hard-copy-proof');
-  // Several lines can share a product name — show the customer's title so
-  // they're distinguishable in the checklist and the queue's dropdowns.
-  const itemLabel = (it: (typeof proofItems)[number]) => {
-    const title = typeof it.options?.title === 'string' ? it.options.title.trim() : '';
-    return title ? `${it.name} — “${title}”` : it.name;
-  };
+  const itemLabel = (it: (typeof proofItems)[number]) => labelOf(it);
 
   // Upload queue: pick many files at once, assign each a slot, send together.
   const [queue, setQueue] = useState<{ file: File; itemId: string; kind: string }[]>([]);
@@ -285,7 +295,17 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
           </div>
           {proofItems.map((it) => (
             <div key={it.id} style={{ padding: '.25rem 0', fontSize: '.85rem' }}>
-              <strong>{it.name}</strong>
+              {titleOf(it) ? (
+                <>
+                  <strong>“{titleOf(it)}”</strong>
+                  <span className="muted"> · {it.name}</span>
+                </>
+              ) : (
+                <>
+                  <strong>{it.name}</strong>
+                  <span style={{ color: '#b91c1c', fontSize: '.8rem' }}> · no title — add one in Items below</span>
+                </>
+              )}
               <span style={{ display: 'inline-flex', gap: '.75rem', marginLeft: '.75rem', flexWrap: 'wrap' }}>
                 {proofKindsForSlug(it.product.slug).map((k) => {
                   const chip = slotChip(latestBySlot.get(`${it.id}:${k}`)?.status);
@@ -692,7 +712,11 @@ export function AdminOrderDetail() {
           <tbody>
             {order.items.map((i) => {
               const img = i.product?.images?.[0]?.url;
-              const pairs = formatCartItemOptions(i);
+              // Free-text options (the title) get their own editable rows;
+              // keep them out of the read-only summary list.
+              const textOptions = i.product.options.filter((o) => o.type === 'TEXT');
+              const textLabels = new Set(textOptions.map((o) => o.name));
+              const pairs = formatCartItemOptions(i).filter((p) => !textLabels.has(p.label));
               return (
                 <tr key={i.id}>
                   <td style={{ width: 60 }}>
@@ -704,6 +728,9 @@ export function AdminOrderDetail() {
                   </td>
                   <td>
                     <Link to={`/product/${i.product.slug}`}>{i.name}</Link>
+                    {textOptions.map((o) => (
+                      <TextOptionRow key={o.id} orderId={order.id} item={i} opt={o} onSaved={load} />
+                    ))}
                     {pairs.length > 0 && (
                       <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
                         {pairs.map((p, j) => (
@@ -1353,6 +1380,86 @@ interface AdjustmentPreview {
 
 function signed(cents: number): string {
   return `${cents < 0 ? '−' : cents > 0 ? '+' : ''}${formatMoney(Math.abs(cents))}`;
+}
+
+/**
+ * One free-text option on an order line (the "Title of Comic"), edited in
+ * place. Text never moves the price, so there is nothing to reprice or bill —
+ * unlike Edit options — and it can be changed at any order status. The
+ * server keeps titles unique within the order.
+ */
+function TextOptionRow({ orderId, item, opt, onSaved }: {
+  orderId: string;
+  item: OrderItemRow;
+  opt: OrderItemRow['product']['options'][number];
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const key = keyOf(opt as unknown as ProductOption);
+  const raw = item.options?.[key];
+  const current = typeof raw === 'string' ? raw.trim() : '';
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { if (!editing) setDraft(current); }, [current, editing]);
+
+  const cancel = () => { setEditing(false); setDraft(current); };
+  const save = async () => {
+    if (draft.trim() === current) { cancel(); return; }
+    setBusy(true);
+    try {
+      await api.patch(`/admin/orders/${orderId}/items/${item.id}/text`, { key, value: draft });
+      toast.success(`${opt.name} updated.`);
+      setEditing(false);
+      onSaved();
+    } catch (e: any) {
+      toast.error(errorMessage(e, `Could not update ${opt.name}`));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className="row" style={{ gap: '.4rem', margin: '.3rem 0', flexWrap: 'wrap', fontSize: '.9rem' }}>
+        <span className="muted">{opt.name}:</span>
+        {current
+          ? <strong>“{current}”</strong>
+          : <span style={{ color: '#b91c1c', fontWeight: 600 }}>none</span>}
+        <button
+          type="button"
+          className="btn secondary sm"
+          style={{ padding: '.1rem .5rem', fontSize: '.75rem' }}
+          onClick={() => setEditing(true)}
+          title="Change the text only — no price change, no payment request"
+        >
+          ✎ {current ? 'Rename' : 'Add'}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="row"
+      style={{ gap: '.4rem', margin: '.3rem 0', flexWrap: 'wrap', fontSize: '.9rem' }}
+      onSubmit={(e) => { e.preventDefault(); void save(); }}
+    >
+      <span className="muted">{opt.name}:</span>
+      <input
+        autoFocus
+        value={draft}
+        maxLength={200}
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') cancel(); }}
+        placeholder={opt.required ? 'Required' : ''}
+        style={{ flex: '1 1 240px', maxWidth: 440, margin: 0 }}
+      />
+      <button type="submit" className="btn sm" disabled={busy || (!!opt.required && !draft.trim())}>{busy ? 'Saving…' : 'Save'}</button>
+      <button type="button" className="btn secondary sm" disabled={busy} onClick={cancel}>Cancel</button>
+    </form>
+  );
 }
 
 /**

@@ -6,7 +6,8 @@ import { HttpError } from '../middleware/error.js';
 import { priceForQuantity, type VolumeTier } from '../lib/money.js';
 import { computePricing, type PricingConfig } from '../lib/pricing.js';
 import { getSetting } from '../lib/settings.js';
-import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, PROOF_PRODUCT_SLUG } from '../lib/proofs.js';
+import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, PROOF_PRODUCT_SLUG, itemTitle } from '../lib/proofs.js';
+import { optionKey } from '../lib/order-adjustments.js';
 import { isProd } from '../config.js';
 
 const router = Router();
@@ -82,11 +83,35 @@ router.post('/items', async (req, res) => {
 
   const product = await prisma.product.findUnique({
     where: { id: data.productId },
-    include: { variants: true },
+    include: { variants: true, options: { select: { name: true, internalKey: true, type: true, required: true } } },
   });
   if (!product || !product.active) throw new HttpError(404, 'Product not found');
   if (data.quantity < product.minQuantity) {
     throw new HttpError(400, `Minimum quantity is ${product.minQuantity}`);
+  }
+
+  // Every book needs its own title. The title is the only thing that tells
+  // two lines of the same product apart — on the order, in the proof queue
+  // and in the customer's proof emails. One customer once titled twelve
+  // different books identically and every proof came back ambiguous, so a
+  // blank or repeated title is refused here, whatever the browser allowed.
+  const titleOpt = product.options.find((o) => o.type === 'TEXT' && optionKey(o) === 'title');
+  if (titleOpt) {
+    const title = (data.options?.['title'] ?? '').trim();
+    if (!title && titleOpt.required) {
+      throw new HttpError(400, `Please give this book a title (${titleOpt.name}) so we can tell it apart from the others in your order.`);
+    }
+    if (title) {
+      data.options = { ...(data.options ?? {}), title };
+      const inCart = await prisma.cartItem.findMany({
+        where: { cartId: cart.id },
+        select: { options: true, product: { select: { slug: true } } },
+      });
+      const clash = inCart.find((it) => it.product.slug !== PROOF_PRODUCT_SLUG && itemTitle(it).toLowerCase() === title.toLowerCase());
+      if (clash) {
+        throw new HttpError(400, `You already have “${title}” in your cart. Each book needs its own title — add the issue number, volume or cover type (for example “${title} — Raised Metal cover”), or change the quantity of the one already in your cart instead.`);
+      }
+    }
   }
 
   let unitPriceCents = product.priceCents;

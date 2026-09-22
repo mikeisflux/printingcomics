@@ -74,24 +74,38 @@ export function proofKindLabel(kind: string | null | undefined): string {
   return (kind && PROOF_KIND_LABELS[kind]) || 'Proof';
 }
 
+/** The title the customer gave a line item ("Title of Comic"), trimmed, or ''. */
+export function itemTitle(orderItem?: { options?: unknown } | null): string {
+  const t = (orderItem?.options as Record<string, unknown> | null | undefined)?.['title'];
+  return typeof t === 'string' ? t.trim() : '';
+}
+
+/**
+ * How a line item is named everywhere staff and customers read it:
+ *   `“Issue #1” · Comic Book — Standard (6.625" × 10.25")`
+ *
+ * The title leads. An order routinely holds several lines of the SAME
+ * product — twelve "Comic Book — Standard" rows tell nobody which book is
+ * which — so the product name is only the qualifier. Without a title the
+ * product name is all there is.
+ */
+export function itemLabel(orderItem?: { name?: string | null; options?: unknown } | null): string {
+  const name = orderItem?.name ?? '';
+  const title = itemTitle(orderItem);
+  return title ? `“${title}”${name ? ` · ${name}` : ''}` : name;
+}
+
 /**
  * Human label for one proof slot, e.g.
- *   `Cover proof — Comic Book — Standard (6.625" × 10.25") · "Issue #1"`
- *
- * An order can hold several lines of the SAME product, so the product name
- * alone is ambiguous — the customer sees two identical rows and can't tell
- * which is which. Append the title they typed in the configurator whenever
- * it's set.
+ *   `Cover proof — “Issue #1” · Comic Book — Standard (6.625" × 10.25")`
  */
 export function proofSlotLabel(
   kind: string | null | undefined,
   orderItem?: { name?: string | null; options?: unknown } | null,
 ): string {
   const base = proofKindLabel(kind);
-  if (!orderItem?.name) return base;
-  const title = (orderItem.options as Record<string, unknown> | null | undefined)?.['title'];
-  const suffix = typeof title === 'string' && title.trim() ? ` · “${title.trim()}”` : '';
-  return `${base} — ${orderItem.name}${suffix}`;
+  const label = itemLabel(orderItem);
+  return label ? `${base} — ${label}` : base;
 }
 
 type ItemWithProduct = {
