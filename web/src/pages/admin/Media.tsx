@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../../api/client';
-import { PdfPreview } from '../../components/PdfPreview';
+import { PdfPreview, FilePreviewModal } from '../../components/PdfPreview';
 import { downloadHref } from '../../lib/files';
 import { useToast, useConfirm, usePrompt, errorMessage } from '../../components/admin/ui';
 
@@ -44,6 +44,7 @@ export function AdminMedia() {
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<MediaFile | null>(null);
+  const [previewing, setPreviewing] = useState<MediaFile | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -243,16 +244,14 @@ export function AdminMedia() {
                     </div>
                     <div style={{ fontSize: '.75rem', color: 'var(--ink-muted)' }}>{humanSize(f.size)}</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.3rem', marginTop: '.4rem' }}>
-                      <a
+                      <button
+                        type="button"
                         className="btn secondary"
                         style={{ fontSize: '.72rem', padding: '.2rem .45rem' }}
-                        href={f.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setPreviewing(f); }}
                       >
                         Preview
-                      </a>
+                      </button>
                       <a
                         className="btn secondary"
                         style={{ fontSize: '.72rem', padding: '.2rem .45rem' }}
@@ -280,6 +279,7 @@ export function AdminMedia() {
       </div>
 
       {editing && <EditDialog file={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />}
+      {previewing && <FilePreviewModal media={previewing} onClose={() => setPreviewing(null)} />}
     </div>
   );
 }

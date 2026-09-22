@@ -51,10 +51,17 @@ router.get(/^\/(.+)$/, async (req, res) => {
   // viewer (which renders print PDFs as black pages) when people clicked
   // "download". The bytes are the untouched original either way; only the
   // disposition changes, and the customer's original filename comes back.
-  const wantsDownload = req.query.download === '1' || req.query.download === 'true';
-  const originalName = wantsDownload
-    ? (await prisma.mediaFile.findUnique({ where: { filename }, select: { originalName: true } }))?.originalName ?? filename
-    : filename;
+  //
+  // PDFs download by default, whatever link asked for them — not only when
+  // ?download=1 is present. Browser PDF viewers (Firefox's pdf.js, Chrome's
+  // PDFium) show print-production PDFs as black pages, and nothing on the
+  // site needs a PDF opened in a tab any more (previews are rendered
+  // server-side). ?inline=1 is the explicit opt-out.
+  const media = await prisma.mediaFile.findUnique({ where: { filename }, select: { originalName: true, mimeType: true } });
+  const isPdf = media?.mimeType === 'application/pdf' || /\.pdf$/i.test(filename);
+  const wantsDownload =
+    req.query.download === '1' || req.query.download === 'true' || (isPdf && req.query.inline !== '1');
+  const originalName = media?.originalName ?? filename;
 
   if (await isR2Enabled()) {
     const url = wantsDownload
@@ -62,7 +69,9 @@ router.get(/^\/(.+)$/, async (req, res) => {
       : (await r2PublicUrl(key)) ?? (await r2SignedUrl(key, 3600));
     if (url) {
       // Short-lived redirect: the signature expires, the /api/files URL doesn't.
-      res.setHeader('Cache-Control', 'private, max-age=300');
+      // Downloads are never cached, so a redirect minted before a deploy can't
+      // be replayed without the attachment disposition.
+      res.setHeader('Cache-Control', wantsDownload ? 'no-store' : 'private, max-age=300');
       return res.redirect(302, url);
     }
   }
