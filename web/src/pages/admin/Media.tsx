@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../../api/client';
+import { PdfPreview } from '../../components/PdfPreview';
 import { useToast, useConfirm, usePrompt, errorMessage } from '../../components/admin/ui';
 
 interface MediaFile {
@@ -322,11 +323,7 @@ function EditDialog({ file, onClose, onSaved }: { file: MediaFile; onClose: () =
         {isPdf && (
           <div style={{ marginBottom: '1rem' }}>
             {showPdf ? (
-              <iframe
-                title={`Preview of ${file.originalName}`}
-                src={file.url}
-                style={{ width: '100%', height: 460, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
-              />
+              <PdfPreview mediaId={file.id} fileUrl={file.url} fileName={file.originalName} maxHeight={520} />
             ) : (
               <button type="button" className="btn secondary" style={{ width: '100%' }} onClick={() => setShowPdf(true)}>
                 Show PDF preview

@@ -5,6 +5,7 @@ import { formatCartItemOptions } from '../../lib/cart-options';
 import { StatusBadge } from '../Account';
 import { OptionControl, keyOf, type ProductOption } from '../Product';
 import { PageHeader, errorMessage, useConfirm, useToast } from '../../components/admin/ui';
+import { FilePreviewModal } from '../../components/PdfPreview';
 
 interface OrderEvent {
   id: string;
@@ -138,6 +139,7 @@ function slotLabelOf(p: { kind?: string | null; orderItem?: { name: string } | n
 
 function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
   const confirm = useConfirm();
+  const [previewMedia, setPreviewMedia] = useState<{ id: string; url: string; originalName: string } | null>(null);
   const [showProof, setShowProof] = useState(false);
   const [proofMsg, setProofMsg] = useState('');
   const [showRequest, setShowRequest] = useState(false);
@@ -243,6 +245,8 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
   }
 
   return (
+    <>
+      {previewMedia && <FilePreviewModal media={previewMedia} onClose={() => setPreviewMedia(null)} />}
     <div className="admin-card">
       <h3 style={{ marginTop: 0 }}>Proofing</h3>
       {banner ? (
@@ -401,7 +405,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
                 {p.media.size ? <span> · {(p.media.size / 1024 / 1024).toFixed(2)} MB</span> : null}
               </div>
               <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginTop: '.25rem' }}>
-                <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} target="_blank" rel="noreferrer">Preview</a>
+                <button type="button" className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} onClick={() => setPreviewMedia(p.media)}>Preview</button>
                 <a className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} href={p.media.url} download={p.media.originalName}>Download</a>
                 <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem' }} onClick={() => { void navigator.clipboard?.writeText(`${origin}/proof/${p.token}`); }}>Copy review link</button>
                 <button
@@ -436,6 +440,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -452,6 +457,7 @@ export function AdminOrderDetail() {
   const [saving, setSaving] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<{ id: string; url: string; originalName: string } | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -651,6 +657,8 @@ export function AdminOrderDetail() {
 
       <ShipmentsSection orderId={order.id} />
 
+      {previewMedia && <FilePreviewModal media={previewMedia} onClose={() => setPreviewMedia(null)} />}
+
       {refundOpen && (
         <RefundDialog
           orderId={order.id}
@@ -743,10 +751,9 @@ export function AdminOrderDetail() {
                               fontSize: '.8rem',
                             }}
                           >
-                            <a
-                              href={f.media.url}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => setPreviewMedia(f.media)}
                               title={f.notes ?? 'Preview'}
                               style={{
                                 display: 'inline-flex',
@@ -754,7 +761,10 @@ export function AdminOrderDetail() {
                                 gap: 6,
                                 padding: '.3rem .55rem',
                                 background: 'var(--bg-alt)',
-                                textDecoration: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                                color: 'var(--brand)',
                               }}
                             >
                               <span style={{ fontWeight: 600 }}>
@@ -762,7 +772,7 @@ export function AdminOrderDetail() {
                               </span>
                               <span style={{ color: 'var(--ink)' }}>{f.media.originalName}</span>
                               <span className="muted">({formatBytes(f.media.size)})</span>
-                            </a>
+                            </button>
                             <a
                               href={f.media.url}
                               download={f.media.originalName}

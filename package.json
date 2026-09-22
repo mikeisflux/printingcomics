@@ -25,6 +25,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:cws": "tsx prisma/seed-cws.ts",
+    "verify:files": "tsx scripts/verify-files.ts",
     "db:reset": "prisma migrate reset"
   },
   "overrides": {

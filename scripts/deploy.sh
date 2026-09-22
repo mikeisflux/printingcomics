@@ -135,6 +135,14 @@ fi
 echo "==> Building (prisma generate + server + web)"
 npm run build
 
+# ---- runtime tools ----
+# PDF previews are rendered with poppler (lib/pdf-preview.ts); without it
+# every preview shows an "install poppler" notice instead of the page.
+if ! command -v pdftoppm >/dev/null 2>&1; then
+  echo "!!  poppler-utils is not installed — PDF previews will not work until you run:"
+  echo "!!      sudo apt install -y poppler-utils"
+fi
+
 # ---- configurator / catalog re-seed ----
 # Runs whenever the seed script or its pricing data differs from what was
 # last seeded — the seed is idempotent, so there is no reason to make a human

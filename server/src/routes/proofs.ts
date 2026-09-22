@@ -80,6 +80,7 @@ router.get('/proof/:token', async (req, res) => {
       decisionNote: proof.decisionNote,
       approvedName: proof.approvedName,
       decidedAt: proof.decidedAt,
+      mediaId: proof.media.id,
       fileUrl: proof.media.url,
       fileName: proof.media.originalName,
     },

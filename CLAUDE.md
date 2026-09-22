@@ -24,6 +24,7 @@ Run `npm` commands from the repo root unless noted.
 
 - Node 20+ (Prisma 7 prefers 22+; on 20 you'll see a harmless `EBADENGINE` warning)
 - PostgreSQL (running directly, not Docker)
+- `poppler-utils` (`pdftoppm`/`pdfinfo`) — renders PDF page previews; `sudo apt install -y poppler-utils`
 - `.npmrc` already sets `legacy-peer-deps=true` (React 19 / react-three peer conflicts)
 
 ## Setup & build (from repo root)

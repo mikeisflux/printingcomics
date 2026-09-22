@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PdfPreview } from '../components/PdfPreview';
 import { useParams, Link } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 
@@ -19,6 +20,7 @@ interface Proof {
   decisionNote: string | null;
   approvedName: string | null;
   decidedAt: string | null;
+  mediaId: string;
   fileUrl: string;
   fileName: string;
 }
@@ -218,26 +220,10 @@ export function ProofReview() {
         </div>
       )}
 
-      {/* PDF preview */}
+      {/* Proof pages, rendered on the server — browser PDF viewers show print
+          PDFs as black pages, which is no way to ask someone to approve one. */}
       <div className="admin-card">
-        <iframe
-          src={proof.fileUrl}
-          title="Your proof"
-          style={{
-            width: '100%',
-            height: 600,
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-          }}
-        />
-        <div className="row" style={{ marginTop: '.85rem', flexWrap: 'wrap' }}>
-          <a className="btn secondary" href={proof.fileUrl} target="_blank" rel="noopener noreferrer">
-            Open the proof in a new tab
-          </a>
-          <a className="btn secondary" href={proof.fileUrl} download={proof.fileName}>
-            Download proof
-          </a>
-        </div>
+        <PdfPreview mediaId={proof.mediaId} token={token} fileUrl={proof.fileUrl} fileName={proof.fileName} maxHeight={760} />
       </div>
 
       {/* Order items */}
