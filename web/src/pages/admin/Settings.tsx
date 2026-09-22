@@ -370,8 +370,6 @@ function StorageSection() {
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<{ ok: boolean; message: string } | null>(null);
   const [status, setStatus] = useState<{ enabled: boolean; local: number; remote: number } | null>(null);
-  const [migrating, setMigrating] = useState(false);
-  const [migrateMsg, setMigrateMsg] = useState<string | null>(null);
 
   const loadStatus = () => {
     void api.get<{ enabled: boolean; local: number; remote: number }>('/admin/settings/r2/status')
@@ -388,33 +386,6 @@ function StorageSection() {
     } catch (e: any) {
       setTestMsg({ ok: false, message: e?.message ?? 'Test failed' });
     } finally { setTesting(false); loadStatus(); }
-  }
-
-  // Runs in batches until nothing is left on local disk.
-  async function migrate() {
-    setMigrating(true); setMigrateMsg(null);
-    try {
-      let total = 0;
-      const allFailures: { name: string; error: string }[] = [];
-      for (let pass = 0; pass < 500; pass++) {
-        const r = await api.post<{ migrated: number; missing?: number; remaining: number; failures: { name: string; error: string }[] }>(
-          // First pass of a click re-checks anything previously written off as
-          // missing, in case the path resolution has since improved.
-          '/admin/settings/r2/migrate', { limit: 10, retryMissing: pass === 0 },
-        );
-        total += r.migrated;
-        allFailures.push(...(r.failures ?? []));
-        setMigrateMsg(`Moved ${total} file(s)… ${r.remaining} left`);
-        // Stop when finished, or when a pass can't make progress.
-        if (r.remaining === 0 || r.migrated === 0) break;
-      }
-      setMigrateMsg(
-        `Done — moved ${total} file(s) to R2.` +
-        (allFailures.length ? ` ${allFailures.length} could not be moved (${allFailures.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join('; ')}${allFailures.length > 3 ? '…' : ''}).` : ''),
-      );
-    } catch (e: any) {
-      setMigrateMsg(e?.message ?? 'Migration failed');
-    } finally { setMigrating(false); loadStatus(); }
   }
 
   return (
@@ -459,26 +430,6 @@ function StorageSection() {
             {testMsg.message}
           </div>
         )}
-      </div>
-
-      {/* TEMPORARY: one-time backfill. Remove this card (and the /r2/migrate
-          route) once everything has been moved and "still local" reads 0. */}
-      <div className="admin-card">
-        <h3>Move existing files to R2</h3>
-        <p className="muted" style={{ fontSize: '.85rem', marginBottom: '1rem' }}>
-          One-time backfill for files uploaded before R2 was turned on. Copies each one
-          up and repoints its link. Safe to re-run — it only touches files still on local
-          disk, and nothing is deleted from the server until its copy is confirmed.
-        </p>
-        <button className="btn" onClick={migrate} disabled={migrating || !status?.enabled || (status?.local ?? 0) === 0}>
-          {migrating ? 'Moving…' : `Move ${status?.local ?? 0} file(s) to R2`}
-        </button>
-        {!status?.enabled && (
-          <p className="muted" style={{ fontSize: '.8rem', marginTop: '.5rem' }}>
-            Turn on R2 and test the connection first.
-          </p>
-        )}
-        {migrateMsg && <div style={{ marginTop: '.6rem', fontSize: '.85rem' }}>{migrateMsg}</div>}
       </div>
     </>
   );

@@ -1,11 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import { prisma } from '../../db.js';
-import { HttpError } from '../../middleware/error.js';
 import { isR2Enabled, r2Test } from '../../lib/r2.js';
-import { publishUpload, UPLOADS_DIR } from '../../lib/storage.js';
 import {
   deleteSetting,
   invalidateSettingsCache,
@@ -16,11 +12,6 @@ import {
 
 const router = Router();
 
-/** decodeURIComponent that never throws on malformed input. */
-function safeDecode(v: string): string {
-  try { return decodeURIComponent(v); } catch { return v; }
-}
-
 // ---- R2 object storage ----
 router.post('/r2/test', async (_req, res) => {
   const result = await r2Test();
@@ -29,100 +20,7 @@ router.post('/r2/test', async (_req, res) => {
   res.status(result.ok ? 200 : 400).json({ ...result, error: result.ok ? undefined : result.message });
 });
 
-/**
- * Copy every locally-stored file up to R2 and repoint its MediaFile.url.
- *
- * TEMPORARY — one-time backfill for the switch to R2. Remove this route (and
- * the button in the admin Storage tab) once the migration has been run and
- * `remaining` reports 0.
- *
- * Safe to run repeatedly: it only touches rows whose url is still
- * `/uploads/...`, uploads before repointing, and leaves the row alone on
- * failure. Batched so a huge library can't blow the request timeout — the
- * button just calls it again until `remaining` hits 0.
- */
-router.post('/r2/migrate', async (req, res) => {
-  if (!(await isR2Enabled())) {
-    throw new HttpError(400, 'Enable R2 and save valid credentials before migrating.');
-  }
-  const limit = Math.min(Number(req.body?.limit) || 10, 25);
-  // A new click clears prior "missing" verdicts so they're re-checked with the
-  // current (more tolerant) path resolution.
-  if (req.body?.retryMissing) {
-    const tagged = await prisma.mediaFile.findMany({
-      where: { tags: { has: 'missing-file' } },
-      select: { id: true, tags: true },
-    });
-    for (const t of tagged) {
-      await prisma.mediaFile
-        .update({ where: { id: t.id }, data: { tags: t.tags.filter((x) => x !== 'missing-file') } })
-        .catch(() => undefined);
-    }
-  }
-
-  const pending = await prisma.mediaFile.findMany({
-    where: { url: { startsWith: '/uploads/' }, NOT: { tags: { has: 'missing-file' } } },
-    orderBy: { createdAt: 'asc' },
-    take: limit,
-  });
-
-  let migrated = 0;
-  let missing = 0;
-  const failures: { id: string; name: string; error: string }[] = [];
-  for (const m of pending) {
-    // `/uploads/<subdir>/<file>?query` → subdir + filename on disk
-    const rel = m.url.replace(/^\/uploads\//, '').split('?')[0]!;
-    const subdir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
-    // Names with spaces/#/& arrive percent-encoded in the URL but are literal
-    // on disk, so try the decoded form, and the stored filename, before
-    // concluding the file is gone.
-    const candidates = [
-      path.join(UPLOADS_DIR, rel),
-      path.join(UPLOADS_DIR, safeDecode(rel)),
-      path.join(UPLOADS_DIR, subdir, m.filename),
-      path.join(UPLOADS_DIR, subdir, safeDecode(m.filename)),
-    ];
-    let localPath = '';
-    for (const c of candidates) {
-      try { await fs.access(c); localPath = c; break; } catch { /* try next */ }
-    }
-    if (!localPath) {
-      // The row outlived its file (deleted from disk, or restored DB without
-      // the uploads dir). Tag it so it stops being retried and stops counting
-      // as "still local" — the media row is kept for audit/history.
-      missing++;
-      await prisma.mediaFile
-        .update({ where: { id: m.id }, data: { tags: { push: 'missing-file' } } })
-        .catch(() => undefined);
-      failures.push({ id: m.id, name: m.originalName, error: `file not found on disk (looked for ${rel})` });
-      continue;
-    }
-    try {
-      const stored = await publishUpload({
-        subdir,
-        filename: m.filename,
-        localPath,
-        contentType: m.mimeType,
-        originalName: m.originalName,
-      });
-      if (stored.storage !== 'r2') {
-        failures.push({ id: m.id, name: m.originalName, error: stored.error ?? 'upload fell back to local' });
-        continue;
-      }
-      await prisma.mediaFile.update({ where: { id: m.id }, data: { url: stored.url } });
-      migrated++;
-    } catch (e: any) {
-      failures.push({ id: m.id, name: m.originalName, error: e?.message ?? 'upload failed' });
-    }
-  }
-
-  const remaining = await prisma.mediaFile.count({
-    where: { url: { startsWith: '/uploads/' }, NOT: { tags: { has: 'missing-file' } } },
-  });
-  res.json({ migrated, missing, remaining, failures, scanned: pending.length });
-});
-
-/** How many files still live on local disk (drives the migrate button's label). */
+/** How many files live on R2 vs. local disk (the status line under Test connection). */
 router.get('/r2/status', async (_req, res) => {
   const [local, remote] = await Promise.all([
     prisma.mediaFile.count({
