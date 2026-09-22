@@ -7,6 +7,7 @@ import { OptionControl, keyOf, type ProductOption } from '../Product';
 import { PageHeader, errorMessage, useConfirm, useToast } from '../../components/admin/ui';
 import { FilePreviewModal } from '../../components/PdfPreview';
 import { downloadHref } from '../../lib/files';
+import { matchProofFile, type MatchItem } from '../../lib/proof-match';
 
 interface OrderEvent {
   id: string;
@@ -173,7 +174,9 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
   const itemLabel = (it: (typeof proofItems)[number]) => labelOf(it);
 
   // Upload queue: pick many files at once, assign each a slot, send together.
-  const [queue, setQueue] = useState<{ file: File; itemId: string; kind: string }[]>([]);
+  // `matched` is false when the file name matched no line and the slot was
+  // picked by order — those rows are flagged for a look.
+  const [queue, setQueue] = useState<{ file: File; itemId: string; kind: string; matched: boolean }[]>([]);
 
   // Latest proof per slot (proofs arrive newest-first) → per-slot status chips.
   const latestBySlot = new Map<string, (typeof proofs)[number]>();
@@ -187,10 +190,20 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
     : status === 'pending' ? { text: '⏳ awaiting approval', color: '#e08a00' }
     : { text: 'not sent', color: 'var(--muted)' };
 
-  // Queue newly-picked files, defaulting each to the first still-unsent slot so
-  // a multi-file drop mostly assigns itself.
+  // Queue newly-picked files. Each is matched to a line and slot by its file
+  // name (title words, volume number, "cover"/"interior" — see
+  // lib/proof-match.ts); a name that matches nothing takes the first
+  // still-unsent slot and is flagged so a multi-file drop mostly assigns
+  // itself and the leftovers stand out.
   function addFiles(list: FileList | null) {
     if (!list?.length) return;
+    const candidates: MatchItem[] = proofItems.map((it) => ({
+      id: it.id,
+      name: it.name,
+      title: titleOf(it),
+      uploads: (it.files ?? []).map((f) => f.media.originalName),
+      kinds: proofKindsForSlug(it.product.slug),
+    }));
     setQueue((cur) => {
       const next = [...cur];
       const taken = new Set([
@@ -198,15 +211,10 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
         ...[...latestBySlot.keys()],
       ]);
       for (const file of Array.from(list)) {
-        let itemId = proofItems[0]?.id ?? '';
-        let kind = itemId ? proofKindsForSlug(proofItems[0]!.product.slug)[0]! : 'artwork';
-        outer: for (const it of proofItems) {
-          for (const k of proofKindsForSlug(it.product.slug)) {
-            if (!taken.has(`${it.id}:${k}`)) { itemId = it.id; kind = k; break outer; }
-          }
-        }
-        taken.add(`${itemId}:${kind}`);
-        next.push({ file, itemId, kind });
+        const m = matchProofFile(file.name, candidates, taken);
+        if (!m) continue;
+        taken.add(`${m.itemId}:${m.kind}`);
+        next.push({ file, itemId: m.itemId, kind: m.kind, matched: m.confident });
       }
       return next;
     });
@@ -354,7 +362,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
             onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ''; }}
           />
           <p className="muted" style={{ fontSize: '.8rem', margin: '.35rem 0 0' }}>
-            Each file gets assigned to a proof slot below. They’re all sent together in one email.
+            Each file is matched to a book by its name — the title words, the issue or volume number, and “cover” / “interior” — then all sent together in one email. Rows marked ⚠ had no clear match: check them.
           </p>
 
           {queue.length > 0 && (
@@ -370,6 +378,11 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
                   <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.4fr 1fr auto', gap: '.5rem', alignItems: 'center', padding: '.35rem 0', borderTop: '1px solid var(--border)' }}>
                     <span style={{ fontSize: '.82rem', wordBreak: 'break-all' }} title={q.file.name}>
                       📄 {q.file.name}
+                      {!q.matched && (
+                        <span style={{ display: 'block', color: '#b45309', fontSize: '.75rem', fontWeight: 600 }} title="The file name did not match any book on this order; this slot was picked by order.">
+                          ⚠ no name match — check the book
+                        </span>
+                      )}
                     </span>
                     <select
                       value={q.itemId}
@@ -377,15 +390,16 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
                         if (j !== idx) return row;
                         const nit = proofItems.find((i) => i.id === e.target.value);
                         const nkinds = nit ? proofKindsForSlug(nit.product.slug) : ['artwork'];
-                        return { ...row, itemId: e.target.value, kind: nkinds.includes(row.kind) ? row.kind : nkinds[0]! };
+                        // Picked by hand — it is no longer a guess.
+                        return { ...row, itemId: e.target.value, kind: nkinds.includes(row.kind) ? row.kind : nkinds[0]!, matched: true };
                       }))}
-                      style={{ fontSize: '.8rem' }}
+                      style={{ fontSize: '.8rem', borderColor: q.matched ? undefined : '#d97706' }}
                     >
                       {proofItems.map((i) => <option key={i.id} value={i.id}>{itemLabel(i)}</option>)}
                     </select>
                     <select
                       value={q.kind}
-                      onChange={(e) => setQueue((cur) => cur.map((row, j) => (j === idx ? { ...row, kind: e.target.value } : row)))}
+                      onChange={(e) => setQueue((cur) => cur.map((row, j) => (j === idx ? { ...row, kind: e.target.value, matched: true } : row)))}
                       style={{ fontSize: '.8rem', borderColor: dupe ? '#c0392b' : undefined }}
                     >
                       {kinds.map((k) => <option key={k} value={k}>{PROOF_KIND_LABELS[k]}</option>)}
