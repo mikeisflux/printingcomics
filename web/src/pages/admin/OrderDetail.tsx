@@ -197,6 +197,10 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
   // itself and the leftovers stand out.
   function addFiles(list: FileList | null) {
     if (!list?.length) return;
+    // Copy the FileList now: the input is cleared right after this call, and
+    // a FileList is live — read later (React may run the updater lazily) it
+    // is already empty and the drop silently vanishes.
+    const files = Array.from(list);
     const candidates: MatchItem[] = proofItems.map((it) => ({
       id: it.id,
       name: it.name,
@@ -210,7 +214,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
         ...cur.map((q) => `${q.itemId}:${q.kind}`),
         ...[...latestBySlot.keys()],
       ]);
-      for (const file of Array.from(list)) {
+      for (const file of files) {
         const m = matchProofFile(file.name, candidates, taken);
         if (!m) continue;
         taken.add(`${m.itemId}:${m.kind}`);
