@@ -36,6 +36,7 @@ export function AdminMedia() {
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [folders, setFolders] = useState<{ name: string; count: number }[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [folder, setFolder] = useState<string>('');
   const [kind, setKind] = useState<string>('');
   const [q, setQ] = useState('');
@@ -58,6 +59,7 @@ export function AdminMedia() {
     setFolders(fo.folders);
     setStats(s);
     setSelected(new Set());
+    setLoaded(true);
   };
 
   useEffect(() => { void load(); }, [folder, kind]);
@@ -201,7 +203,9 @@ export function AdminMedia() {
             </form>
           </div>
 
-          {files.length === 0 ? (
+          {!loaded ? (
+            <div className="admin-card"><p className="muted">Loading…</p></div>
+          ) : files.length === 0 ? (
             <div className="admin-card">
               <p className="muted">No files. Drag + drop or click Upload.</p>
             </div>

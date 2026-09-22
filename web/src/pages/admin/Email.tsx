@@ -133,6 +133,7 @@ const INBOX_FILTERS: { label: string; query: Record<string, string> }[] = [
 function InboxTab() {
   const toast = useToast(); const confirm = useConfirm();
   const [items, setItems] = useState<InboundMessage[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -146,6 +147,7 @@ function InboxTab() {
     const qs = new URLSearchParams(params).toString();
     const r = await api.get<{ items: InboundMessage[] }>(`/admin/email/inbound${qs ? `?${qs}` : ''}`);
     setItems(r.items);
+    setLoaded(true);
     if (r.items.length > 0 && !selectedId) setSelectedId(r.items[0]!.id);
     else if (r.items.length === 0) { setSelectedId(null); setSelected(null); }
   };
@@ -215,7 +217,9 @@ function InboxTab() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 380px) 1fr', gap: '1rem' }}>
         <div className="admin-card" style={{ margin: 0, padding: 0, maxHeight: '70vh', overflowY: 'auto' }}>
-          {items.length === 0 ? (
+          {!loaded ? (
+            <p className="muted" style={{ padding: '1rem' }}>Loading…</p>
+          ) : items.length === 0 ? (
             <p className="muted" style={{ padding: '1rem' }}>No messages.</p>
           ) : (
             items.map((it) => (
@@ -338,13 +342,16 @@ function InboxTab() {
 
 function CampaignsTab() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    void api.get<{ campaigns: any[] }>('/admin/email/campaigns').then((r) => setCampaigns(r.campaigns));
+    void api.get<{ campaigns: any[] }>('/admin/email/campaigns').then((r) => setCampaigns(r.campaigns)).finally(() => setLoaded(true));
   }, []);
 
   return (
     <div className="admin-card">
-      {campaigns.length === 0 ? (
+      {!loaded ? (
+        <p className="muted">Loading…</p>
+      ) : campaigns.length === 0 ? (
         <p className="muted">No campaigns yet. <Link to="/admin/email/campaigns/new">Create one</Link>.</p>
       ) : (
         <table className="admin-table">

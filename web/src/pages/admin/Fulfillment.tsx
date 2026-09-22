@@ -62,11 +62,12 @@ const blankPackage = {
 function PackagesTab() {
   const toast = useToast(); const confirm = useConfirm();
   const [items, setItems] = useState<Package[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [draft, setDraft] = useState<typeof blankPackage>(blankPackage);
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get<{ items: Package[] }>('/admin/fulfillment/packages').then((r) => setItems(r.items));
+  const load = () => api.get<{ items: Package[] }>('/admin/fulfillment/packages').then((r) => { setItems(r.items); setLoaded(true); });
   useEffect(() => { void load(); }, []);
 
   function startEdit(p: Package) {
@@ -164,7 +165,9 @@ function PackagesTab() {
       )}
 
       <div className="admin-card">
-        {items.length === 0 ? (
+        {!loaded ? (
+          <p className="muted">Loading…</p>
+        ) : items.length === 0 ? (
           <p className="muted">No packages yet — add your first box / mailer.</p>
         ) : (
           <table className="admin-table">

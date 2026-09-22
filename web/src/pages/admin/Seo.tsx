@@ -188,8 +188,9 @@ function ProductsTab() {
 
 function KeywordsTab() {
   const [analyses, setAnalyses] = useState<AnalysisListItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    void api.get<{ analyses: AnalysisListItem[] }>('/admin/seo/analyses').then((r) => setAnalyses(r.analyses));
+    void api.get<{ analyses: AnalysisListItem[] }>('/admin/seo/analyses').then((r) => setAnalyses(r.analyses)).finally(() => setLoaded(true));
   }, []);
 
   const all = analyses.flatMap((a) =>
@@ -200,7 +201,9 @@ function KeywordsTab() {
   return (
     <div className="admin-card">
       <h3>All keywords across analyzed products</h3>
-      {all.length === 0 ? (
+      {!loaded ? (
+        <p className="muted">Loading…</p>
+      ) : all.length === 0 ? (
         <p className="muted">No keywords yet. Run a product analysis first.</p>
       ) : (
         <table className="admin-table">

@@ -54,7 +54,7 @@ export function AdminOrders() {
     if (value) next.set(key, value); else next.delete(key);
     setParams(next, { replace: true });
   };
-  useEffect(() => { setParam('q', query); }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if ((params.get('q') ?? '') !== query) setParam('q', query); }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let alive = true;

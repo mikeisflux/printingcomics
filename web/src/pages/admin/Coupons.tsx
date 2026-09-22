@@ -249,8 +249,10 @@ export function AdminCoupons() {
       </div>
 
       <div className="admin-card">
-        <h3 style={{ marginTop: 0 }}>All codes ({coupons.length})</h3>
-        {coupons.length === 0 ? (
+        <h3 style={{ marginTop: 0 }}>All codes{loading ? '' : ` (${coupons.length})`}</h3>
+        {loading ? (
+          <p className="muted">Loading…</p>
+        ) : coupons.length === 0 ? (
           <p className="muted">No discount codes yet. Create one above.</p>
         ) : (
           <table className="admin-table">
