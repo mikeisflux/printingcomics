@@ -719,7 +719,25 @@ export function AdminOrderDetail() {
                     <Link to={`/product/${i.product.slug}`}>{i.name}</Link>
                     {pairs.length > 0 && (
                       <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
-                        {pairs.map((p, j) => <li key={j}>{p.label}: {p.value}</li>)}
+                        {pairs.map((p, j) => (
+                          <li key={j}>
+                            {p.label}:{' '}
+                            {p.urls?.length ? (
+                              // Uploaded files are links, always — even when the
+                              // MediaFile row behind them is gone (see the chips
+                              // below for name/size when it isn't).
+                              p.urls.map((u, k) => {
+                                const name = u.split('?')[0]!.split('/').pop() ?? u;
+                                return (
+                                  <span key={k} style={{ marginRight: '.6rem', whiteSpace: 'nowrap' }}>
+                                    📎 <a href={u} target="_blank" rel="noreferrer" title="Open in a new tab">{name}</a>
+                                    {' '}<a href={u} download={name} title="Save to your computer" style={{ fontSize: '.75rem' }}>save</a>
+                                  </span>
+                                );
+                              })
+                            ) : p.value}
+                          </li>
+                        ))}
                       </ul>
                     )}
                     {order.paymentStatus === 'CAPTURED' && i.product.options.length > 0 && (

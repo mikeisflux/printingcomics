@@ -3,6 +3,7 @@ import { prisma } from '../../../db.js';
 import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
 import { itemsRequestProof } from '../../proofs.js';
 import { resolveShippingSelection } from '../../shipping-quote.js';
+import { uploadUrlsInOptions } from '../../order-files.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 import { paypalHttpError, paypalNetworkError } from './errors.js';
 import { HttpError } from '../../../middleware/error.js';
@@ -104,18 +105,15 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
   const number = `PC-${Date.now().toString(36).toUpperCase()}-${randomInt(1000, 9999)}`;
 
   // Link any customer-uploaded print files (referenced by URL in the cart-item
-  // options) to their order item, so staff can download them from the order.
-  const uploadUrlRe = /\/uploads\/customer\/[A-Za-z0-9._-]+/g;
+  // options) to their order item, so staff can open them from the order.
+  // Matched by URL shape so it works for local, R2 and CDN-hosted uploads
+  // alike — the old `/uploads/customer/` regex silently linked nothing once
+  // uploads moved to R2.
   const itemUploadIds = new Map<string, string[]>();
   for (const ci of totals.cart.items) {
-    const opts = ci.options as Record<string, unknown> | null;
-    if (!opts) continue;
-    const urls = new Set<string>();
-    for (const v of Object.values(opts)) {
-      if (typeof v === 'string') for (const m of v.matchAll(uploadUrlRe)) urls.add(m[0]);
-    }
-    if (urls.size === 0) continue;
-    const medias = await prisma.mediaFile.findMany({ where: { url: { in: [...urls] } }, select: { id: true } });
+    const urls = uploadUrlsInOptions(ci.options);
+    if (urls.length === 0) continue;
+    const medias = await prisma.mediaFile.findMany({ where: { url: { in: urls } }, select: { id: true } });
     if (medias.length) itemUploadIds.set(ci.id, medias.map((m) => m.id));
   }
 

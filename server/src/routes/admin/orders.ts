@@ -14,6 +14,7 @@ import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwo
 import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
 import { requestReviewForOrder } from '../../lib/reviews.js';
 import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl } from '../../lib/order-adjustments.js';
+import { backfillOrderUploads } from '../../lib/order-files.js';
 import { sendAdjustmentRequestEmail } from '../../lib/order-emails.js';
 import multer from 'multer';
 import { promises as fs } from 'node:fs';
@@ -76,6 +77,11 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
+  // Orders placed after uploads moved to R2 never got their file links
+  // (see lib/order-files.ts). Repair on view so staff always see the files.
+  await backfillOrderUploads(req.params.id).catch((e: any) =>
+    console.warn('[admin-orders] upload backfill failed:', e?.message ?? e),
+  );
   const order = await prisma.order.findUnique({
     where: { id: req.params.id },
     include: {

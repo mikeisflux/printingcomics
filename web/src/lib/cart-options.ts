@@ -26,6 +26,8 @@ interface CartItemLite {
 export interface FormattedOption {
   label: string;
   value: string;
+  /** For UPLOAD options: the stored file URLs, one per uploaded file. */
+  urls?: string[];
 }
 
 function slug(s: string): string {
@@ -58,8 +60,11 @@ export function formatCartItemOptions(item: CartItemLite): FormattedOption[] {
     if (opt?.type === 'TOGGLE') {
       value = v ? 'Yes' : 'No';
     } else if (opt?.type === 'UPLOAD' && typeof v === 'string') {
-      const short = v.split('/').pop() ?? v;
-      value = `📎 ${short}`;
+      // One URL per line when several files were uploaded.
+      const urls = v.split('\n').map((s) => s.trim()).filter(Boolean);
+      const names = urls.map((u) => u.split('?')[0]!.split('/').pop() ?? u);
+      out.push({ label, value: `📎 ${names.join(', ')}`, urls });
+      continue;
     } else if (typeof v === 'boolean') {
       value = v ? 'Yes' : 'No';
     } else {
