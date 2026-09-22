@@ -46,17 +46,21 @@ function run(cmd: string, args: string[], timeoutMs = 60_000): Promise<{ code: n
   });
 }
 
-let popplerChecked: Promise<string | null> | null = null;
-/** null when poppler is usable; otherwise the reason it isn't. */
-export function popplerProblem(): Promise<string | null> {
-  if (!popplerChecked) {
-    popplerChecked = run('pdftoppm', ['-v'], 10_000)
-      .then((r) => (r.code === 0 || /pdftoppm version/.test(r.stderr + r.stdout)) ? null : `pdftoppm exited ${r.code}`)
-      .catch((e: any) => (e?.code === 'ENOENT'
-        ? 'poppler-utils is not installed on the server (sudo apt install -y poppler-utils)'
-        : `pdftoppm failed: ${e?.message ?? e}`));
-  }
-  return popplerChecked;
+let popplerOk = false;
+/**
+ * null when poppler is usable; otherwise the reason it isn't. Only a
+ * success is remembered — a missing install is re-checked on each call, so
+ * `apt install poppler-utils` takes effect without restarting the API.
+ */
+export async function popplerProblem(): Promise<string | null> {
+  if (popplerOk) return null;
+  const problem = await run('pdftoppm', ['-v'], 10_000)
+    .then((r) => (r.code === 0 || /pdftoppm version/.test(r.stderr + r.stdout)) ? null : `pdftoppm exited ${r.code}`)
+    .catch((e: any) => (e?.code === 'ENOENT'
+      ? 'poppler-utils is not installed on the server (sudo apt install -y poppler-utils)'
+      : `pdftoppm failed: ${e?.message ?? e}`));
+  if (!problem) popplerOk = true;
+  return problem;
 }
 
 export async function pageCount(pdfPath: string): Promise<number> {
