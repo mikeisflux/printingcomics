@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { StatusBadge } from '../Account';
+import { useToast, useConfirm, errorMessage } from '../../components/admin/ui';
 
 interface Address {
   id: string;
@@ -33,6 +34,7 @@ interface UserDetail {
 }
 
 export function AdminUserDetail() {
+  const toast = useToast(); const confirm = useConfirm();
   const { id } = useParams();
   const [user, setUser] = useState<UserDetail | null>(null);
   const [newPassword, setNewPassword] = useState('');
@@ -56,13 +58,13 @@ export function AdminUserDetail() {
 
   const resetPassword = async () => {
     if (!user || !newPassword || newPassword.length < 8) return;
-    if (!confirm(`Reset password for ${user.email}? Any existing sessions will keep working until their JWT expires.`)) return;
+    if (!(await confirm({ title: `Reset password for ${user.email}?`, body: `Any existing sessions will keep working until their JWT expires.`, confirmLabel: 'Reset', danger: true }))) return;
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, { newPassword });
       setNewPassword('');
-      alert('Password reset.');
-    } catch (e: any) { alert(e.message); }
+      toast.success('Password reset.');
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setSaving(false); }
   };
 

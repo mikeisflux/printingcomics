@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
+import { useConfirm } from '../../components/admin/ui';
 
 interface ApiKeyRow {
   id: string;
@@ -102,6 +103,9 @@ export function AdminApiKeys() {
             </tr>
           </thead>
           <tbody>
+            {!data && !error && (
+              <tr><td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '2rem' }}>Loading…</td></tr>
+            )}
             {data?.keys.length === 0 && (
               <tr>
                 <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--ink-muted)' }}>
@@ -128,6 +132,7 @@ function KeyRow({
   availableScopes: string[];
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   return (
     <>
@@ -185,7 +190,7 @@ function KeyRow({
               className="btn secondary"
               style={{ padding: '.3rem .6rem', fontSize: '.85rem', color: '#b91c1c', borderColor: '#b91c1c' }}
               onClick={async () => {
-                if (!confirm(`Revoke "${row.name}"? Any integration using this key will start failing immediately.`)) return;
+                if (!(await confirm({ title: `Revoke "${row.name}"?`, body: `Any integration using this key will start failing immediately.`, confirmLabel: 'Revoke', danger: true }))) return;
                 await api.post(`/admin/api-keys/${row.id}/revoke`);
                 onChanged();
               }}

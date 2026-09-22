@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { RichTextEditor } from '../../components/RichTextEditor';
+import { useToast, useConfirm, errorMessage } from '../../components/admin/ui';
 
 export function AdminEmailTemplateEdit() {
+  const toast = useToast(); const confirm = useConfirm();
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', subject: '', html: '', text: '' });
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(isNew);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -19,7 +22,7 @@ export function AdminEmailTemplateEdit() {
           html: r.template.html,
           text: r.template.text ?? '',
         });
-      });
+      }).finally(() => setLoaded(true));
     }
   }, [id, isNew]);
 
@@ -31,22 +34,25 @@ export function AdminEmailTemplateEdit() {
         navigate(`/admin/email/templates/${r.template.id}`);
       } else {
         await api.put(`/admin/email/templates/${id}`, form);
-        alert('Saved.');
+        toast.success('Saved.');
       }
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setSaving(false); }
   };
 
   const remove = async () => {
-    if (!id || !confirm('Archive template?')) return;
+    if (!id || !(await confirm({ title: 'Archive template?', confirmLabel: 'Archive', danger: true }))) return;
     await api.del(`/admin/email/templates/${id}`);
     navigate('/admin/email');
   };
 
+  if (!loaded) return <p className="muted">Loading…</p>;
+
   return (
     <div>
+      <Link className="admin-back" to="/admin/email">← Email</Link>
       <div className="spread" style={{ marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>{isNew ? 'New template' : 'Edit template'}</h1>
+        <h1 style={{ margin: 0 }}>{isNew ? 'New template' : form.name || 'Edit template'}</h1>
         <div className="row">
           {!isNew && <button className="btn secondary" onClick={remove}>Archive</button>}
           <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>

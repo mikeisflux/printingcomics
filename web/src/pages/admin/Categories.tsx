@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { MediaPicker } from '../../components/MediaPicker';
+import { useConfirm } from '../../components/admin/ui';
 
 interface Category {
   id: string;
@@ -17,6 +18,7 @@ interface Category {
 type PickerTarget = { kind: 'new' | 'edit'; field: 'heroImageUrl' | 'iconUrl' };
 
 export function AdminCategories() {
+  const confirm = useConfirm();
   const [cats, setCats] = useState<Category[]>([]);
   const [draft, setDraft] = useState({
     slug: '', name: '', description: '',
@@ -61,7 +63,7 @@ export function AdminCategories() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Delete category?')) return;
+    if (!(await confirm({ title: 'Delete category?', confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/categories/${id}`);
     load();
   };

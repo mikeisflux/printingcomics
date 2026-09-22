@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, formatMoney } from '../../api/client';
+import { useConfirm } from '../../components/admin/ui';
 
 interface Coupon {
   id: string;
@@ -84,6 +85,7 @@ function expiryLabel(c: Coupon): string {
 }
 
 export function AdminCoupons() {
+  const confirm = useConfirm();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -127,7 +129,7 @@ export function AdminCoupons() {
   }
 
   async function remove(c: Coupon) {
-    if (!confirm(`Delete code ${c.code}? This can't be undone.`)) return;
+    if (!(await confirm({ title: `Delete code ${c.code}?`, body: `This can't be undone.`, confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/coupons/${c.id}`);
     if (form.id === c.id) resetForm();
     await load();

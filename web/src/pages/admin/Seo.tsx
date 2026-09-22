@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
+import { useToast, errorMessage } from '../../components/admin/ui';
 
 type Tab = 'dashboard' | 'products' | 'keywords' | 'ai';
 
@@ -123,6 +124,7 @@ function DashboardTab() {
 }
 
 function ProductsTab() {
+  const toast = useToast();
   const [products, setProducts] = useState<any[]>([]);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -134,9 +136,9 @@ function ProductsTab() {
     setAnalyzingId(id);
     try {
       await api.post(`/admin/seo/analyze-product/${id}`);
-      alert('Analysis complete. See SEO detail.');
+      toast.success('Analysis complete. See SEO detail.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(errorMessage(e));
     } finally {
       setAnalyzingId(null);
     }
@@ -146,8 +148,8 @@ function ProductsTab() {
     setBulkRunning(true);
     try {
       const r = await api.post<{ processed: any[] }>('/admin/seo/analyze-missing');
-      alert(`Processed ${r.processed.length} products.`);
-    } catch (e: any) { alert(e.message); }
+      toast.success(`Processed ${r.processed.length} products.`);
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setBulkRunning(false); void load(); }
   };
 
@@ -221,6 +223,7 @@ function KeywordsTab() {
 }
 
 function AiTab() {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
 
@@ -229,7 +232,7 @@ function AiTab() {
     try {
       const r = await api.post('/admin/seo/analyze-missing');
       setResult(r);
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setLoading(false); }
   };
 

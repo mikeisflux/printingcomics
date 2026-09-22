@@ -210,6 +210,62 @@ label { font-weight: 600; display: block; margin: .75rem 0 .25rem; font-size: .9
 .badge.shipped { background: #cfe6ff; color: #1a4d80; }
 
 .error { color: #b91c1c; padding: .75rem; background: #fee2e2; border-radius: var(--radius); margin: .75rem 0; }
+
+/* ---- Admin UI (see components/admin/ui.tsx) ---- */
+/* Storefront heading sizes are for marketing pages; in the admin they shout. */
+.admin-main h1 { font-size: 1.6rem; }
+.admin-main h2 { font-size: 1.3rem; }
+.admin-main h3 { font-size: 1.05rem; }
+
+.btn.sm { padding: .4rem .75rem; font-size: .85rem; }
+.btn.danger { background: #b91c1c; border-color: #b91c1c; }
+.btn.danger:hover { background: #991b1b; border-color: #991b1b; }
+.btn.secondary.danger { background: transparent; color: #b91c1c; border-color: #b91c1c; }
+.btn.secondary.danger:hover { background: #b91c1c; color: #fff; }
+.btn:focus-visible { outline: 3px solid rgba(198, 26, 34, .35); outline-offset: 2px; }
+
+.admin-table tbody tr:hover { background: #fbfaf8; }
+.admin-table tr.clickable { cursor: pointer; }
+.admin-table th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted); }
+.admin-table td { vertical-align: middle; }
+
+.admin-page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.admin-page-header .back { display: inline-block; font-size: .85rem; color: var(--ink-muted); margin-bottom: .35rem; }
+.admin-page-header .back:hover { color: var(--brand); }
+.admin-empty { padding: 2.5rem 1rem; text-align: center; color: var(--ink-muted); }
+.admin-back { display: inline-block; font-size: .85rem; color: var(--ink-muted); margin-bottom: .5rem; }
+.admin-back:hover { color: var(--brand); text-decoration: none; }
+
+/* Sidebar groups + "waiting on you" counts */
+.admin-side nav .group { padding: 1rem 1.5rem .3rem; font-size: .66rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #777; }
+.admin-side nav a { display: flex; justify-content: space-between; align-items: center; padding: .55rem 1.5rem; }
+.nav-badge { background: var(--brand); color: #fff; font-size: .68rem; font-weight: 700; padding: .1rem .45rem; border-radius: 999px; min-width: 1.5em; text-align: center; line-height: 1.4; }
+
+/* Toasts */
+.pc-toasts { position: fixed; top: 1rem; right: 1rem; z-index: 2000; display: grid; gap: .5rem; max-width: min(380px, calc(100vw - 2rem)); }
+.pc-toast { background: #1a1a1a; color: #fff; padding: .75rem 1rem; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); display: flex; gap: .6rem; align-items: flex-start; cursor: pointer; font-size: .95rem; line-height: 1.45; animation: pc-toast-in .18s ease; border-left: 4px solid #666; }
+.pc-toast > span:first-child { font-weight: 800; flex: 0 0 auto; }
+.pc-toast.success { border-left-color: #16a34a; }
+.pc-toast.error { border-left-color: #dc2626; }
+.pc-toast.info { border-left-color: #2563eb; }
+@keyframes pc-toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* Dialogs */
+.pc-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1500; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.pc-dialog { background: #fff; border-radius: 10px; padding: 1.5rem; width: min(460px, 100%); box-shadow: 0 20px 60px rgba(0,0,0,.3); animation: pc-toast-in .15s ease; }
+
+/* Phones: sidebar becomes a scrolling strip across the top. */
+@media (max-width: 900px) {
+  .admin-shell { grid-template-columns: 1fr; }
+  .admin-side { padding: .5rem 0; }
+  .admin-side .brand { padding: .5rem 1rem; border-bottom: none; }
+  .admin-side nav { flex-direction: row; overflow-x: auto; padding: 0 .5rem .5rem; gap: .25rem; }
+  .admin-side nav .group { display: none; }
+  .admin-side nav a { white-space: nowrap; padding: .45rem .75rem; border-left: none; border-radius: 999px; gap: .4rem; }
+  .admin-side nav a.active { border-left: none; }
+  .admin-side > div:last-child { display: none; }
+  .admin-main { padding: 1rem; }
+}
 .muted { color: var(--ink-muted); }
 .row { display: flex; gap: 1rem; align-items: center; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }

@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { api } from '../../api/client';
+import { useConfirm, usePrompt } from '../../components/admin/ui';
 
 type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'storage' | 'taxes' | 'coupons' | 'backup';
 
@@ -546,32 +547,35 @@ function EasyPostSection() {
 }
 
 function ShippingSection() {
+  const confirm = useConfirm(); const prompt = usePrompt();
   const [zones, setZones] = useState<any[]>([]);
   const load = () => api.get<{ zones: any[] }>('/admin/settings/shipping').then((r) => setZones(r.zones));
   useEffect(() => { void load(); }, []);
 
   const addZone = async () => {
-    const name = prompt('Zone name');
+    const name = (await prompt({ title: 'Zone name' }));
     if (!name) return;
-    const countries = (prompt('Countries (comma-separated ISO codes)', 'US') ?? 'US').split(',').map((s) => s.trim().toUpperCase());
+    const countries = ((await prompt({ title: 'Countries (comma-separated ISO codes)', defaultValue: 'US' })) ?? 'US').split(',').map((s) => s.trim().toUpperCase());
     await api.post('/admin/settings/shipping/zones', { name, countries });
     load();
   };
   const deleteZone = async (z: any) => {
-    if (!confirm(`Delete zone "${z.name}" and all its rates?`)) return;
+    if (!(await confirm({ title: `Delete zone "${z.name}" and all its rates?`, confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/settings/shipping/zones/${z.id}`);
     load();
   };
   const addRate = async (zoneId: string) => {
-    const name = prompt('Rate name');
+    const name = (await prompt({ title: 'Rate name' }));
     if (!name) return;
-    const rateCents = Number(prompt('Rate in cents', '1000') ?? '0');
-    const estimatedDays = prompt('Estimated days') ?? undefined;
+    const dollars = await prompt({ title: 'Rate (dollars)', defaultValue: '10.00', validate: (v) => (isNaN(Number(v)) || Number(v) < 0 ? 'Enter a dollar amount like 9.95' : null) });
+    if (dollars === null) return;
+    const rateCents = Math.round(Number(dollars) * 100);
+    const estimatedDays = (await prompt({ title: 'Estimated days' })) ?? undefined;
     await api.post('/admin/settings/shipping/rates', { zoneId, name, rateCents, estimatedDays });
     load();
   };
   const deleteRate = async (r: any) => {
-    if (!confirm(`Delete rate "${r.name}"?`)) return;
+    if (!(await confirm({ title: `Delete rate "${r.name}"?`, confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/settings/shipping/rates/${r.id}`);
     load();
   };
@@ -631,15 +635,18 @@ function ShippingSection() {
 }
 
 function TaxesSection() {
+  const prompt = usePrompt();
   const [taxes, setTaxes] = useState<any[]>([]);
   const load = () => api.get<{ taxes: any[] }>('/admin/settings/taxes').then((r) => setTaxes(r.taxes));
   useEffect(() => { void load(); }, []);
   const addTax = async () => {
-    const name = prompt('Tax name');
+    const name = (await prompt({ title: 'Tax name' }));
     if (!name) return;
-    const region = prompt('Region (e.g. CA)') ?? '';
-    const country = prompt('Country', 'US') ?? 'US';
-    const rateBps = Number(prompt('Rate bps (825 = 8.25%)') ?? '0');
+    const region = (await prompt({ title: 'Region (e.g. CA)' })) ?? '';
+    const country = (await prompt({ title: 'Country', defaultValue: 'US' })) ?? 'US';
+    const pct = await prompt({ title: 'Tax rate (%)', placeholder: 'e.g. 8.25', validate: (v) => (isNaN(Number(v)) || Number(v) < 0 ? 'Enter a percentage like 8.25' : null) });
+    if (pct === null) return;
+    const rateBps = Math.round(Number(pct) * 100);
     await api.post('/admin/settings/taxes', { name, region, country, rateBps });
     load();
   };
@@ -661,16 +668,17 @@ function TaxesSection() {
 }
 
 function CouponsSection() {
+  const prompt = usePrompt();
   const [coupons, setCoupons] = useState<any[]>([]);
   const load = () => api.get<{ coupons: any[] }>('/admin/settings/coupons').then((r) => setCoupons(r.coupons));
   useEffect(() => { void load(); }, []);
   const addCoupon = async () => {
-    const code = prompt('Code');
+    const code = (await prompt({ title: 'Code' }));
     if (!code) return;
-    const kind = prompt('Type: percent or amount', 'percent');
+    const kind = (await prompt({ title: 'Type: percent or amount', defaultValue: 'percent' }));
     const body: any = { code, active: true };
-    if (kind === 'percent') body.percentOffBps = Number(prompt('Percent off') ?? '0') * 100;
-    else body.amountOffCents = Number(prompt('Amount off in cents') ?? '0');
+    if (kind === 'percent') body.percentOffBps = Math.round(Number((await prompt({ title: 'Percent off', placeholder: 'e.g. 15' })) ?? '0') * 100);
+    else body.amountOffCents = Math.round(Number((await prompt({ title: 'Amount off (dollars)', placeholder: 'e.g. 5.00' })) ?? '0') * 100);
     await api.post('/admin/settings/coupons', body);
     load();
   };

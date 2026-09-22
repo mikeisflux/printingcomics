@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../../api/client';
+import { useToast, useConfirm, usePrompt, errorMessage } from '../../components/admin/ui';
 
 interface MediaFile {
   id: string;
@@ -31,6 +32,7 @@ function humanSize(bytes: number) {
 }
 
 export function AdminMedia() {
+  const toast = useToast(); const confirm = useConfirm(); const prompt = usePrompt();
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [folders, setFolders] = useState<{ name: string; count: number }[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -70,7 +72,7 @@ export function AdminMedia() {
       const res = await fetch('/api/admin/media/upload', { method: 'POST', body: fd, credentials: 'include' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Upload failed' }));
-        alert(err.error ?? 'Upload failed');
+        toast.error(err.error ?? 'Upload failed');
       } else {
         void load();
       }
@@ -89,31 +91,31 @@ export function AdminMedia() {
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
-    if (!confirm(`Delete ${selected.size} file(s)? This cannot be undone.`)) return;
+    if (!(await confirm({ title: `Delete ${selected.size} file(s)?`, body: `This cannot be undone.`, confirmLabel: 'Delete', danger: true }))) return;
     await api.post('/admin/media/bulk-delete', { ids: [...selected] });
     void load();
   };
 
   const moveSelected = async () => {
     if (selected.size === 0) return;
-    const target = prompt('Move to folder (e.g. "/products", "/heroes")', folder || '/');
+    const target = await prompt({ title: 'Move to folder', label: 'Folder', placeholder: '/products', defaultValue: folder || '/', body: folders.length ? `Existing: ${folders.map((f) => f.name).join(', ')}` : undefined });
     if (!target) return;
     await api.post('/admin/media/move', { ids: [...selected], folder: target });
     void load();
   };
 
   const newFolder = async () => {
-    const name = prompt('Folder path (e.g. "/products")');
+    const name = (await prompt({ title: 'Folder path (e.g. "/products")' }));
     if (!name) return;
     // Folders are virtual — they appear once at least one file is moved/uploaded to them.
     setFolder(name);
-    alert(`Upload or move files into "${name}" to create it.`);
+    toast.info(`Upload or move files into "${name}" to create it.`);
   };
 
   const scan = async () => {
-    if (!confirm('Scan the uploads directory for untracked files?')) return;
+    if (!(await confirm({ title: 'Scan the uploads directory for untracked files?' }))) return;
     const r = await api.post<{ imported: number; scanned: any }>('/admin/media/scan');
-    alert(`Imported ${r.imported} file(s) from disk.`);
+    toast.success(`Imported ${r.imported} file(s) from disk.`);
     void load();
   };
 
@@ -277,6 +279,7 @@ export function AdminMedia() {
 }
 
 function EditDialog({ file, onClose, onSaved }: { file: MediaFile; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast(); const confirm = useConfirm();
   const [form, setForm] = useState({
     originalName: file.originalName,
     altText: file.altText ?? '',
@@ -295,12 +298,12 @@ function EditDialog({ file, onClose, onSaved }: { file: MediaFile; onClose: () =
         tags: form.tags.split(',').map((s) => s.trim()).filter(Boolean),
       });
       onSaved();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setBusy(false); }
   };
 
   const remove = async () => {
-    if (!confirm('Delete this file?')) return;
+    if (!(await confirm({ title: 'Delete this file?', confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/media/${file.id}`);
     onSaved();
   };

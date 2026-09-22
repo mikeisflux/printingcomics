@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, formatMoney } from '../../api/client';
+import { useToast, useConfirm, errorMessage } from '../../components/admin/ui';
 
 interface Package {
   id: string;
@@ -59,6 +60,7 @@ const blankPackage = {
 };
 
 function PackagesTab() {
+  const toast = useToast(); const confirm = useConfirm();
   const [items, setItems] = useState<Package[]>([]);
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [draft, setDraft] = useState<typeof blankPackage>(blankPackage);
@@ -99,12 +101,12 @@ function PackagesTab() {
       setDraft(blankPackage);
       await load();
     } catch (e: any) {
-      alert(e.message ?? 'Save failed');
+      toast.error(errorMessage(e, 'Save failed'));
     } finally { setSaving(false); }
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete package?')) return;
+    if (!(await confirm({ title: 'Delete package?', confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/fulfillment/packages/${id}`);
     await load();
   }

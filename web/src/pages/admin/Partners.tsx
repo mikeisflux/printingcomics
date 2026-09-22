@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
+import { usePrompt } from '../../components/admin/ui';
 
 interface Partner {
   id: string;
@@ -285,6 +286,7 @@ function PartnersView({
 }
 
 function PartnerRow({ partner, onChanged }: { partner: Partner; onChanged: () => void }) {
+  const prompt = usePrompt();
   return (
     <tr>
       <td>
@@ -328,7 +330,7 @@ function PartnerRow({ partner, onChanged }: { partner: Partner; onChanged: () =>
             className="btn secondary"
             style={{ padding: '.3rem .6rem', fontSize: '.85rem', color: '#b91c1c', borderColor: '#b91c1c' }}
             onClick={async () => {
-              const reason = prompt(`Suspend "${partner.name}"? All API keys will start failing immediately. Reason (optional):`);
+              const reason = (await prompt({ title: `Suspend "${partner.name}"? All API keys will start failing immediately. Reason (optional):` }));
               if (reason === null) return;
               await api.post(`/admin/partners/${partner.id}/suspend`, { reason });
               onChanged();

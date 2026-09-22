@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { MediaPicker } from '../../components/MediaPicker';
 import { ConfiguratorEditor, type Option } from '../../components/ConfiguratorEditor';
+import { useConfirm } from '../../components/admin/ui';
 
 interface VolumeTier { minQty: number; pricePerUnitCents: number; }
 interface Image { url: string; alt?: string; }
@@ -43,6 +44,7 @@ const emptyDraft: ProductDraft = {
 };
 
 export function AdminProductEdit() {
+  const confirm = useConfirm();
   const { id } = useParams();
   const isNew = !id;
   const navigate = useNavigate();
@@ -58,6 +60,7 @@ export function AdminProductEdit() {
   const [faq, setFaq] = useState<FaqItem[]>([]);
   const [pricingConfigJson, setPricingConfigJson] = useState<string>('');
   const [pricingError, setPricingError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = async () => {
     const catsRes = await api.get<{ categories: Category[] }>('/admin/categories');
@@ -93,7 +96,7 @@ export function AdminProductEdit() {
     }
   };
 
-  useEffect(() => { void load(); }, [id]);
+  useEffect(() => { void load().finally(() => setLoaded(true)); }, [id]);
 
   const save = async () => {
     setSaving(true);
@@ -139,7 +142,7 @@ export function AdminProductEdit() {
   };
 
   const remove = async () => {
-    if (!id || !confirm('Delete this product?')) return;
+    if (!id || !(await confirm({ title: 'Delete this product?', confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/products/${id}`);
     navigate('/admin/products');
   };
@@ -168,18 +171,21 @@ export function AdminProductEdit() {
     setVariants(variants.map((x) => (x.id === v.id ? merged : x)));
   };
   const deleteVariant = async (variantId: string) => {
-    if (!id || !confirm('Delete variant?')) return;
+    if (!id || !(await confirm({ title: 'Delete variant?', confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/products/${id}/variants/${variantId}`);
     setVariants(variants.filter((v) => v.id !== variantId));
   };
 
+  if (!loaded) return <p className="muted">Loading…</p>;
+
   return (
     <div>
+      <Link className="admin-back" to="/admin/products">← Products</Link>
       <div className="spread" style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0 }}>{isNew ? 'New product' : 'Edit product'}</h1>
+        <h1 style={{ margin: 0 }}>{isNew ? 'New product' : draft.name || 'Edit product'}</h1>
         <div className="row">
           {!isNew && <button className="btn secondary" onClick={duplicate}>Duplicate</button>}
-          {!isNew && <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={remove}>Delete</button>}
+          {!isNew && <button className="btn secondary danger" onClick={remove}>Delete</button>}
           <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>

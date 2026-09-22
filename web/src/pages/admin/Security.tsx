@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import { useConfirm, usePrompt } from '../../components/admin/ui';
 
 interface Stats {
   activeUsers: number;
@@ -28,9 +29,11 @@ interface Event {
 }
 
 export function AdminSecurity() {
+  const confirm = useConfirm(); const prompt = usePrompt();
   const [stats, setStats] = useState<Stats | null>(null);
   const [blocked, setBlocked] = useState<Blocked[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   const load = async () => {
     const [s, b, e] = await Promise.all([
@@ -41,20 +44,21 @@ export function AdminSecurity() {
     setStats(s);
     setBlocked(b.blocked);
     setEvents(e.events);
+    setLoaded(true);
   };
 
   useEffect(() => { void load(); }, []);
 
   const unblock = async (ip: string) => {
-    if (!confirm(`Unblock ${ip}?`)) return;
+    if (!(await confirm({ title: `Unblock ${ip}?`, confirmLabel: 'Unblock', danger: true }))) return;
     await api.del(`/admin/security/block/${encodeURIComponent(ip)}`);
     void load();
   };
 
   const blockManual = async () => {
-    const ip = prompt('IP to block');
+    const ip = (await prompt({ title: 'IP to block' }));
     if (!ip) return;
-    const reason = prompt('Reason', 'Manual block') ?? 'Manual block';
+    const reason = (await prompt({ title: 'Reason', defaultValue: 'Manual block' })) ?? 'Manual block';
     await api.post('/admin/security/block', { ip, reason });
     void load();
   };
@@ -77,7 +81,9 @@ export function AdminSecurity() {
 
       <div className="admin-card">
         <h3>Blocked IPs</h3>
-        {blocked.length === 0 ? (
+        {!loaded ? (
+          <p className="muted">Loading…</p>
+        ) : blocked.length === 0 ? (
           <p className="muted">No blocked IPs right now.</p>
         ) : (
           <table className="admin-table">
@@ -90,7 +96,7 @@ export function AdminSecurity() {
                   <td>{b.violationCount}</td>
                   <td>{new Date(b.blockedAt).toLocaleString()}</td>
                   <td>{new Date(b.expiresAt).toLocaleString()}</td>
-                  <td><button className="btn secondary" onClick={() => unblock(b.ipAddress)}>Unblock</button></td>
+                  <td><button className="btn secondary sm" onClick={() => unblock(b.ipAddress)}>Unblock</button></td>
                 </tr>
               ))}
             </tbody>
@@ -100,7 +106,9 @@ export function AdminSecurity() {
 
       <div className="admin-card">
         <h3>Recent suspicious activity</h3>
-        {events.length === 0 ? (
+        {!loaded ? (
+          <p className="muted">Loading…</p>
+        ) : events.length === 0 ? (
           <p className="muted">Nothing suspicious logged.</p>
         ) : (
           <table className="admin-table">

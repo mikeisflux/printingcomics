@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../api/client';
+import { useToast, errorMessage } from '../../components/admin/ui';
 
 interface Analysis {
   id: string;
@@ -20,6 +21,7 @@ interface Analysis {
 }
 
 export function AdminSeoDetail() {
+  const toast = useToast();
   const { productId } = useParams();
   const [product, setProduct] = useState<any>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -41,7 +43,7 @@ export function AdminSeoDetail() {
     try {
       const r = await api.post<{ analysis: Analysis }>(`/admin/seo/analyze-product/${productId}`);
       setAnalysis(r.analysis);
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setAnalyzing(false); }
   };
 
@@ -49,9 +51,9 @@ export function AdminSeoDetail() {
     setApplying(true);
     try {
       await api.post(`/admin/seo/apply/${productId}`, fields);
-      alert('Applied to product.');
+      toast.success('Applied to product.');
       void load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setApplying(false); }
   };
 

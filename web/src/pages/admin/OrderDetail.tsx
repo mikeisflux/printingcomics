@@ -4,6 +4,7 @@ import { api, formatMoney } from '../../api/client';
 import { formatCartItemOptions } from '../../lib/cart-options';
 import { StatusBadge } from '../Account';
 import { OptionControl, keyOf, type ProductOption } from '../Product';
+import { PageHeader, errorMessage, useConfirm, useToast } from '../../components/admin/ui';
 
 interface OrderEvent {
   id: string;
@@ -136,6 +137,7 @@ function slotLabelOf(p: { kind?: string | null; orderItem?: { name: string } | n
 }
 
 function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
+  const confirm = useConfirm();
   const [showProof, setShowProof] = useState(false);
   const [proofMsg, setProofMsg] = useState('');
   const [showRequest, setShowRequest] = useState(false);
@@ -220,7 +222,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
   }
 
   async function deleteProof(proofId: string) {
-    if (!window.confirm('Delete this proof? The customer’s review link for it will stop working.')) return;
+    if (!(await confirm({ title: 'Delete this proof?', body: 'The customer’s review link for it will stop working.', confirmLabel: 'Delete', danger: true }))) return;
     setBusy(true); setErr(null);
     try {
       await api.del(`/admin/orders/${order.id}/proof/${proofId}`);
@@ -438,6 +440,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 }
 
 export function AdminOrderDetail() {
+  const toast = useToast(); const confirm = useConfirm();
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderFull | null>(null);
@@ -484,64 +487,29 @@ export function AdminOrderDetail() {
   // out with rewritten tracking links, or never arrived).
   const resendProofs = async () => {
     if (!order) return;
-    if (!confirm(`Email the outstanding proof links to ${order.email} again?`)) return;
+    if (!(await confirm({ title: 'Re-send the proof emails?', body: `The outstanding proof links go to ${order.email} again.`, confirmLabel: 'Send' }))) return;
     setResending(true);
     try {
       const r = await api.post<{ count: number; to: string }>(`/admin/orders/${id}/proofs/resend`, {});
-      alert(`Sent ${r.count} proof link(s) to ${r.to}.`);
+      toast.success(`Sent ${r.count} proof link(s) to ${r.to}.`);
       load();
     } catch (e: any) {
-      alert(e?.message ?? 'Could not re-send the proof emails.');
+      toast.error(errorMessage(e, 'Could not re-send the proof emails.'));
     } finally {
       setResending(false);
     }
   };
 
-  const refund = async () => {
-    if (!order) return;
-    const fullAmount = order.totalCents;
-    const input = prompt(
-      `Refund amount (in dollars). Leave blank for full refund of ${formatMoney(fullAmount)}.`,
-      '',
-    );
-    if (input === null) return;
-    // "$12.50" or "12,50" used to become NaN → null on the wire → a validation
-    // error that looked like the refund itself had failed.
-    const cleaned = input.replace(/[^0-9.]/g, '');
-    const amountCents = cleaned ? Math.round(Number(cleaned) * 100) : undefined;
-    if (input.trim() && !(amountCents! > 0)) {
-      alert('Enter a dollar amount like 12.50, or leave it blank for a full refund.');
-      return;
-    }
-    if (amountCents && amountCents > fullAmount) {
-      alert(`That is more than the ${formatMoney(fullAmount)} this order was charged.`);
-      return;
-    }
-    const note = prompt('Note to customer (optional)') || undefined;
-    if (!confirm(amountCents ? `Refund ${formatMoney(amountCents)}?` : `Refund full amount ${formatMoney(fullAmount)}?`)) return;
-    try {
-      const r = await api.post<{ refund: { refundId: string; status: string; refundedCents: number } }>(
-        `/admin/orders/${id}/refund`, { amountCents, note },
-      );
-      alert(`Refunded ${formatMoney(r.refund.refundedCents)} — PayPal refund ${r.refund.refundId} (${r.refund.status}).`);
-      load();
-    } catch (e: any) {
-      // Show PayPal's issue code and debug id when we have them: that is
-      // exactly what PayPal support asks for, and what to grep the logs by.
-      const d = e?.details ?? {};
-      const extra = [d.issue, d.debugId ? `PayPal debug id ${d.debugId}` : null].filter(Boolean).join(', ');
-      alert(`Refund failed: ${e?.message ?? 'unknown error'}${extra ? `\n\n(${extra})` : ''}`);
-    }
-  };
+  const [refundOpen, setRefundOpen] = useState(false);
 
   const deleteOrder = async () => {
     if (!order) return;
-    if (!confirm(`Permanently delete order ${order.number}? This removes the order and any uploaded files and can't be undone.`)) return;
+    if (!(await confirm({ title: `Permanently delete order ${order.number}?`, body: "This removes the order and any uploaded files and can't be undone.", confirmLabel: 'Delete order', danger: true }))) return;
     try {
       await api.del(`/admin/orders/${id}`);
       navigate('/admin/orders');
     } catch (e: any) {
-      alert(e.message ?? 'Delete failed');
+      toast.error(errorMessage(e, 'Delete failed'));
     }
   };
 
@@ -549,6 +517,7 @@ export function AdminOrderDetail() {
 
   return (
     <div>
+      <Link className="admin-back" to="/admin/orders">← Orders</Link>
       <div className="spread" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '.5rem' }}>
         <div>
           <h1 style={{ margin: 0 }}>Order {order.number}</h1>
@@ -612,7 +581,7 @@ export function AdminOrderDetail() {
             </button>
           )}
           {order.paymentStatus === 'CAPTURED' && (
-            <button className="btn secondary" style={{ color: '#b91c1c', borderColor: '#b91c1c' }} onClick={refund}>
+            <button className="btn secondary danger" onClick={() => setRefundOpen(true)}>
               Refund via PayPal
             </button>
           )}
@@ -681,6 +650,15 @@ export function AdminOrderDetail() {
       </div>
 
       <ShipmentsSection orderId={order.id} />
+
+      {refundOpen && (
+        <RefundDialog
+          orderId={order.id}
+          fullAmountCents={order.totalCents}
+          onClose={() => setRefundOpen(false)}
+          onDone={() => { setRefundOpen(false); load(); }}
+        />
+      )}
 
       {editingItemId && (() => {
         const item = order.items.find((x) => x.id === editingItemId);
@@ -932,6 +910,7 @@ interface EpRate {
 }
 
 function ShipmentsSection({ orderId }: { orderId: string }) {
+  const toast = useToast(); const confirm = useConfirm();
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
   const [remaining, setRemaining] = useState<RemainingItem[]>([]);
   const [packages, setPackages] = useState<{ id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[]>([]);
@@ -962,7 +941,7 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
   }, 0);
 
   async function autoPack() {
-    if (!confirm('Auto-pack the remaining items into boxes and fetch rates from EasyPost? This creates shipments but does not buy labels yet.')) return;
+    if (!(await confirm({ title: 'Auto-pack the remaining items?', body: 'Sizes boxes automatically and fetches rates from EasyPost. This creates shipments but does not buy labels yet.', confirmLabel: 'Auto-pack' }))) return;
     setAutoPacking(true);
     setAutoPackSummary(null);
     try {
@@ -977,7 +956,7 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
       });
       await load();
     } catch (e: any) {
-      alert(e.message ?? 'Auto-pack failed');
+      toast.error(errorMessage(e, 'Auto-pack failed'));
     } finally { setAutoPacking(false); }
   }
 
@@ -1051,11 +1030,11 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
                       className="btn secondary"
                       style={{ color: '#b91c1c' }}
                       onClick={async () => {
-                        if (!confirm('Request a refund for this label from EasyPost?')) return;
+                        if (!(await confirm({ title: 'Refund this label?', body: 'Asks EasyPost to refund the postage. Only works for labels that have not been scanned by the carrier.', confirmLabel: 'Request refund', danger: true }))) return;
                         try {
                           await api.post(`/admin/fulfillment/shipments/${s.id}/refund`);
                           await load();
-                        } catch (e: any) { alert(e.message ?? 'Refund failed'); }
+                        } catch (e: any) { toast.error(errorMessage(e, 'Refund failed')); }
                       }}
                     >Refund label</button>
                   )}
@@ -1064,11 +1043,11 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
                       className="btn secondary"
                       style={{ color: '#b91c1c' }}
                       onClick={async () => {
-                        if (!confirm('Delete this unpurchased shipment?')) return;
+                        if (!(await confirm({ title: 'Delete this shipment?', body: 'No label was bought, so nothing is refunded — the box is just removed.', confirmLabel: 'Delete', danger: true }))) return;
                         try {
                           await api.del(`/admin/fulfillment/shipments/${s.id}`);
                           await load();
-                        } catch (e: any) { alert(e.message ?? 'Delete failed'); }
+                        } catch (e: any) { toast.error(errorMessage(e, 'Delete failed')); }
                       }}
                     >Delete</button>
                   )}
@@ -1101,6 +1080,7 @@ function ShipmentBuilder({
   onCancel: () => void;
   onDone: () => void | Promise<void>;
 }) {
+  const toast = useToast(); const confirm = useConfirm();
   const [packageId, setPackageId] = useState<string>(packages[0]?.id ?? '');
   const [qtys, setQtys] = useState<Record<string, number>>(
     () => Object.fromEntries(remaining.map((r) => [r.orderItemId, 0])),
@@ -1144,8 +1124,8 @@ function ShipmentBuilder({
       const allocations = remaining
         .filter((r) => (qtys[r.orderItemId] ?? 0) > 0)
         .map((r) => ({ orderItemId: r.orderItemId, quantity: qtys[r.orderItemId] }));
-      if (allocations.length === 0) { alert('Allocate at least one item to this box.'); return; }
-      if (!packageId) { alert('Pick a package.'); return; }
+      if (allocations.length === 0) { toast.error('Put at least one item in this box first.'); return; }
+      if (!packageId) { toast.error('Pick a box size first.'); return; }
       const r = await api.post<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(
         `/admin/fulfillment/orders/${orderId}/shipments`,
         { packageId, allocations, weightOz: +effectiveOz.toFixed(2) },
@@ -1153,21 +1133,22 @@ function ShipmentBuilder({
       setShipmentId(r.shipment.id);
       setRates([...r.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate)));
       setInsuredValueCents(r.insuredValueCents);
-    } catch (e: any) { alert(e.message ?? 'Failed to fetch rates'); }
+    } catch (e: any) { toast.error(errorMessage(e, 'Could not fetch rates')); }
     finally { setBusy(false); }
   }
 
   async function buy(rate: EpRate) {
     if (!shipmentId) return;
-    if (!confirm(
-      `Buy ${rate.carrier} ${rate.service} label at $${rate.rate} and insure for ${formatMoney(insuredValueCents)}?\n\n` +
-      `EasyPost charges postage + 1% of declared value ($1 min) to your account.`
-    )) return;
+    if (!(await confirm({
+      title: `Buy ${rate.carrier} ${rate.service} for $${rate.rate}?`,
+      body: `Insured for ${formatMoney(insuredValueCents)}. EasyPost charges the postage plus 1% of the declared value ($1 minimum) to your account.`,
+      confirmLabel: `Buy label — $${rate.rate}`,
+    }))) return;
     setBusy(true);
     try {
       await api.post(`/admin/fulfillment/shipments/${shipmentId}/buy`, { rateId: rate.id });
       await onDone();
-    } catch (e: any) { alert(e.message ?? 'Buy failed'); }
+    } catch (e: any) { toast.error(errorMessage(e, 'Could not buy the label')); }
     finally { setBusy(false); }
   }
 
@@ -1361,6 +1342,7 @@ function signed(cents: number): string {
 function ItemOptionsEditor({ order, item, onClose, onDone }: {
   order: OrderFull; item: OrderItemRow; onClose: () => void; onDone: () => void;
 }) {
+  const toast = useToast(); const confirm = useConfirm();
   const options = [...item.product.options]
     .filter((o) => o.type !== 'UPLOAD') // artwork is replaced through the proofing flow, not here
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) as unknown as ProductOption[];
@@ -1373,6 +1355,12 @@ function ItemOptionsEditor({ order, item, onClose, onDone }: {
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(sel) !== JSON.stringify(item.options ?? {});
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [busy, onClose]);
 
   // Reprice on every change, debounced, through the real engine on the server.
   useEffect(() => {
@@ -1392,20 +1380,23 @@ function ItemOptionsEditor({ order, item, onClose, onDone }: {
 
   const submit = async () => {
     if (!preview || !change || change.diff.length === 0) return;
-    const action = delta > 0
-      ? `Send ${order.email} a request to pay ${formatMoney(delta)}? The change is applied once they pay.`
-      : delta < 0
-        ? `Apply this change now? The customer will be owed ${formatMoney(-delta)} — refund it from the Payments panel afterwards.`
-        : 'Apply this change now? There is no difference in price.';
-    if (!confirm(action)) return;
+    const ok = await confirm(
+      delta > 0
+        ? { title: `Send a request to pay ${formatMoney(delta)}?`, body: `It goes to ${order.email}. The change is applied to the order once they pay.`, confirmLabel: 'Send request' }
+        : delta < 0
+          ? { title: 'Apply this change now?', body: `The customer will be owed ${formatMoney(-delta)} — refund it from the Payments panel afterwards.`, confirmLabel: 'Apply' }
+          : { title: 'Apply this change now?', body: 'There is no difference in price.', confirmLabel: 'Apply' },
+    );
+    if (!ok) return;
     setBusy(true); setError(null);
     try {
       const r = await api.post<{ applied: boolean; payUrl: string | null }>(`/admin/orders/${order.id}/adjustments`, {
         changes: [{ orderItemId: item.id, options: sel }],
         note: note.trim() || undefined,
       });
-      if (r.applied) alert('Change applied to the order.');
-      else alert(`Payment request sent to ${order.email}.${r.payUrl ? `\n\nLink (also in the email):\n${r.payUrl}` : '\n\nNo public site URL is set in Settings → Store, so the email has no link — set it and use Resend.'}`);
+      if (r.applied) toast.success('Change applied to the order.');
+      else if (r.payUrl) toast.success(`Payment request sent to ${order.email}.`);
+      else toast.error(`Request sent to ${order.email}, but the email has no pay link: set the public site URL in Settings → Store, then use Resend.`);
       onDone();
     } catch (e: any) {
       setError(e?.message ?? 'Could not save the change');
@@ -1497,22 +1488,23 @@ function ItemOptionsEditor({ order, item, onClose, onDone }: {
 }
 
 function AdjustmentsCard({ orderId, adjustments, onChange }: { orderId: string; adjustments: AdjustmentRow[]; onChange: () => void }) {
+  const toast = useToast(); const confirm = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
   const act = async (a: AdjustmentRow, what: 'resend' | 'cancel') => {
-    if (what === 'cancel' && !confirm('Cancel this payment request? The order stays as it was.')) return;
+    if (what === 'cancel' && !(await confirm({ title: 'Cancel this payment request?', body: 'The order stays exactly as it was; the link stops working.', confirmLabel: 'Cancel request', danger: true }))) return;
     setBusy(a.id);
     try {
       const r = await api.post<{ ok: boolean; payUrl?: string | null }>(`/admin/orders/${orderId}/adjustments/${a.id}/${what}`);
-      if (what === 'resend') alert(`Sent.${r.payUrl ? `\n\n${r.payUrl}` : ''}`);
+      if (what === 'resend') toast.success(r.payUrl ? 'Payment request re-sent.' : 'Re-sent, but there is no pay link — set the public site URL in Settings → Store.');
       onChange();
-    } catch (e: any) { alert(e?.message ?? 'Failed'); } finally { setBusy(null); }
+    } catch (e: any) { toast.error(errorMessage(e)); } finally { setBusy(null); }
   };
   const copyLink = async (a: AdjustmentRow) => {
     try {
       const r = await api.post<{ ok: boolean; payUrl?: string | null }>(`/admin/orders/${orderId}/adjustments/${a.id}/resend`);
-      if (r.payUrl) { await navigator.clipboard?.writeText(r.payUrl); alert('Pay link copied (and the email re-sent).'); }
-      else alert('No public site URL is set in Settings → Store, so there is no link to copy.');
-    } catch (e: any) { alert(e?.message ?? 'Failed'); }
+      if (r.payUrl) { await navigator.clipboard?.writeText(r.payUrl); toast.success('Pay link copied (and the email re-sent).'); }
+      else toast.error('No public site URL is set in Settings → Store, so there is no link to copy.');
+    } catch (e: any) { toast.error(errorMessage(e)); }
   };
   const tone: Record<AdjustmentRow['status'], string> = { pending: '#b45309', paid: '#166534', applied: '#166534', cancelled: '#6b7280' };
 
@@ -1555,6 +1547,81 @@ function AdjustmentsCard({ orderId, adjustments, onChange }: { orderId: string; 
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Refund through PayPal. One form — amount (blank = everything), a note the
+ * customer sees, and a clear statement of what is about to happen — instead
+ * of three sequential browser prompts.
+ */
+function RefundDialog({ orderId, fullAmountCents, onClose, onDone }: {
+  orderId: string; fullAmountCents: number; onClose: () => void; onDone: () => void;
+}) {
+  const toast = useToast();
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cleaned = amount.replace(/[^0-9.]/g, '');
+  const amountCents = cleaned ? Math.round(Number(cleaned) * 100) : undefined;
+  const problem =
+    amount.trim() && !(amountCents! > 0) ? 'Enter a dollar amount like 12.50, or leave it blank for a full refund.'
+    : amountCents && amountCents > fullAmountCents ? `That is more than the ${formatMoney(fullAmountCents)} this order was charged.`
+    : null;
+  const refunding = amountCents ?? fullAmountCents;
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [busy, onClose]);
+
+  const submit = async () => {
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ refund: { refundId: string; status: string; refundedCents: number } }>(
+        `/admin/orders/${orderId}/refund`, { amountCents, note: note.trim() || undefined },
+      );
+      toast.success(`Refunded ${formatMoney(r.refund.refundedCents)} — PayPal refund ${r.refund.refundId} (${r.refund.status}).`);
+      onDone();
+    } catch (e: any) {
+      // PayPal's issue code and debug id are what their support asks for.
+      const d = e?.details ?? {};
+      const extra = [d.issue, d.debugId ? `PayPal debug id ${d.debugId}` : null].filter(Boolean).join(', ');
+      setError(`${errorMessage(e, 'Refund failed')}${extra ? ` (${extra})` : ''}`);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pc-dialog-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <form className="pc-dialog" role="dialog" aria-modal="true" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <h3 style={{ margin: '0 0 .25rem' }}>Refund via PayPal</h3>
+        <p className="muted" style={{ margin: 0, fontSize: '.9rem' }}>This order was charged {formatMoney(fullAmountCents)}.</p>
+
+        <label style={{ marginTop: '1rem' }}>Amount to refund</label>
+        <input
+          autoFocus
+          inputMode="decimal"
+          placeholder={`Leave blank to refund all ${formatMoney(fullAmountCents)}`}
+          value={amount}
+          onChange={(e) => { setAmount(e.target.value); setError(null); }}
+        />
+        <label style={{ marginTop: '.75rem' }}>Note to the customer (optional)</label>
+        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Shows on their PayPal receipt" />
+
+        {(error ?? problem) && <div className="error" style={{ marginBottom: 0 }}>{error ?? problem}</div>}
+
+        <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+          <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="btn danger" disabled={busy || !!problem}>
+            {busy ? 'Refunding…' : `Refund ${formatMoney(refunding)}`}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { RichTextEditor } from '../../components/RichTextEditor';
+import { useToast, useConfirm, errorMessage } from '../../components/admin/ui';
 
 export function AdminEmailCampaignEdit() {
+  const toast = useToast(); const confirm = useConfirm();
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
@@ -19,6 +21,7 @@ export function AdminEmailCampaignEdit() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [extraRaw, setExtraRaw] = useState('');
+  const [loaded, setLoaded] = useState(false);
 
   const load = async () => {
     const [ls, ts] = await Promise.all([
@@ -47,7 +50,7 @@ export function AdminEmailCampaignEdit() {
     }
   };
 
-  useEffect(() => { void load(); }, [id]);
+  useEffect(() => { void load().finally(() => setLoaded(true)); }, [id]);
 
   const loadTemplate = async (tid: string) => {
     if (!tid) return;
@@ -75,19 +78,19 @@ export function AdminEmailCampaignEdit() {
         await api.put(`/admin/email/campaigns/${id}`, body);
         return id!;
       }
-    } catch (e: any) { alert(e.message); return null; }
+    } catch (e: any) { toast.error(errorMessage(e)); return null; }
     finally { setSaving(false); }
   };
 
   const uploadAttachments = async (files: FileList | null) => {
     if (!files || files.length === 0 || !id || isNew) {
-      if (isNew) alert('Save the campaign first, then upload attachments.');
+      if (isNew) toast.info('Save the campaign first, then upload attachments.');
       return;
     }
     const fd = new FormData();
     for (const f of Array.from(files)) fd.append('files', f);
     const res = await fetch(`/api/admin/email/campaigns/${id}/attachments`, { method: 'POST', body: fd, credentials: 'include' });
-    if (!res.ok) alert('Upload failed');
+    if (!res.ok) toast.error('Upload failed');
     else {
       const r = await res.json();
       setAttachments([...attachments, ...r.attachments]);
@@ -95,20 +98,23 @@ export function AdminEmailCampaignEdit() {
   };
 
   const sendNow = async () => {
-    if (!id || isNew) { alert('Save first.'); return; }
-    if (!confirm('Send this campaign now?')) return;
+    if (!id || isNew) { toast.info('Save first.'); return; }
+    if (!(await confirm({ title: 'Send this campaign now?' }))) return;
     setSending(true);
     try {
       const r = await api.post<{ sent: number; failed: number; total: number }>(`/admin/email/campaigns/${id}/send`);
-      alert(`Sent ${r.sent}/${r.total} (failed: ${r.failed})`);
-    } catch (e: any) { alert(e.message); }
+      toast.success(`Sent ${r.sent}/${r.total} (failed: ${r.failed})`);
+    } catch (e: any) { toast.error(errorMessage(e)); }
     finally { setSending(false); }
   };
 
+  if (!loaded) return <p className="muted">Loading…</p>;
+
   return (
     <div>
+      <Link className="admin-back" to="/admin/email">← Email</Link>
       <div className="spread" style={{ marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>{isNew ? 'New campaign' : 'Edit campaign'}</h1>
+        <h1 style={{ margin: 0 }}>{isNew ? 'New campaign' : form.name || 'Edit campaign'}</h1>
         <div className="row">
           <button className="btn secondary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
           {!isNew && <button className="btn" onClick={sendNow} disabled={sending}>{sending ? 'Sending…' : 'Send now'}</button>}

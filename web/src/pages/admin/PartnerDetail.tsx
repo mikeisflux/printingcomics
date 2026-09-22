@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { StatusBadge } from '../Account';
+import { useConfirm, usePrompt } from '../../components/admin/ui';
 
 type Tab = 'overview' | 'api-keys' | 'projects' | 'orders' | 'team' | 'uploads' | 'webhooks' | 'activity';
 
@@ -236,6 +237,7 @@ export function AdminPartnerDetail() {
 }
 
 function PartnerStatusControls({ partner, onChanged }: { partner: PartnerSummary; onChanged: () => void }) {
+  const confirm = useConfirm(); const prompt = usePrompt();
   return (
     <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
       {partner.status === 'ACTIVE' && <span className="badge paid">Active</span>}
@@ -246,7 +248,7 @@ function PartnerStatusControls({ partner, onChanged }: { partner: PartnerSummary
           className="btn secondary"
           style={{ padding: '.4rem .8rem', color: '#b91c1c', borderColor: '#b91c1c' }}
           onClick={async () => {
-            const reason = prompt(`Suspend ${partner.name}? All API keys stop working immediately. Reason (optional):`);
+            const reason = (await prompt({ title: `Suspend ${partner.name}? All API keys stop working immediately. Reason (optional):` }));
             if (reason === null) return;
             await api.post(`/admin/partners/${partner.id}/suspend`, { reason });
             onChanged();
@@ -271,7 +273,7 @@ function PartnerStatusControls({ partner, onChanged }: { partner: PartnerSummary
             className="btn secondary"
             style={{ padding: '.4rem .8rem' }}
             onClick={async () => {
-              if (!confirm(`Archive ${partner.name}? This permanently revokes every API key. They can be restored from ACTIVE again, but already-revoked keys won't auto-reactivate.`)) return;
+              if (!(await confirm({ title: `Archive ${partner.name}?`, body: `This permanently revokes every API key. They can be restored from ACTIVE again, but already-revoked keys won't auto-reactivate.`, confirmLabel: 'Archive', danger: true }))) return;
               await api.post(`/admin/partners/${partner.id}/archive`);
               onChanged();
             }}
@@ -552,6 +554,7 @@ function ApiKeyRow({
   k: ApiKey;
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [revealedSigning, setRevealedSigning] = useState<string | null>(null);
   return (
     <tr>
@@ -599,7 +602,7 @@ function ApiKeyRow({
                 className="btn secondary"
                 style={{ padding: '.2rem .45rem', fontSize: '.75rem', color: '#b91c1c', borderColor: '#b91c1c' }}
                 onClick={async () => {
-                  if (!confirm('Rotate the signing secret? The old secret stops working immediately.')) return;
+                  if (!(await confirm({ title: 'Rotate the signing secret?', body: 'The old secret stops working immediately.', confirmLabel: 'Rotate', danger: true }))) return;
                   const r = await api.post<{ signingSecret: string }>(
                     `/admin/partners/${partnerId}/api-keys/${k.id}/signing-secret/rotate`,
                   );
@@ -655,7 +658,7 @@ function ApiKeyRow({
             className="btn secondary"
             style={{ padding: '.3rem .6rem', fontSize: '.85rem', color: '#b91c1c', borderColor: '#b91c1c' }}
             onClick={async () => {
-              if (!confirm(`Revoke "${k.name}"?`)) return;
+              if (!(await confirm({ title: `Revoke "${k.name}"?`, confirmLabel: 'Revoke', danger: true }))) return;
               await api.post(`/admin/partners/${partnerId}/api-keys/${k.id}/revoke`);
               onChanged();
             }}
@@ -951,6 +954,7 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
 // ---- Team tab ------------------------------------------------------------
 
 function TeamTab({ partnerId, members, onChanged }: { partnerId: string; members: Member[]; onChanged: () => void }) {
+  const confirm = useConfirm();
   const [adding, setAdding] = useState(false);
   return (
     <div>
@@ -995,7 +999,7 @@ function TeamTab({ partnerId, members, onChanged }: { partnerId: string; members
                     className="btn secondary"
                     style={{ padding: '.3rem .6rem', fontSize: '.85rem', color: '#b91c1c', borderColor: '#b91c1c' }}
                     onClick={async () => {
-                      if (!confirm(`Remove ${m.email} from this partner? Their user account stays intact.`)) return;
+                      if (!(await confirm({ title: `Remove ${m.email} from this partner?`, body: `Their user account stays intact.`, confirmLabel: 'Remove', danger: true }))) return;
                       await api.del(`/admin/partners/${partnerId}/members/${m.id}`);
                       onChanged();
                     }}
@@ -1092,6 +1096,7 @@ function WebhooksTab({
   events: string[];
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
   const [selectedDelivery, setSelectedDelivery] = useState<string | null>(null);
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
@@ -1178,7 +1183,7 @@ function WebhooksTab({
             className="btn secondary"
             style={{ color: '#b91c1c', borderColor: '#b91c1c' }}
             onClick={async () => {
-              if (!confirm('Rotate the webhook secret? The old secret will stop working immediately and the partner must update their verification code.')) return;
+              if (!(await confirm({ title: 'Rotate the webhook secret?', body: 'The old secret will stop working immediately and the partner must update their verification code.', confirmLabel: 'Rotate', danger: true }))) return;
               const r = await api.post<{ secret: string }>(`/admin/partners/${partnerId}/webhook-secret/rotate`);
               setRevealedSecret(r.secret);
               onChanged();

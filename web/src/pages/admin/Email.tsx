@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
+import { useToast, useConfirm, errorMessage } from '../../components/admin/ui';
 
 type Tab = 'compose' | 'inbox' | 'campaigns' | 'templates' | 'subscribers' | 'sends';
 
@@ -130,6 +131,7 @@ const INBOX_FILTERS: { label: string; query: Record<string, string> }[] = [
 ];
 
 function InboxTab() {
+  const toast = useToast(); const confirm = useConfirm();
   const [items, setItems] = useState<InboundMessage[]>([]);
   const [filter, setFilter] = useState(0);
   const [search, setSearch] = useState('');
@@ -161,7 +163,7 @@ function InboxTab() {
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this message?')) return;
+    if (!(await confirm({ title: 'Delete this message?', confirmLabel: 'Delete', danger: true }))) return;
     await api.del(`/admin/email/inbound/${id}`);
     setSelectedId(null);
     await load();
@@ -178,7 +180,7 @@ function InboxTab() {
       setReplyHtml('');
       await load();
     } catch (e: any) {
-      alert(e.message ?? 'Reply failed');
+      toast.error(errorMessage(e, 'Reply failed'));
     } finally {
       setReplyBusy(false);
     }
@@ -398,6 +400,7 @@ function TemplatesTab() {
 }
 
 function SubscribersTab() {
+  const toast = useToast();
   const [subscribers, setSubscribers] = useState<any[]>([]);
   const [q, setQ] = useState('');
   const [bulkText, setBulkText] = useState('');
@@ -412,7 +415,7 @@ function SubscribersTab() {
 
   const importCsv = async () => {
     const r = await api.post<{ imported: number }>('/admin/email/subscribers/import', { text: bulkText });
-    alert(`Imported ${r.imported} subscribers.`);
+    toast.success(`Imported ${r.imported} subscribers.`);
     setBulkText('');
     setShowImport(false);
     load();

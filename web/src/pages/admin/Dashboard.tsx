@@ -48,11 +48,13 @@ export function AdminDashboard() {
           label="Awaiting fulfillment"
           value={String(data.counts.awaitingFulfillment)}
           accent={data.counts.awaitingFulfillment > 0 ? '#a16207' : undefined}
+          to="/admin/orders?status=PAID"
         />
         <Stat
           label="Unread inbox"
           value={String(data.counts.unreadInbox)}
           accent={data.counts.unreadInbox > 0 ? '#1e74fc' : undefined}
+          to="/admin/email"
         />
       </div>
 
@@ -171,14 +173,16 @@ export function AdminDashboard() {
   );
 }
 
-function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
-  return (
-    <div className="admin-card" style={{ margin: 0, padding: '1rem', borderLeft: accent ? `4px solid ${accent}` : undefined }}>
-      <div style={{ fontSize: '.7rem', textTransform: 'uppercase', color: 'var(--muted)', fontWeight: 700, letterSpacing: '.05em' }}>{label}</div>
+function Stat({ label, value, sub, accent, to }: { label: string; value: string; sub?: string; accent?: string; to?: string }) {
+  const card = (
+    <div className="admin-card" style={{ margin: 0, padding: '1rem', borderLeft: accent ? `4px solid ${accent}` : undefined, height: '100%' }}>
+      <div style={{ fontSize: '.7rem', textTransform: 'uppercase', color: 'var(--ink-muted)', fontWeight: 700, letterSpacing: '.05em' }}>{label}</div>
       <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '.25rem', color: accent ?? 'var(--ink)' }}>{value}</div>
-      {sub && <div style={{ fontSize: '.8rem', color: 'var(--muted)', marginTop: '.15rem' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: '.8rem', color: 'var(--ink-muted)', marginTop: '.15rem' }}>{sub}</div>}
     </div>
   );
+  // A stat that is a to-do ("3 awaiting fulfillment") should take you there.
+  return to ? <Link to={to} style={{ textDecoration: 'none', color: 'inherit' }}>{card}</Link> : card;
 }
 
 function RevenueChart({ series }: { series: { day: string; totalCents: number }[] }) {
@@ -195,7 +199,7 @@ function RevenueChart({ series }: { series: { day: string; totalCents: number }[
               borderRadius: 4,
               transition: 'height .4s ease',
             }} />
-            <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>{s.day.slice(5)}</div>
+            <div style={{ fontSize: '.65rem', color: 'var(--ink-muted)' }}>{s.day.slice(5)}</div>
           </div>
         );
       })}

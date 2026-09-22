@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
+import { useToast, errorMessage } from '../../components/admin/ui';
 
 interface AdminReview {
   id: string;
@@ -38,6 +39,7 @@ function Stars({ rating }: { rating: number | null }) {
 }
 
 export function AdminReviews() {
+  const toast = useToast();
   const [tab, setTab] = useState('pending');
   const [reviews, setReviews] = useState<AdminReview[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -82,9 +84,9 @@ export function AdminReviews() {
   async function copyLink(r: AdminReview) {
     try {
       const { url } = await api.get<{ url: string | null }>(`/admin/reviews/${r.id}/link`);
-      if (url) { void navigator.clipboard?.writeText(url); alert('Review link copied.'); }
-      else alert('Set your public site URL in Settings → Store first.');
-    } catch (e: any) { alert(e?.message ?? 'Could not get the link'); }
+      if (url) { void navigator.clipboard?.writeText(url); toast.success('Review link copied.'); }
+      else toast.info('Set your public site URL in Settings → Store first.');
+    } catch (e: any) { toast.error(errorMessage(e, 'Could not get the link')); }
   }
 
   return (
