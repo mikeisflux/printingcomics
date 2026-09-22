@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { MAX_UPLOAD_BYTES } from '../config.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -21,7 +22,7 @@ const upload = multer({
     destination: (_r, _f, cb) => cb(null, CUSTOMER_DIR),
     filename: (_r, file, cb) => cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}${path.extname(file.originalname).slice(0, 10)}`),
   }),
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 /** The terms a customer accepts when approving a proof. Returned by the API so

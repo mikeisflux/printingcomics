@@ -11,7 +11,7 @@
  * (sha256(filename + JWT_SECRET)) — the public download URL must include
  * the token, so a leaked filename alone can't be enumerated.
  *
- * Limits: 2 GB max per file (matches existing customer upload).
+ * Limits: 5 GB max per file (matches existing customer upload).
  *
  * Idempotency: clients can pass the SHA-256 of their file as
  * X-Upload-Content-Hash. Duplicates within the same partner+key return the
@@ -26,7 +26,7 @@ import { prisma } from '../../db.js';
 import { publishUpload } from '../../lib/storage.js';
 import { HttpError } from '../../middleware/error.js';
 import { requireApiKey } from '../../middleware/api-key.js';
-import { config } from '../../config.js';
+import { config, MAX_UPLOAD_BYTES } from '../../config.js';
 
 const router = Router();
 
@@ -43,7 +43,7 @@ const upload = multer({
       cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 function makeAccessToken(filename: string): string {

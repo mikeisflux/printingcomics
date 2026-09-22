@@ -201,7 +201,18 @@ startCampaignScheduler(60_000);
 // Auto-delete abandoned (unpaid) storefront checkouts older than 24h.
 startAbandonedOrderCleanup();
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   // eslint-disable-next-line no-console
   console.log(`[pc-server] listening on http://localhost:${config.port}`);
 });
+
+// Node drops any request that takes longer than 5 minutes end to end
+// (server.requestTimeout) — for a multi-GB artwork or proof upload that meant
+// the socket died mid-stream with no response, and the browser sat on
+// "Sending…" until it gave up. nginx in front already waits an hour per read
+// (deploy/nginx.conf); allow the API the same order of time.
+server.requestTimeout = 4 * 60 * 60 * 1000;
+// Keep idle keep-alive sockets open longer than nginx's upstream keepalive
+// (60s) so nginx never reuses a socket Node has just closed (random 502s).
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;

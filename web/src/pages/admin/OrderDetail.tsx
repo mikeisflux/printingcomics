@@ -212,17 +212,35 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
     });
   }
 
+  // Upload progress for the proof batch — a few hundred MB of PDFs takes
+  // minutes on a normal connection, and a button frozen on "Sending…" for
+  // that long looks broken.
+  const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null);
+
   async function sendQueue() {
     if (queue.length === 0) return;
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setProgress(null);
     try {
       const fd = new FormData();
       for (const q of queue) fd.append('files', q.file);
       fd.append('assignments', JSON.stringify(queue.map((q) => ({ orderItemId: q.itemId || null, kind: q.kind }))));
       if (proofMsg.trim()) fd.append('message', proofMsg.trim());
-      const r = await fetch(`/api/admin/orders/${order.id}/proofs/batch`, { method: 'POST', credentials: 'include', body: fd });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({ error: 'Upload failed' }))).error);
-      const body = await r.json().catch(() => ({}));
+      // XMLHttpRequest rather than fetch: only it reports upload progress.
+      const body = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/admin/orders/${order.id}/proofs/batch`);
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgress({ sent: e.loaded, total: e.total }); };
+        xhr.onload = () => {
+          let parsed: any = {};
+          try { parsed = JSON.parse(xhr.responseText || '{}'); } catch { /* not JSON */ }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(parsed);
+          else reject(new Error(parsed?.error ?? `Upload failed (${xhr.status})`));
+        };
+        xhr.onerror = () => reject(new Error('The upload was interrupted before the server answered — check the connection and try again.'));
+        xhr.onabort = () => reject(new Error('Upload cancelled'));
+        xhr.send(fd);
+      });
       setShowProof(false); setQueue([]); setProofMsg('');
       setNotice(
         body?.email?.sent
@@ -231,7 +249,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
       );
       onChange();
     } catch (e: any) { setErr(e.message ?? 'Upload failed'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setProgress(null); }
   }
 
   async function deleteProof(proofId: string) {
@@ -394,8 +412,16 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
           <textarea rows={2} value={proofMsg} onChange={(e) => setProofMsg(e.target.value)} placeholder="Anything the customer should look at…" />
           <div style={{ marginTop: '.6rem' }}>
             <button className="btn" onClick={sendQueue} disabled={busy || queue.length === 0}>
-              {busy ? 'Sending…' : `Send ${queue.length || ''} proof${queue.length === 1 ? '' : 's'} to customer`}
+              {!busy ? `Send ${queue.length || ''} proof${queue.length === 1 ? '' : 's'} to customer`
+                : !progress ? 'Sending…'
+                : progress.sent < progress.total ? `Uploading… ${formatBytes(progress.sent)} of ${formatBytes(progress.total)} (${Math.round((progress.sent / progress.total) * 100)}%)`
+                : 'Uploaded — storing the files and emailing the customer…'}
             </button>
+            {busy && (
+              <span className="muted" style={{ fontSize: '.8rem', marginLeft: '.6rem' }}>
+                Keep this tab open until it finishes.
+              </span>
+            )}
           </div>
         </div>
       )}

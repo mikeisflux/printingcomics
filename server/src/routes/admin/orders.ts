@@ -17,6 +17,7 @@ import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl
 import { backfillOrderUploads } from '../../lib/order-files.js';
 import { sendAdjustmentRequestEmail } from '../../lib/order-emails.js';
 import multer from 'multer';
+import { MAX_UPLOAD_BYTES } from '../../config.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -31,7 +32,7 @@ const proofUpload = multer({
     destination: (_r, _f, cb) => cb(null, PROOF_DIR),
     filename: (_r, file, cb) => cb(null, `${Date.now()}-${randomBytes(6).toString('hex')}${path.extname(file.originalname).slice(0, 10)}`),
   }),
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 router.get('/', async (req, res) => {
@@ -550,7 +551,7 @@ router.post('/:id/proof', proofUpload.single('file'), async (req, res) => {
 // [{ orderItemId, kind }]) + optional shared `message`. Creates every proof,
 // recomputes the aggregate once, and emails a single summary with all review
 // links, so multi-item orders don't spam the customer proof-by-proof.
-router.post('/:id/proofs/batch', proofUpload.array('files', 20), async (req, res) => {
+router.post('/:id/proofs/batch', proofUpload.array('files', 100), async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: String(req.params.id) } });
   if (!order) throw new HttpError(404, 'Order not found');
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import multer from 'multer';
+import { MAX_UPLOAD_BYTES } from '../../config.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -23,7 +24,7 @@ const upload = multer({
       cb(null, `${Date.now()}-${randomBytes(6).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2 GB per file
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 function publicUrl(filename: string) {
