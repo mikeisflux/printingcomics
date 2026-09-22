@@ -229,7 +229,18 @@ export async function r2SignedUrl(
 ): Promise<string | null> {
   const cfg = await r2Config();
   if (!cfg) return null;
-  const { amz, short } = amzDate(new Date());
+  return presignGetUrl(cfg, key, expiresSeconds, opts, new Date());
+}
+
+/** Pure SigV4 query-string presign — separated from the config lookup so it can be tested. */
+export function presignGetUrl(
+  cfg: Pick<R2Ready, 'endpoint' | 'bucket' | 'accessKeyId' | 'secretAccessKey'>,
+  key: string,
+  expiresSeconds: number,
+  opts: { contentDisposition?: string; contentType?: string },
+  now: Date,
+): string {
+  const { amz, short } = amzDate(now);
   const scope = `${short}/${REGION}/${SERVICE}/aws4_request`;
   const url = new URL(`${cfg.endpoint}/${cfg.bucket}/${key}`);
 
