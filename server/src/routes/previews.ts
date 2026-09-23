@@ -19,6 +19,15 @@ const router = Router();
 async function allowed(req: Request, mediaId: string): Promise<boolean> {
   const role = req.session?.role;
   if (role === 'ADMIN' || role === 'STAFF') return true;
+  // A signed-in customer may look at the proofs and files on their own orders.
+  if (req.session?.sub) {
+    const userId = req.session.sub;
+    const [asProof, asFile] = await Promise.all([
+      prisma.proof.count({ where: { mediaFileId: mediaId, order: { userId } } }),
+      prisma.orderItemFile.count({ where: { mediaFileId: mediaId, orderItem: { order: { userId } } } }),
+    ]);
+    if (asProof > 0 || asFile > 0) return true;
+  }
   const t = String(req.query.t ?? '');
   if (!t) return false;
   const proof = await prisma.proof.findUnique({ where: { token: t }, select: { orderId: true, mediaFileId: true } });

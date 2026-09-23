@@ -5,6 +5,7 @@ import { HttpError } from '../middleware/error.js';
 import { evaluateCoupon } from '../lib/coupons.js';
 import { quoteShipping } from '../lib/shipping-quote.js';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
+import { ensureCustomerAccount } from '../lib/customer-accounts.js';
 
 const router = Router();
 
@@ -113,9 +114,15 @@ router.post('/paypal/create', async (req, res) => {
   // the new flow — just forward whichever is set.
   const shippingMethodId = data.shippingRateId ?? data.shippingMethodId;
 
+  // Every order belongs to an account: a guest gets one made for their email
+  // right here (signed in later through emailed links until they choose a
+  // password), so orders, proofs and file requests all live in one place.
+  const userId = req.session?.sub
+    ?? (await ensureCustomerAccount(data.email, { firstName: data.shippingAddress.firstName, lastName: data.shippingAddress.lastName })).id;
+
   const result = await createPaypalOrder({
     cartId: cart.id,
-    userId: req.session?.sub,
+    userId,
     email: data.email,
     shippingAddress: data.shippingAddress,
     billingAddress: data.billingAddress,

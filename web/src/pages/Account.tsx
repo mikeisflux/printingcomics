@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
-import { useAuth } from '../store/auth';
+import { useAuth, type CurrentUser } from '../store/auth';
 
 export interface Address {
   id: string;
@@ -66,9 +66,26 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/** How many proofs and file requests are waiting on the signed-in customer. */
+export function useProofCounts(user: CurrentUser | null) {
+  const [counts, setCounts] = useState<{ pendingProofs: number; openRequests: number } | null>(null);
+  const location = useLocation();
+  useEffect(() => {
+    if (!user) { setCounts(null); return; }
+    let alive = true;
+    api.get<{ pendingProofs: number; openRequests: number }>('/account/proofs/count')
+      .then((c) => { if (alive) setCounts(c); })
+      .catch(() => { if (alive) setCounts(null); });
+    return () => { alive = false; };
+  }, [user, location.pathname]);
+  return counts;
+}
+
 export function AccountLayout() {
   const { user, loaded, load } = useAuth();
   const navigate = useNavigate();
+  const counts = useProofCounts(user);
+  const waiting = (counts?.pendingProofs ?? 0) + (counts?.openRequests ?? 0);
 
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
   useEffect(() => { if (loaded && !user) navigate('/login?redirect=/account'); }, [loaded, user, navigate]);
@@ -90,18 +107,48 @@ export function AccountLayout() {
       <aside>
         <div style={{ marginBottom: '1rem' }}>
           <div style={{ fontSize: '.75rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Signed in as</div>
-          <div style={{ fontWeight: 600 }}>{user.firstName || user.email}</div>
+          <div style={{ fontWeight: 600 }}>{[user.firstName, user.lastName].filter(Boolean).join(' ') || 'Your account'}</div>
           <div className="muted" style={{ fontSize: '.85rem' }}>{user.email}</div>
         </div>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
           <NavLink to="/account" end style={tabStyle}>Dashboard</NavLink>
           <NavLink to="/account/orders" style={tabStyle}>Orders</NavLink>
+          <NavLink to="/account/proofs" style={tabStyle}>
+            Proofs &amp; files
+            {waiting > 0 && (
+              <span style={{ marginLeft: '.5rem', background: '#fff', color: 'var(--brand)', borderRadius: 999, padding: '0 .5rem', fontSize: '.75rem', fontWeight: 700, border: '1px solid var(--brand)' }}>{waiting}</span>
+            )}
+          </NavLink>
           <NavLink to="/account/addresses" style={tabStyle}>Addresses</NavLink>
           <NavLink to="/account/profile" style={tabStyle}>Profile</NavLink>
-          <NavLink to="/account/password" style={tabStyle}>Password</NavLink>
+          <NavLink to="/account/password" style={tabStyle}>{user.hasPassword === false ? 'Set a password' : 'Password'}</NavLink>
         </nav>
       </aside>
-      <div><Outlet /></div>
+      <div>
+        {user.hasPassword === false && (
+          <div style={{ background: '#fff3cd', border: '1px solid #f0d58c', borderRadius: 8, padding: '.7rem 1rem', marginBottom: '1rem', fontSize: '.92rem' }}>
+            You’re signed in through a link from one of our emails. <Link to="/account/password"><strong>Set a password</strong></Link> to sign in any time without one.
+          </div>
+        )}
+        <Outlet />
+      </div>
+    </div>
+  );
+}
+
+/** Dashboard banner: what is waiting on the customer, with the one place to do it. */
+function ProofsNudge() {
+  const { user } = useAuth();
+  const counts = useProofCounts(user);
+  if (!counts || (counts.pendingProofs === 0 && counts.openRequests === 0)) return null;
+  const parts = [
+    counts.pendingProofs > 0 ? `${counts.pendingProofs} proof${counts.pendingProofs === 1 ? '' : 's'} to approve` : '',
+    counts.openRequests > 0 ? `${counts.openRequests} file request${counts.openRequests === 1 ? '' : 's'}` : '',
+  ].filter(Boolean);
+  return (
+    <div style={{ background: 'var(--bg-alt)', border: '1px solid var(--border)', borderLeft: '4px solid var(--brand)', borderRadius: 'var(--radius)', padding: '.8rem 1rem', marginBottom: '1.25rem' }} className="spread">
+      <span><strong>Waiting on you:</strong> {parts.join(' and ')}. Nothing prints until it’s done.</span>
+      <Link to="/account/proofs" className="btn" style={{ padding: '.4rem .9rem', fontSize: '.9rem' }}>Review now →</Link>
     </div>
   );
 }
@@ -117,6 +164,7 @@ export function AccountDashboard() {
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Welcome back</h1>
+      <ProofsNudge />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <StatCard label="Orders placed" value={String(summary.orderCount)} />
         <StatCard label="Total spent" value={formatMoney(summary.totalSpentCents)} />
@@ -221,6 +269,8 @@ export function AccountProfile() {
 }
 
 export function AccountPassword() {
+  const { user, load } = useAuth();
+  const firstPassword = user?.hasPassword === false;
   const [currentPassword, setCurrent] = useState('');
   const [newPassword, setNew] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -235,9 +285,10 @@ export function AccountPassword() {
     if (newPassword !== confirm) { setError('New passwords do not match'); return; }
     setSaving(true);
     try {
-      await api.post('/account/password', { currentPassword, newPassword });
+      await api.post('/account/password', { currentPassword: firstPassword ? undefined : currentPassword, newPassword });
       setCurrent(''); setNew(''); setConfirm('');
-      setMessage('Password updated.');
+      setMessage(firstPassword ? 'Password set. You can now sign in with your email and this password.' : 'Password updated.');
+      if (firstPassword) void load();
     } catch (e: any) {
       setError(e.message ?? 'Update failed');
     } finally {
@@ -247,10 +298,17 @@ export function AccountPassword() {
 
   return (
     <form onSubmit={submit}>
-      <h1 style={{ marginTop: 0 }}>Change password</h1>
+      <h1 style={{ marginTop: 0 }}>{firstPassword ? 'Set a password' : 'Change password'}</h1>
+      {firstPassword && (
+        <p className="muted">Your account was created when you ordered, so it has no password yet. Choose one to sign in any time without an email link.</p>
+      )}
       <div className="admin-card">
-        <label>Current password</label>
-        <input type="password" value={currentPassword} onChange={(e) => setCurrent(e.target.value)} required />
+        {!firstPassword && (
+          <>
+            <label>Current password</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrent(e.target.value)} required />
+          </>
+        )}
         <label>New password</label>
         <input type="password" value={newPassword} onChange={(e) => setNew(e.target.value)} required minLength={8} />
         <label>Confirm new password</label>

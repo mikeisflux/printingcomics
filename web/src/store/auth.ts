@@ -7,6 +7,8 @@ export interface CurrentUser {
   role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
   firstName?: string | null;
   lastName?: string | null;
+  /** False for accounts created at checkout until the customer chooses a password. */
+  hasPassword?: boolean;
 }
 
 interface AuthState {
@@ -15,7 +17,7 @@ interface AuthState {
   loaded: boolean;
   load: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, firstName?: string, lastName?: string) => Promise<void>;
+  register: (email: string, password: string, firstName?: string, lastName?: string) => Promise<'ok' | 'claim'>;
   logout: () => Promise<void>;
 }
 
@@ -37,10 +39,14 @@ export const useAuth = create<AuthState>((set) => ({
     set({ user });
   },
   register: async (email, password, firstName, lastName) => {
-    const { user } = await api.post<{ user: CurrentUser }>('/auth/register', {
+    const r = await api.post<{ user?: CurrentUser; claim?: boolean }>('/auth/register', {
       email, password, firstName, lastName,
     });
-    set({ user });
+    // An account already exists for that email (every order creates one): the
+    // server emailed it a set-password link instead of signing anyone in.
+    if (r.claim) return 'claim';
+    set({ user: r.user ?? null });
+    return 'ok';
   },
   logout: async () => {
     await api.post('/auth/logout');

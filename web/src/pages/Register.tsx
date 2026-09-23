@@ -9,19 +9,34 @@ export function Register() {
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [claimed, setClaimed] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await register(form.email, form.password, form.firstName, form.lastName);
+      const r = await register(form.email, form.password, form.firstName, form.lastName);
+      if (r === 'claim') { setClaimed(true); return; }
       navigate('/account');
     } catch (err: any) {
       setError(err.message ?? 'Registration failed');
     } finally {
       setBusy(false);
     }
+  }
+
+  if (claimed) {
+    return (
+      <div className="auth-box">
+        <h1>Check your email</h1>
+        <p>
+          There is already an account for <strong>{form.email}</strong> — one is created with every order.
+          We just emailed that address a link to choose a password. Open it and everything you have ordered will be waiting for you.
+        </p>
+        <p className="muted" style={{ fontSize: '.9rem' }}>No email after a few minutes? Check spam, or <Link to="/forgot-password">request another link</Link>.</p>
+      </div>
+    );
   }
 
   return (

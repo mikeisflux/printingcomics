@@ -1,7 +1,8 @@
 import { prisma } from '../db.js';
 import { sendEmail } from './mailgun.js';
 import { getSetting } from './settings.js';
-import { proofKindLabel, proofSlotLabel } from './proofs.js';
+import { proofSlotLabel } from './proofs.js';
+import { ensureCustomerAccount, magicLink } from './customer-accounts.js';
 
 async function storeName(): Promise<string> {
   return (await getSetting<string>('store.name')) ?? 'Printing Comics';
@@ -47,38 +48,14 @@ async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], o
   }
 }
 
-export async function sendProofReadyEmail(proofId: string): Promise<EmailResult> {
-  const proof = await prisma.proof.findUnique({
-    where: { id: proofId },
-    include: { order: true, orderItem: { select: { name: true, options: true } } },
-  });
-  if (!proof) return { sent: false, error: 'proof not found' };
-  const [name, base] = await Promise.all([storeName(), baseUrl()]);
-  const link = `${base}/proof/${proof.token}`;
-  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
-  const html = wrap(
-    `<h2 style="color:#C61A22">Your ${esc(proofKindLabel(proof.kind).toLowerCase())} is ready to review</h2>
-     <p>We've prepared the <strong>${esc(slotLabel)}</strong> for order <strong>${esc(proof.order.number)}</strong>. Please review it carefully and approve it — <strong>nothing goes to print until every proof on your order is approved.</strong></p>
-     ${proof.message ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(proof.message)}</p>` : ''}
-     ${btn(link, 'Review this proof')}
-     <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br><a href="${link}" style="color:#666;word-break:break-all">${link}</a></p>`,
-    name,
-  );
-  return trySend(
-    proof.orderId,
-    { to: { email: proof.order.email }, subject: `${slotLabel} ready for approval — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-ready'] },
-    `${slotLabel} v${proof.version} emailed to ${proof.order.email}`,
-  );
-}
-
 /**
- * One email covering several proofs uploaded together — each row links to its
- * own review page. Beats sending the customer N separate proof emails for a
- * multi-item order.
+ * ONE email per batch of proofs, with ONE link: the customer's account, where
+ * every proof for the order is reviewed and approved in one place. The link
+ * signs them in (accounts made at checkout have no password yet), so there
+ * is nothing to remember and no per-proof link to lose track of.
  */
 export async function sendProofsReadyEmail(proofIds: string[]): Promise<EmailResult> {
   if (proofIds.length === 0) return { sent: false, error: 'no proofs' };
-  if (proofIds.length === 1) return sendProofReadyEmail(proofIds[0]!);
   const proofs = await prisma.proof.findMany({
     where: { id: { in: proofIds } },
     include: { order: true, orderItem: { select: { name: true, options: true } } },
@@ -87,74 +64,75 @@ export async function sendProofsReadyEmail(proofIds: string[]): Promise<EmailRes
   if (proofs.length === 0) return { sent: false, error: 'no proofs' };
   const order = proofs[0]!.order;
   const [name, base] = await Promise.all([storeName(), baseUrl()]);
-
-  const rows = proofs
-    .map((p) => {
-      const label = proofSlotLabel(p.kind, p.orderItem);
-      const link = `${base}/proof/${p.token}`;
-      return `<li style="margin:.75rem 0"><strong>${esc(label)}</strong> (v${p.version})<br>
-        <a href="${link}" style="color:#C61A22;font-weight:600">Review &amp; approve →</a>
-        <br><span style="color:#888;font-size:.8rem">or paste: <a href="${link}" style="color:#888;word-break:break-all">${link}</a></span></li>`;
-    })
-    .join('');
-
+  const account = await ensureCustomerAccount(order.email);
+  const link = await magicLink(account.id, `/account/proofs?order=${encodeURIComponent(order.number)}`);
+  const n = proofs.length;
+  const rows = proofs.map((p) => `<li style="margin:.35rem 0">${esc(proofSlotLabel(p.kind, p.orderItem))} <span style="color:#888">(v${p.version})</span></li>`).join('');
+  const note = proofs.find((p) => p.message)?.message;
   const html = wrap(
-    `<h2 style="color:#C61A22">Your proofs are ready to review</h2>
-     <p>We've prepared <strong>${proofs.length} proofs</strong> for order <strong>${esc(order.number)}</strong>.
-        Please review and approve each one — <strong>nothing goes to print until every proof is approved.</strong></p>
-     ${proofs[0]!.message ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(proofs[0]!.message!)}</p>` : ''}
-     <ul style="padding-left:1.1rem">${rows}</ul>`,
+    `<h2 style="color:#C61A22">${n === 1 ? 'Your proof is' : `${n} proofs are`} ready for your approval</h2>
+     <p>Order <strong>${esc(order.number)}</strong> has ${n === 1 ? 'a proof' : `${n} proofs`} waiting for you. Review and approve ${n === 1 ? 'it' : 'each one'} in your account — <strong>nothing goes to print until every proof on the order is approved.</strong></p>
+     <ul style="padding-left:1.1rem;margin:.75rem 0">${rows}</ul>
+     ${note ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(note)}</p>` : ''}
+     ${btn(link, n === 1 ? 'Review & approve your proof' : 'Review & approve your proofs')}
+     <p style="color:#666;font-size:.85rem">This link signs you in to your account, where all your orders and proofs live. You can also sign in any time at <a href="${base}/account/proofs" style="color:#666">${base}/account/proofs</a>${account.passwordSetAt ? '' : ' — set a password under Account → Password whenever you like'}.</p>`,
     name,
   );
   return trySend(
     order.id,
-    { to: { email: order.email }, subject: `${proofs.length} proofs ready for approval — order ${order.number}`, html, tags: [`order:${order.number}`, 'proof-ready'] },
-    `${proofs.length} proofs emailed to ${order.email}`,
+    { to: { email: order.email }, subject: `${n === 1 ? 'Proof' : `${n} proofs`} ready for your approval — order ${order.number}`, html, tags: [`order:${order.number}`, 'proof-ready'] },
+    `${n} proof${n === 1 ? '' : 's'} emailed to ${order.email} (account link)`,
   );
+}
+
+export async function sendProofReadyEmail(proofId: string): Promise<EmailResult> {
+  return sendProofsReadyEmail([proofId]);
 }
 
 export async function sendMediaRequestEmail(requestId: string) {
   const mr = await prisma.mediaRequest.findUnique({ where: { id: requestId }, include: { order: true } });
   if (!mr) return;
-  const [name, base] = await Promise.all([storeName(), baseUrl()]);
-  const link = `${base}/upload/${mr.token}`;
+  const name = await storeName();
+  const account = await ensureCustomerAccount(mr.order.email);
+  const link = await magicLink(account.id, `/account/proofs?order=${encodeURIComponent(mr.order.number)}`);
   const html = wrap(
     `<h2 style="color:#C61A22">We need updated files for your order</h2>
      <p>For order <strong>${esc(mr.order.number)}</strong>, our team needs corrected artwork from you:</p>
      <blockquote style="border-left:3px solid #C61A22;margin:1rem 0;padding:.25rem 1rem;color:#333">${esc(mr.message)}</blockquote>
-     ${btn(link, 'Upload corrected files')}
-     <p style="color:#666;font-size:.85rem">Or paste this link into your browser:<br><a href="${link}" style="color:#666;word-break:break-all">${link}</a></p>`,
+     ${btn(link, 'Upload the files in your account')}
+     <p style="color:#666;font-size:.85rem">The link signs you in; the upload box is on your order under Proofs &amp; files.</p>`,
     name,
   );
   await trySend(
     mr.orderId,
     { to: { email: mr.order.email }, subject: `Action needed: updated files for order ${mr.order.number}`, html, tags: [`order:${mr.order.number}`, 'media-request'] },
-    `Media request emailed to ${mr.order.email}`,
+    `Media request emailed to ${mr.order.email} (account link)`,
   );
 }
 
+/**
+ * One confirmation, when the LAST proof on the order is approved. Approving
+ * a single proof of several used to send an email each time; the account
+ * page already shows each decision, so only the milestone is worth an email.
+ */
 export async function sendProofApprovedEmail(proofId: string): Promise<EmailResult> {
   const proof = await prisma.proof.findUnique({
     where: { id: proofId },
     include: { order: true, orderItem: { select: { name: true, options: true } } },
   });
   if (!proof) return { sent: false, error: 'proof not found' };
-  const name = await storeName();
-  const slotLabel = proofSlotLabel(proof.kind, proof.orderItem);
-  const cleared = proof.order.proofStatus === 'approved';
+  if (proof.order.proofStatus !== 'approved') return { sent: false, error: 'order not fully approved yet' };
+  const [name, base] = await Promise.all([storeName(), baseUrl()]);
   const html = wrap(
-    `<h2 style="color:#C61A22">${esc(slotLabel)} approved — thank you!</h2>
-     <p>Your <strong>${esc(slotLabel)}</strong> for order <strong>${esc(proof.order.number)}</strong> is approved.</p>
-     <p>${cleared
-       ? 'Every proof on this order is now approved — your order is cleared for production.'
-       : 'We’ll send any remaining proofs for this order shortly; production starts once every proof is approved.'}</p>
-     <p style="color:#666;font-size:.85rem">Approved by ${esc(proof.approvedName ?? proof.order.email)}.</p>`,
+    `<h2 style="color:#C61A22">All proofs approved — thank you!</h2>
+     <p>Every proof on order <strong>${esc(proof.order.number)}</strong> is approved and the order is cleared for production. We'll email you again when it ships.</p>
+     <p style="color:#666;font-size:.85rem">Last approval: ${esc(proofSlotLabel(proof.kind, proof.orderItem))} by ${esc(proof.approvedName ?? proof.order.email)}. Everything is in your account at <a href="${base}/account/orders" style="color:#666">${base}/account/orders</a>.</p>`,
     name,
   );
   return trySend(
     proof.orderId,
-    { to: { email: proof.order.email }, subject: `${slotLabel} approved — order ${proof.order.number}`, html, tags: [`order:${proof.order.number}`, 'proof-approved'] },
-    `${slotLabel} v${proof.version} approval confirmation sent`,
+    { to: { email: proof.order.email }, subject: `All proofs approved — order ${proof.order.number} is cleared for production`, html, tags: [`order:${proof.order.number}`, 'proof-approved'] },
+    'All-proofs-approved confirmation sent',
   );
 }
 

@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/auth';
 import { useCart } from '../store/cart';
+import { useProofCounts } from '../pages/Account';
 
 export function StoreLayout() {
   const { user, loaded, load, logout } = useAuth();
+  const proofCounts = useProofCounts(user);
+  const waiting = (proofCounts?.pendingProofs ?? 0) + (proofCounts?.openRequests ?? 0);
   const { cart, load: loadCart } = useCart();
   const navigate = useNavigate();
   const [productsOpen, setProductsOpen] = useState(false);
@@ -82,6 +85,11 @@ export function StoreLayout() {
                 <Link to="/account" title={user.email} aria-label="Account">
                   Hi, {user.firstName ?? 'Account'}
                 </Link>
+                {waiting > 0 && (
+                  <Link to="/account/proofs" title="Proofs and file requests waiting for you" style={{ background: 'var(--brand)', color: '#fff', borderRadius: 999, padding: '.15rem .6rem', fontSize: '.8rem', fontWeight: 700, textDecoration: 'none' }}>
+                    {waiting} waiting
+                  </Link>
+                )}
                 {(user.role === 'ADMIN' || user.role === 'STAFF') && (
                   <Link to="/admin">Admin</Link>
                 )}

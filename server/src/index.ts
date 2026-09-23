@@ -37,6 +37,7 @@ import easypostWebhookRoutes from './routes/webhooks/easypost.js';
 import adjustmentRoutes from './routes/adjustments.js';
 import previewRoutes from './routes/previews.js';
 import v1Routes from './routes/v1/index.js';
+import { attachAllGuestOrders } from './lib/customer-accounts.js';
 
 const app = express();
 
@@ -204,6 +205,11 @@ startAbandonedOrderCleanup();
 const server = app.listen(config.port, () => {
   // eslint-disable-next-line no-console
   console.log(`[pc-server] listening on http://localhost:${config.port}`);
+  // Orders placed as a guest before accounts were created at checkout get an
+  // account now, so every customer's dashboard is complete. Idempotent.
+  void attachAllGuestOrders()
+    .then((r) => { if (r.orders) console.log(`[accounts] attached ${r.orders} guest order(s) to ${r.accounts} new account(s)`); })
+    .catch((e: any) => console.warn('[accounts] guest order attach failed:', e?.message ?? e));
 });
 
 // Node drops any request that takes longer than 5 minutes end to end

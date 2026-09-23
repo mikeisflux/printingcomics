@@ -18,6 +18,7 @@ import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { AccountLayout, AccountDashboard, AccountProfile, AccountPassword, AccountAddresses } from './pages/Account';
 import { OrdersPage } from './pages/OrdersPage';
+import { AccountProofs } from './pages/AccountProofs';
 import { PaypalReturn } from './pages/PaypalReturn';
 import {
   About,
@@ -87,6 +88,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AccountDashboard /> },
           { path: 'orders', element: <OrdersPage /> },
+          { path: 'proofs', element: <AccountProofs /> },
           { path: 'profile', element: <AccountProfile /> },
           { path: 'addresses', element: <AccountAddresses /> },
           { path: 'password', element: <AccountPassword /> },

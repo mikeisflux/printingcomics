@@ -4,6 +4,7 @@ import { api, formatMoney } from '../api/client';
 import { formatCartItemOptions } from '../lib/cart-options';
 import { useCart } from '../store/cart';
 import { StatusBadge } from './Account';
+import { ProofOrderCard, useAccountProofs } from './AccountProofs';
 
 interface ShippingAddress {
   firstName?: string;
@@ -72,6 +73,19 @@ interface Order {
 }
 
 const STATUS_PIPELINE = ['PENDING', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'DELIVERED'] as const;
+
+/** This order's proofs and file requests, reviewable right here. */
+function OrderProofs({ number }: { number: string }) {
+  const { data, reload } = useAccountProofs();
+  const order = data?.orders.find((o) => o.number === number);
+  if (!data || !order) return null;
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <h3 style={{ margin: '0 0 .5rem' }}>Proofs &amp; files</h3>
+      <ProofOrderCard order={order} terms={data.terms} onChange={reload} />
+    </div>
+  );
+}
 
 export function OrderConfirmation() {
   const { number } = useParams();
@@ -142,6 +156,8 @@ export function OrderConfirmation() {
           </div>
         )}
       </div>
+
+      <OrderProofs number={order.number} />
 
       {!isCancelled && (
         <div className="admin-card">
