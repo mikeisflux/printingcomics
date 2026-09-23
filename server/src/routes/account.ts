@@ -267,3 +267,28 @@ router.post('/media-requests/:id/upload', requireAuth, customerUpload.any(), asy
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
   res.json({ ok: true, ...(await fulfilMediaRequest(mr.id, files, req.session!.sub)) });
 });
+
+// ---- First-time setup: name + password for an account created at checkout ----
+const setupSchema = z.object({
+  password: z.string().min(8).max(200),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+});
+
+router.post('/setup', requireAuth, async (req, res) => {
+  const data = setupSchema.parse(req.body);
+  const user = await prisma.user.findUnique({ where: { id: req.session!.sub } });
+  if (!user) throw new HttpError(404, 'User not found');
+  if (user.passwordSetAt !== null) throw new HttpError(409, 'This account already has a password — change it under Password.');
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await hashPassword(data.password),
+      passwordSetAt: new Date(),
+      firstName: data.firstName?.trim() || user.firstName,
+      lastName: data.lastName?.trim() || user.lastName,
+    },
+    select: { id: true, email: true, role: true, firstName: true, lastName: true, phone: true },
+  });
+  res.json({ user: { ...updated, hasPassword: true } });
+});

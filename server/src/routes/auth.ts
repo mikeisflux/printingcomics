@@ -3,8 +3,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { signSession } from '../lib/jwt.js';
-import { config, isProd } from '../config.js';
+import { startSession } from '../lib/session-cookie.js';
+import { config } from '../config.js';
 import { HttpError } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendEmail } from '../lib/mailgun.js';
@@ -20,15 +20,6 @@ const registerSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
 });
 
-function setSessionCookie(res: Response, token: string) {
-  res.cookie(config.sessionCookie, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: isProd,
-    path: '/',
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-  });
-}
 
 /** Email a link that lets the owner of an existing account choose a password. */
 async function sendSetPasswordEmail(user: { id: string; email: string }, kind: 'reset' | 'claim'): Promise<void> {
@@ -88,8 +79,7 @@ router.post('/register', async (req: Request, res: Response) => {
   });
   await attachOrdersToUser(user.id, email);
 
-  const token = signSession({ sub: user.id, role: user.role, email: user.email });
-  setSessionCookie(res, token);
+  startSession(res, user);
   res.json({ user: { id: user.id, email: user.email, role: user.role, hasPassword: true } });
 });
 
@@ -105,7 +95,11 @@ router.get('/magic', async (req: Request, res: Response) => {
     return res.redirect('/login?expired=1&redirect=' + encodeURIComponent('/account/proofs'));
   }
   await attachOrdersToUser(user.id, user.email);
-  setSessionCookie(res, signSession({ sub: user.id, role: user.role, email: user.email }));
+  startSession(res, user);
+  // An account that has never had a password finishes setting itself up
+  // (name + password) before it sees anything; then it lands where the
+  // email pointed.
+  if (user.passwordSetAt === null) return res.redirect(`/account/setup?next=${encodeURIComponent(parsed.to)}`);
   res.redirect(parsed.to);
 });
 
@@ -122,8 +116,7 @@ router.post('/login', async (req: Request, res: Response) => {
   if (!ok) throw new HttpError(401, 'Invalid credentials');
   await attachOrdersToUser(user.id, user.email);
 
-  const token = signSession({ sub: user.id, role: user.role, email: user.email });
-  setSessionCookie(res, token);
+  startSession(res, user);
   res.json({ user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, hasPassword: user.passwordSetAt !== null } });
 });
 

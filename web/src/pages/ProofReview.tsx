@@ -1,113 +1,145 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { FormEvent, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
-import { ProofDecision, type DecisionProof } from '../components/ProofDecision';
 import { useAuth } from '../store/auth';
 
 /**
- * The page behind the older per-proof email links (/proof/<token>). It still
- * works — nobody's saved email should dead-end — but reviewing now lives in
- * the account, where every proof for an order sits together, and this page
- * says so.
+ * Behind the older per-proof email links (/proof/<token>). Proofs are now
+ * reviewed in the customer's account, so this page gets them there: it
+ * creates the account's password if there is none yet (the link proves they
+ * hold the order's inbox), or asks them to sign in, and then opens the
+ * order's proofs.
  */
 
-interface ProofResponse {
-  proof: DecisionProof & { kind?: string | null; token?: string };
-  order: { number: string; items: { name: string; quantity: number }[] };
-  terms: string;
+interface Access {
+  orderNumber: string;
+  email: string;
+  hasPassword: boolean;
+  signedInAsOwner: boolean;
+  next: string;
 }
 
-const PAGE_STYLE = { padding: '2rem 0', maxWidth: 760 } as const;
+const PAGE_STYLE = { padding: '2rem 0', maxWidth: 560 } as const;
 
 export function ProofReview() {
   const { token } = useParams();
-  const { user } = useAuth();
-  const [data, setData] = useState<ProofResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const { load } = useAuth();
+  const [access, setAccess] = useState<Access | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
   useEffect(() => {
-    if (!token) { setLoading(false); setNotFound(true); return; }
+    if (!token) { setNotFound(true); return; }
     let active = true;
-    setLoading(true);
-    api.get<ProofResponse>(`/proofing/proof/${token}`)
-      .then((r) => { if (active) { setData(r); setLoading(false); } })
+    api.get<Access>(`/proofing/proof/${token}/access`)
+      .then((a) => {
+        if (!active) return;
+        if (a.signedInAsOwner) navigate(a.next, { replace: true });
+        else setAccess(a);
+      })
       .catch((e) => {
         if (!active) return;
         if (e instanceof ApiError && e.status === 404) setNotFound(true);
-        else setLoadError(e instanceof Error ? e.message : 'Could not load your proof.');
-        setLoading(false);
+        else setLoadError(e instanceof Error ? e.message : 'Could not open this proof link.');
       });
     return () => { active = false; };
-  }, [token]);
+  }, [token, navigate]);
 
-  if (loading) return <div className="container" style={PAGE_STYLE}>Loading your proof…</div>;
+  async function createAccount(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (password !== confirm) { setError('The passwords do not match.'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ next: string }>(`/proofing/proof/${token}/setup`, {
+        password, firstName: firstName.trim() || undefined, lastName: lastName.trim() || undefined,
+      });
+      await load();
+      navigate(r.next, { replace: true });
+    } catch (err: any) {
+      setError(err.message ?? 'Could not create your account.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (notFound) {
     return (
       <div className="container" style={PAGE_STYLE}>
         <h1>We couldn't find that proof</h1>
-        <p className="muted">
-          This link may have expired. Every proof for your orders is in your account — sign in with the email you ordered with.
-        </p>
+        <p className="muted">This link may have expired. Every proof for your orders is in your account — sign in with the email you ordered with.</p>
         <Link to="/login?redirect=/account/proofs" className="btn">Go to my proofs</Link>
       </div>
     );
   }
-
-  if (loadError || !data) {
+  if (loadError) {
     return (
       <div className="container" style={PAGE_STYLE}>
-        <div className="error">{loadError ?? 'Something went wrong loading your proof.'}</div>
+        <div className="error">{loadError}</div>
         <Link to="/" className="btn secondary">Back to home</Link>
       </div>
     );
   }
+  if (!access) return <div className="container" style={PAGE_STYLE}>Opening your proof…</div>;
 
-  const { proof, order, terms } = data;
+  const loginHref = `/login?redirect=${encodeURIComponent(access.next)}&email=${encodeURIComponent(access.email)}`;
 
   return (
     <div className="container" style={PAGE_STYLE}>
-      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem' }}>
-        <h1 style={{ margin: 0 }}>{proof.kindLabel ?? 'Proof'} for order {order.number}</h1>
-        <span className="badge" style={{ background: 'var(--brand)', color: '#fff', fontSize: '.8rem', padding: '.3rem .6rem' }}>
-          {proof.kindLabel ?? 'Proof'} v{proof.version}
-        </span>
-      </div>
-      {(proof.slotLabel ?? proof.itemName) && (
-        <p className="muted" style={{ margin: '.35rem 0 0', fontWeight: 600 }}>{proof.slotLabel ?? `Item: ${proof.itemName}`}</p>
-      )}
-
-      <div style={{ margin: '1.25rem 0', padding: '1rem 1.25rem', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderLeft: '4px solid var(--brand)', borderRadius: 'var(--radius)' }}>
-        <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>Nothing goes to print until you approve every proof on this order.</div>
+      <div style={{ marginBottom: '1.25rem', padding: '1rem 1.25rem', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderLeft: '4px solid var(--brand)', borderRadius: 'var(--radius)' }}>
+        <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>Proofs for order {access.orderNumber} now live in your account.</div>
         <div className="muted" style={{ marginTop: '.35rem', fontSize: '.9rem' }}>
-          All of this order's proofs are together in your account —{' '}
-          <Link to={user ? `/account/proofs?order=${encodeURIComponent(order.number)}` : `/login?redirect=${encodeURIComponent(`/account/proofs?order=${order.number}`)}`}>
-            review them there
-          </Link>{' '}
-          and you'll never have to hunt through emails.
+          Every proof for the order is together there, with approve and request-changes buttons — no more hunting through emails. Nothing prints until you approve every one.
         </div>
       </div>
 
-      <ProofDecision
-        proof={proof}
-        terms={terms}
-        token={token}
-        approve={(name) => api.post(`/proofing/proof/${token}/approve`, { name, acceptTerms: true })}
-        requestChanges={(note) => api.post(`/proofing/proof/${token}/changes`, { note })}
-      />
-
-      <div className="admin-card">
-        <h3 style={{ marginTop: 0 }}>What's in this order</h3>
-        <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
-          {order.items.map((it, i) => <li key={i}>{it.name} <span className="muted">× {it.quantity}</span></li>)}
-        </ul>
-      </div>
-
-      <p className="muted" style={{ marginTop: '1.5rem', fontSize: '.85rem' }}>
-        Questions about your proof? Reply to the email we sent you and we'll help.
-      </p>
+      {access.hasPassword ? (
+        <div className="auth-box" style={{ margin: 0 }}>
+          <h1>Sign in to view your proofs</h1>
+          <p className="muted" style={{ marginTop: 0 }}>Your account is <strong>{access.email}</strong>.</p>
+          <Link to={loginHref} className="btn" style={{ display: 'block', textAlign: 'center' }}>Sign in</Link>
+          <p className="muted" style={{ marginTop: '1rem', fontSize: '.9rem' }}>
+            Forgotten your password? <Link to="/forgot-password">Reset it</Link>.
+          </p>
+        </div>
+      ) : (
+        <div className="auth-box" style={{ margin: 0 }}>
+          <h1>Create your account to view your proofs</h1>
+          <p className="muted" style={{ marginTop: 0 }}>
+            An account was created with your order. Choose a password and you're in — your proofs, orders and any files we need from you will all be in one place.
+          </p>
+          <form onSubmit={createAccount}>
+            <label>Email</label>
+            <input type="email" value={access.email} disabled />
+            <div className="grid-2">
+              <div>
+                <label>First name</label>
+                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="given-name" />
+              </div>
+              <div>
+                <label>Last name</label>
+                <input value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="family-name" />
+              </div>
+            </div>
+            <label>Password (min. 8 characters)</label>
+            <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+            <label>Confirm password</label>
+            <input type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+            {error && <div className="error">{error}</div>}
+            <button className="btn" style={{ width: '100%', marginTop: '1rem' }} disabled={busy}>
+              {busy ? 'Creating…' : 'Create my account & view proofs'}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

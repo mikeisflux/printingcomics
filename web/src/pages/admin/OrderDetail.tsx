@@ -573,6 +573,24 @@ export function AdminOrderDetail() {
 
   const [refundOpen, setRefundOpen] = useState(false);
 
+  // One email: "your proofs are in your account" — sign in, or create the
+  // password the first time. For customers lost in older per-proof emails.
+  const [inviting, setInviting] = useState(false);
+  const sendAccountInvite = async () => {
+    if (!order) return;
+    if (!(await confirm({ title: 'Email the account sign-in link?', body: `One email goes to ${order.email}: sign in (or create their password) to see every proof for this order in their account.`, confirmLabel: 'Send' }))) return;
+    setInviting(true);
+    try {
+      const r = await api.post<{ sent: boolean; to?: string; hasPassword?: boolean }>(`/admin/orders/${id}/account-invite`, {});
+      toast.success(`Sent to ${r.to}${r.hasPassword === false ? ' — they will create their password when they open it' : ''}.`);
+      load();
+    } catch (e: any) {
+      toast.error(errorMessage(e, 'Could not send the email.'));
+    } finally {
+      setInviting(false);
+    }
+  };
+
   // Ask PayPal what it actually holds for this order and set our status to
   // match — the answer to "it says paid but the money isn't in PayPal".
   const [verifying, setVerifying] = useState(false);
@@ -664,6 +682,9 @@ export function AdminOrderDetail() {
         <div className="row" style={{ gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
+          <button className="btn secondary" onClick={sendAccountInvite} disabled={inviting} title="One email: sign in (or create a password) to see every proof for this order in their account">
+            {inviting ? 'Sending…' : 'Email account link'}
+          </button>
           {(order.proofs?.length ?? 0) > 0 && (
             <button className="btn secondary" onClick={resendProofs} disabled={resending}>
               {resending ? 'Sending…' : 'Resend proof emails'}

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 import { formatCartItemOptions } from '../lib/cart-options';
 import { useCart } from '../store/cart';
+import { useAuth } from '../store/auth';
 import { StatusBadge } from './Account';
 import { ProofOrderCard, useAccountProofs } from './AccountProofs';
 
@@ -94,6 +95,12 @@ export function OrderConfirmation() {
   const [reordering, setReordering] = useState(false);
   const navigate = useNavigate();
   const { load: reloadCart } = useCart();
+  const { user } = useAuth();
+
+  // An account created at checkout finishes setting itself up first.
+  useEffect(() => {
+    if (user?.hasPassword === false) navigate(`/account/setup?next=${encodeURIComponent(`/order/${number ?? ''}`)}`, { replace: true });
+  }, [user, navigate, number]);
 
   async function reorder() {
     if (!number) return;

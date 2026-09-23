@@ -87,10 +87,16 @@ export function AccountLayout() {
   const counts = useProofCounts(user);
   const waiting = (counts?.pendingProofs ?? 0) + (counts?.openRequests ?? 0);
 
+  const location = useLocation();
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
   useEffect(() => { if (loaded && !user) navigate('/login?redirect=/account'); }, [loaded, user, navigate]);
+  // An account created at checkout finishes setting itself up (name +
+  // password) before it sees anything in here.
+  useEffect(() => {
+    if (user?.hasPassword === false) navigate(`/account/setup?next=${encodeURIComponent(location.pathname + location.search)}`, { replace: true });
+  }, [user, navigate, location.pathname, location.search]);
 
-  if (!user) return null;
+  if (!user || user.hasPassword === false) return null;
 
   const tabStyle = ({ isActive }: { isActive: boolean }) => ({
     display: 'block',
@@ -121,17 +127,10 @@ export function AccountLayout() {
           </NavLink>
           <NavLink to="/account/addresses" style={tabStyle}>Addresses</NavLink>
           <NavLink to="/account/profile" style={tabStyle}>Profile</NavLink>
-          <NavLink to="/account/password" style={tabStyle}>{user.hasPassword === false ? 'Set a password' : 'Password'}</NavLink>
+          <NavLink to="/account/password" style={tabStyle}>Password</NavLink>
         </nav>
       </aside>
-      <div>
-        {user.hasPassword === false && (
-          <div style={{ background: '#fff3cd', border: '1px solid #f0d58c', borderRadius: 8, padding: '.7rem 1rem', marginBottom: '1rem', fontSize: '.92rem' }}>
-            You’re signed in through a link from one of our emails. <Link to="/account/password"><strong>Set a password</strong></Link> to sign in any time without one.
-          </div>
-        )}
-        <Outlet />
-      </div>
+      <div><Outlet /></div>
     </div>
   );
 }

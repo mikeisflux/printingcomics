@@ -15,6 +15,9 @@ import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { proofKindLabel, proofSlotLabel } from '../lib/proofs.js';
 import { APPROVAL_TERMS, approveProof, fulfilMediaRequest, latestProofInSlot, requestProofChanges } from '../lib/proof-decisions.js';
+import { ensureCustomerAccount } from '../lib/customer-accounts.js';
+import { hashPassword } from '../lib/password.js';
+import { startSession } from '../lib/session-cookie.js';
 
 export { APPROVAL_TERMS };
 
@@ -101,3 +104,53 @@ router.post('/media-request/:token/upload', customerUpload.any(), async (req, re
 });
 
 export default router;
+
+// ---------------- Older proof links: set up the account to view ----------------
+// A /proof/<token> link from an older email proves the visitor has the order's
+// inbox. Instead of showing the proof on its own page, it walks them into
+// their account: create a password if the account never had one, otherwise
+// sign in. The proofs are then reviewed where every other proof lives.
+
+router.get('/proof/:token/access', async (req, res) => {
+  const proof = await prisma.proof.findUnique({
+    where: { token: String(req.params.token) },
+    select: { order: { select: { id: true, number: true, email: true } } },
+  });
+  if (!proof) throw new HttpError(404, 'Proof not found');
+  const user = await ensureCustomerAccount(proof.order.email);
+  res.json({
+    orderNumber: proof.order.number,
+    email: user.email,
+    hasPassword: user.passwordSetAt !== null,
+    signedInAsOwner: req.session?.sub === user.id,
+    next: `/account/proofs?order=${encodeURIComponent(proof.order.number)}`,
+  });
+});
+
+const setupSchema = z.object({
+  password: z.string().min(8).max(200),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+});
+router.post('/proof/:token/setup', async (req, res) => {
+  const data = setupSchema.parse(req.body);
+  const proof = await prisma.proof.findUnique({
+    where: { token: String(req.params.token) },
+    select: { order: { select: { id: true, number: true, email: true } } },
+  });
+  if (!proof) throw new HttpError(404, 'Proof not found');
+  const user = await ensureCustomerAccount(proof.order.email);
+  if (user.passwordSetAt !== null) throw new HttpError(409, 'This account already has a password — sign in with it.');
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await hashPassword(data.password),
+      passwordSetAt: new Date(),
+      firstName: data.firstName?.trim() || user.firstName,
+      lastName: data.lastName?.trim() || user.lastName,
+    },
+  });
+  await prisma.orderStatusEvent.create({ data: { orderId: proof.order.id, kind: 'note', message: `Customer created their account from a proof link (${updated.email})` } });
+  startSession(res, updated);
+  res.json({ ok: true, next: `/account/proofs?order=${encodeURIComponent(proof.order.number)}` });
+});

@@ -19,6 +19,7 @@ import { ResetPassword } from './pages/ResetPassword';
 import { AccountLayout, AccountDashboard, AccountProfile, AccountPassword, AccountAddresses } from './pages/Account';
 import { OrdersPage } from './pages/OrdersPage';
 import { AccountProofs } from './pages/AccountProofs';
+import { AccountSetup } from './pages/AccountSetup';
 import { PaypalReturn } from './pages/PaypalReturn';
 import {
   About,
@@ -82,6 +83,9 @@ export const router = createBrowserRouter([
       { path: 'register', element: <Register /> },
       { path: 'forgot-password', element: <ForgotPassword /> },
       { path: 'reset-password', element: <ResetPassword /> },
+      // Outside the account shell: it is the gate that shell sends
+      // password-less accounts through.
+      { path: 'account/setup', element: <AccountSetup /> },
       {
         path: 'account',
         element: <AccountLayout />,

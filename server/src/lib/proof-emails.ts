@@ -75,7 +75,9 @@ export async function sendProofsReadyEmail(proofIds: string[]): Promise<EmailRes
      <ul style="padding-left:1.1rem;margin:.75rem 0">${rows}</ul>
      ${note ? `<p style="border-left:3px solid #C61A22;padding:.25rem 1rem;color:#333">${esc(note)}</p>` : ''}
      ${btn(link, n === 1 ? 'Review & approve your proof' : 'Review & approve your proofs')}
-     <p style="color:#666;font-size:.85rem">This link signs you in to your account, where all your orders and proofs live. You can also sign in any time at <a href="${base}/account/proofs" style="color:#666">${base}/account/proofs</a>${account.passwordSetAt ? '' : ' — set a password under Account → Password whenever you like'}.</p>`,
+     <p style="color:#666;font-size:.85rem">${account.passwordSetAt
+       ? `This link signs you in to your account, where all your orders and proofs live. You can also sign in any time at <a href="${base}/account/proofs" style="color:#666">${base}/account/proofs</a>.`
+       : `Your account was created with your order. The link signs you in and asks you to choose a password the first time, so you can come back any time at <a href="${base}/account/proofs" style="color:#666">${base}/account/proofs</a>.`}</p>`,
     name,
   );
   return trySend(
@@ -134,6 +136,35 @@ export async function sendProofApprovedEmail(proofId: string): Promise<EmailResu
     { to: { email: proof.order.email }, subject: `All proofs approved — order ${proof.order.number} is cleared for production`, html, tags: [`order:${proof.order.number}`, 'proof-approved'] },
     'All-proofs-approved confirmation sent',
   );
+}
+
+/**
+ * One plain email, on request from the order page: sign in (creating the
+ * account's password the first time) to see the proofs. For customers from
+ * before accounts existed who are lost in older per-proof emails.
+ */
+export async function sendAccountInviteEmail(orderId: string): Promise<EmailResult & { hasPassword?: boolean }> {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, number: true, email: true } });
+  if (!order) return { sent: false, error: 'order not found' };
+  const [name, base] = await Promise.all([storeName(), baseUrl()]);
+  const account = await ensureCustomerAccount(order.email);
+  const link = await magicLink(account.id, `/account/proofs?order=${encodeURIComponent(order.number)}`);
+  const first = account.passwordSetAt === null;
+  const html = wrap(
+    `<h2 style="color:#C61A22">Your proofs are in your account</h2>
+     <p>Everything for order <strong>${esc(order.number)}</strong> — every proof to approve, and any files we need from you — is in one place now: your ${esc(name)} account. This replaces the separate proof emails.</p>
+     ${btn(link, first ? 'Create your account & view your proofs' : 'Sign in & view your proofs')}
+     <p style="color:#666;font-size:.85rem">${first
+       ? 'Your account was created with your order. The link signs you in and asks you to choose a password, after which you can sign in any time at '
+       : 'The link signs you in; you can also sign in any time at '}<a href="${base}/account/proofs" style="color:#666">${base}/account/proofs</a> with this email address.</p>`,
+    name,
+  );
+  const r = await trySend(
+    order.id,
+    { to: { email: order.email }, subject: `Your proofs for order ${order.number} are in your account`, html, tags: [`order:${order.number}`, 'account-invite'] },
+    `Account sign-in email sent to ${order.email}${first ? ' (first-time setup)' : ''}`,
+  );
+  return { ...r, hasPassword: !first };
 }
 
 /** Notify the store's own inbox when a customer requests changes or uploads. */

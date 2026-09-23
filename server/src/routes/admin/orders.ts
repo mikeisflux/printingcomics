@@ -11,7 +11,7 @@ import {
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { publishUpload } from '../../lib/storage.js';
 import { proofToken, PRODUCTION_STATUSES, proofBlocksProduction, purgeOrderArtwork, proofReviewUrl, proofSlotLabel, computeOrderProofStatus, itemTitle, PROOF_PRODUCT_SLUG } from '../../lib/proofs.js';
-import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail } from '../../lib/proof-emails.js';
+import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail, sendAccountInviteEmail } from '../../lib/proof-emails.js';
 import { requestReviewForOrder } from '../../lib/reviews.js';
 import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl, optionKey } from '../../lib/order-adjustments.js';
 import { backfillOrderUploads } from '../../lib/order-files.js';
@@ -176,6 +176,13 @@ router.post('/:id/adjustments/:adjId/resend', async (req, res) => {
 router.post('/:id/adjustments/:adjId/cancel', async (req, res) => {
   await cancelAdjustment(req.params.id, req.params.adjId, req.session?.sub);
   res.json({ ok: true });
+});
+
+// ---- One email: "your proofs are in your account" (sign in / create password) ----
+router.post('/:id/account-invite', async (req, res) => {
+  const r = await sendAccountInviteEmail(String(req.params.id));
+  if (!r.sent) throw new HttpError(502, r.error ?? 'The email could not be sent');
+  res.json(r);
 });
 
 // ---- Payment check: make the order agree with what PayPal actually holds ----
