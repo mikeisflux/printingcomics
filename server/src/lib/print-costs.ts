@@ -15,7 +15,8 @@
  *              usual (on the stock mapped for metal.paperCoverType), plus one
  *              plate — a 300×600 mm sublimation sheet yields a fixed number of
  *              comic-size plates — plus adhesive (a roll is bought by the
- *              foot; each plate uses a set length), plus any per-piece extra.
+ *              foot; each plate uses a set number of inches), plus any
+ *              per-piece extra.
  *   add-ons    flat cents per book keyed "Cover: <type>", "Lamination: <style>",
  *              "UV: <style>", "Foil: <colour>". Unknown keys cost 0 and are
  *              listed as notes, so glow / foil pricing can be filled in later.
@@ -68,7 +69,7 @@ export interface PrintCostConfig {
     yields: { comicCover: number; tradingCard: number; print11x17: number; printComic: number };
     /** Sublimation transfer paper, ink… per plate. */
     extraPerPieceCents: number;
-    adhesive: { rollCents: number; rollFeet: number; feetPerPiece: number };
+    adhesive: { rollCents: number; rollFeet: number; inchesPerPiece: number };
   };
   addOnCents: Record<string, number>;
   /** Flat per-unit cost for products the sheet model does not cover, by product slug. */
@@ -85,14 +86,14 @@ export const DEFAULT_PRINT_COSTS: PrintCostConfig = {
   pagesPerSheet: 4,
   sheetSizeByTrim: { a5: '11x17', standard: '11x17', magazine: '11x17', letter: '12x18' },
   stocks: [
-    { code: '279498', name: '11X17-80-31M-L-WHITE — 80# text, long grain', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '279652', name: '11X17-100-39M-L-WHITE — 100# text, long grain', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '279656', name: '17X11-80-58M-S-WHITE — 80# cover, short grain', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '2868', name: '17X11-80-58M-WHITE — 80# cover', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '2289D', name: '17X11-100-72M-WHITE — 100# cover', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '279661', name: '18X12-100-83M-S-WHITE — 100# cover, short grain', sheet: '12x18', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '2DT121711C', name: '17X11-12PT-69M-WHITE — 12pt cover', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
-    { code: '2DT141812C', name: '18X12-14PT-90M-WHITE — 14pt cover', sheet: '12x18', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null },
+    { code: '279498', name: '11X17-80-31M-L-WHITE — 80# text, long grain', sheet: '11x17', costPerSheetCents: null, cartonCents: 15585, sheetsPerCarton: 1500 },
+    { code: '279652', name: '11X17-100-39M-L-WHITE — 100# text, long grain', sheet: '11x17', costPerSheetCents: null, cartonCents: 9803, sheetsPerCarton: null },
+    { code: '279656', name: '17X11-80-58M-S-WHITE — 80# cover, short grain', sheet: '11x17', costPerSheetCents: null, cartonCents: 7433, sheetsPerCarton: 750 },
+    { code: '2868', name: '17X11-80-58M-WHITE — 80# cover', sheet: '11x17', costPerSheetCents: null, cartonCents: 11140, sheetsPerCarton: null },
+    { code: '2289D', name: '17X11-100-72M-WHITE — 100# cover', sheet: '11x17', costPerSheetCents: null, cartonCents: 10444, sheetsPerCarton: null },
+    { code: '279661', name: '18X12-100-83M-S-WHITE — 100# cover, short grain', sheet: '12x18', costPerSheetCents: null, cartonCents: 7090, sheetsPerCarton: null },
+    { code: '2DT121711C', name: '17X11-12PT-69M-WHITE — 12pt cover', sheet: '11x17', costPerSheetCents: null, cartonCents: 6858, sheetsPerCarton: null },
+    { code: '2DT141812C', name: '18X12-14PT-90M-WHITE — 14pt cover', sheet: '12x18', costPerSheetCents: null, cartonCents: 8048, sheetsPerCarton: null },
   ],
   interiorStock: { Gloss: { '11x17': '279498' } },
   coverStock: { 'Standard Gloss': { '11x17': '279656' } },
@@ -102,7 +103,7 @@ export const DEFAULT_PRINT_COSTS: PrintCostConfig = {
     paperCoverType: 'Standard Matte',
     yields: { comicCover: 3, tradingCard: 30, print11x17: 1, printComic: 3 },
     extraPerPieceCents: 0,
-    adhesive: { rollCents: 1400, rollFeet: 33, feetPerPiece: 1 },
+    adhesive: { rollCents: 1400, rollFeet: 33, inchesPerPiece: 7 },
   },
   addOnCents: {},
   productUnitCents: {},
@@ -195,7 +196,7 @@ export function normalizePrintCosts(raw: unknown): PrintCostConfig {
       adhesive: {
         rollCents: num(metal.adhesive?.rollCents, d.metal.adhesive.rollCents),
         rollFeet: Math.max(0.01, num(metal.adhesive?.rollFeet, d.metal.adhesive.rollFeet)),
-        feetPerPiece: Math.max(0, num(metal.adhesive?.feetPerPiece, d.metal.adhesive.feetPerPiece)),
+        inchesPerPiece: Math.max(0, num(metal.adhesive?.inchesPerPiece, d.metal.adhesive.inchesPerPiece)),
       },
     },
     addOnCents: centsMap(r.addOnCents),
@@ -222,7 +223,7 @@ export function sheetCents(s: PaperStock): number | null {
 
 export function metalPieceCents(cfg: PrintCostConfig, perSheet: number): number {
   const a = cfg.metal.adhesive;
-  const adhesive = a.rollFeet > 0 ? (a.rollCents / a.rollFeet) * a.feetPerPiece : 0;
+  const adhesive = a.rollFeet > 0 ? (a.rollCents / (a.rollFeet * 12)) * a.inchesPerPiece : 0;
   return cfg.metal.sheetCostCents / Math.max(1, perSheet) + cfg.metal.extraPerPieceCents + adhesive;
 }
 

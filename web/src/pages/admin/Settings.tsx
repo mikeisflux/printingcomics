@@ -713,7 +713,7 @@ interface PrintCostConfig {
     sheetCostCents: number; coverTypes: string[]; paperCoverType: string;
     yields: { comicCover: number; tradingCard: number; print11x17: number; printComic: number };
     extraPerPieceCents: number;
-    adhesive: { rollCents: number; rollFeet: number; feetPerPiece: number };
+    adhesive: { rollCents: number; rollFeet: number; inchesPerPiece: number };
   };
   addOnCents: Record<string, number>;
   productUnitCents: Record<string, number>;
@@ -937,10 +937,10 @@ function PrintCostsSection() {
           <NumInput prefix="11 × 17 prints" value={cfg.metal.yields.print11x17} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, yields: { ...c.metal.yields, print11x17: v ?? 1 } } }))} step="1" min={1} width={60} />
           <NumInput prefix="comic-size prints" value={cfg.metal.yields.printComic} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, yields: { ...c.metal.yields, printComic: v ?? 1 } } }))} step="1" min={1} width={60} />
         </CostRow>
-        <CostRow label="Adhesive" hint="A roll's price and length, and how much each plate uses.">
+        <CostRow label="Adhesive" hint="A roll's price and length, and how many inches each plate uses.">
           <Dollars cents={cfg.metal.adhesive.rollCents} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, rollCents: v ?? 0 } } }))} width={90} />
           <NumInput prefix="per" value={cfg.metal.adhesive.rollFeet} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, rollFeet: v ?? 1 } } }))} step="1" suffix="ft roll" width={70} />
-          <NumInput value={cfg.metal.adhesive.feetPerPiece} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, feetPerPiece: v ?? 0 } } }))} step="0.25" suffix="ft per plate" width={70} />
+          <NumInput value={cfg.metal.adhesive.inchesPerPiece} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, inchesPerPiece: v ?? 0 } } }))} step="0.5" suffix="in per plate" width={70} />
         </CostRow>
         <CostRow label="Extra per plate" hint="Transfer paper, sublimation ink — anything else each plate uses.">
           <NumInput value={cfg.metal.extraPerPieceCents} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, extraPerPieceCents: v ?? 0 } }))} step="0.1" suffix="¢" width={80} />
