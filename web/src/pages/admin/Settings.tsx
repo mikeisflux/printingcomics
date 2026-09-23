@@ -715,6 +715,7 @@ interface PrintCostConfig {
     extraPerPieceCents: number;
     adhesive: { rollCents: number; rollFeet: number; inchesPerPiece: number };
   };
+  paperPrints: { stock: string; perSheet: { full: number; comic: number } };
   addOnCents: Record<string, number>;
   productUnitCents: Record<string, number>;
 }
@@ -723,7 +724,7 @@ interface PrintCostRefs {
   interiorPapers: string[];
   coverTypes: string[];
   addOnKeys: string[];
-  products: { slug: string; name: string }[];
+  products: { slug: string; name: string; kind: 'unit' | 'extra' }[];
 }
 
 const perSheetOf = (s: PaperStock): number | null =>
@@ -924,6 +925,17 @@ function PrintCostsSection() {
             ))}
           </CostRow>
         ))}
+        <h4 style={{ margin: '1rem 0 0' }}>Paper art prints</h4>
+        <CostRow label="Print stock" hint="Printed one side. Foil prints use it too, plus their extra below.">
+          <select value={cfg.paperPrints.stock} onChange={(e) => update((c) => ({ ...c, paperPrints: { ...c.paperPrints, stock: e.target.value } }))} style={{ margin: 0, maxWidth: 320, fontSize: '.85rem' }}>
+            <option value="">— not set —</option>
+            {cfg.stocks.map((st) => <option key={st.code} value={st.code}>{st.code} — {st.name}</option>)}
+          </select>
+        </CostRow>
+        <CostRow label="Prints per sheet">
+          <NumInput prefix="11 × 17" value={cfg.paperPrints.perSheet.full} onChange={(v) => update((c) => ({ ...c, paperPrints: { ...c.paperPrints, perSheet: { ...c.paperPrints.perSheet, full: v ?? 1 } } }))} step="1" min={1} width={60} />
+          <NumInput prefix="comic size" value={cfg.paperPrints.perSheet.comic} onChange={(v) => update((c) => ({ ...c, paperPrints: { ...c.paperPrints, perSheet: { ...c.paperPrints.perSheet, comic: v ?? 1 } } }))} step="1" min={1} width={60} />
+        </CostRow>
       </div>
 
       <div className="admin-card">
@@ -983,9 +995,9 @@ function PrintCostsSection() {
 
       <div className="admin-card">
         <h3>Everything else, per unit</h3>
-        <p className="muted" style={{ fontSize: '.8rem' }}>Products that are not books or metal prints: what one unit costs us to buy or make.</p>
+        <p className="muted" style={{ fontSize: '.8rem' }}>Mailers, Comic Armor and the like: what one unit costs us to buy. For prints this is an extra on top of the sheet or plate — a foil layer, a raised layer.</p>
         {refs.products.map((p) => (
-          <CostRow key={p.slug} label={p.name}>
+          <CostRow key={p.slug} label={p.name} hint={p.kind === 'extra' ? 'extra per print, on top of the paper / plate' : undefined}>
             <Dollars cents={cfg.productUnitCents[p.slug]} onChange={(v) => update((c) => { const next = { ...c.productUnitCents }; if (v === null) delete next[p.slug]; else next[p.slug] = v; return { ...c, productUnitCents: next }; })} placeholder="not set" />
           </CostRow>
         ))}

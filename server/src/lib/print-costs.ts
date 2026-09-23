@@ -71,8 +71,14 @@ export interface PrintCostConfig {
     extraPerPieceCents: number;
     adhesive: { rollCents: number; rollFeet: number; inchesPerPiece: number };
   };
+  /** Paper art prints: the sheet they print on (one side) and how many prints a sheet yields. */
+  paperPrints: { stock: string; perSheet: { full: number; comic: number } };
   addOnCents: Record<string, number>;
-  /** Flat per-unit cost for products the sheet model does not cover, by product slug. */
+  /**
+   * Flat per-unit cost by product slug. For products the sheet model does not
+   * cover (mailers, Comic Armor…) it is the whole cost; for prints it is an
+   * extra on top of the sheet/plate model (foil, raised layer…).
+   */
   productUnitCents: Record<string, number>;
 }
 
@@ -86,17 +92,26 @@ export const DEFAULT_PRINT_COSTS: PrintCostConfig = {
   pagesPerSheet: 4,
   sheetSizeByTrim: { a5: '11x17', standard: '11x17', magazine: '11x17', letter: '12x18' },
   stocks: [
-    { code: '279498', name: '11X17-80-31M-L-WHITE — 80# text, long grain', sheet: '11x17', costPerSheetCents: null, cartonCents: 15585, sheetsPerCarton: 1500 },
-    { code: '279652', name: '11X17-100-39M-L-WHITE — 100# text, long grain', sheet: '11x17', costPerSheetCents: null, cartonCents: 9803, sheetsPerCarton: null },
-    { code: '279656', name: '17X11-80-58M-S-WHITE — 80# cover, short grain', sheet: '11x17', costPerSheetCents: null, cartonCents: 7433, sheetsPerCarton: 750 },
-    { code: '2868', name: '17X11-80-58M-WHITE — 80# cover', sheet: '11x17', costPerSheetCents: null, cartonCents: 11140, sheetsPerCarton: null },
+    // Lindenmeyr Munroe invoices price per thousand sheets (MS); per-sheet is that ÷ 1000.
+    { code: '279498', name: 'Blazer Digital Gloss Text 11X17-80-31M-L — 80# gloss text', sheet: '11x17', costPerSheetCents: 5.195, cartonCents: 7793, sheetsPerCarton: 1500 },
+    { code: '279652', name: 'Blazer Digital Gloss Text 11X17-100-39M-L — 100# gloss text', sheet: '11x17', costPerSheetCents: 6.535, cartonCents: 9803, sheetsPerCarton: 1500 },
+    { code: '279656', name: 'Blazer Digital Gloss Cover 17X11-80-58M-S — 80# gloss cover', sheet: '11x17', costPerSheetCents: 9.91, cartonCents: 7433, sheetsPerCarton: 750 },
+    { code: '2868', name: 'Cougar Digital Smooth Cover 17X11-80-58M — 80# uncoated cover (under metal, sketch)', sheet: '11x17', costPerSheetCents: 11.14, cartonCents: 11140, sheetsPerCarton: 1000 },
     { code: '2289D', name: '17X11-100-72M-WHITE — 100# cover', sheet: '11x17', costPerSheetCents: null, cartonCents: 10444, sheetsPerCarton: null },
-    { code: '279661', name: '18X12-100-83M-S-WHITE — 100# cover, short grain', sheet: '12x18', costPerSheetCents: null, cartonCents: 7090, sheetsPerCarton: null },
-    { code: '2DT121711C', name: '17X11-12PT-69M-WHITE — 12pt cover', sheet: '11x17', costPerSheetCents: null, cartonCents: 6858, sheetsPerCarton: null },
+    { code: '279661', name: 'Blazer Digital Gloss Cover 18X12-100-83M-S — 100# gloss cover (art prints)', sheet: '12x18', costPerSheetCents: 14.18, cartonCents: 7090, sheetsPerCarton: 500 },
+    { code: '2DT121711C', name: 'Tango Digital C2S Cover 17X11-12PT-69M — 12pt gloss card stock', sheet: '11x17', costPerSheetCents: 13.715, cartonCents: 6858, sheetsPerCarton: 500 },
     { code: '2DT141812C', name: '18X12-14PT-90M-WHITE — 14pt cover', sheet: '12x18', costPerSheetCents: null, cartonCents: 8048, sheetsPerCarton: null },
   ],
   interiorStock: { Gloss: { '11x17': '279498' } },
-  coverStock: { 'Standard Gloss': { '11x17': '279656' } },
+  // Standard Gloss, Standard Matte (the uncoated cover every metal book is built on) and Premium Gloss
+  // are confirmed by the supplier invoices; Deluxe Gloss → 2289D and Sketch → the uncoated cover are guesses.
+  coverStock: {
+    'Standard Gloss': { '11x17': '279656' },
+    'Standard Matte': { '11x17': '2868' },
+    'Premium Gloss': { '11x17': '2DT121711C' },
+    'Deluxe Gloss': { '11x17': '2289D' },
+    Sketch: { '11x17': '2868' },
+  },
   metal: {
     sheetCostCents: 156,
     coverTypes: ['Metal Covers', 'Raised Metal', 'Glow-in-the-Dark Metal'],
@@ -105,6 +120,7 @@ export const DEFAULT_PRINT_COSTS: PrintCostConfig = {
     extraPerPieceCents: 0,
     adhesive: { rollCents: 1400, rollFeet: 33, inchesPerPiece: 7 },
   },
+  paperPrints: { stock: '279661', perSheet: { full: 1, comic: 2 } },
   addOnCents: {},
   productUnitCents: {},
 };
@@ -197,6 +213,13 @@ export function normalizePrintCosts(raw: unknown): PrintCostConfig {
         rollCents: num(metal.adhesive?.rollCents, d.metal.adhesive.rollCents),
         rollFeet: Math.max(0.01, num(metal.adhesive?.rollFeet, d.metal.adhesive.rollFeet)),
         inchesPerPiece: Math.max(0, num(metal.adhesive?.inchesPerPiece, d.metal.adhesive.inchesPerPiece)),
+      },
+    },
+    paperPrints: {
+      stock: typeof r.paperPrints?.stock === 'string' ? r.paperPrints.stock : d.paperPrints.stock,
+      perSheet: {
+        full: Math.max(0.01, num(r.paperPrints?.perSheet?.full, d.paperPrints.perSheet.full)),
+        comic: Math.max(0.01, num(r.paperPrints?.perSheet?.comic, d.paperPrints.perSheet.comic)),
       },
     },
     addOnCents: centsMap(r.addOnCents),
@@ -392,12 +415,38 @@ function estimateMetalPrint(item: CostableItem, cfg: PrintCostConfig): { lines: 
   return { lines, missing: [], notes };
 }
 
+/** Paper and foil prints: one side of the print stock, several prints up per sheet. */
+function estimatePaperPrint(item: CostableItem, cfg: PrintCostConfig): { lines: CostLine[]; missing: string[]; notes: string[] } {
+  const lines: CostLine[] = [];
+  const missing: string[] = [];
+  const notes: string[] = [];
+  const size = opt(item.options, 'print_size');
+  const full = /11\s*[x×]\s*17/i.test(size);
+  const perSheet = full ? cfg.paperPrints.perSheet.full : cfg.paperPrints.perSheet.comic;
+  const waste = 1 + cfg.spoilagePct / 100;
+  const sheets = r2(waste / perSheet);
+  const stock = findStock(cfg, cfg.paperPrints.stock);
+  if (!stock) missing.push('which stock paper prints go on');
+  else {
+    const cents = sheetCents(stock);
+    if (cents === null) missing.push(`per-sheet cost for ${stock.code}`);
+    else lines.push({ label: `Print paper — ${stock.code} (${size || 'print'}, ${perSheet} per ${stock.sheet} sheet)`, qty: sheets, unit: 'sheet', unitCents: cents, cents: sheets * cents });
+    const clicks = r2(sheets * (cfg.clicks.perSide[stock.sheet] ?? 2));
+    lines.push({ label: `Print clicks (one side, ${perSheet} up)`, qty: clicks, unit: 'click', unitCents: cfg.clicks.colorCents, cents: clicks * cfg.clicks.colorCents });
+  }
+  const extra = cfg.productUnitCents[item.product.slug];
+  if (extra) lines.push({ label: `Extra per print — ${item.product.name}`, qty: 1, unit: 'unit', unitCents: extra, cents: extra });
+  else if (/foil/i.test(item.product.slug)) notes.push(`no extra cost set for "${item.product.name}" (foil)`);
+  return { lines, missing, notes };
+}
+
 export function estimateItem(item: CostableItem, cfg: PrintCostConfig): ItemCostEstimate {
   const slug = item.product.slug;
   let est: { lines: CostLine[]; missing: string[]; notes: string[] };
   const book = BOOK_SLUG.exec(slug);
   if (book) est = estimateBook(item, book[2]!, cfg);
   else if (/^art-print-metal/.test(slug)) est = estimateMetalPrint(item, cfg);
+  else if (/^art-print-/.test(slug)) est = estimatePaperPrint(item, cfg);
   else {
     const c = cfg.productUnitCents[slug];
     est = c
@@ -466,8 +515,8 @@ export interface PrintCostRefs {
   coverTypes: string[];
   /** Add-on keys the estimate will look up: "Cover: Raised Metal", "Lamination: Gloss", … */
   addOnKeys: string[];
-  /** Products costed per unit (everything that is not a book or a metal print). */
-  products: { slug: string; name: string }[];
+  /** Products with a flat figure: `unit` = the whole cost, `extra` = added on top of the sheet/plate model (prints). */
+  products: { slug: string; name: string; kind: 'unit' | 'extra' }[];
 }
 
 export async function printCostRefs(): Promise<PrintCostRefs> {
@@ -480,7 +529,7 @@ export async function printCostRefs(): Promise<PrintCostRefs> {
   const interior = new Set<string>();
   const covers = new Set<string>();
   const addOns = new Set<string>();
-  const others: { slug: string; name: string }[] = [];
+  const others: { slug: string; name: string; kind: 'unit' | 'extra' }[] = [];
   for (const p of products) {
     const m = BOOK_SLUG.exec(p.slug);
     if (m) {
@@ -494,8 +543,8 @@ export async function printCostRefs(): Promise<PrintCostRefs> {
         if (o.name === 'UV Style') labels.forEach((l) => addOns.add(`UV: ${l}`));
         if (o.name === 'Foil Cover') labels.forEach((l) => addOns.add(`Foil: ${l}`));
       }
-    } else if (!/^art-print-metal/.test(p.slug)) {
-      others.push({ slug: p.slug, name: p.name });
+    } else {
+      others.push({ slug: p.slug, name: p.name, kind: /^art-print-/.test(p.slug) ? 'extra' : 'unit' });
     }
   }
   const order = ['a5', 'standard', 'magazine', 'letter'];
