@@ -130,17 +130,37 @@ router.post('/', async (req, res) => {
       }
       break;
     }
+    case 'PAYMENT.CAPTURE.PENDING': {
+      // Money not received yet (eCheck, review, manual acceptance). Keep the
+      // capture id so COMPLETED / DENIED can find this row later.
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'PENDING', providerRef: captureId ?? payment.providerRef, rawPayload: resource },
+      });
+      await prisma.orderStatusEvent.create({
+        data: { orderId: payment.orderId, kind: 'payment', message: `PayPal capture ${captureId} is PENDING (${resource.status_details?.reason ?? 'no reason given'}) — money not received yet` },
+      });
+      break;
+    }
     case 'PAYMENT.CAPTURE.DENIED':
     case 'PAYMENT.CAPTURE.DECLINED': {
       await prisma.payment.update({
         where: { id: payment.id },
         data: { status: 'FAILED', rawPayload: resource },
       });
+      const reason = resource.status_details?.reason ?? 'unknown';
+      // The order was never paid: take it out of the paid list — unless another
+      // payment on it did complete (a retry after this one), which keeps it.
+      const otherPaid = await prisma.payment.count({ where: { orderId: payment.orderId, status: 'CAPTURED', id: { not: payment.id } } });
+      const reverted = otherPaid > 0 ? { count: 0 } : await prisma.order.updateMany({
+        where: { id: payment.orderId, status: { in: ['PENDING', 'PAID'] } },
+        data: { paymentStatus: 'FAILED', status: 'CANCELLED' },
+      });
       await prisma.orderStatusEvent.create({
         data: {
           orderId: payment.orderId,
           kind: 'payment',
-          message: `PayPal denied capture: ${resource.status_details?.reason ?? 'unknown'}`,
+          message: `PayPal denied capture ${captureId}: ${reason}${reverted.count > 0 ? ' — no money received; order cancelled' : ''}`,
         },
       });
       break;
@@ -169,11 +189,14 @@ router.post('/', async (req, res) => {
         where: { id: payment.id },
         data: { status: 'FAILED', rawPayload: resource },
       });
+      // The money went back to the buyer. The order keeps its fulfilment
+      // status (it may already have shipped) but is no longer paid.
+      await prisma.order.update({ where: { id: payment.orderId }, data: { paymentStatus: 'FAILED' } });
       await prisma.orderStatusEvent.create({
         data: {
           orderId: payment.orderId,
           kind: 'payment',
-          message: 'PayPal reversed the capture (chargeback)',
+          message: `PayPal reversed capture ${captureId} (chargeback) — payment marked FAILED`,
         },
       });
       break;

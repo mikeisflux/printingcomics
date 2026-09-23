@@ -59,10 +59,37 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
     throw new HttpError(404, 'Payment went through but we could not match it to an order. Please contact us with this reference: ' + captureId);
   }
 
-  // A card capture can come back COMPLETED at the order level while the
-  // capture itself is PENDING (bank review). Treat that as paid — PayPal will
-  // send PAYMENT.CAPTURE.DENIED if it falls through — but keep the status so
-  // an admin can see why a refund is refused until it settles.
+  // The checkout order can come back COMPLETED while the capture itself is
+  // PENDING — an eCheck still clearing, a risk review, or a receiving
+  // preference that makes the account holder accept the payment by hand.
+  // No money has arrived in that state, and PayPal may still DENY it, so
+  // the order stays PENDING (never PAID) until PAYMENT.CAPTURE.COMPLETED or
+  // a "Check payment with PayPal" confirms it. The capture id is stored so
+  // both can find it. Only a COMPLETED capture marks the order paid.
+  if (status === 'COMPLETED' && captureStatus !== 'COMPLETED') {
+    const reason: string = capture?.status_details?.reason ?? (capture ? 'no reason given' : 'PayPal returned no capture');
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: captureStatus === 'DECLINED' || captureStatus === 'FAILED' ? 'FAILED' : 'PENDING', providerRef: captureId, rawPayload: data },
+    });
+    if (captureStatus === 'DECLINED' || captureStatus === 'FAILED') {
+      await prisma.orderStatusEvent.create({
+        data: { orderId: payment.orderId, kind: 'payment', message: `PayPal capture ${captureId} was ${captureStatus} (${reason}) — no money received` },
+      });
+      console.error('[paypal] capture declined inside a COMPLETED order', { paypalOrderId, captureId, captureStatus, reason });
+      throw new HttpError(402, 'PayPal declined the payment. No charge was made — please try another card or funding source.', { issue: 'INSTRUMENT_DECLINED', stage: 'capture' });
+    }
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId: payment.orderId,
+        kind: 'payment',
+        message: `PayPal capture ${captureId} is ${captureStatus ?? 'PENDING'} (${reason}) — money not received yet; order stays on hold until PayPal confirms`,
+      },
+    });
+    console.warn('[paypal] capture pending', { paypalOrderId, captureId, captureStatus, reason });
+    return { orderId: customId ?? payment.orderId, orderNumber: payment.order.number, paypalCaptureId: captureId, status: 'PENDING' };
+  }
+
   if (status === 'COMPLETED') {
     // CAS: only mark PAID once.
     const cas = await prisma.order.updateMany({
@@ -84,7 +111,7 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
           kind: 'payment',
           fromStatus: 'PENDING',
           toStatus: 'CAPTURED',
-          message: `PayPal capture ${captureId} completed${captureStatus && captureStatus !== 'COMPLETED' ? ` (capture status: ${captureStatus})` : ''}`,
+          message: `PayPal capture ${captureId} completed`,
         },
       });
       await prisma.orderStatusEvent.create({

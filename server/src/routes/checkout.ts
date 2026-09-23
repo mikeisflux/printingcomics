@@ -137,7 +137,10 @@ router.post('/paypal/create', async (req, res) => {
 router.post('/paypal/capture/:paypalOrderId', async (req, res) => {
   const result = await capturePaypalOrder(req.params.paypalOrderId);
 
-  if (result.status === 'COMPLETED') {
+  // COMPLETED: paid. PENDING: PayPal accepted the checkout but is still
+  // holding the money — the order exists and must not be placed twice, so the
+  // cart is cleared either way. A declined capture throws before this point.
+  if (result.status === 'COMPLETED' || result.status === 'PENDING') {
     const cart = await findCart(req);
     if (cart) await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
   }

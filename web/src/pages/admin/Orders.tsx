@@ -13,7 +13,7 @@ interface Order {
 }
 
 const STATUSES: [string, string][] = [
-  ['', 'All (excludes abandoned)'],
+  ['', 'All paid orders'],
   ['PENDING', 'Pending'],
   ['PAID', 'Paid'],
   ['IN_PRODUCTION', 'In production'],
@@ -21,7 +21,7 @@ const STATUSES: [string, string][] = [
   ['DELIVERED', 'Delivered'],
   ['CANCELLED', 'Cancelled'],
   ['REFUNDED', 'Refunded'],
-  ['ABANDONED', 'Abandoned (unpaid checkouts)'],
+  ['ABANDONED', 'Unpaid (abandoned, pending or declined at PayPal)'],
 ];
 
 /** "3m ago" / "Yesterday 4:12 PM" / "Aug 3" — dense enough for a list. */

@@ -136,6 +136,11 @@ export function OrderConfirmation() {
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
         </div>
+        {!paid && !isCancelled && (
+          <div style={{ background: '#fff3cd', border: '1px solid #f0d58c', borderRadius: 8, padding: '.75rem 1rem', margin: '1rem auto 0', maxWidth: 560, textAlign: 'left', fontSize: '.92rem' }}>
+            <strong>Your payment is still processing at PayPal.</strong> Some payments (bank transfers, payments under review) take a little while to clear. We’ll email you the moment it does, and nothing goes to print until then. <strong>Please don’t pay again</strong> — if the payment doesn’t clear, we’ll let you know.
+          </div>
+        )}
       </div>
 
       {!isCancelled && (

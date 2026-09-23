@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
-import { refundPaypalCapture } from '../../lib/payments/paypal/index.js';
+import { refundPaypalCapture, verifyOrderPayment, describeVerdict } from '../../lib/payments/paypal/index.js';
 import { HttpError } from '../../middleware/error.js';
 import {
   sendOrderConfirmationEmail,
@@ -41,17 +41,24 @@ router.get('/', async (req, res) => {
   const partnerFilter = req.query.partner as string | undefined;
   const where: any = {};
 
-  // "Abandoned" = a storefront checkout that was created but never paid (a
-  // PayPal order was minted, the buyer never completed on PayPal). These are
-  // hidden by default so the list shows only real, committed orders. They stay
-  // reachable via the "Abandoned (unpaid)" status filter.
-  const ABANDONED = { status: 'PENDING', paymentStatus: 'PENDING', partnerId: null, apiKeyId: null };
+  // The list shows orders with money behind them. A storefront order whose
+  // payment never completed — abandoned at PayPal, still pending there, or
+  // declined — is hidden by default and reachable through the "Unpaid"
+  // filter. Partner / API orders are invoiced outside PayPal, so they always
+  // show. An order that shipped and was later reversed keeps showing: it has
+  // a fulfilment history staff need to see.
+  const UNPAID = {
+    paymentStatus: { in: ['PENDING', 'AUTHORIZED', 'FAILED'] },
+    status: { in: ['PENDING', 'CANCELLED'] },
+    partnerId: null,
+    apiKeyId: null,
+  };
   if (status === 'ABANDONED') {
-    Object.assign(where, ABANDONED);
+    Object.assign(where, UNPAID);
   } else if (status) {
     where.status = status;
   } else {
-    where.NOT = ABANDONED;
+    where.NOT = UNPAID;
   }
 
   if (q) {
@@ -169,6 +176,13 @@ router.post('/:id/adjustments/:adjId/resend', async (req, res) => {
 router.post('/:id/adjustments/:adjId/cancel', async (req, res) => {
   await cancelAdjustment(req.params.id, req.params.adjId, req.session?.sub);
   res.json({ ok: true });
+});
+
+// ---- Payment check: make the order agree with what PayPal actually holds ----
+router.post('/:id/payment/verify', async (req, res) => {
+  const actor = req.session as { name?: string; email?: string } | undefined;
+  const result = await verifyOrderPayment(String(req.params.id), { fix: true, actorName: actor?.name ?? actor?.email ?? null });
+  res.json({ result, summary: describeVerdict(result) });
 });
 
 // ---- Rename: change a free-text option (the "Title of Comic") on one line ----

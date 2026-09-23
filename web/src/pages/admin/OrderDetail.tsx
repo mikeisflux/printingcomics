@@ -573,6 +573,24 @@ export function AdminOrderDetail() {
 
   const [refundOpen, setRefundOpen] = useState(false);
 
+  // Ask PayPal what it actually holds for this order and set our status to
+  // match — the answer to "it says paid but the money isn't in PayPal".
+  const [verifying, setVerifying] = useState(false);
+  const verifyPayment = async () => {
+    if (!order) return;
+    setVerifying(true);
+    try {
+      const r = await api.post<{ summary: string; result: { changed: boolean; verdict: string } }>(`/admin/orders/${id}/payment/verify`, {});
+      if (r.result.verdict === 'paid' || r.result.verdict === 'refunded') toast.success(r.summary);
+      else toast.error(r.summary);
+      load();
+    } catch (e: any) {
+      toast.error(errorMessage(e, 'Could not check with PayPal.'));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const deleteOrder = async () => {
     if (!order) return;
     if (!(await confirm({ title: `Permanently delete order ${order.number}?`, body: "This removes the order and any uploaded files and can't be undone.", confirmLabel: 'Delete order', danger: true }))) return;
@@ -649,6 +667,11 @@ export function AdminOrderDetail() {
           {(order.proofs?.length ?? 0) > 0 && (
             <button className="btn secondary" onClick={resendProofs} disabled={resending}>
               {resending ? 'Sending…' : 'Resend proof emails'}
+            </button>
+          )}
+          {(order.payments?.length ?? 0) > 0 && (
+            <button className="btn secondary" onClick={verifyPayment} disabled={verifying} title="Ask PayPal whether this order was really paid and correct our status to match">
+              {verifying ? 'Checking…' : 'Check payment with PayPal'}
             </button>
           )}
           {order.paymentStatus === 'CAPTURED' && (
