@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api, formatMoney } from '../../api/client';
 import { formatCartItemOptions } from '../../lib/cart-options';
@@ -881,6 +881,7 @@ export function AdminOrderDetail() {
         <div className="spread"><span>Shipping</span><span>{formatMoney(order.shippingCents)}</span></div>
         <div className="spread"><span>Tax</span><span>{formatMoney(order.taxCents)}</span></div>
         <div className="spread" style={{ fontWeight: 700 }}><span>Total</span><span>{formatMoney(order.totalCents)}</span></div>
+        <MaterialsCost order={order} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
@@ -1406,6 +1407,107 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+// ---------------------------------------------------------------------------
+// Materials cost — what the order costs US (owner only)
+// ---------------------------------------------------------------------------
+
+interface CostLine { label: string; qty: number; unit: string; unitCents: number; cents: number }
+interface ItemCostEstimate {
+  orderItemId: string; name: string; title: string; quantity: number;
+  status: 'ok' | 'partial' | 'none';
+  perUnitCents: number; totalCents: number;
+  lines: CostLine[]; missing: string[]; notes: string[];
+}
+interface OrderCostEstimate {
+  items: ItemCostEstimate[];
+  materialsCents: number; goodsCents: number; marginCents: number; marginPct: number | null;
+  complete: boolean; missing: string[]; notes: string[];
+}
+
+/**
+ * Paper, clicks, metal and add-ons for this order, from Settings → Print
+ * costs. The endpoint is owner-only; staff get a 403 and see nothing here.
+ */
+function MaterialsCost({ order }: { order: OrderFull }) {
+  const [est, setEst] = useState<OrderCostEstimate | 'hidden' | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api.get<{ estimate: OrderCostEstimate }>(`/admin/costs/orders/${order.id}`)
+      .then((r) => { if (alive) setEst(r.estimate); })
+      .catch((e: any) => { if (alive) setEst(e?.status === 403 ? 'hidden' : null); });
+    return () => { alive = false; };
+  }, [order]);
+
+  if (!est || est === 'hidden') return null;
+  const money = (c: number) => formatMoney(Math.round(c));
+  const fine = (c: number) => `$${(c / 100).toFixed(3)}`;
+  const amber = '#b45309';
+
+  return (
+    <div style={{ marginTop: '.6rem', paddingTop: '.6rem', borderTop: '1px dashed var(--border)' }}>
+      <div className="spread">
+        <span>Materials — our cost{est.complete ? '' : <span style={{ color: amber }}> (partial)</span>}</span>
+        <span>{money(est.materialsCents)}</span>
+      </div>
+      <div className="spread">
+        <span>Margin on goods <span className="muted" style={{ fontSize: '.8rem' }}>(subtotal − discount − materials)</span></span>
+        <span style={{ fontWeight: 700, color: est.marginCents < 0 ? '#b91c1c' : '#166534' }}>
+          {money(est.marginCents)}{est.marginPct !== null ? ` (${est.marginPct.toFixed(0)}%)` : ''}
+        </span>
+      </div>
+      {!est.complete && (
+        <div style={{ color: amber, fontSize: '.8rem', marginTop: '.3rem' }}>
+          ⚠ Not yet costed: {est.missing.slice(0, 4).join('; ')}{est.missing.length > 4 ? '; …' : ''}.{' '}
+          <Link to="/admin/settings?section=costs">Fill it in under Print costs</Link>.
+        </div>
+      )}
+      {est.complete && est.notes.length > 0 && (
+        <div className="muted" style={{ fontSize: '.78rem', marginTop: '.3rem' }}>
+          Counted at $0 until priced: {est.notes.map((n) => n.replace(/^no add-on cost set for /, '')).join(', ')}.{' '}
+          <Link to="/admin/settings?section=costs">Print costs</Link>
+        </div>
+      )}
+      <button type="button" className="btn secondary sm" style={{ marginTop: '.5rem' }} onClick={() => setOpen((v) => !v)}>
+        {open ? 'Hide' : 'Show'} materials breakdown
+      </button>
+      {open && (
+        <table className="admin-table" style={{ marginTop: '.5rem', fontSize: '.85rem' }}>
+          <thead><tr><th>Item</th><th>Qty</th><th>Each</th><th>Total</th></tr></thead>
+          <tbody>
+            {est.items.map((it) => (
+              <Fragment key={it.orderItemId}>
+                <tr>
+                  <td>
+                    <strong>{it.title ? `“${it.title}”` : it.name}</strong>
+                    {it.title && <span className="muted"> · {it.name}</span>}
+                    {it.status !== 'ok' && <span style={{ color: amber }}> · {it.status === 'none' ? 'not costed' : 'partly costed'}</span>}
+                  </td>
+                  <td>{it.quantity}</td>
+                  <td>{fine(it.perUnitCents)}</td>
+                  <td>{money(it.totalCents)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={4} style={{ paddingTop: 0 }}>
+                    <ul className="muted" style={{ margin: 0, paddingLeft: '1rem', fontSize: '.78rem' }}>
+                      {it.lines.map((l, i) => (
+                        <li key={i}>{l.label}: {l.qty} × {l.unitCents.toFixed(2)}¢ = {fine(l.cents)}</li>
+                      ))}
+                      {it.missing.map((m, i) => <li key={`m${i}`} style={{ color: amber }}>missing: {m}</li>)}
+                      {it.notes.map((n, i) => <li key={`n${i}`}>{n}</li>)}
+                    </ul>
+                  </td>
+                </tr>
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

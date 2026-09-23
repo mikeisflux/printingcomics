@@ -1,22 +1,29 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
-import { useConfirm, usePrompt } from '../../components/admin/ui';
+import { errorMessage, useConfirm, usePrompt, useToast } from '../../components/admin/ui';
 
-type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'storage' | 'taxes' | 'coupons' | 'backup';
+type Section = 'store' | 'payments' | 'email' | 'ai' | 'seo' | 'shipping' | 'easypost' | 'storage' | 'taxes' | 'coupons' | 'costs' | 'backup';
+const SECTIONS: Section[] = ['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'easypost', 'storage', 'taxes', 'coupons', 'costs', 'backup'];
+const SECTION_LABEL: Partial<Record<Section, string>> = { ai: 'AI (Claude)', costs: 'Print costs' };
 
 interface SettingsMap {
   [key: string]: unknown;
 }
 
 export function AdminSettings() {
-  const [section, setSection] = useState<Section>('store');
+  // ?section=costs deep-links a tab (the order page links straight to Print costs).
+  const [params, setParams] = useSearchParams();
+  const fromUrl = params.get('section') as Section | null;
+  const section: Section = fromUrl && SECTIONS.includes(fromUrl) ? fromUrl : 'store';
+  const setSection = (s: Section) => setParams(s === 'store' ? {} : { section: s }, { replace: true });
 
   return (
     <div>
       <h1>Settings</h1>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['store', 'payments', 'email', 'ai', 'seo', 'shipping', 'easypost', 'storage', 'taxes', 'coupons', 'backup'] as Section[]).map((s) => (
+          {SECTIONS.map((s) => (
             <button
               key={s}
               onClick={() => setSection(s)}
@@ -31,7 +38,7 @@ export function AdminSettings() {
                 textTransform: 'capitalize',
               }}
             >
-              {s === 'ai' ? 'AI (Claude)' : s}
+              {SECTION_LABEL[s] ?? s}
             </button>
           ))}
         </div>
@@ -46,6 +53,7 @@ export function AdminSettings() {
       {section === 'storage' && <StorageSection />}
       {section === 'taxes' && <TaxesSection />}
       {section === 'coupons' && <CouponsSection />}
+      {section === 'costs' && <PrintCostsSection />}
       {section === 'backup' && <BackupSection />}
     </div>
   );
@@ -675,6 +683,318 @@ function BackupSection() {
         </ul>
       )}
       <a className="btn" href="/api/admin/backup/export">Download backup</a>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Print costs — what an order costs US in paper, clicks, metal and add-ons.
+// Owner-only; the resulting estimate shows on every order page. Mirrors
+// server/src/lib/print-costs.ts, which owns the arithmetic.
+// ---------------------------------------------------------------------------
+
+type SheetSize = '11x17' | '12x18';
+const SHEET_SIZES: SheetSize[] = ['11x17', '12x18'];
+const SHEET_LABEL: Record<SheetSize, string> = { '11x17': '11 × 17', '12x18': '12 × 18' };
+
+interface PaperStock { code: string; name: string; sheet: SheetSize; costPerSheetCents: number | null; cartonCents: number | null; sheetsPerCarton: number | null }
+type StockMap = Record<string, Partial<Record<SheetSize, string>>>;
+interface PrintCostConfig {
+  version: 1;
+  clicks: { colorCents: number; grayscaleCents: number; perSide: Record<SheetSize, number> };
+  coverSidesPrinted: 1 | 2;
+  spoilagePct: number;
+  pagesPerSheet: number;
+  sheetSizeByTrim: Record<string, SheetSize>;
+  stocks: PaperStock[];
+  interiorStock: StockMap;
+  coverStock: StockMap;
+  metal: {
+    sheetCostCents: number; coverTypes: string[]; paperCoverType: string;
+    yields: { comicCover: number; tradingCard: number; print11x17: number; printComic: number };
+    extraPerPieceCents: number;
+    adhesive: { rollCents: number; rollFeet: number; feetPerPiece: number };
+  };
+  addOnCents: Record<string, number>;
+  productUnitCents: Record<string, number>;
+}
+interface PrintCostRefs {
+  trims: { key: string; name: string }[];
+  interiorPapers: string[];
+  coverTypes: string[];
+  addOnKeys: string[];
+  products: { slug: string; name: string }[];
+}
+
+const perSheetOf = (s: PaperStock): number | null =>
+  s.costPerSheetCents !== null && s.costPerSheetCents > 0 ? s.costPerSheetCents
+  : s.cartonCents && s.sheetsPerCarton ? s.cartonCents / s.sheetsPerCarton : null;
+
+function NumInput({ value, onChange, step = 'any', min = 0, width = 110, placeholder, prefix, suffix }: {
+  value: number | null | undefined; onChange: (v: number | null) => void;
+  step?: string | number; min?: number; width?: number; placeholder?: string; prefix?: string; suffix?: string;
+}) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem' }}>
+      {prefix && <span className="muted">{prefix}</span>}
+      <input
+        type="number" step={step} min={min} placeholder={placeholder}
+        value={value === null || value === undefined ? '' : value}
+        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+        style={{ width, margin: 0 }}
+      />
+      {suffix && <span className="muted">{suffix}</span>}
+    </span>
+  );
+}
+
+/** Dollars in the box, cents in the config. */
+function Dollars({ cents, onChange, width = 110, placeholder = '0.00' }: { cents: number | null | undefined; onChange: (cents: number | null) => void; width?: number; placeholder?: string }) {
+  return (
+    <NumInput
+      prefix="$" step="0.01" width={width} placeholder={placeholder}
+      value={cents === null || cents === undefined ? null : Math.round(cents) / 100}
+      onChange={(v) => onChange(v === null ? null : Math.round(v * 100))}
+    />
+  );
+}
+
+function CostRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="spread" style={{ padding: '.4rem 0', borderTop: '1px solid var(--border)', gap: '1rem', flexWrap: 'wrap' }}>
+      <span style={{ flex: '1 1 260px' }}>
+        {label}
+        {hint && <div className="muted" style={{ fontSize: '.78rem' }}>{hint}</div>}
+      </span>
+      <span style={{ display: 'inline-flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>{children}</span>
+    </div>
+  );
+}
+
+function PrintCostsSection() {
+  const toast = useToast();
+  const [cfg, setCfg] = useState<PrintCostConfig | null>(null);
+  const [refs, setRefs] = useState<PrintCostRefs | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    api.get<{ config: PrintCostConfig; refs: PrintCostRefs }>('/admin/costs/print')
+      .then((r) => { setCfg(r.config); setRefs(r.refs); })
+      .catch((e) => setError(errorMessage(e, 'Could not load print costs')));
+  }, []);
+
+  const update = (fn: (c: PrintCostConfig) => PrintCostConfig) => { setCfg((c) => (c ? fn(c) : c)); setDirty(true); };
+  const setMap = (which: 'interiorStock' | 'coverStock', label: string, sheet: SheetSize, code: string) =>
+    update((c) => ({ ...c, [which]: { ...c[which], [label]: { ...(c[which][label] ?? {}), [sheet]: code || undefined } } }));
+
+  const save = async () => {
+    if (!cfg) return;
+    setSaving(true);
+    try {
+      const r = await api.put<{ config: PrintCostConfig }>('/admin/costs/print', { config: cfg });
+      setCfg(r.config); setDirty(false);
+      toast.success('Print costs saved. Every order page now uses them.');
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not save print costs'));
+    } finally { setSaving(false); }
+  };
+
+  if (error) return <div className="error">{error}</div>;
+  if (!cfg || !refs) return <p className="muted">Loading…</p>;
+
+  const usedSheets = SHEET_SIZES.filter((s) => Object.values(cfg.sheetSizeByTrim).includes(s));
+  const StockSelect = ({ value, sheet, onChange }: { value: string | undefined; sheet: SheetSize; onChange: (code: string) => void }) => (
+    <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} style={{ margin: 0, maxWidth: 300, fontSize: '.85rem' }}>
+      <option value="">— not set —</option>
+      {cfg.stocks.filter((s) => s.sheet === sheet).map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
+    </select>
+  );
+  const paperCoverTypes = refs.coverTypes.filter((c) => !/^self/i.test(c) && !cfg.metal.coverTypes.includes(c));
+  const addOnGroups = ['Cover', 'Lamination', 'UV', 'Foil'].map((g) => ({ g, keys: refs.addOnKeys.filter((k) => k.startsWith(`${g}: `)) })).filter((x) => x.keys.length > 0);
+  const missingSheetCosts = cfg.stocks.filter((s) => perSheetOf(s) === null).map((s) => s.code);
+
+  return (
+    <div>
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        These numbers drive the <strong>Materials</strong> line on every order: what the paper, press clicks,
+        metal plates and add-ons cost us. Only the owner login sees any of it. Save at the bottom.
+      </p>
+
+      <div className="admin-card">
+        <h3>Press clicks</h3>
+        <CostRow label="Colour click" hint="Per click on the press. An 11 × 17 side is 2 clicks, so a double-sided sheet is 4.">
+          <NumInput value={cfg.clicks.colorCents} onChange={(v) => update((c) => ({ ...c, clicks: { ...c.clicks, colorCents: v ?? 0 } }))} step="0.1" suffix="¢" width={90} />
+        </CostRow>
+        <CostRow label="Grayscale click" hint="Interiors ordered in grayscale. Same as colour unless your press bills black cheaper.">
+          <NumInput value={cfg.clicks.grayscaleCents} onChange={(v) => update((c) => ({ ...c, clicks: { ...c.clicks, grayscaleCents: v ?? 0 } }))} step="0.1" suffix="¢" width={90} />
+        </CostRow>
+        <CostRow label="Clicks per side">
+          {SHEET_SIZES.map((s) => (
+            <NumInput key={s} prefix={SHEET_LABEL[s]} value={cfg.clicks.perSide[s]} onChange={(v) => update((c) => ({ ...c, clicks: { ...c.clicks, perSide: { ...c.clicks.perSide, [s]: v ?? 0 } } }))} step="1" width={70} />
+          ))}
+        </CostRow>
+        <CostRow label="Cover printed on" hint="Both sides when the inside covers print.">
+          <select value={cfg.coverSidesPrinted} onChange={(e) => update((c) => ({ ...c, coverSidesPrinted: Number(e.target.value) === 1 ? 1 : 2 }))} style={{ margin: 0 }}>
+            <option value={2}>both sides (4 clicks)</option>
+            <option value={1}>one side (2 clicks)</option>
+          </select>
+        </CostRow>
+        <CostRow label="Pages per interior sheet" hint="Two pages up, both sides = 4. Interior sheets per book = pages ÷ this, rounded up.">
+          <NumInput value={cfg.pagesPerSheet} onChange={(v) => update((c) => ({ ...c, pagesPerSheet: v ?? 4 }))} step="1" min={1} width={70} />
+        </CostRow>
+        <CostRow label="Spoilage" hint="Extra added to every sheet, click and plate for make-ready and waste.">
+          <NumInput value={cfg.spoilagePct} onChange={(v) => update((c) => ({ ...c, spoilagePct: v ?? 0 }))} step="0.5" suffix="%" width={80} />
+        </CostRow>
+      </div>
+
+      <div className="admin-card">
+        <h3>Which sheet each book size prints on</h3>
+        {refs.trims.map((t) => (
+          <CostRow key={t.key} label={t.name}>
+            <select value={cfg.sheetSizeByTrim[t.key] ?? '11x17'} onChange={(e) => update((c) => ({ ...c, sheetSizeByTrim: { ...c.sheetSizeByTrim, [t.key]: e.target.value as SheetSize } }))} style={{ margin: 0 }}>
+              {SHEET_SIZES.map((s) => <option key={s} value={s}>{SHEET_LABEL[s]}</option>)}
+            </select>
+          </CostRow>
+        ))}
+      </div>
+
+      <div className="admin-card">
+        <h3>Paper stocks</h3>
+        <p className="muted" style={{ fontSize: '.8rem' }}>
+          Enter what a carton costs and how many sheets are in it — the per-sheet figure is worked out — or type the per-sheet cost directly (it wins when set).
+          {missingSheetCosts.length > 0 && <span style={{ color: '#b45309' }}> Still missing a cost: {missingSheetCosts.join(', ')}.</span>}
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="admin-table" style={{ fontSize: '.85rem' }}>
+            <thead><tr><th>Code</th><th>Description</th><th>Sheet</th><th>Carton</th><th>Sheets / carton</th><th>Per sheet</th><th /></tr></thead>
+            <tbody>
+              {cfg.stocks.map((s, i) => {
+                const derived = s.cartonCents && s.sheetsPerCarton ? s.cartonCents / s.sheetsPerCarton : null;
+                const set = (patch: Partial<PaperStock>) => update((c) => ({ ...c, stocks: c.stocks.map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
+                return (
+                  <tr key={i}>
+                    <td><input value={s.code} onChange={(e) => set({ code: e.target.value })} style={{ width: 110, margin: 0 }} /></td>
+                    <td><input value={s.name} onChange={(e) => set({ name: e.target.value })} style={{ minWidth: 220, margin: 0 }} /></td>
+                    <td>
+                      <select value={s.sheet} onChange={(e) => set({ sheet: e.target.value as SheetSize })} style={{ margin: 0 }}>
+                        {SHEET_SIZES.map((z) => <option key={z} value={z}>{SHEET_LABEL[z]}</option>)}
+                      </select>
+                    </td>
+                    <td><Dollars cents={s.cartonCents} onChange={(v) => set({ cartonCents: v })} width={95} /></td>
+                    <td><NumInput value={s.sheetsPerCarton} onChange={(v) => set({ sheetsPerCarton: v })} step="1" width={80} placeholder="e.g. 500" /></td>
+                    <td>
+                      <NumInput value={s.costPerSheetCents} onChange={(v) => set({ costPerSheetCents: v })} step="0.01" width={85} suffix="¢" placeholder={derived !== null ? derived.toFixed(2) : '—'} />
+                    </td>
+                    <td><button type="button" className="btn secondary sm" onClick={() => update((c) => ({ ...c, stocks: c.stocks.filter((_, j) => j !== i) }))}>Remove</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" className="btn secondary sm" style={{ marginTop: '.5rem' }} onClick={() => update((c) => ({ ...c, stocks: [...c.stocks, { code: '', name: '', sheet: '11x17', costPerSheetCents: null, cartonCents: null, sheetsPerCarton: null }] }))}>+ Add a stock</button>
+      </div>
+
+      <div className="admin-card">
+        <h3>Which stock prints what</h3>
+        <h4 style={{ margin: '.5rem 0 0' }}>Interior paper</h4>
+        {refs.interiorPapers.map((label) => (
+          <CostRow key={label} label={label}>
+            {usedSheets.map((sheet) => (
+              <span key={sheet} style={{ display: 'inline-flex', gap: '.3rem', alignItems: 'center' }}>
+                <span className="muted" style={{ fontSize: '.8rem' }}>{SHEET_LABEL[sheet]}</span>
+                <StockSelect value={cfg.interiorStock[label]?.[sheet]} sheet={sheet} onChange={(code) => setMap('interiorStock', label, sheet, code)} />
+              </span>
+            ))}
+          </CostRow>
+        ))}
+        <h4 style={{ margin: '1rem 0 0' }}>Cover paper</h4>
+        <p className="muted" style={{ fontSize: '.78rem', margin: '.2rem 0 0' }}>
+          Metal covers use the row for “{cfg.metal.paperCoverType}” (set below) — the book is printed on that and the plate is stuck on. Self Cover uses the interior stock.
+        </p>
+        {paperCoverTypes.map((label) => (
+          <CostRow key={label} label={label}>
+            {usedSheets.map((sheet) => (
+              <span key={sheet} style={{ display: 'inline-flex', gap: '.3rem', alignItems: 'center' }}>
+                <span className="muted" style={{ fontSize: '.8rem' }}>{SHEET_LABEL[sheet]}</span>
+                <StockSelect value={cfg.coverStock[label]?.[sheet]} sheet={sheet} onChange={(code) => setMap('coverStock', label, sheet, code)} />
+              </span>
+            ))}
+          </CostRow>
+        ))}
+      </div>
+
+      <div className="admin-card">
+        <h3>Metal plates</h3>
+        <CostRow label="Sublimation sheet (300 × 600 mm)" hint="What one blank sheet costs.">
+          <Dollars cents={cfg.metal.sheetCostCents} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, sheetCostCents: v ?? 0 } }))} />
+        </CostRow>
+        <CostRow label="Pieces per sheet" hint="How many of each you cut from one sheet. A comic cover is costed as sheet ÷ covers per sheet.">
+          <NumInput prefix="comic covers" value={cfg.metal.yields.comicCover} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, yields: { ...c.metal.yields, comicCover: v ?? 1 } } }))} step="1" min={1} width={60} />
+          <NumInput prefix="trading cards" value={cfg.metal.yields.tradingCard} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, yields: { ...c.metal.yields, tradingCard: v ?? 1 } } }))} step="1" min={1} width={60} />
+          <NumInput prefix="11 × 17 prints" value={cfg.metal.yields.print11x17} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, yields: { ...c.metal.yields, print11x17: v ?? 1 } } }))} step="1" min={1} width={60} />
+          <NumInput prefix="comic-size prints" value={cfg.metal.yields.printComic} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, yields: { ...c.metal.yields, printComic: v ?? 1 } } }))} step="1" min={1} width={60} />
+        </CostRow>
+        <CostRow label="Adhesive" hint="A roll's price and length, and how much each plate uses.">
+          <Dollars cents={cfg.metal.adhesive.rollCents} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, rollCents: v ?? 0 } } }))} width={90} />
+          <NumInput prefix="per" value={cfg.metal.adhesive.rollFeet} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, rollFeet: v ?? 1 } } }))} step="1" suffix="ft roll" width={70} />
+          <NumInput value={cfg.metal.adhesive.feetPerPiece} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, adhesive: { ...c.metal.adhesive, feetPerPiece: v ?? 0 } } }))} step="0.25" suffix="ft per plate" width={70} />
+        </CostRow>
+        <CostRow label="Extra per plate" hint="Transfer paper, sublimation ink — anything else each plate uses.">
+          <NumInput value={cfg.metal.extraPerPieceCents} onChange={(v) => update((c) => ({ ...c, metal: { ...c.metal, extraPerPieceCents: v ?? 0 } }))} step="0.1" suffix="¢" width={80} />
+        </CostRow>
+        <CostRow label="Cover types that get a plate">
+          <span style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem .9rem' }}>
+            {refs.coverTypes.filter((c) => !/^self|^standard/i.test(c)).map((label) => (
+              <label key={label} style={{ display: 'inline-flex', gap: '.3rem', alignItems: 'center', fontWeight: 400, margin: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={cfg.metal.coverTypes.includes(label)}
+                  onChange={(e) => update((c) => ({ ...c, metal: { ...c.metal, coverTypes: e.target.checked ? [...c.metal.coverTypes, label] : c.metal.coverTypes.filter((x) => x !== label) } }))}
+                />
+                {label}
+              </label>
+            ))}
+          </span>
+        </CostRow>
+        <CostRow label="Paper under the plate" hint="A metal book is this cover type with the plate stuck on; its paper and clicks are counted too.">
+          <select value={cfg.metal.paperCoverType} onChange={(e) => update((c) => ({ ...c, metal: { ...c.metal, paperCoverType: e.target.value } }))} style={{ margin: 0 }}>
+            {refs.coverTypes.filter((c) => !/^self/i.test(c)).map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </CostRow>
+      </div>
+
+      <div className="admin-card">
+        <h3>Add-ons, per book</h3>
+        <p className="muted" style={{ fontSize: '.8rem' }}>Flat extra for each finish — glow ink, foil, raised layer, lamination. Leave blank until you have the number; the order page lists what is still unpriced.</p>
+        {addOnGroups.map(({ g, keys }) => (
+          <div key={g}>
+            <h4 style={{ margin: '.75rem 0 0' }}>{g}</h4>
+            {keys.map((k) => (
+              <CostRow key={k} label={k.slice(g.length + 2)}>
+                <Dollars cents={cfg.addOnCents[k]} onChange={(v) => update((c) => { const next = { ...c.addOnCents }; if (v === null) delete next[k]; else next[k] = v; return { ...c, addOnCents: next }; })} placeholder="not set" />
+              </CostRow>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div className="admin-card">
+        <h3>Everything else, per unit</h3>
+        <p className="muted" style={{ fontSize: '.8rem' }}>Products that are not books or metal prints: what one unit costs us to buy or make.</p>
+        {refs.products.map((p) => (
+          <CostRow key={p.slug} label={p.name}>
+            <Dollars cents={cfg.productUnitCents[p.slug]} onChange={(v) => update((c) => { const next = { ...c.productUnitCents }; if (v === null) delete next[p.slug]; else next[p.slug] = v; return { ...c, productUnitCents: next }; })} placeholder="not set" />
+          </CostRow>
+        ))}
+      </div>
+
+      <div style={{ position: 'sticky', bottom: 0, background: '#fff', padding: '.75rem 0', borderTop: '1px solid var(--border)', display: 'flex', gap: '.75rem', alignItems: 'center' }}>
+        <button type="button" className="btn" onClick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : dirty ? 'Save print costs' : 'Saved'}</button>
+        {dirty && <span className="muted" style={{ fontSize: '.85rem' }}>Unsaved changes</span>}
+      </div>
     </div>
   );
 }

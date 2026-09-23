@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
+import { HttpError } from '../../middleware/error.js';
 import { isR2Enabled, r2Test } from '../../lib/r2.js';
 import {
   deleteSetting,
@@ -31,8 +32,15 @@ router.get('/r2/status', async (_req, res) => {
   res.json({ enabled: await isR2Enabled(), local, remote });
 });
 
-router.get('/', async (_req, res) => {
+// Our print costs and margins (costs.*) are for the owner login only — staff
+// accounts share the rest of /admin but never see or change these, and no
+// public route reads the settings table at all.
+const ownerOnlyKey = (key: string) => key.startsWith('costs.');
+const isOwner = (req: { session?: { role?: string } }) => req.session?.role === 'ADMIN';
+
+router.get('/', async (req, res) => {
   const settings = await listAllSettings();
+  if (!isOwner(req)) for (const k of Object.keys(settings)) if (ownerOnlyKey(k)) delete settings[k];
   res.json({ settings, secretKeys: [...SECRET_KEYS] });
 });
 
@@ -40,6 +48,7 @@ const writeSchema = z.object({ key: z.string().min(1), value: z.any() });
 
 router.put('/', async (req, res) => {
   const { key, value } = writeSchema.parse(req.body);
+  if (ownerOnlyKey(key) && !isOwner(req)) throw new HttpError(403, 'Owner access required');
   // Ignore writes that try to mask (••••) a secret — those are the mask values
   // from list responses, not real credential updates.
   if (SECRET_KEYS.has(key) && typeof value === 'string' && /^[•]+/.test(value)) {
@@ -53,6 +62,7 @@ router.put('/', async (req, res) => {
 const bulkSchema = z.object({ entries: z.array(z.object({ key: z.string(), value: z.any() })) });
 router.put('/bulk', async (req, res) => {
   const { entries } = bulkSchema.parse(req.body);
+  if (!isOwner(req) && entries.some((e) => ownerOnlyKey(e.key))) throw new HttpError(403, 'Owner access required');
   for (const e of entries) {
     if (SECRET_KEYS.has(e.key) && typeof e.value === 'string' && /^[•]+/.test(e.value)) continue;
     await setSetting(e.key, e.value);
