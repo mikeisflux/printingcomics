@@ -109,7 +109,7 @@ export function AccountLayout() {
   });
 
   return (
-    <div className="container" style={{ padding: '2rem 0', display: 'grid', gridTemplateColumns: 'minmax(200px, 220px) 1fr', gap: '2rem' }}>
+    <div className="container account-layout">
       <aside>
         <div style={{ marginBottom: '1rem' }}>
           <div style={{ fontSize: '.75rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Signed in as</div>

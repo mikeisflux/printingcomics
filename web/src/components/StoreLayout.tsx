@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/auth';
 import { useCart } from '../store/cart';
 import { useProofCounts } from '../pages/Account';
@@ -13,6 +13,20 @@ export function StoreLayout() {
   const [productsOpen, setProductsOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  // Phone-width header: everything but the logo, cart and a hamburger lives
+  // in a full-screen menu (see MobileMenu). Closes on navigation and Escape.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const location = useLocation();
+  useEffect(() => { setMenuOpen(false); }, [location.pathname, location.search]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', h);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', h); document.body.style.overflow = prev; };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -38,77 +52,71 @@ export function StoreLayout() {
         </div>
       </div>
 
-      <header className="site-header">
+      <header className="site-header" ref={headerRef}>
         <div className="container">
           <Link to="/" className="logo">Printing Comics</Link>
           <nav>
-            <NavItem
-              label="Products"
-              isOpen={productsOpen}
-              onToggle={() => setProductsOpen(!productsOpen)}
-              items={[
-                { to: '/shop/comic-books', label: 'Comic Books' },
-                { to: '/shop/graphic-novels', label: 'Graphic Novels' },
-                { to: '/shop/art-prints', label: 'Art Prints' },
-                { to: '/shop/artist-tools', label: 'Artist Tools' },
-                { to: '/shop/shipping-supplies', label: 'Shipping Supplies' },
-              ]}
-            />
+            <NavItem label="Products" isOpen={productsOpen} onToggle={() => setProductsOpen(!productsOpen)} items={NAV_GROUPS.products} />
             <Link to="/crowdfunding">Crowdfunding</Link>
-            <NavItem
-              label="Resources"
-              isOpen={resourcesOpen}
-              onToggle={() => setResourcesOpen(!resourcesOpen)}
-              items={[
-                { to: '/resources/make-a-comic', label: 'Make A Comic' },
-                { to: '/resources/file-prep', label: 'File Prep' },
-                { to: '/resources/templates', label: 'Templates' },
-                { to: '/resources/faq', label: 'FAQ' },
-              ]}
-            />
-            <NavItem
-              label="About"
-              isOpen={aboutOpen}
-              onToggle={() => setAboutOpen(!aboutOpen)}
-              items={[
-                { to: '/about', label: 'About Us' },
-                { to: '/terms', label: 'Terms & Conditions' },
-              ]}
-            />
+            <NavItem label="Resources" isOpen={resourcesOpen} onToggle={() => setResourcesOpen(!resourcesOpen)} items={NAV_GROUPS.resources} />
+            <NavItem label="About" isOpen={aboutOpen} onToggle={() => setAboutOpen(!aboutOpen)} items={NAV_GROUPS.about} />
             <Link to="/contact">Contact</Link>
           </nav>
           <div className="actions">
-            <ShareMenu />
-            <SearchBox />
-            {user ? (
-              <>
-                <Link to="/account" title={user.email} aria-label="Account">
-                  Hi, {user.firstName ?? 'Account'}
-                </Link>
-                {waiting > 0 && (
-                  <Link to="/account/proofs" title="Proofs and file requests waiting for you" style={{ background: 'var(--brand)', color: '#fff', borderRadius: 999, padding: '.15rem .6rem', fontSize: '.8rem', fontWeight: 700, textDecoration: 'none' }}>
-                    {waiting} waiting
+            <div className="desktop-only">
+              <ShareMenu />
+              <SearchBox />
+              {user ? (
+                <>
+                  <Link to="/account" title={user.email} aria-label="Account">
+                    Hi, {user.firstName ?? 'Account'}
                   </Link>
-                )}
-                {(user.role === 'ADMIN' || user.role === 'STAFF') && (
-                  <Link to="/admin">Admin</Link>
-                )}
-                <button
-                  className="btn secondary"
-                  style={{ padding: '.4rem .8rem', fontSize: '.9rem' }}
-                  onClick={async () => { await logout(); navigate('/'); }}
-                >
-                  Log out
-                </button>
-              </>
-            ) : (
-              <Link to="/login" aria-label="Log in" style={{ padding: '.4rem' }}>👤</Link>
-            )}
-            <Link to="/cart" className="btn" style={{ padding: '.4rem .8rem', fontSize: '.9rem' }}>
+                  {waiting > 0 && (
+                    <Link to="/account/proofs" title="Proofs and file requests waiting for you" className="waiting-pill">
+                      {waiting} waiting
+                    </Link>
+                  )}
+                  {(user.role === 'ADMIN' || user.role === 'STAFF') && (
+                    <Link to="/admin">Admin</Link>
+                  )}
+                  <button
+                    className="btn secondary"
+                    style={{ padding: '.4rem .8rem', fontSize: '.9rem' }}
+                    onClick={async () => { await logout(); navigate('/'); }}
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <Link to="/login" aria-label="Log in" style={{ padding: '.4rem' }}>👤</Link>
+              )}
+            </div>
+            <Link to="/cart" className="btn" style={{ padding: '.4rem .8rem', fontSize: '.9rem' }} aria-label="Cart">
               🛒 {itemCount > 0 && <span>({itemCount})</span>}
             </Link>
+            <button
+              type="button"
+              className="menu-toggle"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              {menuOpen ? '✕' : '☰'}
+              {!menuOpen && waiting > 0 && <span className="menu-dot" aria-hidden="true" />}
+            </button>
           </div>
         </div>
+        {menuOpen && (
+          <MobileMenu
+            top={headerRef.current?.getBoundingClientRect().bottom ?? 0}
+            user={user}
+            waiting={waiting}
+            itemCount={itemCount}
+            onClose={() => setMenuOpen(false)}
+            onLogout={async () => { await logout(); setMenuOpen(false); navigate('/'); }}
+          />
+        )}
       </header>
 
       <main>
@@ -117,7 +125,7 @@ export function StoreLayout() {
 
       {/* Newsletter signup band */}
       <section style={{ background: '#1e74fc', color: '#fff', padding: '3rem 0' }}>
-        <div className="container" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', alignItems: 'center' }}>
+        <div className="container newsletter-band">
           <div>
             <div style={{ fontSize: '.9rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '.5rem' }}>
               Be part of the Printing Comics creator community!
@@ -132,7 +140,7 @@ export function StoreLayout() {
 
       <footer className="site-footer">
         <div className="container">
-          <div className="cols" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div className="cols">
             <div>
               <h4>Products</h4>
               <ul>
@@ -287,7 +295,7 @@ function ShareMenu() {
   );
 }
 
-function SearchBox() {
+function SearchBox({ fullWidth = false }: { fullWidth?: boolean } = {}) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   return (
@@ -296,7 +304,7 @@ function SearchBox() {
         e.preventDefault();
         if (q.trim()) navigate(`/shop?q=${encodeURIComponent(q.trim())}`);
       }}
-      style={{ display: 'flex', alignItems: 'center', gap: 0 }}
+      style={{ display: 'flex', alignItems: 'center', gap: 0, width: fullWidth ? '100%' : undefined }}
     >
       <input
         type="search"
@@ -304,9 +312,9 @@ function SearchBox() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         style={{
-          padding: '.4rem .75rem', fontSize: '.85rem',
+          padding: fullWidth ? '.6rem .85rem' : '.4rem .75rem', fontSize: fullWidth ? '1rem' : '.85rem',
           border: '1px solid var(--border)', borderRadius: '6px 0 0 6px',
-          borderRight: 'none', width: 180,
+          borderRight: 'none', width: fullWidth ? '100%' : 180, flex: fullWidth ? 1 : undefined,
         }}
       />
       <button
@@ -420,6 +428,99 @@ function SocialRow() {
           {s.icon}
         </a>
       ))}
+    </div>
+  );
+}
+
+const NAV_GROUPS = {
+  products: [
+    { to: '/shop/comic-books', label: 'Comic Books' },
+    { to: '/shop/graphic-novels', label: 'Graphic Novels' },
+    { to: '/shop/art-prints', label: 'Art Prints' },
+    { to: '/shop/artist-tools', label: 'Artist Tools' },
+    { to: '/shop/shipping-supplies', label: 'Shipping Supplies' },
+  ],
+  resources: [
+    { to: '/resources/make-a-comic', label: 'Make A Comic' },
+    { to: '/resources/file-prep', label: 'File Prep' },
+    { to: '/resources/templates', label: 'Templates' },
+    { to: '/resources/faq', label: 'FAQ' },
+  ],
+  about: [
+    { to: '/about', label: 'About Us' },
+    { to: '/terms', label: 'Terms & Conditions' },
+  ],
+};
+
+/**
+ * The phone-width menu: a full-screen sheet under the header with search,
+ * the same link groups as the desktop dropdowns (Products open by default),
+ * and the account actions. Tapping any link closes it (StoreLayout closes on
+ * navigation); the backdrop of the sheet is the page itself, so ✕ and Escape
+ * are the ways out.
+ */
+function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
+  /** Where the sheet starts: just under the header, so its ✕ stays reachable. */
+  top: number;
+  user: { email: string; firstName?: string | null; role: string } | null;
+  waiting: number;
+  itemCount: number;
+  onClose: () => void;
+  onLogout: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState<Record<string, boolean>>({ products: true });
+  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const group = (key: 'products' | 'resources' | 'about', label: string) => (
+    <div className="mobile-group">
+      <button type="button" className="mobile-group-toggle" aria-expanded={!!open[key]} onClick={() => toggle(key)}>
+        <span>{label}</span>
+        <span aria-hidden="true">{open[key] ? '−' : '+'}</span>
+      </button>
+      {open[key] && (
+        <div className="mobile-group-links">
+          {NAV_GROUPS[key].map((it) => <Link key={it.to} to={it.to} onClick={onClose}>{it.label}</Link>)}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div id="mobile-menu" className="mobile-menu" role="dialog" aria-modal="true" aria-label="Menu" style={{ top }}>
+      <div className="mobile-menu-inner">
+        <SearchBox fullWidth />
+
+        {user ? (
+          <div className="mobile-account">
+            <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700 }}>Signed in as</div>
+            <div style={{ fontWeight: 600 }}>{user.firstName || user.email}</div>
+            <div className="mobile-account-links">
+              <Link to="/account" onClick={onClose}>My account</Link>
+              <Link to="/account/orders" onClick={onClose}>Orders</Link>
+              <Link to="/account/proofs" onClick={onClose} className={waiting > 0 ? 'waiting' : undefined}>
+                Proofs &amp; files{waiting > 0 ? ` · ${waiting} waiting` : ''}
+              </Link>
+              {(user.role === 'ADMIN' || user.role === 'STAFF') && <Link to="/admin" onClick={onClose}>Admin</Link>}
+              <button type="button" onClick={() => { void onLogout(); }}>Log out</button>
+            </div>
+          </div>
+        ) : (
+          <div className="mobile-account">
+            <div className="mobile-account-links">
+              <Link to="/login" onClick={onClose}>Log in</Link>
+              <Link to="/register" onClick={onClose}>Create account</Link>
+            </div>
+          </div>
+        )}
+
+        {group('products', 'Products')}
+        <Link to="/crowdfunding" className="mobile-top-link" onClick={onClose}>Crowdfunding</Link>
+        {group('resources', 'Resources')}
+        {group('about', 'About')}
+        <Link to="/contact" className="mobile-top-link" onClick={onClose}>Contact</Link>
+        <Link to="/cart" className="mobile-top-link" onClick={onClose}>🛒 Cart{itemCount > 0 ? ` (${itemCount})` : ''}</Link>
+
+        <a href="tel:+12192386540" className="mobile-call">📞 Call (219) 238-6540</a>
+      </div>
     </div>
   );
 }

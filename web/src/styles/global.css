@@ -315,3 +315,74 @@ label { font-weight: 600; display: block; margin: .75rem 0 .25rem; font-size: .9
 @media (max-width: 640px) {
   .pc-review-arrow { display: none; }
 }
+
+/* ---- Header on phones: hamburger + full-screen menu ---- */
+.site-header .desktop-only { display: contents; }
+.site-header .waiting-pill {
+  background: var(--brand); color: #fff; border-radius: 999px; padding: .15rem .6rem;
+  font-size: .8rem; font-weight: 700; text-decoration: none;
+}
+/* Children moved inside .desktop-only keep the same inline-flex treatment as before. */
+.site-header .desktop-only > a,
+.site-header .desktop-only > button { white-space: nowrap; line-height: 1; display: inline-flex; align-items: center; }
+/* More specific than `.actions > button` above, which would otherwise show it on desktop. */
+.site-header .actions > .menu-toggle {
+  display: none; position: relative; background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; padding: .35rem .6rem; font-size: 1.2rem; line-height: 1; cursor: pointer; color: var(--ink);
+}
+.site-header .menu-dot {
+  position: absolute; top: -4px; right: -4px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--brand); border: 2px solid #fff;
+}
+.mobile-menu { display: none; }
+
+@media (max-width: 900px) {
+  .site-header .container { padding: .65rem 1rem; gap: .6rem; }
+  .site-header .logo { font-size: 1.1rem; }
+  .site-header nav { display: none; }
+  .site-header .desktop-only { display: none; }
+  .site-header .actions { gap: .5rem; margin-left: auto; }
+  .site-header .actions > .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+
+  .mobile-menu {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0;
+    top: 0; z-index: 100; background: #fff;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid var(--border);
+  }
+  .mobile-menu-inner { padding: 1rem 1rem 2.5rem; display: flex; flex-direction: column; gap: .5rem; }
+  .mobile-account { border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .9rem; background: var(--bg-alt); }
+  .mobile-account-links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+  .mobile-account-links a, .mobile-account-links button {
+    display: inline-flex; align-items: center; padding: .5rem .8rem; border-radius: 999px; border: 1px solid var(--border);
+    background: #fff; color: var(--ink); font: inherit; font-size: .95rem; text-decoration: none; cursor: pointer;
+  }
+  .mobile-account-links a.waiting { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 700; }
+  .mobile-group { border-bottom: 1px solid var(--border); }
+  .mobile-group-toggle {
+    width: 100%; display: flex; justify-content: space-between; align-items: center; background: transparent; border: none;
+    padding: .9rem .25rem; font: inherit; font-size: 1.05rem; font-weight: 600; color: var(--ink); cursor: pointer; text-align: left;
+  }
+  .mobile-group-links { display: flex; flex-direction: column; padding: 0 0 .5rem; }
+  .mobile-group-links a { padding: .6rem 1rem; color: var(--ink); text-decoration: none; font-size: 1rem; border-radius: 6px; }
+  .mobile-group-links a:active, .mobile-top-link:active { background: var(--bg-alt); }
+  .mobile-top-link {
+    display: block; padding: .9rem .25rem; font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .mobile-call { display: block; margin-top: 1rem; text-align: center; font-weight: 600; color: var(--brand); text-decoration: none; }
+
+  /* Newsletter band and footer stack instead of squeezing into columns. */
+  .newsletter-band { grid-template-columns: 1fr !important; }
+  .site-footer .cols { grid-template-columns: 1fr 1fr !important; gap: 1.25rem; }
+}
+.newsletter-band { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+.site-footer .cols { grid-template-columns: repeat(4, 1fr); }
+
+/* Account area on phones: the sidebar becomes a scrollable row of tabs. */
+.account-layout { display: grid; grid-template-columns: minmax(200px, 220px) 1fr; gap: 2rem; padding: 2rem 0; }
+@media (max-width: 760px) {
+  .account-layout { grid-template-columns: 1fr; gap: 1rem; padding: 1rem 0; }
+  .account-layout aside nav { flex-direction: row !important; overflow-x: auto; gap: .35rem !important; padding-bottom: .25rem; }
+  .account-layout aside nav a { white-space: nowrap; border-radius: 999px; padding: .45rem .8rem !important; }
+  .account-layout .spread { flex-wrap: wrap; }
+}
