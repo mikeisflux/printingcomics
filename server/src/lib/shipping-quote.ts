@@ -19,7 +19,7 @@
  * set the shipping charge.
  */
 import { prisma } from '../db.js';
-import { getEasyPostConfig, getSetting } from './settings.js';
+import { getEasyPostConfig } from './settings.js';
 import { epCreateShipment, type EpAddress } from './easypost.js';
 import { contentWeightOz, perUnitWeightGrams, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
 
@@ -120,51 +120,6 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
   return { parcels, boxes: parcels.reduce((s, p) => s + p.count, 0), weightOz: contentWeightOz(items) };
 }
 
-// ---------------------------------------------------------------------------
-// What the customer is shown: one carrier, plain names
-// ---------------------------------------------------------------------------
-
-/** EasyPost carrier account names → what to print. */
-const CARRIER_LABEL: Record<string, string> = {
-  USPS: 'USPS', UPSDAP: 'UPS', UPS: 'UPS', FedExDefault: 'FedEx', FedEx: 'FedEx', DHLExpress: 'DHL',
-};
-/** USPS service codes → the names on the counter. */
-const USPS_SERVICE: Record<string, string> = {
-  GroundAdvantage: 'Ground Advantage', First: 'First-Class Mail', Priority: 'Priority Mail', Express: 'Priority Mail Express',
-  ParcelSelect: 'Parcel Select', MediaMail: 'Media Mail', LibraryMail: 'Library Mail',
-  FirstClassMailInternational: 'First-Class Mail International', FirstClassPackageInternationalService: 'First-Class Package International',
-  PriorityMailInternational: 'Priority Mail International', ExpressMailInternational: 'Priority Mail Express International',
-};
-/** Services that are not for merchandise, whatever the price says. */
-const NEVER_OFFER = new Set(['USPS:MediaMail', 'USPS:LibraryMail']);
-
-export function serviceName(carrier: string, service: string): string {
-  const c = CARRIER_LABEL[carrier] ?? carrier.replace(/(Default|DAP)$/i, '');
-  let sv = carrier === 'USPS' && USPS_SERVICE[service]
-    ? USPS_SERVICE[service]
-    : service.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b(\w)(\w*)/g, (_m, a: string, b: string) => a + b.toLowerCase());
-  // "FedEx Fedex Ground" → "FedEx Ground"
-  if (sv.toLowerCase().startsWith(c.toLowerCase() + ' ')) sv = sv.slice(c.length + 1);
-  return `${c} ${sv}`.trim();
-}
-
-/**
- * Only the carriers set under Settings → EasyPost ("Carriers offered at
- * checkout", default USPS), never Media/Library Mail. If none of the rates
- * are from an offered carrier (a box USPS will not take, for instance) the
- * customer still gets the others rather than nothing.
- */
-async function offeredOptions(all: ShippingOption[]): Promise<ShippingOption[]> {
-  const raw = (await getSetting<string>('shipping.carriers')) || 'USPS';
-  const allowed = new Set(raw.split(/[,\s]+/).map((c) => c.trim().toUpperCase()).filter(Boolean));
-  const clean = all.filter((o) => !NEVER_OFFER.has(`${o.carrier}:${o.service}`));
-  const label = (o: ShippingOption) => (CARRIER_LABEL[o.carrier ?? ''] ?? o.carrier ?? '').toUpperCase();
-  const mine = clean.filter((o) => allowed.has(label(o)) || allowed.has((o.carrier ?? '').toUpperCase()));
-  if (mine.length > 0) return mine;
-  if (clean.length > 0) console.warn(`[shipping] none of the offered carriers (${[...allowed].join(', ')}) rated this order — showing all carriers`);
-  return clean;
-}
-
 function epToAddress(a: QuoteAddress): EpAddress {
   return {
     street1: a.line1 || '',
@@ -260,11 +215,11 @@ export async function quoteShipping(args: {
           perService.set(key, cur);
         }
       }
-      const all: ShippingOption[] = [...perService.entries()]
+      const options: ShippingOption[] = [...perService.entries()]
         .filter(([, v]) => v.parcels === plan.parcels.length)
         .map(([id, v]) => ({
           id,
-          name: serviceName(v.carrier, v.service),
+          name: `${v.carrier} ${v.service}`.trim(),
           rateCents: v.cents,
           estimatedDays: v.days ? `${v.days} days` : null,
           source: 'live' as const,
@@ -272,7 +227,6 @@ export async function quoteShipping(args: {
           service: v.service,
         }))
         .sort((a, b) => a.rateCents - b.rateCents);
-      const options = await offeredOptions(all);
       if (options.length > 0) return { options, weightOz, boxes: plan.boxes };
       return {
         options: await tableOptions(args.address, weightOz, subtotalCents),

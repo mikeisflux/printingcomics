@@ -464,10 +464,6 @@ function EasyPostSection() {
         />
         <Field label="Webhook signing secret" type="password" placeholder="paste to update" value={settings['easypost.webhookSecret']} onSave={(v) => save('easypost.webhookSecret', v)} />
         <Toggle label="Auto-buy cheapest label on paid orders" value={settings['easypost.autoBuyOnPaid']} onSave={(v) => save('easypost.autoBuyOnPaid', v)} />
-        <Field label="Carriers offered at checkout" placeholder="USPS" value={settings['shipping.carriers'] ?? 'USPS'} onSave={(v) => save('shipping.carriers', v)} />
-        <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
-          Customers only see these carriers' services, with plain names (USPS Ground Advantage, Priority Mail…). Comma-separate to offer more: USPS, UPS, FedEx. If none of them can take an order's boxes, every carrier is shown for that order.
-        </p>
       </div>
 
       <div className="admin-card">
