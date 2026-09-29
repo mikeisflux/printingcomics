@@ -21,6 +21,7 @@
  */
 import { prisma } from '../../../db.js';
 import { HttpError } from '../../../middleware/error.js';
+import { consumeStockForOrder } from '../../inventory.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 
 export type CaptureState = 'COMPLETED' | 'PENDING' | 'DECLINED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'FAILED' | 'NONE' | 'UNKNOWN';
@@ -135,6 +136,7 @@ export async function verifyOrderPayment(orderId: string, opts: { fix: boolean; 
       if (order.paymentStatus !== 'CAPTURED') after.paymentStatus = 'CAPTURED';
       if (order.status === 'PENDING' || order.status === 'CANCELLED') after.status = 'PAID';
       await prisma.payment.update({ where: { id: winner.paymentId }, data: { status: 'CAPTURED', providerRef: winner.captureId ?? winner.providerRef } });
+      if (order.paymentStatus !== 'CAPTURED') await consumeStockForOrder(order.id).catch(() => undefined);
     } else if (verdict === 'refunded') {
       after.paymentStatus = 'REFUNDED';
       after.status = 'REFUNDED';

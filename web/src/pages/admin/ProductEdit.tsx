@@ -20,6 +20,9 @@ interface ProductDraft {
   hasVariants: boolean;
   sku: string;
   stock: number;
+  stockPoolId: string | null;
+  unitsPerItem: number;
+  packageId: string | null;
   madeToOrder: boolean;
   backorder: boolean;
   /** yyyy-mm-dd for <input type="date">; '' when unset. */
@@ -36,7 +39,7 @@ interface ProductDraft {
 
 const emptyDraft: ProductDraft = {
   slug: '', name: '', shortDescription: '', description: '',
-  priceCents: 0, hasVariants: false, sku: '', stock: 0,
+  priceCents: 0, hasVariants: false, sku: '', stock: 0, stockPoolId: null, unitsPerItem: 1, packageId: null,
   madeToOrder: true, backorder: false, backorderEta: '',
   active: true, minQuantity: 1, weightGrams: 0,
   volumeTiers: [], seoTitle: '', seoDescription: '',
@@ -50,6 +53,12 @@ export function AdminProductEdit() {
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft);
+  const [pools, setPools] = useState<{ id: string; name: string; units: number }[]>([]);
+  const [packages, setPackages] = useState<{ id: string; name: string; lengthIn: number; widthIn: number; heightIn: number }[]>([]);
+  useEffect(() => {
+    api.get<{ pools: { id: string; name: string; units: number }[] }>('/admin/stock-pools').then((r) => setPools(r.pools)).catch(() => setPools([]));
+    api.get<{ items: { id: string; name: string; lengthIn: number; widthIn: number; heightIn: number }[] }>('/admin/fulfillment/packages').then((r) => setPackages(r.items)).catch(() => setPackages([]));
+  }, []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [options, setOptions] = useState<Option[]>([]);
@@ -76,6 +85,9 @@ export function AdminProductEdit() {
         hasVariants: p.hasVariants,
         sku: p.sku ?? '',
         stock: p.stock,
+        stockPoolId: p.stockPoolId ?? null,
+        unitsPerItem: p.unitsPerItem ?? 1,
+        packageId: p.packageId ?? null,
         backorder: p.backorder ?? false,
         backorderEta: p.backorderEta ? String(p.backorderEta).slice(0, 10) : '',
         madeToOrder: p.madeToOrder,
@@ -218,12 +230,41 @@ export function AdminProductEdit() {
         </div>
         <div className="grid-2">
           <div>
-            <label>Stock</label>
-            <input type="number" value={draft.stock} onChange={(e) => setDraft({ ...draft, stock: Number(e.target.value) })} />
+            <label>Stock{draft.stockPoolId ? ' (unused — sells from the shared pool)' : ''}</label>
+            <input type="number" value={draft.stock} disabled={!!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, stock: Number(e.target.value) })} />
           </div>
           <div>
             <label>Min quantity</label>
             <input type="number" value={draft.minQuantity} onChange={(e) => setDraft({ ...draft, minQuantity: Number(e.target.value) })} />
+          </div>
+        </div>
+        <div className="grid-2">
+          <div>
+            <label>Shared stock pool</label>
+            <select value={draft.stockPoolId ?? ''} onChange={(e) => setDraft({ ...draft, stockPoolId: e.target.value || null })}>
+              <option value="">— this product's own stock —</option>
+              {pools.map((pl) => <option key={pl.id} value={pl.id}>{pl.name} ({pl.units} units)</option>)}
+            </select>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
+              Separate listings that sell from one pile — manage the count under Products → Shared stock.
+            </p>
+          </div>
+          <div>
+            <label>Units per item</label>
+            <input type="number" min={1} value={draft.unitsPerItem} disabled={!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, unitsPerItem: Math.max(1, Number(e.target.value)) })} />
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>How many units of the pool one of this listing takes (a 25-pack = 25).</p>
+          </div>
+        </div>
+        <div className="grid-2">
+          <div>
+            <label>Ships in its own box</label>
+            <select value={draft.packageId ?? ''} onChange={(e) => setDraft({ ...draft, packageId: e.target.value || null })}>
+              <option value="">— packed with the rest of the order —</option>
+              {packages.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.lengthIn} × {b.widthIn} × {b.heightIn} in)</option>)}
+            </select>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
+              Checkout quotes and auto-pack put this product in that box (as many per box as its max packed weight allows, one per box if none). Boxes are managed under Fulfillment → Packages.
+            </p>
           </div>
         </div>
         <div className="grid-2">

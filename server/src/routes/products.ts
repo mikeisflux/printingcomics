@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { availableItems } from '../lib/inventory.js';
 import { HttpError } from '../middleware/error.js';
 
 const router = Router();
@@ -27,6 +28,7 @@ router.get('/', async (req, res) => {
     include: {
       images: { orderBy: { sortOrder: 'asc' }, take: 1 },
       categories: { include: { category: true } },
+      stockPool: { select: { units: true } },
     },
   });
 
@@ -43,6 +45,8 @@ router.get('/', async (req, res) => {
       hasVariants: p.hasVariants,
       backorder: p.backorder,
       backorderEta: p.backorderEta,
+      // Shelf goods only: how many can be bought right now (null = not tracked).
+      inStock: availableItems(p),
       image: p.images[0]?.url ?? null,
       categories: p.categories.map((pc) => pc.category.slug),
     })),
@@ -61,10 +65,14 @@ router.get('/:slug', async (req, res) => {
         include: { values: { orderBy: { sortOrder: 'asc' } } },
       },
       categories: { include: { category: true } },
+      stockPool: { select: { units: true } },
     },
   });
   if (!product || !product.active) throw new HttpError(404, 'Product not found');
-  res.json({ product });
+  // The pool's total is not public; the listing's own availability is.
+  const { stockPool, ...rest } = product;
+  void stockPool;
+  res.json({ product: { ...rest, inStock: availableItems(product) } });
 });
 
 /** Products that share at least one category with the given product. */

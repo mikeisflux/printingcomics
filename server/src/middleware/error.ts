@@ -20,7 +20,13 @@ export function errorHandler(
   _next: NextFunction,
 ) {
   if (err instanceof ZodError) {
-    return res.status(400).json({ error: 'Validation failed', details: err.flatten() });
+    // Say WHICH field, in the message the admin UI actually shows — a bare
+    // "Validation failed" sent people hunting through every input.
+    const what = err.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.length ? i.path.join('.') : 'body'}: ${i.message}`)
+      .join('; ');
+    return res.status(400).json({ error: `Validation failed — ${what}${err.issues.length > 3 ? '; …' : ''}`, details: err.flatten() });
   }
   if (err instanceof HttpError) {
     return res.status(err.status).json({ error: err.message, details: err.details });

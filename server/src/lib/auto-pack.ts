@@ -18,6 +18,8 @@
 export interface UnitToPack {
   orderItemId: string;
   weightOz: number;
+  /** The only package this unit may go in (Product.packageId), if any. */
+  packageId?: string | null;
 }
 
 export interface PackageOption {
@@ -52,6 +54,28 @@ export function autoPack(
   packages: PackageOption[],
 ): PackPlan {
   if (packages.length === 0) return { boxes: [], unpacked: [...units] };
+
+  // Units that name their own box are packed among themselves into that box
+  // only (a 135-pack of mailers never lands in a comic mailer); the rest use
+  // the whole catalogue. Plans are merged.
+  const groups = new Map<string, UnitToPack[]>();
+  for (const u of units) {
+    const key = u.packageId && packages.some((p) => p.id === u.packageId) ? u.packageId : '';
+    groups.set(key, [...(groups.get(key) ?? []), u]);
+  }
+  if (groups.size > 1 || (groups.size === 1 && !groups.has(''))) {
+    const merged: PackPlan = { boxes: [], unpacked: [] };
+    for (const [key, group] of groups) {
+      const plan = packOnce(group, key ? packages.filter((p) => p.id === key) : packages);
+      merged.boxes.push(...plan.boxes);
+      merged.unpacked.push(...plan.unpacked);
+    }
+    return merged;
+  }
+  return packOnce(units, packages);
+}
+
+function packOnce(units: UnitToPack[], packages: PackageOption[]): PackPlan {
 
   // Packages sorted smallest-capacity-first; we prefer to open the tightest
   // box that still fits each unit so mid-sized orders don't always grab the

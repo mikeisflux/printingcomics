@@ -94,6 +94,8 @@ export function AdminProducts() {
         actions={<Link to="/admin/products/new" className="btn">New product</Link>}
       />
 
+      <SharedStockCard />
+
       <div className="admin-card">
         <div style={{ display: 'flex', gap: '.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 260px' }}>
@@ -199,6 +201,104 @@ export function AdminProducts() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Shared stock: one pile sold through several listings (the T-Mailer packs).
+// The count here is what is on the shelf; each listing takes its own number
+// of units per item (set on the product).
+// ---------------------------------------------------------------------------
+interface StockPool {
+  id: string; key: string; name: string; units: number; updatedAt: string;
+  products: { id: string; slug: string; name: string; unitsPerItem: number; active: boolean }[];
+}
+
+function SharedStockCard() {
+  const toast = useToast();
+  const [pools, setPools] = useState<StockPool[] | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newPool, setNewPool] = useState({ name: '', key: '', units: '' });
+
+  const load = () => api.get<{ pools: StockPool[] }>('/admin/stock-pools').then((r) => { setPools(r.pools); setDrafts({}); }).catch(() => setPools([]));
+  useEffect(() => { void load(); }, []);
+
+  const save = async (pool: StockPool) => {
+    const units = Number(drafts[pool.id]);
+    if (!Number.isInteger(units) || units < 0) { toast.error('Enter a whole number of units.'); return; }
+    setSaving(pool.id);
+    try {
+      await api.put(`/admin/stock-pools/${pool.id}`, { units });
+      toast.success(`${pool.name}: ${units} units on the shelf.`);
+      await load();
+    } catch (e) { toast.error(errorMessage(e, 'Could not save')); }
+    finally { setSaving(null); }
+  };
+
+  const create = async () => {
+    const units = Number(newPool.units || 0);
+    const key = (newPool.key || newPool.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!newPool.name.trim() || !key) { toast.error('Give the pool a name.'); return; }
+    setSaving('new');
+    try {
+      await api.post('/admin/stock-pools', { key, name: newPool.name.trim(), units: Number.isInteger(units) && units >= 0 ? units : 0 });
+      setNewPool({ name: '', key: '', units: '' }); setAdding(false);
+      await load();
+    } catch (e) { toast.error(errorMessage(e, 'Could not create the pool')); }
+    finally { setSaving(null); }
+  };
+
+  if (!pools || (pools.length === 0 && !adding)) {
+    return pools && pools.length === 0 ? (
+      <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>
+        Listings that sell from one pile can share a stock count — <button type="button" className="btn secondary sm" onClick={() => setAdding(true)}>set one up</button>, then pick it on each product.
+      </p>
+    ) : null;
+  }
+
+  return (
+    <div className="admin-card">
+      <div className="spread" style={{ flexWrap: 'wrap', gap: '.5rem' }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Shared stock</h3>
+          <div className="muted" style={{ fontSize: '.85rem' }}>One pile, several listings. Paid orders take their units off automatically; type the count after a delivery or a recount.</div>
+        </div>
+        <button type="button" className="btn secondary sm" onClick={() => setAdding((v) => !v)}>{adding ? 'Cancel' : '+ New pool'}</button>
+      </div>
+      {adding && (
+        <div className="row" style={{ gap: '.5rem', marginTop: '.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div><label>Name</label><input value={newPool.name} onChange={(e) => setNewPool({ ...newPool, name: e.target.value })} placeholder="e.g. Comic Armor sleeves" style={{ margin: 0 }} /></div>
+          <div><label>Units on the shelf</label><input type="number" min={0} value={newPool.units} onChange={(e) => setNewPool({ ...newPool, units: e.target.value })} style={{ margin: 0, width: 140 }} /></div>
+          <button type="button" className="btn sm" onClick={create} disabled={saving === 'new'}>Create</button>
+        </div>
+      )}
+      {pools.map((pool) => {
+        const draft = drafts[pool.id] ?? String(pool.units);
+        const dirty = draft !== String(pool.units);
+        return (
+          <div key={pool.id} style={{ borderTop: '1px solid var(--border)', padding: '.75rem 0', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '1rem', alignItems: 'start' }}>
+            <div>
+              <strong>{pool.name}</strong>
+              <div className="muted" style={{ fontSize: '.85rem', marginTop: '.2rem' }}>
+                {pool.products.length === 0 ? 'No listings use this pool yet — pick it on a product.' : pool.products.map((p) => (
+                  <span key={p.id} style={{ display: 'inline-block', marginRight: '.75rem' }}>
+                    <Link to={`/admin/products/${p.id}`}>{p.name}</Link> · {p.unitsPerItem} each{p.active ? '' : ' (inactive)'} · {Math.floor(pool.units / Math.max(1, p.unitsPerItem))} available
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="row" style={{ gap: '.4rem', alignItems: 'center' }}>
+              <input type="number" min={0} value={draft} onChange={(e) => setDrafts({ ...drafts, [pool.id]: e.target.value })} style={{ width: 120, margin: 0 }} />
+              <span className="muted" style={{ fontSize: '.85rem' }}>units</span>
+              <button type="button" className="btn sm" disabled={!dirty || saving === pool.id} onClick={() => save(pool)}>{saving === pool.id ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

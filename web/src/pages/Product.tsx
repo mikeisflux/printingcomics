@@ -41,6 +41,8 @@ interface ProductDetail {
   minQuantity: number;
   backorder?: boolean;
   backorderEta?: string | null;
+  /** Shelf goods: how many can be bought right now. null = not tracked (printed to order). */
+  inStock?: number | null;
   volumeTiers?: { minQty: number; pricePerUnitCents: number }[] | null;
   templateUrl?: string | null;
   faq?: { q: string; a: string }[] | null;
@@ -213,6 +215,8 @@ export function Product() {
 
   const setSel = (key: string, v: string | number | boolean) => setSelections({ ...selections, [key]: v });
 
+  const soldOut = typeof product.inStock === 'number' && product.inStock <= 0 && !product.backorder;
+
   const addToCart = async () => {
     setError(null);
     setAdding(true);
@@ -382,12 +386,17 @@ export function Product() {
             className="btn"
             style={{ flex: 1, fontSize: '1.1rem', fontWeight: 700 }}
             onClick={addToCart}
-            disabled={!allComplete || adding}
+            disabled={!allComplete || adding || soldOut}
           >
-            {adding ? 'Adding…' : '🛒 ADD TO CART'}
+            {adding ? 'Adding…' : soldOut ? 'OUT OF STOCK' : '🛒 ADD TO CART'}
           </button>
         </div>
         {error && <div className="error">{error}</div>}
+        {typeof product.inStock === 'number' && !product.backorder && (
+          <p style={{ margin: '.5rem 0 0', fontWeight: 600, color: soldOut ? '#b91c1c' : product.inStock <= 20 ? '#b45309' : '#166534' }}>
+            {soldOut ? 'Out of stock — check back soon.' : product.inStock <= 20 ? `Only ${product.inStock} left in stock.` : 'In stock — ships from our shelf.'}
+          </p>
+        )}
 
         {product.backorder ? (
           <div className="admin-card" style={{ marginTop: '1rem', background: 'rgba(217, 119, 6, 0.12)', border: '1px solid #b45309' }}>

@@ -666,6 +666,16 @@ interface SupplyDef {
    *  to the buyer on the product page, in the cart and on the confirmation. */
   backorder?: boolean;
   backorderEta?: Date;
+  /** Separate listings that sell from one pile: the pool they share and how
+   *  many units of it one item takes. The pool is created with
+   *  `initialUnits` the first time it is seen and never touched again — the
+   *  live count is edited in admin (Products → Shared stock). */
+  stockPool?: { key: string; name: string; initialUnits: number };
+  unitsPerItem?: number;
+  /** Name of the admin-defined Package (Fulfillment → Packages) this item
+   *  ships in on its own. Matched case-insensitively; left alone when no
+   *  package of that name exists yet. */
+  shipsIn?: string;
   faq?: { q: string; a: string }[];
 }
 
@@ -709,9 +719,8 @@ const GRAMS_PER_OZ = 28.3495;
 const TMAILER_UNIT_WEIGHT_OZ = 5.5;
 const TMAILER_UNIT_WEIGHT_GRAMS = Math.round(TMAILER_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
 
-/** First production run lands 2 Oct 2026; until then these sell on backorder.
- *  Noon UTC so the date reads as 2 Oct in every US timezone. */
-const TMAILER_ETA = new Date('2026-10-02T12:00:00Z');
+// Stock item: in stock and sold from inventory (stock counts live in the DB,
+// set from admin; the seed never touches them).
 
 interface CompetitorTier {
   /** Mailers per pack. */
@@ -747,6 +756,9 @@ const TMAILER_IMAGES = [
   '/products/T-Fold_Comic_Mailer.jpg',    // flat blank, as it ships
 ];
 
+/** The shared shelf count the pack listings sell from. 5000 mailers landed. */
+const TMAILER_POOL = { key: 't-mailer', name: 'T-Mailers (mailers on the shelf)', initialUnits: 5000 };
+
 function tmailerSupplies(): SupplyDef[] {
   return GEMINI_TMAILER_LIST.map((t) => ({
     slug: `t-mailer-${t.qty}-pack`,
@@ -772,8 +784,12 @@ function tmailerSupplies(): SupplyDef[] {
       + `${t.qty} mailers per pack.`,
     priceCents: undercutCents(t.listUSD),
     weightGrams: t.qty * TMAILER_UNIT_WEIGHT_GRAMS,
-    backorder: true,
-    backorderEta: TMAILER_ETA,
+    backorder: false,
+    // Five listings, one pile of mailers: a 25-pack takes 25 of the shared count.
+    stockPool: TMAILER_POOL,
+    unitsPerItem: t.qty,
+    // The 135-pack only fits the 24×24×6 box; every other pack ships in the 24×24×4.
+    shipsIn: t.qty >= 135 ? 'Comic Mailer Big' : 'Comic Mailer Small',
     images: TMAILER_IMAGES,
     faq: [
       { q: 'How many comics fit in one mailer?', a: 'Anywhere from 1 to 10. Fold along whichever score line matches your stack — that is the whole point of the design.' },
@@ -826,6 +842,22 @@ const SUPPLIES: SupplyDef[] = [
   },
 ];
 
+/** The pool's id, creating it with its starting count only when it does not exist yet. */
+async function ensureStockPool(pool: NonNullable<SupplyDef['stockPool']>): Promise<string> {
+  const existing = await prisma.stockPool.findUnique({ where: { key: pool.key }, select: { id: true } });
+  if (existing) return existing.id;
+  const created = await prisma.stockPool.create({ data: { key: pool.key, name: pool.name, units: pool.initialUnits }, select: { id: true } });
+  console.log(`  created stock pool ${pool.key} with ${pool.initialUnits} units`);
+  return created.id;
+}
+
+/** `{ packageId }` for the admin-defined box of that name, or nothing (so an existing link is kept). */
+async function packageByName(name: string): Promise<{ packageId: string } | Record<string, never>> {
+  const pkg = await prisma.package.findFirst({ where: { name: { equals: name, mode: 'insensitive' } }, select: { id: true } });
+  if (!pkg) { console.warn(`  no Package named "${name}" yet — set it on the product once it exists`); return {}; }
+  return { packageId: pkg.id };
+}
+
 async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
   // Reuse the existing row so cart / order references survive a re-seed.
   const existing = await prisma.product.findUnique({ where: { slug: def.slug }, select: { id: true } });
@@ -844,6 +876,9 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     weightGrams: def.weightGrams,
     backorder: def.backorder ?? false,
     backorderEta: def.backorderEta ?? null,
+    stockPoolId: def.stockPool ? await ensureStockPool(def.stockPool) : null,
+    unitsPerItem: def.unitsPerItem ?? 1,
+    ...(def.shipsIn ? await packageByName(def.shipsIn) : {}),
     // No pricingConfig on purpose: flat price, no configurator, no promo.
     seoTitle: def.name,
     seoDescription: def.shortDescription,

@@ -46,6 +46,16 @@ function parseTrimInches(name: string): { w: number; h: number } | null {
 
 const SQ_IN_PER_SQ_M = 1550.0031;
 
+export interface ShipsInBox {
+  id: string;
+  name: string;
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
+  emptyWeightOz: number;
+  maxWeightOz: number | null;
+}
+
 export interface WeighableItem {
   name?: string;
   options?: unknown;
@@ -53,6 +63,8 @@ export interface WeighableItem {
     name?: string | null;
     weightGrams?: number | null;
     pricingConfig?: unknown;
+    /** The box this product ships in on its own (see Product.package). */
+    package?: ShipsInBox | null;
   } | null;
 }
 

@@ -152,6 +152,18 @@ model Product {
   backorder       Boolean  @default(false)
   // Estimated arrival, shown on the product page, cart and confirmation.
   backorderEta    DateTime?
+  // Separate listings that sell from one physical stock (the five T-Mailer
+  // pack sizes all draw from the same pile of mailers): the pool holds the
+  // units on the shelf and each listing says how many units one of it takes.
+  // Listings outside a pool use their own `stock`.
+  stockPool       StockPool? @relation(fields: [stockPoolId], references: [id], onDelete: SetNull)
+  stockPoolId     String?
+  unitsPerItem    Int      @default(1)
+  // The box this product ships in, when it is not packed with the rest of
+  // the order (a 135-pack of mailers only fits the 24×20×6). Checkout quotes
+  // and fulfilment auto-pack put these items in that box.
+  package         Package? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  packageId       String?
   active          Boolean  @default(true)
   minQuantity     Int      @default(1)
   weightGrams     Int      @default(0)
@@ -607,11 +619,23 @@ model Package {
   // True for the system default. Only one Package should have isDefault=true.
   isDefault     Boolean  @default(false)
   active        Boolean  @default(true)
+  products      Product[]
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   shipments     Shipment[]
+}
+
+// One physical stock shared by several listings (see Product.stockPool).
+model StockPool {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  name      String
+  units     Int       @default(0)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model OrderItem {

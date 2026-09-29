@@ -8,6 +8,7 @@ import { computePricing, type PricingConfig } from '../lib/pricing.js';
 import { getSetting } from '../lib/settings.js';
 import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, PROOF_PRODUCT_SLUG, itemTitle } from '../lib/proofs.js';
 import { optionKey } from '../lib/order-adjustments.js';
+import { assertInStock, unitsAlreadyInCart } from '../lib/inventory.js';
 import { isProd } from '../config.js';
 
 const router = Router();
@@ -83,7 +84,7 @@ router.post('/items', async (req, res) => {
 
   const product = await prisma.product.findUnique({
     where: { id: data.productId },
-    include: { variants: true, options: { select: { name: true, internalKey: true, type: true, required: true } } },
+    include: { variants: true, stockPool: true, options: { select: { name: true, internalKey: true, type: true, required: true } } },
   });
   if (!product || !product.active) throw new HttpError(404, 'Product not found');
   if (data.quantity < product.minQuantity) {
@@ -116,11 +117,18 @@ router.post('/items', async (req, res) => {
 
   let unitPriceCents = product.priceCents;
   let variantId: string | undefined = data.variantId;
+  let variant: (typeof product.variants)[number] | undefined;
   if (data.variantId) {
-    const variant = product.variants.find((v) => v.id === data.variantId);
+    variant = product.variants.find((v) => v.id === data.variantId);
     if (!variant || !variant.active) throw new HttpError(400, 'Invalid variant');
     unitPriceCents = variant.priceCents;
     variantId = variant.id;
+  }
+
+  // Shelf goods sell from stock (backorder sells ahead of it). Count what the
+  // cart already holds against the same stock so two adds cannot outrun it.
+  if (!product.madeToOrder && !product.backorder) {
+    assertInStock(product, data.quantity, variant ?? null, await unitsAlreadyInCart(cart.id, product, variantId));
   }
 
   // Configurator products (with pricingConfig) compute unit price from
@@ -182,9 +190,11 @@ router.patch('/items/:id', async (req, res) => {
   const cart = await getOrCreateCart(req, res);
   const item = await prisma.cartItem.findFirst({
     where: { id: req.params.id, cartId: cart.id },
-    include: { product: true, variant: true },
+    include: { product: { include: { stockPool: true } }, variant: true },
   });
   if (!item) throw new HttpError(404, 'Cart item not found');
+
+  assertInStock(item.product, quantity, item.variant, await unitsAlreadyInCart(cart.id, item.product, item.variantId, item.id));
 
   const baseCents = item.variant?.priceCents ?? item.product.priceCents;
   let unitPriceCents: number;

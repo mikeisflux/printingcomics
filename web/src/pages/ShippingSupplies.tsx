@@ -256,6 +256,7 @@ interface ProductCard {
   image: string | null;
   backorder?: boolean;
   backorderEta?: string | null;
+  inStock?: number | null;
 }
 
 interface PublicReview {
@@ -567,6 +568,7 @@ export function ShippingSupplies() {
                     <span className="ca-placeholder" aria-hidden="true">🛡</span>
                   )}
                   {p.backorder && <span className="ca-badge">Backorder</span>}
+                  {!p.backorder && p.inStock === 0 && <span className="ca-badge">Out of stock</span>}
                 </div>
                 <div className="ca-product-info">
                   <h3>{p.name}</h3>
@@ -574,6 +576,9 @@ export function ShippingSupplies() {
                   <div className="ca-price">{formatMoney(p.priceCents)}</div>
                   {p.backorder && p.backorderEta && (
                     <p className="ca-eta">Ships {formatEta(p.backorderEta)}</p>
+                  )}
+                  {!p.backorder && typeof p.inStock === 'number' && p.inStock > 0 && p.inStock <= 20 && (
+                    <p className="ca-eta">Only {p.inStock} left</p>
                   )}
                 </div>
               </Link>

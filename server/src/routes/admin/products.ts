@@ -19,6 +19,12 @@ const productWriteSchema = z.object({
   hasVariants: z.boolean().optional(),
   sku: z.string().optional(),
   stock: z.number().int().min(0).optional(),
+  // Shared stock: the pool this listing sells from (null = its own stock)
+  // and how many units of it one item takes (a 25-pack of mailers = 25).
+  stockPoolId: z.string().nullable().optional(),
+  unitsPerItem: z.number().int().min(1).optional(),
+  // The box this product ships in on its own (null = packed with the rest).
+  packageId: z.string().nullable().optional(),
   madeToOrder: z.boolean().optional(),
   backorder: z.boolean().optional(),
   // The editor sends `yyyy-mm-dd` (or '' to clear). Anchor bare dates at noon
@@ -40,8 +46,15 @@ const productWriteSchema = z.object({
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
   categoryIds: z.array(z.string()).optional(),
+  // Product images are either absolute (R2 / CDN) or site-relative
+  // ("/products/T-Fold_Comic_Mailer_1.jpg", seeded from the repo). The old
+  // `.url()` check rejected the relative ones, so every save of such a
+  // product — even to change stock — failed with "Validation failed".
   images: z
-    .array(z.object({ url: z.string().url(), alt: z.string().optional() }))
+    .array(z.object({
+      url: z.string().min(1).refine((v) => /^https?:\/\//i.test(v) || (v.startsWith('/') && !v.startsWith('//')), 'must be an absolute URL or a site path starting with /'),
+      alt: z.string().optional(),
+    }))
     .optional(),
 });
 
@@ -64,6 +77,8 @@ router.get('/:id', async (req, res) => {
       variants: true,
       options: { include: { values: true } },
       categories: { include: { category: true } },
+      stockPool: { select: { id: true, key: true, name: true, units: true } },
+      package: { select: { id: true, name: true } },
     },
   });
   if (!product) throw new HttpError(404, 'Not found');

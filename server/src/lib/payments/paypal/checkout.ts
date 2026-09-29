@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { prisma } from '../../../db.js';
+import { assertCartInStock, consumeStockForOrder } from '../../inventory.js';
 import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
 import { itemsRequestProof } from '../../proofs.js';
 import { resolveShippingSelection } from '../../shipping-quote.js';
@@ -35,11 +36,13 @@ async function computeTotals(
 ) {
   const cart = await prisma.cart.findUnique({
     where: { id: cartId },
-    include: { items: { include: { product: true, variant: true } } },
+    include: { items: { include: { product: { include: { stockPool: true, package: true } }, variant: true } } },
   });
   if (!cart || cart.items.length === 0) {
     throw new HttpError(400, 'Your cart is empty. Add something to it and come back to checkout.');
   }
+
+  assertCartInStock(cart.items);
 
   const subtotal = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 

@@ -7,7 +7,8 @@
  *
  *   1. Weigh the cart (see shipping-weight.ts — art prints by size, books
  *      estimated from trim size / page count / stock).
- *   2. Pack it into boxes using the default Package's max packed weight.
+ *   2. Pack it into boxes: products with their own box get it; the rest
+ *      share the default Package, split by its max packed weight.
  *   3. Ask EasyPost for live rates and return them.
  *   4. If EasyPost isn't configured or errors, fall back to the ShippingRate
  *      table — now honoring its `perKg` flag so the fallback still scales
@@ -20,7 +21,7 @@
 import { prisma } from '../db.js';
 import { getEasyPostConfig } from './settings.js';
 import { epCreateShipment, type EpAddress } from './easypost.js';
-import { contentWeightOz, type WeighableItem } from './shipping-weight.js';
+import { contentWeightOz, perUnitWeightGrams, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
 
 export interface QuoteAddress {
   line1?: string;
@@ -58,28 +59,65 @@ function toCents(rate: string): number {
   return Math.round(parseFloat(rate) * 100);
 }
 
+/** One kind of parcel to rate: its dimensions, packed weight, and how many of it ship. */
+interface Parcel {
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
+  weightOz: number;
+  count: number;
+  label: string;
+}
+
 /**
- * Split the cart across boxes. Uses the default (or first active) Package's
- * `maxWeightOz` as the per-box cap; without a cap everything rides in one box.
+ * Split the cart across boxes. Products that name their own box (a 135-pack
+ * of mailers only fits the 24×20×6) get parcels of that box — as many as
+ * the box's max packed weight allows per box, one per item when no max is
+ * set. Everything else rides in the default (or first active) Package,
+ * split by its max packed weight; without a cap it all goes in one box.
  */
-async function planBoxes(weightOz: number) {
-  const pkg =
-    (await prisma.package.findFirst({
-      where: { active: true },
-      orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-    })) ?? null;
+async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; boxes: number; weightOz: number }> {
+  const parcels: Parcel[] = [];
+  const pushParcel = (p: Parcel) => {
+    const same = parcels.find((x) => x.label === p.label && Math.abs(x.weightOz - p.weightOz) < 0.01);
+    if (same) same.count += p.count; else parcels.push(p);
+  };
 
-  // No packages configured — assume a modest mailer so live rating still works.
-  const dims = pkg
-    ? { lengthIn: pkg.lengthIn, widthIn: pkg.widthIn, heightIn: pkg.heightIn, emptyWeightOz: pkg.emptyWeightOz }
-    : { lengthIn: 12, widthIn: 9, heightIn: 3, emptyWeightOz: 2 };
+  const own = items.filter((i) => i.product?.package && i.quantity > 0);
+  for (const i of own) {
+    const box = i.product!.package!;
+    const unitOz = Math.max(0.1, perUnitWeightGrams(i) / GRAMS_PER_OZ);
+    const cap = box.maxWeightOz && box.maxWeightOz > box.emptyWeightOz ? box.maxWeightOz - box.emptyWeightOz : null;
+    const perBox = cap ? Math.max(1, Math.floor(cap / unitOz)) : 1;
+    let left = i.quantity;
+    while (left > 0) {
+      const n = Math.min(perBox, left);
+      pushParcel({ lengthIn: box.lengthIn, widthIn: box.widthIn, heightIn: box.heightIn, weightOz: +(n * unitOz + box.emptyWeightOz).toFixed(2), count: 1, label: box.name });
+      left -= n;
+    }
+  }
 
-  const cap = pkg?.maxWeightOz && pkg.maxWeightOz > 0 ? pkg.maxWeightOz : null;
-  const usable = cap ? Math.max(1, cap - dims.emptyWeightOz) : null;
-  const boxes = usable ? Math.max(1, Math.ceil(weightOz / usable)) : 1;
-  // EasyPost needs a positive weight; never rate a zero-ounce parcel.
-  const perBoxOz = Math.max(0.5, +(weightOz / boxes + dims.emptyWeightOz).toFixed(2));
-  return { ...dims, boxes, perBoxOz, packageName: pkg?.name ?? 'Default parcel' };
+  const rest = items.filter((i) => !i.product?.package);
+  const restOz = contentWeightOz(rest);
+  if (restOz > 0 || parcels.length === 0) {
+    const pkg =
+      (await prisma.package.findFirst({
+        where: { active: true },
+        orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      })) ?? null;
+    // No packages configured — assume a modest mailer so live rating still works.
+    const dims = pkg
+      ? { lengthIn: pkg.lengthIn, widthIn: pkg.widthIn, heightIn: pkg.heightIn, emptyWeightOz: pkg.emptyWeightOz }
+      : { lengthIn: 12, widthIn: 9, heightIn: 3, emptyWeightOz: 2 };
+    const cap = pkg?.maxWeightOz && pkg.maxWeightOz > 0 ? pkg.maxWeightOz : null;
+    const usable = cap ? Math.max(1, cap - dims.emptyWeightOz) : null;
+    const boxes = usable ? Math.max(1, Math.ceil(restOz / usable)) : 1;
+    // EasyPost needs a positive weight; never rate a zero-ounce parcel.
+    const perBoxOz = Math.max(0.5, +(restOz / boxes + dims.emptyWeightOz).toFixed(2));
+    pushParcel({ ...dims, weightOz: perBoxOz, count: boxes, label: pkg?.name ?? 'Default parcel' });
+  }
+
+  return { parcels, boxes: parcels.reduce((s, p) => s + p.count, 0), weightOz: contentWeightOz(items) };
 }
 
 function epToAddress(a: QuoteAddress): EpAddress {
@@ -145,8 +183,8 @@ export async function quoteShipping(args: {
   address: QuoteAddress;
   subtotalCents?: number;
 }): Promise<ShippingQuote> {
-  const weightOz = contentWeightOz(args.items);
-  const plan = await planBoxes(weightOz);
+  const plan = await planShipment(args.items);
+  const weightOz = plan.weightOz;
   const subtotalCents = args.subtotalCents ?? 0;
 
   const from = await epFromAddress();
@@ -154,40 +192,47 @@ export async function quoteShipping(args: {
 
   if (canLive) {
     try {
-      const shipment = await epCreateShipment({
-        from_address: from!,
-        to_address: epToAddress(args.address),
-        parcel: {
-          length: plan.lengthIn,
-          width: plan.widthIn,
-          height: plan.heightIn,
-          weight: plan.perBoxOz,
-        },
-      });
-      const rates = shipment.rates ?? [];
-      if (rates.length > 0) {
-        const options: ShippingOption[] = rates
-          .map((r) => ({
-            // Identify by carrier+service, not the EasyPost rate id: quotes are
-            // re-run at order time and EasyPost shipments/rate ids rotate, so a
-            // stable id keeps the customer's choice resolvable.
-            id: `${LIVE_PREFIX}${r.carrier}:${r.service}`,
-            name: `${r.carrier} ${r.service}`.trim(),
-            // One rated box × the number of boxes we'd actually ship.
-            rateCents: toCents(r.rate) * plan.boxes,
-            estimatedDays: r.delivery_days ? `${r.delivery_days} days` : null,
-            source: 'live' as const,
-            carrier: r.carrier,
-            service: r.service,
-          }))
-          .sort((a, b) => a.rateCents - b.rateCents);
-        return { options, weightOz, boxes: plan.boxes };
+      // Rate each kind of parcel once; an option is offered only when the
+      // carrier quoted every parcel, and its price is the sum across boxes.
+      const perService = new Map<string, { carrier: string; service: string; cents: number; days: number | null; parcels: number }>();
+      for (const parcel of plan.parcels) {
+        const shipment = await epCreateShipment({
+          from_address: from!,
+          to_address: epToAddress(args.address),
+          parcel: { length: parcel.lengthIn, width: parcel.widthIn, height: parcel.heightIn, weight: parcel.weightOz },
+        });
+        const rates = shipment.rates ?? [];
+        if (rates.length === 0) throw new Error(`carrier returned no rates for a ${parcel.label} (${parcel.weightOz} oz)`);
+        for (const r of rates) {
+          // Identify by carrier+service, not the EasyPost rate id: quotes are
+          // re-run at order time and EasyPost shipments/rate ids rotate, so a
+          // stable id keeps the customer's choice resolvable.
+          const key = `${LIVE_PREFIX}${r.carrier}:${r.service}`;
+          const cur = perService.get(key) ?? { carrier: r.carrier, service: r.service, cents: 0, days: null, parcels: 0 };
+          cur.cents += toCents(r.rate) * parcel.count;
+          cur.parcels += 1;
+          if (r.delivery_days) cur.days = Math.max(cur.days ?? 0, r.delivery_days);
+          perService.set(key, cur);
+        }
       }
+      const options: ShippingOption[] = [...perService.entries()]
+        .filter(([, v]) => v.parcels === plan.parcels.length)
+        .map(([id, v]) => ({
+          id,
+          name: `${v.carrier} ${v.service}`.trim(),
+          rateCents: v.cents,
+          estimatedDays: v.days ? `${v.days} days` : null,
+          source: 'live' as const,
+          carrier: v.carrier,
+          service: v.service,
+        }))
+        .sort((a, b) => a.rateCents - b.rateCents);
+      if (options.length > 0) return { options, weightOz, boxes: plan.boxes };
       return {
         options: await tableOptions(args.address, weightOz, subtotalCents),
         weightOz,
         boxes: plan.boxes,
-        liveError: 'carrier returned no rates for this address',
+        liveError: 'no carrier service could take every box in this order',
       };
     } catch (e: any) {
       // Never block checkout on a carrier outage — fall back to the table.

@@ -17,6 +17,7 @@ import siteDiscounts from './site-discounts.js';
 import coupons from './coupons.js';
 import reviews from './reviews.js';
 import costs from './costs.js';
+import stockPools from './stock-pools.js';
 import { requireAdmin } from '../../middleware/auth.js';
 
 const router = Router();
@@ -40,5 +41,6 @@ router.use('/site-discounts', siteDiscounts);
 router.use('/coupons', coupons);
 router.use('/reviews', reviews);
 router.use('/costs', costs);
+router.use('/stock-pools', stockPools);
 
 export default router;

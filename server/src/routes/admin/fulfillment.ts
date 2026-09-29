@@ -280,7 +280,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
       allocated.set(si.orderItemId, (allocated.get(si.orderItemId) ?? 0) + si.quantity);
     }
   }
-  const units: { orderItemId: string; weightOz: number }[] = [];
+  const units: { orderItemId: string; weightOz: number; packageId?: string | null }[] = [];
   for (const item of (order.items as any[])) {
     const remaining = item.quantity - (allocated.get(item.id) ?? 0);
     if (remaining <= 0) continue;
@@ -289,7 +289,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     // USPS reject it.
     const perUnitOz = (perUnitWeightGrams(item) / 28.3495) || 1;
     for (let i = 0; i < remaining; i++) {
-      units.push({ orderItemId: item.id, weightOz: perUnitOz });
+      units.push({ orderItemId: item.id, weightOz: perUnitOz, packageId: item.product?.packageId ?? null });
     }
   }
 
