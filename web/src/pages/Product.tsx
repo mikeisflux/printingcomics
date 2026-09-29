@@ -43,6 +43,8 @@ interface ProductDetail {
   backorderEta?: string | null;
   /** Shelf goods: how many can be bought right now. null = not tracked (printed to order). */
   inStock?: number | null;
+  /** False for shelf goods (mailers, sleeves): no artwork, no proof, ships from stock. */
+  madeToOrder?: boolean;
   volumeTiers?: { minQty: number; pricePerUnitCents: number }[] | null;
   templateUrl?: string | null;
   faq?: { q: string; a: string }[] | null;
@@ -406,7 +408,9 @@ export function Product() {
               : <>You can order now — this ships as soon as stock arrives.</>}{' '}
             Anything else in your order ships on its normal schedule.
           </div>
-        ) : (
+        ) : product.madeToOrder === false ? null : (
+          // Printed-to-order only — shelf goods (mailers, sleeves) have no proof
+          // and say "in stock" above instead.
           <div className="admin-card" style={{ marginTop: '1rem', background: 'rgba(30, 116, 252, 0.08)' }}>
             🚚 Your order will ship in approximately 5 business days pending proof approval.
           </div>

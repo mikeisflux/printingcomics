@@ -13,11 +13,19 @@ async function resolveStoreName(): Promise<string> {
 export async function sendOrderConfirmationEmail(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true },
+    include: { items: { include: { product: { select: { madeToOrder: true } } } } },
   });
   if (!order) return;
 
   const storeName = await resolveStoreName();
+  // What happens next depends on what was bought: shelf goods (mailers,
+  // sleeves) just ship; printed books get a proof only when one was asked for.
+  const shelfOnly = order.items.length > 0 && order.items.every((i) => i.product.madeToOrder === false);
+  const nextStep = shelfOnly
+    ? 'It ships from our shelf — we\'ll email you the tracking number as soon as it\'s on its way.'
+    : order.proofStatus === 'requested'
+      ? 'We\'ll send a proof within 2 business days; you approve it in your account, and nothing prints until you do.'
+      : 'We\'ll get it into production and email you when it ships.';
   const itemsHtml = order.items.map((i) =>
     `<tr>
       <td style="padding:8px;border-bottom:1px solid #eee">${escape(i.name)} × ${i.quantity}</td>
@@ -28,7 +36,7 @@ export async function sendOrderConfirmationEmail(orderId: string) {
   const html = `
     <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto">
       <h2>Thanks for your order!</h2>
-      <p>Order <strong>${escape(order.number)}</strong> confirmed. We'll send a proof within 2 business days.</p>
+      <p>Order <strong>${escape(order.number)}</strong> confirmed. ${nextStep}</p>
       <table style="width:100%;border-collapse:collapse;margin-top:1rem">${itemsHtml}</table>
       <table style="width:100%;margin-top:1rem">
         <tr><td>Subtotal</td><td style="text-align:right">${formatMoney(order.subtotalCents)}</td></tr>
