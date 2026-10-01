@@ -22,12 +22,19 @@ export interface StockView {
   backorder: boolean;
   stock: number;
   unitsPerItem: number;
+  /** Refuse orders when the count runs out; a pooled product is always tracked. */
+  trackStock: boolean;
   stockPool: { units: number } | null;
+}
+
+/** Is this listing's count enforced at all? Printed-to-order and untracked goods always sell. */
+export function isTracked(p: StockView): boolean {
+  return !p.madeToOrder && (p.stockPool !== null || p.trackStock);
 }
 
 /** How many of this listing could be bought right now; null when not tracked. */
 export function availableItems(p: StockView, variant?: { stock: number } | null): number | null {
-  if (p.madeToOrder) return null;
+  if (!isTracked(p)) return null;
   if (p.stockPool) return Math.floor(Math.max(0, p.stockPool.units) / Math.max(1, p.unitsPerItem));
   return variant ? variant.stock : p.stock;
 }
@@ -38,7 +45,7 @@ export function availableItems(p: StockView, variant?: { stock: number } | null)
  * for a plain one (see unitsAlreadyInCart).
  */
 export function assertInStock(p: StockView, quantity: number, variant?: { stock: number; label: string } | null, already = 0): void {
-  if (p.madeToOrder || p.backorder) return;
+  if (!isTracked(p) || p.backorder) return;
   const label = `${p.name}${variant ? ` (${variant.label})` : ''}`;
   if (p.stockPool) {
     const upi = Math.max(1, p.unitsPerItem);
@@ -90,7 +97,7 @@ export function assertCartInStock(
   const plainUsed = new Map<string, number>();
   for (const it of items) {
     const p = it.product;
-    if (p.madeToOrder || p.backorder) continue;
+    if (!isTracked(p) || p.backorder) continue;
     if (p.stockPoolId) {
       const before = poolUsed.get(p.stockPoolId) ?? 0;
       assertInStock(p, it.quantity, it.variant ?? null, before);
@@ -113,12 +120,12 @@ export async function consumeStockForOrder(orderId: string): Promise<void> {
     where: { orderId },
     select: {
       quantity: true, variantId: true,
-      product: { select: { id: true, madeToOrder: true, stock: true, stockPoolId: true, unitsPerItem: true } },
+      product: { select: { id: true, madeToOrder: true, stock: true, stockPoolId: true, unitsPerItem: true, trackStock: true } },
     },
   });
   for (const it of items) {
     const p = it.product;
-    if (p.madeToOrder) continue;
+    if (p.madeToOrder || (!p.stockPoolId && !p.trackStock)) continue;
     if (p.stockPoolId) {
       const pool = await prisma.stockPool.findUnique({ where: { id: p.stockPoolId }, select: { units: true } });
       if (pool) await prisma.stockPool.update({ where: { id: p.stockPoolId }, data: { units: Math.max(0, pool.units - it.quantity * Math.max(1, p.unitsPerItem)) } });

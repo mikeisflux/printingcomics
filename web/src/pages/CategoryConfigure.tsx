@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import confetti from 'canvas-confetti';
+import { QuantityInput } from '../components/QuantityInput';
 import { api } from '../api/client';
 import { useCart } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
@@ -568,13 +569,7 @@ export function CategoryConfigure() {
               </div>
 
               <div style={{ display: 'flex', gap: '.5rem', marginTop: '1rem', alignItems: 'center' }}>
-                <input
-                  type="number"
-                  min={product.minQuantity}
-                  value={qty}
-                  onChange={(e) => setQty(Math.max(product.minQuantity, Number(e.target.value)))}
-                  style={{ width: 100 }}
-                />
+                <QuantityInput value={qty} min={product.minQuantity} onChange={setQty} style={{ width: 100 }} />
                 <button
                   ref={cartBtnRef}
                   className="btn pc-cta"

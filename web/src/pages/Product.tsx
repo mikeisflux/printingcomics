@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { QuantityInput } from '../components/QuantityInput';
 import { useCart } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
 import { useSiteDiscount } from '../lib/useSiteDiscount';
@@ -375,13 +376,7 @@ export function Product() {
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
           <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
             <button className="btn" style={{ borderRadius: 0, background: 'var(--bg-alt)', color: 'var(--ink)' }} onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
-            <input
-              value={qty}
-              type="number"
-              min={1}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
-              style={{ width: 70, border: 'none', textAlign: 'center' }}
-            />
+            <QuantityInput value={qty} min={1} onChange={setQty} style={{ width: 70, border: 'none', textAlign: 'center' }} />
             <button className="btn" style={{ borderRadius: 0, background: 'var(--bg-alt)', color: 'var(--ink)' }} onClick={() => setQty(qty + 1)}>+</button>
           </div>
           <button

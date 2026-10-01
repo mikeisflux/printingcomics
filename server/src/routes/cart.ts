@@ -8,7 +8,7 @@ import { computePricing, type PricingConfig } from '../lib/pricing.js';
 import { getSetting } from '../lib/settings.js';
 import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, PROOF_PRODUCT_SLUG, itemTitle } from '../lib/proofs.js';
 import { optionKey } from '../lib/order-adjustments.js';
-import { assertInStock, unitsAlreadyInCart } from '../lib/inventory.js';
+import { assertInStock, isTracked, unitsAlreadyInCart } from '../lib/inventory.js';
 import { isProd } from '../config.js';
 
 const router = Router();
@@ -127,7 +127,7 @@ router.post('/items', async (req, res) => {
 
   // Shelf goods sell from stock (backorder sells ahead of it). Count what the
   // cart already holds against the same stock so two adds cannot outrun it.
-  if (!product.madeToOrder && !product.backorder) {
+  if (isTracked(product) && !product.backorder) {
     assertInStock(product, data.quantity, variant ?? null, await unitsAlreadyInCart(cart.id, product, variantId));
   }
 

@@ -159,6 +159,10 @@ model Product {
   stockPool       StockPool? @relation(fields: [stockPoolId], references: [id], onDelete: SetNull)
   stockPoolId     String?
   unitsPerItem    Int      @default(1)
+  // Refuse orders when the count runs out. Off (the default) means the count
+  // is informational and the product always sells; a product in a pool is
+  // always tracked.
+  trackStock      Boolean  @default(false)
   // The box this product ships in, when it is not packed with the rest of
   // the order (a 135-pack of mailers only fits the 24×20×6). Checkout quotes
   // and fulfilment auto-pack put these items in that box.

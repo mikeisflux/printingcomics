@@ -23,6 +23,7 @@ const productWriteSchema = z.object({
   // and how many units of it one item takes (a 25-pack of mailers = 25).
   stockPoolId: z.string().nullable().optional(),
   unitsPerItem: z.number().int().min(1).optional(),
+  trackStock: z.boolean().optional(),
   // The box this product ships in on its own (null = packed with the rest).
   packageId: z.string().nullable().optional(),
   madeToOrder: z.boolean().optional(),

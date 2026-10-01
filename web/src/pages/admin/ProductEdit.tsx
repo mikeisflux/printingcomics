@@ -23,6 +23,7 @@ interface ProductDraft {
   stockPoolId: string | null;
   unitsPerItem: number;
   packageId: string | null;
+  trackStock: boolean;
   madeToOrder: boolean;
   backorder: boolean;
   /** yyyy-mm-dd for <input type="date">; '' when unset. */
@@ -39,7 +40,7 @@ interface ProductDraft {
 
 const emptyDraft: ProductDraft = {
   slug: '', name: '', shortDescription: '', description: '',
-  priceCents: 0, hasVariants: false, sku: '', stock: 0, stockPoolId: null, unitsPerItem: 1, packageId: null,
+  priceCents: 0, hasVariants: false, sku: '', stock: 0, stockPoolId: null, unitsPerItem: 1, packageId: null, trackStock: false,
   madeToOrder: true, backorder: false, backorderEta: '',
   active: true, minQuantity: 1, weightGrams: 0,
   volumeTiers: [], seoTitle: '', seoDescription: '',
@@ -88,6 +89,7 @@ export function AdminProductEdit() {
         stockPoolId: p.stockPoolId ?? null,
         unitsPerItem: p.unitsPerItem ?? 1,
         packageId: p.packageId ?? null,
+        trackStock: p.trackStock ?? false,
         backorder: p.backorder ?? false,
         backorderEta: p.backorderEta ? String(p.backorderEta).slice(0, 10) : '',
         madeToOrder: p.madeToOrder,
@@ -232,6 +234,11 @@ export function AdminProductEdit() {
           <div>
             <label>Stock{draft.stockPoolId ? ' (unused — sells from the shared pool)' : ''}</label>
             <input type="number" value={draft.stock} disabled={!!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, stock: Number(e.target.value) })} />
+            <label style={{ fontWeight: 500, marginTop: '.4rem' }}>
+              <input type="checkbox" checked={draft.trackStock || !!draft.stockPoolId} disabled={!!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, trackStock: e.target.checked })} style={{ width: 'auto' }} />{' '}
+              Track stock — refuse orders when it runs out
+            </label>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>Off: the count is just a note and the product always sells. On (or in a shared pool): paid orders take from it and the storefront says how many are left.</p>
           </div>
           <div>
             <label>Min quantity</label>

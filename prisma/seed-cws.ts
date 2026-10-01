@@ -727,6 +727,8 @@ interface CompetitorTier {
   qty: number;
   /** Gemini's list price for that pack, in dollars. */
   listUSD: number;
+  /** Our price per mailer, when set by hand instead of undercutting Gemini. */
+  perMailerUSD?: number;
 }
 
 const GEMINI_TMAILER_LIST: CompetitorTier[] = [
@@ -734,7 +736,8 @@ const GEMINI_TMAILER_LIST: CompetitorTier[] = [
   { qty: 25,  listUSD: 39.95 },
   { qty: 50,  listUSD: 64.95 },
   { qty: 100, listUSD: 89.95 },
-  { qty: 135, listUSD: 109.95 },
+  // The bulk pack is priced per mailer: 135 × $0.60 = $81.00.
+  { qty: 135, listUSD: 109.95, perMailerUSD: 0.60 },
 ];
 
 /**
@@ -782,7 +785,7 @@ function tmailerSupplies(): SupplyDef[] {
       + 'STOP BUYING FOUR SKUs. One box on the shelf covers the whole range, which means less '
       + 'money tied up in packaging and no more running out of the one size you needed.\n\n'
       + `${t.qty} mailers per pack.`,
-    priceCents: undercutCents(t.listUSD),
+    priceCents: t.perMailerUSD !== undefined ? Math.round(cents(t.perMailerUSD) * t.qty) : undercutCents(t.listUSD),
     weightGrams: t.qty * TMAILER_UNIT_WEIGHT_GRAMS,
     backorder: false,
     // Five listings, one pile of mailers: a 25-pack takes 25 of the shared count.
@@ -840,6 +843,27 @@ const SUPPLIES: SupplyDef[] = [
       { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
     ],
   },
+  {
+    slug: 'comic-armor-270-pack',
+    name: 'Comic Armor — 270 Pack',
+    sku: 'ARMOR-270',
+    shortDescription: 'A full case of 270 Comic Armor sleeves — 20¢ a sleeve, for stores and sellers shipping every week.',
+    description:
+      'The case of Comic Armor. Two hundred and seventy cushioned protective sleeves, the same '
+      + 'protection as the 10- and 20-packs at the lowest price per sleeve we offer: slide the bagged '
+      + 'and boarded comic in, seal it, ship it — no loose bubble wrap, no shifting, no corner dings. '
+      + 'For shops, convention tables and anyone moving books by the long box.',
+    // 270 × $0.20 = $54.00.
+    priceCents: Math.round(cents(0.20) * 270),
+    weightGrams: armorPackGrams(270),
+    // Same photo as the 20-pack until the case gets its own.
+    images: ['/products/comic-armor-270-pack.webp'],
+    faq: [
+      { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
+      { q: 'How is this priced?', a: 'Twenty cents a sleeve — 270 sleeves for $54.00, against 99¢ a sleeve in the 10-pack.' },
+      { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
+    ],
+  },
 ];
 
 /** The pool's id, creating it with its starting count only when it does not exist yet. */
@@ -878,6 +902,9 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     backorderEta: def.backorderEta ?? null,
     stockPoolId: def.stockPool ? await ensureStockPool(def.stockPool) : null,
     unitsPerItem: def.unitsPerItem ?? 1,
+    // Only pooled goods refuse orders when the count runs out; the others
+    // sell freely until someone sets a count and turns tracking on in admin.
+    trackStock: !!def.stockPool,
     ...(def.shipsIn ? await packageByName(def.shipsIn) : {}),
     // No pricingConfig on purpose: flat price, no configurator, no promo.
     seoTitle: def.name,
