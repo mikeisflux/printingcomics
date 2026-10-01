@@ -138,13 +138,6 @@ router.post('/quote', async (req, res) => {
     }
   }
 
-  // Coupon — stacks on top of the site-wide discount already baked into each unit price.
-  const couponEval = await evaluateCoupon(data.couponCode, subtotal);
-  const discount = couponEval.discountCents;
-  const couponInfo = couponEval.ok && couponEval.coupon
-    ? { code: couponEval.coupon.code, description: couponEval.coupon.description, discountCents: discount }
-    : null;
-
   // Shipping
   let shippingCents = 0;
   let shippingMethod: { id: string; name: string; estimatedDays: string | null } | null = null;
@@ -166,6 +159,16 @@ router.post('/quote', async (req, res) => {
       estimatedDays: r.estimatedDays ?? null,
     }));
   }
+
+  // Coupon — stacks on top of the site-wide discount already baked into each
+  // unit price, and may take its share off the chosen shipping rate too.
+  const couponEval = await evaluateCoupon(data.couponCode, subtotal, { shippingCents });
+  const discount = couponEval.discountCents;
+  const shippingDiscountCents = couponEval.shippingDiscountCents;
+  shippingCents -= shippingDiscountCents;
+  const couponInfo = couponEval.ok && couponEval.coupon
+    ? { code: couponEval.coupon.code, description: couponEval.coupon.description, discountCents: discount, shippingDiscountCents }
+    : null;
 
   // Tax
   let taxCents = 0;
@@ -189,6 +192,7 @@ router.post('/quote', async (req, res) => {
     discountCents: discount,
     coupon: couponInfo,
     shippingCents,
+    shippingDiscountCents,
     shippingMethod,
     shippingOptions,
     taxCents,

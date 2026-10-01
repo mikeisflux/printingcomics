@@ -40,10 +40,12 @@ export async function sendOrderConfirmationEmail(orderId: string) {
       <table style="width:100%;border-collapse:collapse;margin-top:1rem">${itemsHtml}</table>
       <table style="width:100%;margin-top:1rem">
         <tr><td>Subtotal</td><td style="text-align:right">${formatMoney(order.subtotalCents)}</td></tr>
-        <tr><td>Shipping</td><td style="text-align:right">${formatMoney(order.shippingCents)}</td></tr>
+        ${order.discountCents > 0 ? `<tr><td>Discount${order.couponCode ? ` (${escape(order.couponCode)})` : ''}</td><td style="text-align:right">−${formatMoney(order.discountCents)}</td></tr>` : ''}
+        <tr><td>Shipping${order.shippingMethod ? ` · ${escape(order.shippingMethod)}` : ''}</td><td style="text-align:right">${order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</td></tr>
         <tr><td>Tax</td><td style="text-align:right">${formatMoney(order.taxCents)}</td></tr>
         <tr style="font-weight:700"><td>Total</td><td style="text-align:right">${formatMoney(order.totalCents)}</td></tr>
       </table>
+      ${order.totalCents === 0 ? `<p style="color:#666">Nothing was charged${order.couponCode ? ` — code ${escape(order.couponCode)} covered this order` : ''}.</p>` : ''}
       <p style="margin-top:2rem;color:#666;font-size:0.9rem">${escape(storeName)}</p>
     </div>
   `;

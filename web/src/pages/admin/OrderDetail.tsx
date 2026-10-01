@@ -39,7 +39,7 @@ interface OrderFull {
   id: string; number: string; email: string;
   status: string; paymentStatus: string;
   subtotalCents: number; shippingCents: number; taxCents: number;
-  discountCents: number; totalCents: number;
+  discountCents: number; totalCents: number; couponCode?: string | null;
   trackingNumber?: string | null;
   shippingMethod?: string | null;
   notes?: string | null;
@@ -921,8 +921,8 @@ export function AdminOrderDetail() {
           </tbody>
         </table>
         <div className="spread"><span>Subtotal</span><span>{formatMoney(order.subtotalCents)}</span></div>
-        {order.discountCents > 0 && <div className="spread"><span>Discount</span><span>−{formatMoney(order.discountCents)}</span></div>}
-        <div className="spread"><span>Shipping</span><span>{formatMoney(order.shippingCents)}</span></div>
+        {order.discountCents > 0 && <div className="spread"><span>Discount{order.couponCode ? ` (${order.couponCode})` : ''}</span><span>−{formatMoney(order.discountCents)}</span></div>}
+        <div className="spread"><span>Shipping</span><span>{order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</span></div>
         <div className="spread"><span>Tax</span><span>{formatMoney(order.taxCents)}</span></div>
         <div className="spread" style={{ fontWeight: 700 }}><span>Total</span><span>{formatMoney(order.totalCents)}</span></div>
         <MaterialsCost order={order} />

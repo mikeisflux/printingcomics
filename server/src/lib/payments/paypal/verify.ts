@@ -21,7 +21,7 @@
  */
 import { prisma } from '../../../db.js';
 import { HttpError } from '../../../middleware/error.js';
-import { consumeStockForOrder } from '../../inventory.js';
+import { settlePaidOrder } from '../../paid-order.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 
 export type CaptureState = 'COMPLETED' | 'PENDING' | 'DECLINED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'FAILED' | 'NONE' | 'UNKNOWN';
@@ -116,13 +116,26 @@ export async function verifyOrderPayment(orderId: string, opts: { fix: boolean; 
   });
   if (!order) throw new HttpError(404, 'Order not found');
 
+  const before = { status: order.status, paymentStatus: order.paymentStatus };
+
+  // PayPal was never part of some orders: one with nothing to pay (a 100%
+  // code covered goods and shipping) or one marked paid out-of-band (partner
+  // API, manual). "No capture at PayPal" is not "unpaid" for those — with
+  // `fix` that reading would cancel a perfectly good order.
+  const outOfBand = order.payments.find((p) => p.provider !== 'paypal' && p.status === 'CAPTURED' && !p.adjustment);
+  if (order.totalCents <= 0 || outOfBand) {
+    const note = order.totalCents <= 0
+      ? `nothing to pay — the order total is $0.00${order.couponCode ? ` (code ${order.couponCode})` : ''}; PayPal was not involved`
+      : `paid out-of-band via ${outOfBand!.provider}${outOfBand!.providerRef ? ` (${outOfBand!.providerRef})` : ''}; PayPal was not involved`;
+    return { orderId: order.id, number: order.number, verdict: 'paid', before, after: { ...before }, changed: false, payments: [], note };
+  }
+
   // Balance payments for post-order changes are not what makes the order paid.
   const candidates = order.payments.filter((p) => p.provider === 'paypal' && p.providerRef && !p.adjustment);
   const facts: PaypalPaymentFacts[] = [];
   for (const p of candidates) facts.push(await lookupPaypalPayment({ id: p.id, status: p.status, providerRef: p.providerRef! }));
   const verdict = candidates.length === 0 ? 'unpaid' : verdictOf(facts);
 
-  const before = { status: order.status, paymentStatus: order.paymentStatus };
   const after = { ...before };
   const notes: string[] = [];
   const describe = (f: PaypalPaymentFacts) => `${f.captureId ?? f.providerRef} is ${f.captureStatus}${f.reason ? ` (${f.reason})` : ''}`;
@@ -136,7 +149,7 @@ export async function verifyOrderPayment(orderId: string, opts: { fix: boolean; 
       if (order.paymentStatus !== 'CAPTURED') after.paymentStatus = 'CAPTURED';
       if (order.status === 'PENDING' || order.status === 'CANCELLED') after.status = 'PAID';
       await prisma.payment.update({ where: { id: winner.paymentId }, data: { status: 'CAPTURED', providerRef: winner.captureId ?? winner.providerRef } });
-      if (order.paymentStatus !== 'CAPTURED') await consumeStockForOrder(order.id).catch(() => undefined);
+      if (order.paymentStatus !== 'CAPTURED') await settlePaidOrder(order.id);
     } else if (verdict === 'refunded') {
       after.paymentStatus = 'REFUNDED';
       after.status = 'REFUNDED';

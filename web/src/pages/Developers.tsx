@@ -1008,7 +1008,7 @@ function verify(secret, signatureHeader, rawBody) {
                 <tr><td><code>status</code></td><td>enum</td><td><code>PENDING | PAID | IN_PRODUCTION | SHIPPED | DELIVERED | CANCELLED | REFUNDED</code></td></tr>
                 <tr><td><code>paymentStatus</code></td><td>enum</td><td><code>PENDING | AUTHORIZED | CAPTURED | FAILED | REFUNDED</code></td></tr>
                 <tr><td><code>proofStatus</code></td><td>string?</td><td><code>null</code> when no proof is required, else <code>requested | awaiting_approval | approved | changes_requested</code>. Held from production/shipping until <code>approved</code>.</td></tr>
-                <tr><td><code>subtotalCents / shippingCents / taxCents / discountCents / totalCents</code></td><td>integer</td><td>All amounts in USD cents</td></tr>
+                <tr><td><code>subtotalCents / shippingCents / taxCents / discountCents / totalCents</code></td><td>integer</td><td>All amounts in USD cents. <code>discountCents</code> is what a code took off the items; a code that also covers shipping lowers <code>shippingCents</code> (the amount actually charged) and reports the difference as <code>shippingDiscountCents</code>.</td></tr>
                 <tr><td><code>shippingMethod</code></td><td>string?</td><td>Carrier + service once shipped</td></tr>
                 <tr><td><code>trackingNumber</code></td><td>string?</td><td>Set when we hand off to the carrier</td></tr>
                 <tr><td><code>items[]</code></td><td>OrderItem</td><td>See below</td></tr>

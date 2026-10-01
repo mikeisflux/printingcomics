@@ -39,11 +39,16 @@ export function PaypalCheckout() {
   const [sameAsShip, setSameAsShip] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Discount code (applied before payment; stacks on top of the site-wide discount)
+  // Discount code (applied before payment; stacks on top of the site-wide
+  // discount). A code can take its share off shipping too, so the applied
+  // state remembers which shipping price it was checked against.
+  interface AppliedCoupon { code: string; discountCents: number; shippingDiscountCents: number; description: string | null; forShippingCents: number }
+  interface CouponCheck { ok: boolean; code: string; description: string | null; discountCents: number; shippingDiscountCents: number; reason: string | null }
   const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountCents: number; description: string | null } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponMsg, setCouponMsg] = useState<string | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
+  const [placingFree, setPlacingFree] = useState(false);
 
   // Shipping rate selection
   interface ShipRate { id: string; name: string; rateCents: number; estimatedDays?: string | null }
@@ -96,18 +101,21 @@ export function PaypalCheckout() {
 
   const canCheckout = !!email && !!ship.line1 && !!ship.city && !!ship.postalCode && !!(cart?.items.length);
 
+  const selectedRate = shipRates.find((r) => r.id === shipRateId) ?? null;
+  const shipCents = selectedRate?.rateCents ?? 0;
+
+  const checkCoupon = (code: string, shippingCents: number) =>
+    api.post<CouponCheck>('/checkout/validate-coupon', { code, shippingCents });
+
   const applyCoupon = async () => {
     const code = couponInput.trim();
     if (!code) return;
     setCouponBusy(true);
     setCouponMsg(null);
     try {
-      const r = await api.post<{ ok: boolean; code: string; description: string | null; discountCents: number; reason: string | null }>(
-        '/checkout/validate-coupon',
-        { code },
-      );
+      const r = await checkCoupon(code, shipCents);
       if (r.ok) {
-        setAppliedCoupon({ code: r.code, discountCents: r.discountCents, description: r.description });
+        setAppliedCoupon({ code: r.code, discountCents: r.discountCents, shippingDiscountCents: r.shippingDiscountCents, description: r.description, forShippingCents: shipCents });
         setCouponMsg(null);
       } else {
         setAppliedCoupon(null);
@@ -121,28 +129,63 @@ export function PaypalCheckout() {
     }
   };
 
+  // The code's share of shipping depends on the rate picked: re-check it
+  // whenever the shipping price changes (quote arrives, another method).
+  const appliedCode = appliedCoupon?.code ?? null;
+  const appliedFor = appliedCoupon?.forShippingCents ?? null;
+  useEffect(() => {
+    if (!appliedCode || appliedFor === shipCents) return;
+    let cancelled = false;
+    void checkCoupon(appliedCode, shipCents)
+      .then((r) => {
+        if (cancelled || !r.ok) return;
+        setAppliedCoupon((cur) => cur && cur.code === r.code
+          ? { ...cur, discountCents: r.discountCents, shippingDiscountCents: r.shippingDiscountCents, forShippingCents: shipCents }
+          : cur);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [appliedCode, appliedFor, shipCents]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const removeCoupon = () => {
     setAppliedCoupon(null);
     setCouponInput('');
     setCouponMsg(null);
   };
 
+  const orderBody = () => ({
+    email,
+    shippingAddress: ship,
+    billingAddress: sameAsShip ? ship : bill,
+    shippingRateId: shipRateId,
+    couponCode: appliedCoupon?.code,
+  });
+
   const createOrder = async (): Promise<string> => {
     setError(null);
     try {
-      const r = await api.post<{ paypalOrderId: string; orderNumber: string }>('/checkout/paypal/create', {
-        email,
-        shippingAddress: ship,
-        billingAddress: sameAsShip ? ship : bill,
-        shippingRateId: shipRateId,
-        couponCode: appliedCoupon?.code,
-      });
+      const r = await api.post<{ paypalOrderId: string; orderNumber: string }>('/checkout/paypal/create', orderBody());
       return r.paypalOrderId;
     } catch (e: any) {
       // The SDK swallows this rejection into a generic onError; show the
       // server's actual reason first, then let the SDK abort the flow.
       setError(describeError(e));
       throw e;
+    }
+  };
+
+  // Nothing to pay (a code covered goods and shipping): the order is placed
+  // directly — PayPal refuses a $0 order and there is no card to charge.
+  const placeFreeOrder = async () => {
+    setError(null);
+    setPlacingFree(true);
+    try {
+      const r = await api.post<{ orderNumber: string }>('/checkout/free', orderBody());
+      navigate(`/order/${r.orderNumber}`);
+    } catch (e: any) {
+      setError(describeError(e));
+    } finally {
+      setPlacingFree(false);
     }
   };
 
@@ -171,24 +214,29 @@ export function PaypalCheckout() {
     );
   }
 
-  if (!paypalClientId) {
-    return (
-      <div className="container" style={{ padding: '2rem 0' }}>
-        <h1>Checkout</h1>
-        <div className="error">
-          PayPal is not yet configured. Set the credentials in Admin → Settings → Payments.
-        </div>
-        <p className="muted" style={{ marginTop: '1rem', fontSize: '.85rem' }}>
-          Diagnostic: {configError
-            ? `config endpoint failed (${configError})`
-            : `config endpoint returned environment=${env}, clientId=empty. Re-paste the Client ID in Admin → Settings → Payments and click outside the field to save (browser autofill can silently swallow it).`}
-        </p>
-      </div>
-    );
-  }
-
   const items = cart?.items ?? [];
   const sub = subtotal();
+
+  // What is left after the code: on the goods, on shipping, and in all. Tax,
+  // if any, is figured on the goods after the discount — so a $0 balance here
+  // is a $0 order.
+  const goodsDiscount = Math.min(sub, appliedCoupon?.discountCents ?? 0);
+  const shipDiscount = Math.min(shipCents, appliedCoupon?.shippingDiscountCents ?? 0);
+  const totalDue = (sub - goodsDiscount) + (shipCents - shipDiscount);
+  const nothingToPay = items.length > 0 && !shipQuoting && totalDue === 0;
+
+  const paypalMissing = !paypalClientId && (
+    <>
+      <div className="error">
+        PayPal is not yet configured. Set the credentials in Admin → Settings → Payments.
+      </div>
+      <p className="muted" style={{ marginTop: '1rem', fontSize: '.85rem' }}>
+        Diagnostic: {configError
+          ? `config endpoint failed (${configError})`
+          : `config endpoint returned environment=${env}, clientId=empty. Re-paste the Client ID in Admin → Settings → Payments and click outside the field to save (browser autofill can silently swallow it).`}
+      </p>
+    </>
+  );
 
   return (
     <div className="container" style={{ padding: '2rem 0', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
@@ -214,10 +262,25 @@ export function PaypalCheckout() {
 
         {!canCheckout ? (
           <p className="muted">Fill in the email and shipping address to enable payment.</p>
+        ) : nothingToPay ? (
+          <div className="admin-card" data-testid="nothing-to-pay">
+            <h4 style={{ marginTop: 0 }}>Nothing to pay</h4>
+            <p style={{ marginTop: 0 }}>
+              {appliedCoupon
+                ? <>Code <strong>{appliedCoupon.code}</strong> covers this order{shipCents > 0 ? ', shipping included' : ''}.</>
+                : 'This order has no charge.'}
+              {' '}No card or PayPal account is needed.
+            </p>
+            <button className="btn" style={{ width: '100%' }} disabled={placingFree} onClick={() => void placeFreeOrder()}>
+              {placingFree ? 'Placing order…' : 'Place order'}
+            </button>
+          </div>
+        ) : paypalMissing ? (
+          paypalMissing
         ) : (
           <PayPalScriptProvider
             options={{
-              clientId: paypalClientId,
+              clientId: paypalClientId!,
               currency: 'USD',
               intent: 'capture',
               components: `buttons${enableCard ? ',card-fields' : ''}`,
@@ -352,26 +415,29 @@ export function PaypalCheckout() {
             </div>
           )}
 
-          {appliedCoupon && appliedCoupon.discountCents > 0 && (
+          {appliedCoupon && goodsDiscount > 0 && (
             <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: 'green' }}>
               <span>Discount ({appliedCoupon.code})</span>
-              <span>−{formatMoney(appliedCoupon.discountCents)}</span>
+              <span>−{formatMoney(goodsDiscount)}</span>
+            </div>
+          )}
+          {appliedCoupon && shipDiscount > 0 && (
+            <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: 'green' }}>
+              <span>Shipping discount ({appliedCoupon.code})</span>
+              <span>−{formatMoney(shipDiscount)}</span>
             </div>
           )}
 
-          {(() => {
-            const ship = shipRates.find((r) => r.id === shipRateId);
-            const shipCents = ship?.rateCents ?? 0;
-            const discount = appliedCoupon?.discountCents ?? 0;
-            return (
-              <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
-                <span>Total</span><span>{formatMoney(Math.max(0, sub - discount) + shipCents)}</span>
-              </div>
-            );
-          })()}
-          <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>
-            Tax (if applicable) calculated on PayPal's review page.
-          </p>
+          <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
+            <span>Total</span><span data-testid="checkout-total">{formatMoney(totalDue)}</span>
+          </div>
+          {nothingToPay ? (
+            <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>Nothing to pay — place the order on the left.</p>
+          ) : (
+            <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>
+              Tax (if applicable) calculated on PayPal's review page.
+            </p>
+          )}
         </div>
       </aside>
     </div>

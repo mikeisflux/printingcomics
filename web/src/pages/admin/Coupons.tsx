@@ -8,6 +8,7 @@ interface Coupon {
   description: string | null;
   percentOffBps: number | null;
   amountOffCents: number | null;
+  appliesToShipping: boolean;
   minSubtotalCents: number;
   usageLimit: number | null;
   usageCount: number;
@@ -22,6 +23,7 @@ interface FormState {
   description: string;
   type: 'percent' | 'amount';
   value: string; // percent (e.g. "10") or dollars (e.g. "5.00")
+  appliesToShipping: boolean;
   minSubtotal: string; // dollars
   usageLimit: string; // integer or ''
   expiresAt: string; // 'YYYY-MM-DD' or ''
@@ -34,6 +36,7 @@ const emptyForm: FormState = {
   description: '',
   type: 'percent',
   value: '',
+  appliesToShipping: true,
   minSubtotal: '',
   usageLimit: '',
   expiresAt: '',
@@ -47,6 +50,7 @@ function toBody(f: FormState) {
     description: f.description.trim() || null,
     percentOffBps: f.type === 'percent' ? Math.round(value * 100) : null,
     amountOffCents: f.type === 'amount' ? Math.round(value * 100) : null,
+    appliesToShipping: f.appliesToShipping,
     minSubtotalCents: Math.round((parseFloat(f.minSubtotal) || 0) * 100),
     usageLimit: f.usageLimit.trim() ? Math.max(1, Math.floor(Number(f.usageLimit))) : null,
     expiresAt: f.expiresAt.trim() ? f.expiresAt : null,
@@ -64,6 +68,7 @@ function couponToForm(c: Coupon): FormState {
     value: isAmount
       ? ((c.amountOffCents ?? 0) / 100).toFixed(2)
       : String((c.percentOffBps ?? 0) / 100),
+    appliesToShipping: c.appliesToShipping ?? true,
     minSubtotal: c.minSubtotalCents ? (c.minSubtotalCents / 100).toFixed(2) : '',
     usageLimit: c.usageLimit != null ? String(c.usageLimit) : '',
     expiresAt: c.expiresAt ? c.expiresAt.slice(0, 10) : '',
@@ -72,8 +77,9 @@ function couponToForm(c: Coupon): FormState {
 }
 
 function valueLabel(c: Coupon): string {
-  if (c.percentOffBps) return `${(c.percentOffBps / 100).toFixed(c.percentOffBps % 100 ? 1 : 0)}% off`;
-  if (c.amountOffCents) return `${formatMoney(c.amountOffCents)} off`;
+  const scope = c.appliesToShipping === false ? ' items only' : '';
+  if (c.percentOffBps) return `${(c.percentOffBps / 100).toFixed(c.percentOffBps % 100 ? 1 : 0)}% off${scope}`;
+  if (c.amountOffCents) return `${formatMoney(c.amountOffCents)} off${scope}`;
   return '—';
 }
 
@@ -144,7 +150,9 @@ export function AdminCoupons() {
         Create codes customers can enter at checkout. A code's discount applies to the
         order subtotal and <strong>stacks on top of the site-wide discount</strong> — the
         site-wide discount is already reflected in each item's price, and the code comes
-        off after that.
+        off after that. With <strong>Also discounts shipping</strong> on, the same percent (or
+        whatever is left of a fixed amount) comes off the shipping charge, so a 100% code
+        makes the whole order free and the customer is never sent to PayPal.
       </p>
 
       <div className="admin-card" style={{ marginBottom: '2rem' }}>
@@ -190,6 +198,19 @@ export function AdminCoupons() {
             />
           </div>
         </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', margin: '.25rem 0 .75rem' }}>
+          <input
+            type="checkbox"
+            checked={form.appliesToShipping}
+            onChange={(e) => set({ appliesToShipping: e.target.checked })}
+            style={{ width: 'auto' }}
+          />
+          Also discounts shipping
+          <span className="muted" style={{ fontSize: '.85rem' }}>
+            — off: the code only applies to the items, the customer still pays shipping
+          </span>
+        </label>
 
         <div className="grid-2">
           <div>

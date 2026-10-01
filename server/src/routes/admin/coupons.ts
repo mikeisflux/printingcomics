@@ -16,6 +16,8 @@ const baseSchema = z.object({
   description: z.string().max(200).nullable().optional(),
   percentOffBps: z.number().int().min(0).max(10_000).nullable().optional(),
   amountOffCents: z.number().int().min(0).nullable().optional(),
+  // Also take the discount off shipping (a 100% code then makes the order free).
+  appliesToShipping: z.boolean().optional(),
   minSubtotalCents: z.number().int().min(0).optional(),
   usageLimit: z.number().int().min(1).nullable().optional(),
   // Accepts a date ("2026-12-31") or full ISO string; empty/null clears it.
@@ -46,6 +48,7 @@ router.post('/', async (req, res) => {
       description: data.description ?? null,
       percentOffBps: data.percentOffBps ?? null,
       amountOffCents: data.amountOffCents ?? null,
+      appliesToShipping: data.appliesToShipping ?? true,
       minSubtotalCents: data.minSubtotalCents ?? 0,
       usageLimit: data.usageLimit ?? null,
       expiresAt: parseExpiry(data.expiresAt) ?? null,
@@ -82,6 +85,7 @@ router.put('/:id', async (req, res) => {
       description: data.description === undefined ? undefined : data.description,
       percentOffBps: data.percentOffBps === undefined ? undefined : data.percentOffBps,
       amountOffCents: data.amountOffCents === undefined ? undefined : data.amountOffCents,
+      appliesToShipping: data.appliesToShipping === undefined ? undefined : data.appliesToShipping,
       minSubtotalCents: data.minSubtotalCents === undefined ? undefined : data.minSubtotalCents,
       usageLimit: data.usageLimit === undefined ? undefined : data.usageLimit,
       expiresAt: expiresAt === undefined ? undefined : expiresAt,

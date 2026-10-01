@@ -4,7 +4,7 @@ import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 import { paypalHttpError, paypalNetworkError } from './errors.js';
 import { sendOrderConfirmationEmail } from '../../order-emails.js';
 import { dispatchPartnerWebhook } from '../../partners.js';
-import { consumeStockForOrder } from '../../inventory.js';
+import { settlePaidOrder } from '../../paid-order.js';
 
 export interface CaptureResult {
   orderId: string;
@@ -106,7 +106,7 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
           rawPayload: data,
         },
       });
-      await consumeStockForOrder(payment.orderId).catch((e: any) => console.warn('[inventory] consume failed:', e?.message ?? e));
+      await settlePaidOrder(payment.orderId);
       await prisma.orderStatusEvent.create({
         data: {
           orderId: payment.orderId,

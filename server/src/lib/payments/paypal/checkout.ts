@@ -1,24 +1,10 @@
-import { randomInt } from 'node:crypto';
 import { prisma } from '../../../db.js';
-import { assertCartInStock, consumeStockForOrder } from '../../inventory.js';
-import { evaluateCoupon, incrementCouponUsage } from '../../coupons.js';
-import { itemsRequestProof } from '../../proofs.js';
-import { resolveShippingSelection } from '../../shipping-quote.js';
-import { uploadUrlsInOptions } from '../../order-files.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 import { paypalHttpError, paypalNetworkError } from './errors.js';
 import { HttpError } from '../../../middleware/error.js';
+import { computeCartTotals, createOrderFromCart, newOrderNumber, type CheckoutInput } from '../../checkout-order.js';
 
-export interface CreatePaypalOrderInput {
-  cartId: string;
-  email: string;
-  userId?: string;
-  shippingAddress: any;
-  billingAddress: any;
-  shippingMethodId?: string;
-  couponCode?: string;
-  notes?: string;
-}
+export type CreatePaypalOrderInput = CheckoutInput;
 
 export interface CreatePaypalOrderResult {
   paypalOrderId: string;
@@ -26,147 +12,28 @@ export interface CreatePaypalOrderResult {
   approveUrl: string | null;
 }
 
-async function computeTotals(
-  cartId: string,
-  couponCode?: string,
-  shippingMethodId?: string,
-  taxRegion?: string,
-  taxCountry?: string,
-  shippingAddress?: any,
-) {
-  const cart = await prisma.cart.findUnique({
-    where: { id: cartId },
-    include: { items: { include: { product: { include: { stockPool: true, package: true } }, variant: true } } },
-  });
-  if (!cart || cart.items.length === 0) {
-    throw new HttpError(400, 'Your cart is empty. Add something to it and come back to checkout.');
-  }
-
-  assertCartInStock(cart.items);
-
-  const subtotal = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
-
-  // Discount codes stack on top of the site-wide discount, which is already
-  // baked into each line's unitPriceCents (see routes/cart.ts).
-  const couponEval = await evaluateCoupon(couponCode, subtotal);
-  const discount = couponEval.discountCents;
-  const coupon = couponEval.ok ? couponEval.coupon : null;
-
-  // Re-derive shipping from the cart's real weight — never trust a price sent
-  // by the browser, and resolve live carrier rates (which aren't rows in the
-  // ShippingRate table) instead of silently charging zero.
-  let shipping = 0;
-  let shippingMethodName: string | undefined;
-  if (shippingMethodId) {
-    const resolved = await resolveShippingSelection({
-      optionId: shippingMethodId,
-      items: cart.items.map((i) => ({ quantity: i.quantity, options: i.options, product: i.product })),
-      address: {
-        line1: shippingAddress?.line1,
-        line2: shippingAddress?.line2,
-        city: shippingAddress?.city,
-        region: shippingAddress?.region ?? taxRegion,
-        postalCode: shippingAddress?.postalCode,
-        country: shippingAddress?.country ?? taxCountry ?? 'US',
-      },
-      subtotalCents: subtotal,
-    });
-    shipping = resolved.cents;
-    shippingMethodName = resolved.name ?? undefined;
-  }
-
-  let tax = 0;
-  if (taxRegion) {
-    const rate = await prisma.taxRate.findFirst({
-      where: { region: taxRegion, country: taxCountry ?? 'US' },
-    });
-    if (rate) tax = Math.floor(((subtotal - discount) * rate.rateBps) / 10_000);
-  }
-
-  const total = subtotal - discount + tax + shipping;
-  return { cart, subtotal, discount, tax, shipping, total, shippingMethodName, coupon };
-}
-
 /**
  * Creates a PayPal order via /v2/checkout/orders and a local pending Order row.
  * We use CAPTURE intent (immediate charge on approval) — no authorization holds.
  */
 export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<CreatePaypalOrderResult> {
-  const config = await getPayPalConfig();
+  // The cart, the code and the total are checked before PayPal comes into
+  // it, so a bad code or an order with nothing to pay gets its own message.
+  const totals = await computeCartTotals(input);
+  if (totals.total <= 0) {
+    // PayPal refuses a $0 order; the checkout page places these without a payment.
+    throw new HttpError(400, 'There is nothing to pay on this order — use the "Place order" button instead of PayPal.');
+  }
 
-  const totals = await computeTotals(
-    input.cartId,
-    input.couponCode,
-    input.shippingMethodId,
-    input.shippingAddress?.region,
-    input.shippingAddress?.country,
-    input.shippingAddress,
-  );
+  const config = await getPayPalConfig();
 
   // Pre-create the local Order in PENDING state — ties the PayPal order to a
   // row we own, so webhook + capture callbacks can reconcile.
-  const number = `PC-${Date.now().toString(36).toUpperCase()}-${randomInt(1000, 9999)}`;
-
-  // Link any customer-uploaded print files (referenced by URL in the cart-item
-  // options) to their order item, so staff can open them from the order.
-  // Matched by URL shape so it works for local, R2 and CDN-hosted uploads
-  // alike — the old `/uploads/customer/` regex silently linked nothing once
-  // uploads moved to R2.
-  const itemUploadIds = new Map<string, string[]>();
-  for (const ci of totals.cart.items) {
-    const urls = uploadUrlsInOptions(ci.options);
-    if (urls.length === 0) continue;
-    const medias = await prisma.mediaFile.findMany({ where: { url: { in: urls } }, select: { id: true } });
-    if (medias.length) itemUploadIds.set(ci.id, medias.map((m) => m.id));
-  }
-
-  const order = await prisma.$transaction(async (tx) => {
-    const created = await tx.order.create({
-      data: {
-        number,
-        userId: input.userId,
-        email: input.email.toLowerCase(),
-        subtotalCents: totals.subtotal,
-        discountCents: totals.discount,
-        taxCents: totals.tax,
-        shippingCents: totals.shipping,
-        totalCents: totals.total,
-        shippingAddress: input.shippingAddress as any,
-        billingAddress: input.billingAddress as any,
-        shippingMethod: totals.shippingMethodName,
-        notes: input.notes,
-        // If any book asked for a PDF or hard-copy proof, the order can't go to
-        // production until staff upload a proof and the customer approves it.
-        proofStatus: itemsRequestProof(totals.cart.items) ? 'requested' : null,
-        items: {
-          create: totals.cart.items.map((ci) => {
-            const uploadIds = itemUploadIds.get(ci.id) ?? [];
-            return {
-              productId: ci.productId,
-              variantId: ci.variantId,
-              name: ci.product.name + (ci.variant ? ` — ${ci.variant.label}` : ''),
-              options: ci.options ?? undefined,
-              quantity: ci.quantity,
-              unitPriceCents: ci.unitPriceCents,
-              totalCents: ci.unitPriceCents * ci.quantity,
-              files: uploadIds.length
-                ? { create: uploadIds.map((mediaFileId) => ({ mediaFileId, purpose: 'artwork' })) }
-                : undefined,
-            };
-          }),
-        },
-      },
-    });
-
-    await tx.payment.create({
-      data: {
-        orderId: created.id,
-        provider: 'paypal',
-        amountCents: totals.total,
-        status: 'PENDING',
-      },
-    });
-    return created;
+  const order = await createOrderFromCart(totals, input, {
+    number: newOrderNumber(),
+    status: 'PENDING',
+    paymentStatus: 'PENDING',
+    payment: { provider: 'paypal', amountCents: totals.total, status: 'PENDING' },
   });
 
   // From here on the local Order row already exists. If ANY step fails we must
@@ -183,6 +50,9 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
   }
   const amountStr = (totals.total / 100).toFixed(2);
 
+  // PayPal checks item_total + tax_total + shipping − discount = value, so the
+  // shipping figure is what the customer actually pays for it (the code's
+  // share already taken off) and the discount is the goods discount only.
   const orderPayload = {
     intent: 'CAPTURE',
     purchase_units: [
@@ -245,10 +115,9 @@ export async function createPaypalOrder(input: CreatePaypalOrderInput): Promise<
     data: { providerRef: paypalOrder.id },
   });
 
-  // Count the redemption now that the PayPal order exists. (Abandoned
-  // approvals are rare; counting at capture would require persisting the code
-  // on the order.)
-  if (totals.coupon) await incrementCouponUsage(totals.coupon.id);
+  // The discount code is counted as used when the order is paid (see
+  // lib/paid-order.ts), not here: the PayPal button calls this afresh on every
+  // click, so counting now burned one-use codes on a closed popup.
 
   return {
     paypalOrderId: paypalOrder.id,

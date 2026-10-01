@@ -339,6 +339,8 @@ model Order {
   shippingCents   Int           @default(0)
   taxCents        Int           @default(0)
   discountCents   Int           @default(0)
+  // The discount code behind discountCents; counted as a redemption once the order is paid.
+  couponCode      String?
   totalCents      Int
 
   shippingAddress Json
@@ -914,6 +916,9 @@ model Coupon {
   // Either percent off (bps) or fixed amount off (cents).
   percentOffBps  Int?
   amountOffCents Int?
+  // The discount also comes off the shipping charge (so a 100% code makes
+  // the whole order free). Off = goods only, the customer still pays shipping.
+  appliesToShipping Boolean @default(true)
   minSubtotalCents Int    @default(0)
   usageLimit     Int?
   usageCount     Int      @default(0)

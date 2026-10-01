@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../db.js';
-import { consumeStockForOrder } from '../../lib/inventory.js';
+import { settlePaidOrder } from '../../lib/paid-order.js';
 import { getPayPalAccessToken, getPayPalConfig } from '../../lib/payments/paypal/config.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { settleAdjustment } from '../../lib/order-adjustments.js';
@@ -111,7 +111,7 @@ router.post('/', async (req, res) => {
           console.warn('[paypal-webhook] settleAdjustment failed:', e?.message ?? e),
         );
       }
-      if (cas.count > 0) await consumeStockForOrder(payment.orderId).catch((e: any) => console.warn('[inventory] consume failed:', e?.message ?? e));
+      if (cas.count > 0) await settlePaidOrder(payment.orderId);
       // First-mover wins → fire partner webhook only if WE flipped the order.
       if (cas.count > 0 && payment.order.partnerId) {
         const refreshed = await prisma.order.findUnique({

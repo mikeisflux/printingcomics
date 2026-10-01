@@ -18,7 +18,7 @@ import { requireApiKey } from '../../middleware/api-key.js';
 import { computePricing, canonicalizeOptionValues, type PricingConfig } from '../../lib/pricing.js';
 import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
-import { evaluateCoupon, incrementCouponUsage } from '../../lib/coupons.js';
+import { evaluateCoupon, redeemCouponForOrder } from '../../lib/coupons.js';
 import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, itemsRequestProof } from '../../lib/proofs.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { createPaypalApprovalForOrder } from '../../lib/payments/paypal/approval-for-order.js';
@@ -281,10 +281,6 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     }
   }
 
-  // ---- Coupon ---- (stacks on top of the site-wide discount)
-  const couponEval = await evaluateCoupon(data.couponCode, subtotal);
-  const discount = couponEval.discountCents;
-
   // ---- Shipping ----
   let shippingCents = 0;
   let shippingMethodName: string | undefined;
@@ -294,6 +290,14 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     shippingCents = rate.rateCents;
     shippingMethodName = rate.name;
   }
+
+  // ---- Coupon ---- (stacks on top of the site-wide discount; may cover shipping too)
+  const couponEval = await evaluateCoupon(data.couponCode, subtotal, { shippingCents });
+  if (data.couponCode?.trim() && !couponEval.ok) {
+    throw new HttpError(400, `couponCode ${data.couponCode.trim().toUpperCase()}: ${couponEval.reason ?? 'not valid.'}`);
+  }
+  const discount = couponEval.discountCents;
+  shippingCents -= couponEval.shippingDiscountCents;
 
   // ---- Tax ----
   let taxCents = 0;
@@ -320,6 +324,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
       paymentStatus: data.markAsPaid ? 'CAPTURED' : 'PENDING',
       subtotalCents: subtotal,
       discountCents: discount,
+      couponCode: couponEval.ok ? couponEval.coupon?.code ?? null : null,
       taxCents,
       shippingCents,
       totalCents,
@@ -367,7 +372,10 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     include: { items: { include: { files: { include: { media: true } } } } },
   });
 
-  if (couponEval.ok && couponEval.coupon) await incrementCouponUsage(couponEval.coupon.id);
+  // The code counts as redeemed when the order is paid: right away for a
+  // pre-paid order, otherwise when its PayPal link is captured or it is
+  // marked paid (lib/paid-order.ts).
+  if (data.markAsPaid) await redeemCouponForOrder(order.id);
 
   if (data.markAsPaid) {
     await prisma.payment.create({
@@ -727,6 +735,7 @@ router.post(
         },
       }),
     ]);
+    await redeemCouponForOrder(order.id);
 
     if (req.apiKey!.partnerId) {
       const refreshed = await prisma.order.findUnique({

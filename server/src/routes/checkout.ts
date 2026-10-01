@@ -6,6 +6,7 @@ import { evaluateCoupon } from '../lib/coupons.js';
 import { quoteShipping } from '../lib/shipping-quote.js';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 import { ensureCustomerAccount } from '../lib/customer-accounts.js';
+import { placeFreeOrder } from '../lib/checkout-order.js';
 
 const router = Router();
 
@@ -73,21 +74,29 @@ router.post('/quote', async (req, res) => {
 
 // ---- Validate a discount code against the current cart ----
 // Lets checkout preview the discount before the buyer commits to payment.
+// `shippingCents` is the rate the buyer has picked so far, so the preview can
+// show what the code takes off shipping too (a 100% code: all of it).
 router.post('/validate-coupon', async (req, res) => {
-  const { code } = z.object({ code: z.string().min(1).max(64) }).parse(req.body);
+  const { code, shippingCents } = z.object({
+    code: z.string().min(1).max(64),
+    shippingCents: z.number().int().min(0).max(1_000_000).optional(),
+  }).parse(req.body);
   const cart = await findCart(req);
   if (!cart) throw new HttpError(400, 'No cart');
 
   const items = await prisma.cartItem.findMany({ where: { cartId: cart.id } });
   const subtotalCents = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
-  const result = await evaluateCoupon(code, subtotalCents);
+  const result = await evaluateCoupon(code, subtotalCents, { shippingCents: shippingCents ?? 0 });
   res.json({
     ok: result.ok,
     code: result.coupon?.code ?? code.trim().toUpperCase(),
     description: result.coupon?.description ?? null,
     discountCents: result.discountCents,
+    shippingDiscountCents: result.shippingDiscountCents,
+    appliesToShipping: result.coupon?.appliesToShipping ?? false,
     subtotalCents,
+    shippingCents: shippingCents ?? 0,
     reason: result.ok ? null : result.reason,
   });
 });
@@ -105,8 +114,10 @@ const createSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
-router.post('/paypal/create', async (req, res) => {
-  const data = createSchema.parse(req.body);
+type CreateBody = z.infer<typeof createSchema>;
+
+/** The checkout input every placement path shares, with the buyer's account resolved. */
+async function checkoutInput(req: any, data: CreateBody) {
   const cart = await findCart(req);
   if (!cart) throw new HttpError(400, 'No cart');
 
@@ -117,19 +128,28 @@ router.post('/paypal/create', async (req, res) => {
   // Every order belongs to an account: a guest gets one made for their email
   // right here (signed in later through emailed links until they choose a
   // password), so orders, proofs and file requests all live in one place.
-  const userId = req.session?.sub
+  const userId = (req.session?.sub as string | undefined)
     ?? (await ensureCustomerAccount(data.email, { firstName: data.shippingAddress.firstName, lastName: data.shippingAddress.lastName })).id;
 
-  const result = await createPaypalOrder({
-    cartId: cart.id,
-    userId,
-    email: data.email,
-    shippingAddress: data.shippingAddress,
-    billingAddress: data.billingAddress,
-    shippingMethodId: shippingMethodId ?? undefined,
-    couponCode: data.couponCode,
-    notes: data.notes,
-  });
+  return {
+    cart,
+    input: {
+      cartId: cart.id,
+      userId,
+      email: data.email,
+      shippingAddress: data.shippingAddress,
+      billingAddress: data.billingAddress,
+      shippingMethodId: shippingMethodId ?? undefined,
+      couponCode: data.couponCode,
+      notes: data.notes,
+    },
+  };
+}
+
+router.post('/paypal/create', async (req, res) => {
+  const data = createSchema.parse(req.body);
+  const { input } = await checkoutInput(req, data);
+  const result = await createPaypalOrder(input);
 
   // The cart is deliberately NOT emptied here. The PayPal SDK calls this
   // endpoint afresh on every click of the Pay button, so emptying the cart
@@ -137,6 +157,18 @@ router.post('/paypal/create', async (req, res) => {
   // or failed 3-D Secure prompt left them with an empty cart and a 500 on
   // every retry. The order row already holds its own copy of the lines; the
   // cart is cleared once the capture succeeds below.
+  res.json(result);
+});
+
+// ---- Place an order with nothing to pay ----
+// A discount code that covers the goods and the shipping leaves $0.00: PayPal
+// refuses such an order, so it is placed here, PAID from the start. The total
+// is recomputed server-side; a cart with a balance is refused.
+router.post('/free', async (req, res) => {
+  const data = createSchema.parse(req.body);
+  const { cart, input } = await checkoutInput(req, data);
+  const result = await placeFreeOrder(input);
+  await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
   res.json(result);
 });
 

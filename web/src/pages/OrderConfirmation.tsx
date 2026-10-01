@@ -47,6 +47,7 @@ interface Order {
   shippingCents: number;
   taxCents: number;
   discountCents: number;
+  couponCode?: string | null;
   trackingNumber?: string | null;
   shippingMethod?: string | null;
   shippingAddress: ShippingAddress;
@@ -157,6 +158,11 @@ export function OrderConfirmation() {
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
         </div>
+        {paid && order.totalCents === 0 && (
+          <p className="muted" style={{ margin: '.75rem auto 0', maxWidth: 560 }}>
+            Nothing was charged{order.couponCode ? <> — code <strong>{order.couponCode}</strong> covered this order</> : null}.
+          </p>
+        )}
         {!paid && !isCancelled && (
           <div style={{ background: '#fff3cd', border: '1px solid #f0d58c', borderRadius: 8, padding: '.75rem 1rem', margin: '1rem auto 0', maxWidth: 560, textAlign: 'left', fontSize: '.92rem' }}>
             <strong>Your payment is still processing at PayPal.</strong> Some payments (bank transfers, payments under review) take a little while to clear. We’ll email you the moment it does, and nothing goes to print until then. <strong>Please don’t pay again</strong> — if the payment doesn’t clear, we’ll let you know.
@@ -278,9 +284,12 @@ export function OrderConfirmation() {
         })}
         <div className="spread" style={{ padding: '.5rem 0' }}><span>Subtotal</span><span>{formatMoney(order.subtotalCents)}</span></div>
         {order.discountCents > 0 && (
-          <div className="spread" style={{ padding: '.5rem 0' }}><span>Discount</span><span>−{formatMoney(order.discountCents)}</span></div>
+          <div className="spread" style={{ padding: '.5rem 0' }}><span>Discount{order.couponCode ? ` (${order.couponCode})` : ''}</span><span>−{formatMoney(order.discountCents)}</span></div>
         )}
-        <div className="spread" style={{ padding: '.5rem 0' }}><span>Shipping</span><span>{formatMoney(order.shippingCents)}</span></div>
+        <div className="spread" style={{ padding: '.5rem 0' }}>
+          <span>Shipping{order.shippingMethod ? <span className="muted"> · {order.shippingMethod}</span> : null}</span>
+          <span>{order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</span>
+        </div>
         <div className="spread" style={{ padding: '.5rem 0' }}><span>Tax</span><span>{formatMoney(order.taxCents)}</span></div>
         <div className="spread" style={{ padding: '.75rem 0', borderTop: '1px solid var(--border)', fontWeight: 700, fontSize: '1.1rem' }}>
           <span>Total</span><span>{formatMoney(order.totalCents)}</span>
