@@ -811,60 +811,51 @@ function tmailerSupplies(): SupplyDef[] {
 const ARMOR_UNIT_WEIGHT_OZ = 0.8;
 const armorPackGrams = (count: number) => Math.round(count * ARMOR_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
 
-const SUPPLIES: SupplyDef[] = [
-  {
-    slug: 'comic-armor-10-pack',
-    name: 'Comic Armor — 10 Pack',
-    shortDescription: 'Ten Comic Armor protective sleeves for shipping and storing comics.',
-    description:
-      'Comic Armor wraps each book in a cushioned protective sleeve so it survives the trip. '
-      + 'Slide the bagged and boarded comic in, seal it, and ship — no loose bubble wrap, no shifting, '
-      + 'no corner dings. Ten sleeves per pack.',
-    priceCents: cents(9.99),
-    weightGrams: armorPackGrams(10),
-    images: ['/products/comic-armor-10-pack.webp'],
-    faq: [
-      { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
-      { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
-    ],
-  },
-  {
-    slug: 'comic-armor-20-pack',
-    name: 'Comic Armor — 20 Pack',
-    shortDescription: 'Twenty Comic Armor protective sleeves — the better value per sleeve.',
-    description:
-      'The 20-pack of Comic Armor protective sleeves. Same cushioned protection as the 10-pack, '
-      + 'sized for sellers and creators shipping in volume.',
-    priceCents: cents(19.99),
-    weightGrams: armorPackGrams(20),
-    images: ['/products/comic-armor-20-pack.webp'],
-    faq: [
-      { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
-      { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
-    ],
-  },
-  {
-    slug: 'comic-armor-270-pack',
-    name: 'Comic Armor — 270 Pack',
-    sku: 'ARMOR-270',
-    shortDescription: 'A full case of 270 Comic Armor sleeves — 20¢ a sleeve, for stores and sellers shipping every week.',
-    description:
-      'The case of Comic Armor. Two hundred and seventy cushioned protective sleeves, the same '
-      + 'protection as the 10- and 20-packs at the lowest price per sleeve we offer: slide the bagged '
-      + 'and boarded comic in, seal it, ship it — no loose bubble wrap, no shifting, no corner dings. '
-      + 'For shops, convention tables and anyone moving books by the long box.',
-    // 270 × $0.20 = $54.00.
-    priceCents: Math.round(cents(0.20) * 270),
-    weightGrams: armorPackGrams(270),
-    // Same photo as the 20-pack until the case gets its own.
-    images: ['/products/comic-armor-270-pack.webp'],
-    faq: [
-      { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
-      { q: 'How is this priced?', a: 'Twenty cents a sleeve — 270 sleeves for $54.00, against 99¢ a sleeve in the 10-pack.' },
-      { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
-    ],
-  },
-];
+/**
+ * Comic Armor packs mirror the mailer packs at twice the count (a mailer
+ * holds up to ten comics; two sleeves a mailer is the usual pairing):
+ * 20 / 50 / 100 / 200 / 270. Priced per sleeve — 25¢ across the board,
+ * with the one price break at the 270 case (20¢).
+ */
+const ARMOR_PER_SLEEVE_USD = 0.25;
+const ARMOR_CASE_PER_SLEEVE_USD = 0.20;
+const ARMOR_PACKS = [20, 50, 100, 200, 270];
+
+function armorSupplies(): SupplyDef[] {
+  const faq = [
+    { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
+    { q: 'How is this priced?', a: 'Twenty-five cents a sleeve in every pack; the 270 case drops to twenty cents a sleeve.' },
+    { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
+  ];
+  return ARMOR_PACKS.map((n) => {
+    const perSleeve = n >= 270 ? ARMOR_CASE_PER_SLEEVE_USD : ARMOR_PER_SLEEVE_USD;
+    const isCase = n >= 270;
+    return {
+      slug: `comic-armor-${n}-pack`,
+      name: `Comic Armor — ${n} Pack`,
+      sku: `ARMOR-${n}`,
+      shortDescription: isCase
+        ? `A full case of ${n} Comic Armor sleeves — 20¢ a sleeve, for stores and sellers shipping every week.`
+        : `${n} Comic Armor protective sleeves for shipping and storing comics — 25¢ a sleeve.`,
+      description:
+        'Comic Armor wraps each book in a cushioned protective sleeve so it survives the trip. '
+        + 'Slide the bagged and boarded comic in, seal it, and ship — no loose bubble wrap, no shifting, '
+        + `no corner dings. ${n} sleeves per pack`
+        + (isCase ? ' — the case, at the lowest price per sleeve we offer.' : '.'),
+      // n × per-sleeve price, in integer cents.
+      priceCents: Math.round(cents(perSleeve) * n),
+      weightGrams: armorPackGrams(n),
+      // One photo for the range until each pack has its own.
+      images: [n === 270 ? '/products/comic-armor-270-pack.webp' : '/products/comic-armor-20-pack.webp'],
+      faq,
+    };
+  });
+}
+
+const SUPPLIES: SupplyDef[] = armorSupplies();
+
+/** Listings replaced by the current range: kept for old orders, hidden from the store. */
+const RETIRED_SUPPLY_SLUGS = ['comic-armor-10-pack'];
 
 /** The pool's id, creating it with its starting count only when it does not exist yet. */
 async function ensureStockPool(pool: NonNullable<SupplyDef['stockPool']>): Promise<string> {
@@ -1012,6 +1003,10 @@ async function main() {
     await buildSupplyProduct(def, categoryIds['shipping-supplies']!);
     console.log(`  built ${def.slug}`);
   }
+  // Pack sizes that no longer exist stay in the database for the orders that
+  // bought them, but leave the storefront.
+  const retired = await prisma.product.updateMany({ where: { slug: { in: RETIRED_SUPPLY_SLUGS }, active: true }, data: { active: false } });
+  if (retired.count) console.log(`  retired ${retired.count} old supply listing(s): ${RETIRED_SUPPLY_SLUGS.join(', ')}`);
 
   // Retire any legacy per-size 11×17 rows that weren't reused above (e.g. a
   // prior run already created the new slug). Deactivate + detach rather than
