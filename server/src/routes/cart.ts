@@ -56,6 +56,7 @@ async function loadCartFull(cartId: string) {
             include: {
               images: { orderBy: { sortOrder: 'asc' }, take: 1 },
               options: { include: { values: true } },
+              categories: { select: { category: { select: { slug: true } } } },
             },
           },
           variant: true,
@@ -78,6 +79,74 @@ const addSchema = z.object({
   options: z.record(z.string(), z.string()).optional(),
 });
 
+type TitleOption = { name: string; internalKey: string | null; type: string; required: boolean };
+
+/**
+ * Every book needs its own title. The title is the only thing that tells
+ * two lines of the same product apart — on the order, in the proof queue
+ * and in the customer's proof emails. One customer once titled twelve
+ * different books identically and every proof came back ambiguous, so a
+ * blank or repeated title is refused here, whatever the browser allowed.
+ * Returns the options with the title trimmed. `exceptItemId` is the line
+ * being edited (it may keep its own title).
+ */
+async function guardTitle(cartId: string, options: Record<string, string> | undefined, productOptions: TitleOption[], exceptItemId?: string) {
+  const titleOpt = productOptions.find((o) => o.type === 'TEXT' && optionKey(o) === 'title');
+  if (!titleOpt) return options;
+  const title = (options?.['title'] ?? '').trim();
+  if (!title && titleOpt.required) {
+    throw new HttpError(400, `Please give this book a title (${titleOpt.name}) so we can tell it apart from the others in your order.`);
+  }
+  if (!title) return options;
+  const inCart = await prisma.cartItem.findMany({
+    where: { cartId, ...(exceptItemId ? { id: { not: exceptItemId } } : {}) },
+    select: { options: true, product: { select: { slug: true } } },
+  });
+  const clash = inCart.find((it) => it.product.slug !== PROOF_PRODUCT_SLUG && itemTitle(it).toLowerCase() === title.toLowerCase());
+  if (clash) {
+    throw new HttpError(400, `You already have “${title}” in your cart. Each book needs its own title — add the issue number, volume or cover type (for example “${title} — Raised Metal cover”), or change the quantity of the one already in your cart instead.`);
+  }
+  return { ...(options ?? {}), title };
+}
+
+/** Same coercion the pricing engine expects: integer-looking strings become numbers. */
+function pricingInputs(options: Record<string, string> | null | undefined): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(options ?? {})) {
+    const n = Number(v);
+    out[k] = Number.isFinite(n) && !Number.isNaN(n) && typeof v === 'string' && v.trim().match(/^-?\d+$/) ? n : v;
+  }
+  return out;
+}
+
+/**
+ * Hard-copy proof: a separate, server-priced line — one printed copy of THIS
+ * book (single-copy price, no volume discount) plus a flat proof fee. Kept in
+ * step with the book line: created when the toggle is on, repriced when the
+ * book changes, removed when the toggle goes off.
+ */
+async function syncProofLine(cartId: string, itemId: string, product: { id: string; name: string; priceCents: number; volumeTiers: unknown; pricingConfig: unknown }, options: Record<string, string> | undefined, siteDiscountBps: number) {
+  const existing = await prisma.cartItem.findFirst({ where: { cartId, options: { path: ['proof_for_item'], equals: itemId } } });
+  if (!isProofRequested(options?.['hard_copy_proof'])) {
+    if (existing) await prisma.cartItem.delete({ where: { id: existing.id } });
+    return;
+  }
+  const cfg = product.pricingConfig as PricingConfig | null;
+  const isConfigurator = !!(cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers));
+  const singleCopyCents = isConfigurator
+    ? computePricing(cfg!, { quantity: 1, options: pricingInputs(options), siteDiscountBps }).unitCents
+    : priceForQuantity(product.priceCents, 1, product.volumeTiers as VolumeTier[] | null);
+  const unitPriceCents = singleCopyCents + HARD_COPY_PROOF_FEE_CENTS;
+  if (existing) {
+    await prisma.cartItem.update({ where: { id: existing.id }, data: { unitPriceCents, options: { proof_kind: 'hard-copy', proof_for_item: itemId, book: product.name } } });
+    return;
+  }
+  const proofProduct = await getOrCreateProofProduct();
+  await prisma.cartItem.create({
+    data: { cartId, productId: proofProduct.id, quantity: 1, unitPriceCents, options: { proof_kind: 'hard-copy', proof_for_item: itemId, book: product.name } },
+  });
+}
+
 router.post('/items', async (req, res) => {
   const data = addSchema.parse(req.body);
   const cart = await getOrCreateCart(req, res);
@@ -91,29 +160,7 @@ router.post('/items', async (req, res) => {
     throw new HttpError(400, `Minimum quantity is ${product.minQuantity}`);
   }
 
-  // Every book needs its own title. The title is the only thing that tells
-  // two lines of the same product apart — on the order, in the proof queue
-  // and in the customer's proof emails. One customer once titled twelve
-  // different books identically and every proof came back ambiguous, so a
-  // blank or repeated title is refused here, whatever the browser allowed.
-  const titleOpt = product.options.find((o) => o.type === 'TEXT' && optionKey(o) === 'title');
-  if (titleOpt) {
-    const title = (data.options?.['title'] ?? '').trim();
-    if (!title && titleOpt.required) {
-      throw new HttpError(400, `Please give this book a title (${titleOpt.name}) so we can tell it apart from the others in your order.`);
-    }
-    if (title) {
-      data.options = { ...(data.options ?? {}), title };
-      const inCart = await prisma.cartItem.findMany({
-        where: { cartId: cart.id },
-        select: { options: true, product: { select: { slug: true } } },
-      });
-      const clash = inCart.find((it) => it.product.slug !== PROOF_PRODUCT_SLUG && itemTitle(it).toLowerCase() === title.toLowerCase());
-      if (clash) {
-        throw new HttpError(400, `You already have “${title}” in your cart. Each book needs its own title — add the issue number, volume or cover type (for example “${title} — Raised Metal cover”), or change the quantity of the one already in your cart instead.`);
-      }
-    }
-  }
+  data.options = await guardTitle(cart.id, data.options, product.options);
 
   let unitPriceCents = product.priceCents;
   let variantId: string | undefined = data.variantId;
@@ -136,11 +183,7 @@ router.post('/items', async (req, res) => {
   const cfg = product.pricingConfig as PricingConfig | null;
   const isConfigurator = !!(cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers));
   const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
-  const optionInputs: Record<string, string | number> = {};
-  for (const [k, v] of Object.entries(data.options ?? {})) {
-    const n = Number(v);
-    optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
-  }
+  const optionInputs = pricingInputs(data.options);
   const baseUnit = unitPriceCents;
   if (isConfigurator) {
     unitPriceCents = computePricing(cfg!, { quantity: data.quantity, options: optionInputs, siteDiscountBps }).unitCents;
@@ -159,23 +202,7 @@ router.post('/items', async (req, res) => {
     },
   });
 
-  // Hard-copy proof: add a separate, server-priced line — one printed copy of
-  // THIS book (single-copy price, no volume discount) plus a flat proof fee.
-  if (isProofRequested(data.options?.['hard_copy_proof'])) {
-    const singleCopyCents = isConfigurator
-      ? computePricing(cfg!, { quantity: 1, options: optionInputs, siteDiscountBps }).unitCents
-      : priceForQuantity(baseUnit, 1, product.volumeTiers as VolumeTier[] | null);
-    const proofProduct = await getOrCreateProofProduct();
-    await prisma.cartItem.create({
-      data: {
-        cartId: cart.id,
-        productId: proofProduct.id,
-        quantity: 1,
-        unitPriceCents: singleCopyCents + HARD_COPY_PROOF_FEE_CENTS,
-        options: { proof_kind: 'hard-copy', proof_for_item: item.id, book: product.name },
-      },
-    });
-  }
+  await syncProofLine(cart.id, item.id, product, data.options, siteDiscountBps);
 
   await prisma.cart.update({ where: { id: cart.id }, data: { updatedAt: new Date() } });
 
@@ -183,42 +210,72 @@ router.post('/items', async (req, res) => {
   res.json({ cart: full, addedItemId: item.id });
 });
 
-const updateSchema = z.object({ quantity: z.number().int().min(1).max(10_000) });
+const updateSchema = z.object({
+  quantity: z.number().int().min(1).max(10_000).optional(),
+  // Editing a configured book from the cart: the full new set of selections,
+  // and the product when the trim size was changed in the configurator.
+  options: z.record(z.string(), z.string()).optional(),
+  productId: z.string().optional(),
+});
+
+const editProductInclude = {
+  stockPool: true,
+  options: { select: { name: true, internalKey: true, type: true, required: true } },
+} as const;
 
 router.patch('/items/:id', async (req, res) => {
-  const { quantity } = updateSchema.parse(req.body);
+  const data = updateSchema.parse(req.body);
   const cart = await getOrCreateCart(req, res);
   const item = await prisma.cartItem.findFirst({
     where: { id: req.params.id, cartId: cart.id },
-    include: { product: { include: { stockPool: true } }, variant: true },
+    include: { product: { include: editProductInclude }, variant: true },
   });
   if (!item) throw new HttpError(404, 'Cart item not found');
+  if (item.product.slug === PROOF_PRODUCT_SLUG && (data.options || data.productId)) throw new HttpError(400, 'Edit the book this proof belongs to instead.');
 
-  assertInStock(item.product, quantity, item.variant, await unitsAlreadyInCart(cart.id, item.product, item.variantId, item.id));
+  // Switching product (another trim size) only makes sense together with a
+  // fresh set of selections; the old variant, if any, no longer applies.
+  const switching = !!data.productId && data.productId !== item.productId;
+  if (switching && data.options === undefined) throw new HttpError(400, 'Send the new selections along with the new product.');
+  const product = switching
+    ? await prisma.product.findUnique({ where: { id: data.productId! }, include: editProductInclude })
+    : item.product;
+  if (!product || !product.active) throw new HttpError(404, 'Product not found');
+  const variant = switching ? null : item.variant;
 
-  const baseCents = item.variant?.priceCents ?? item.product.priceCents;
+  const quantity = data.quantity ?? item.quantity;
+  if (quantity < product.minQuantity) throw new HttpError(400, `Minimum quantity is ${product.minQuantity}`);
+  const options = data.options !== undefined
+    ? await guardTitle(cart.id, data.options, product.options, item.id)
+    : ((item.options as Record<string, string> | null) ?? undefined);
+
+  assertInStock(product, quantity, variant, await unitsAlreadyInCart(cart.id, product, variant?.id, item.id));
+
+  const baseCents = variant?.priceCents ?? product.priceCents;
   let unitPriceCents: number;
-  const cfg = item.product.pricingConfig as PricingConfig | null;
-  if (item.product.slug === PROOF_PRODUCT_SLUG) {
+  const cfg = product.pricingConfig as PricingConfig | null;
+  const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
+  if (product.slug === PROOF_PRODUCT_SLUG) {
     // Proof lines carry a fixed, server-computed price — never recompute.
     unitPriceCents = item.unitPriceCents;
   } else if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
-    const optionInputs: Record<string, string | number> = {};
-    const stored = (item.options as Record<string, string> | null) ?? {};
-    for (const [k, v] of Object.entries(stored)) {
-      const n = Number(v);
-      optionInputs[k] = Number.isFinite(n) && !Number.isNaN(n) && v?.trim().match(/^-?\d+$/) ? n : v;
-    }
-    const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
-    unitPriceCents = computePricing(cfg, { quantity, options: optionInputs, siteDiscountBps }).unitCents;
+    unitPriceCents = computePricing(cfg, { quantity, options: pricingInputs(options), siteDiscountBps }).unitCents;
   } else {
-    unitPriceCents = priceForQuantity(baseCents, quantity, item.product.volumeTiers as VolumeTier[] | null);
+    unitPriceCents = priceForQuantity(baseCents, quantity, product.volumeTiers as VolumeTier[] | null);
   }
 
   await prisma.cartItem.update({
     where: { id: item.id },
-    data: { quantity, unitPriceCents },
+    data: {
+      quantity,
+      unitPriceCents,
+      ...(data.options !== undefined ? { options: options ?? {} } : {}),
+      ...(switching ? { productId: product.id, variantId: null } : {}),
+    },
   });
+  if (data.options !== undefined && product.slug !== PROOF_PRODUCT_SLUG) {
+    await syncProofLine(cart.id, item.id, product, options, siteDiscountBps);
+  }
   await prisma.cart.update({ where: { id: cart.id }, data: { updatedAt: new Date() } });
 
   const full = await loadCartFull(cart.id);

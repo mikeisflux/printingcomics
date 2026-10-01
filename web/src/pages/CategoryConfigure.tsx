@@ -1,9 +1,10 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { QuantityInput } from '../components/QuantityInput';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { api } from '../api/client';
-import { useCart } from '../store/cart';
+import { useCart, type CartItem } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
 import { useSiteDiscount } from '../lib/useSiteDiscount';
 import '../styles/configurator.css';
@@ -133,10 +134,31 @@ function colorForCover(label: string): string {
   return '#c61a22'; // brand red default
 }
 
+/** Default selections for a product: the first value of every tile/select/radio option. */
+function defaultSelections(product: ProductDetail): Record<string, string> {
+  const init: Record<string, string> = {};
+  for (const opt of product.options) {
+    if ((opt.type === 'TILES' || opt.type === 'SELECT' || opt.type === 'RADIO') && opt.values.length > 0) {
+      init[keyOf(opt)] = opt.values[0]!.label;
+    }
+  }
+  return init;
+}
+
 export function CategoryConfigure() {
   const { category: categorySlug } = useParams();
   const navigate = useNavigate();
-  const { add } = useCart();
+  const { add, update, cart, load } = useCart();
+  // `/shop/<category>?edit=<cart line>`: the cart's Edit button reopens a
+  // configured book here with its selections filled in; saving updates that
+  // line instead of adding another.
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('edit');
+  const [editing, setEditing] = useState<CartItem | null>(null);
+  const [editGone, setEditGone] = useState(false);
+  // Selections to apply once the edited line's product becomes active (the
+  // product effect below would otherwise reseed defaults over them).
+  const pendingEdit = useRef<{ selections: Record<string, string>; qty: number } | null>(null);
 
   const [category, setCategory] = useState<Category | null>(null);
   const [products, setProducts] = useState<ProductDetail[]>([]);
@@ -188,10 +210,10 @@ export function CategoryConfigure() {
       .then((r) => {
         setCategory(r.category);
         setProducts(r.products);
-        if (r.products.length > 0) {
-          setProductId(r.products[0]!.id);
-          setQty(r.products[0]!.minQuantity);
-        }
+        // The product effect below seeds selections and quantity — setting the
+        // quantity here as well would wipe an edited line's quantity when the
+        // effect ran twice (React StrictMode) or the fetch raced the cart.
+        if (r.products.length > 0) setProductId(r.products[0]!.id);
       })
       .catch(() => setLoadError(true));
   }, [categorySlug]);
@@ -201,15 +223,56 @@ export function CategoryConfigure() {
   // When the active product changes, seed default selections from non-required tile/select values.
   useEffect(() => {
     if (!product) return;
-    const init: Record<string, string> = {};
-    for (const opt of product.options) {
-      if ((opt.type === 'TILES' || opt.type === 'SELECT' || opt.type === 'RADIO') && opt.values.length > 0) {
-        init[keyOf(opt)] = opt.values[0]!.label;
-      }
+    const pending = pendingEdit.current;
+    if (pending) {
+      pendingEdit.current = null;
+      setSelections(pending.selections);
+      setQty(pending.qty);
+      return;
     }
-    setSelections(init);
+    const defaults = defaultSelections(product);
+    if (editing) {
+      // Changing trim size while editing a book: it is still the same book,
+      // so keep the title, files, toggles and any tile the new size also
+      // offers, and the quantity — only what no longer applies falls back.
+      const kept: Record<string, string | number | boolean> = { ...defaults };
+      for (const opt of product.options) {
+        const k = keyOf(opt);
+        const prev = selections[k];
+        if (prev === undefined) continue;
+        if (opt.values.length === 0 || opt.values.some((v) => v.label === String(prev))) kept[k] = prev;
+      }
+      setSelections(kept);
+      setQty(Math.max(product.minQuantity, qty));
+      return;
+    }
+    setSelections(defaults);
     setQty(product.minQuantity);
   }, [productId]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Edit mode: once the category's products and the cart are both here, make
+  // the edited line's product active and restore its selections and quantity.
+  const appliedEdit = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editId || products.length === 0) return;
+    if (!cart) { void load(); return; }
+    if (appliedEdit.current === editId) return;
+    appliedEdit.current = editId;
+    const item = cart.items.find((i) => i.id === editId);
+    const target = item ? products.find((p) => p.id === item.productId) : undefined;
+    if (!item || !target) { setEditGone(true); return; }
+    setEditing(item);
+    // Hidden dependent options were not saved with the line; seed their
+    // defaults underneath so revealing one later starts from a valid value.
+    const payload = { selections: { ...defaultSelections(target), ...(item.options ?? {}) }, qty: item.quantity };
+    if (productId === target.id) {
+      setSelections(payload.selections);
+      setQty(payload.qty);
+    } else {
+      pendingEdit.current = payload;
+      setProductId(target.id);
+    }
+  }, [editId, products, cart, load, productId]);
 
   const visibleOptions = useMemo(() => {
     if (!product) return [];
@@ -380,6 +443,11 @@ export function CategoryConfigure() {
         if (!visibleKeys.has(k)) continue;
         optionsForCart[k] = String(v);
       }
+      if (editing) {
+        await update(editing.id, qty, optionsForCart, product.id !== editing.productId ? product.id : undefined);
+        navigate('/cart');
+        return;
+      }
       await add({ productId: product.id, quantity: qty, options: optionsForCart });
       // Confetti burst from the button position
       const rect = cartBtnRef.current?.getBoundingClientRect();
@@ -394,7 +462,7 @@ export function CategoryConfigure() {
       });
       setTimeout(() => navigate('/cart'), 650);
     } catch (e: any) {
-      setError(e.message ?? 'Could not add to cart');
+      setError(e.message ?? (editing ? 'Could not update your cart' : 'Could not add to cart'));
     } finally {
       setAdding(false);
     }
@@ -493,9 +561,11 @@ export function CategoryConfigure() {
             </div>
           ) : (
             <>
-              <Suspense fallback={<div style={{ height: 520, background: '#0f172a', borderRadius: 16 }} />}>
-                {bookSpec && <BookPreview3D spec={bookSpec} />}
-              </Suspense>
+              <ErrorBoundary fallback={<div style={{ height: 520, background: '#0f172a', borderRadius: 16 }} />}>
+                <Suspense fallback={<div style={{ height: 520, background: '#0f172a', borderRadius: 16 }} />}>
+                  {bookSpec && <BookPreview3D spec={bookSpec} />}
+                </Suspense>
+              </ErrorBoundary>
               <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '.85rem', color: 'var(--muted)' }}>
                 Live preview — drag to orbit, scroll to zoom
               </div>
@@ -543,6 +613,20 @@ export function CategoryConfigure() {
 
           {product && (
             <div className="admin-card pc-summary-card" style={{ marginTop: '1rem' }}>
+              {editing && (
+                <div className="pc-editing-note" style={{ marginBottom: '.75rem', padding: '.5rem .75rem', borderRadius: 8, background: 'var(--surface-2, #f3f4f6)', fontSize: '.85rem' }}>
+                  <strong>Editing a book in your cart</strong>
+                  {editing.options?.title && <> — “{String(editing.options.title)}”</>}
+                  <div style={{ marginTop: '.25rem' }}>
+                    <Link to="/cart">Cancel and keep it as it was</Link>
+                  </div>
+                </div>
+              )}
+              {editGone && (
+                <div className="error" style={{ marginBottom: '.75rem', fontSize: '.85rem' }}>
+                  That cart line is no longer there, so anything you add here will be a new line. <Link to="/cart">Back to cart</Link>
+                </div>
+              )}
               <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em' }}>
                 Order summary
               </div>
@@ -577,7 +661,7 @@ export function CategoryConfigure() {
                   disabled={adding}
                   onClick={() => void addToCart()}
                 >
-                  {adding ? 'Adding…' : 'Add to cart →'}
+                  {editing ? (adding ? 'Updating…' : 'Update cart →') : (adding ? 'Adding…' : 'Add to cart →')}
                 </button>
               </div>
               {error && <div className="error" style={{ marginTop: '.5rem' }}>{error}</div>}

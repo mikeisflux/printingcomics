@@ -15,6 +15,9 @@ export interface CartItem {
     images: { url: string }[];
     backorder?: boolean;
     backorderEta?: string | null;
+    /** The configurator's options, when the product has any — editable from the cart. */
+    options?: { id: string; name: string; internalKey?: string | null; type: string; values: { label: string; subLabel?: string | null }[] }[];
+    categories?: { category: { slug: string } }[];
   };
   variant?: { id: string; label: string } | null;
 }
@@ -34,7 +37,11 @@ interface CartState {
     quantity: number;
     options?: Record<string, string>;
   }) => Promise<void>;
-  update: (itemId: string, quantity: number) => Promise<void>;
+  /**
+   * Change the quantity, or (for a configured book) the whole set of
+   * selections — and, when the trim size changed while editing, the product.
+   */
+  update: (itemId: string, quantity: number, options?: Record<string, string>, productId?: string) => Promise<void>;
   remove: (itemId: string) => Promise<void>;
   subtotal: () => number;
 }
@@ -55,8 +62,11 @@ export const useCart = create<CartState>((set, get) => ({
     const { cart } = await api.post<{ cart: Cart }>('/cart/items', input);
     set({ cart });
   },
-  update: async (itemId, quantity) => {
-    const { cart } = await api.patch<{ cart: Cart }>(`/cart/items/${itemId}`, { quantity });
+  update: async (itemId, quantity, options, productId) => {
+    const body: Record<string, unknown> = { quantity };
+    if (options) body.options = options;
+    if (productId) body.productId = productId;
+    const { cart } = await api.patch<{ cart: Cart }>(`/cart/items/${itemId}`, body);
     set({ cart });
   },
   remove: async (itemId) => {
