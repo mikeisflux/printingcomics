@@ -144,7 +144,7 @@ function PackagesTab() {
           <label style={{ marginTop: '1rem', fontWeight: 600 }}>Weight</label>
           <div className="grid-2">
             <div><label>Empty package weight (oz)</label><input type="number" step="0.1" value={draft.emptyWeightOz} onChange={(e) => setDraft({ ...draft, emptyWeightOz: Number(e.target.value) })} /></div>
-            <div><label>Max packed weight (oz, optional)</label><input type="number" step="0.1" value={draft.maxWeightOz ?? ''} onChange={(e) => setDraft({ ...draft, maxWeightOz: e.target.value ? Number(e.target.value) : undefined })} /></div>
+            <div><label>Max packed weight (oz, optional)</label><input type="number" step="0.1" value={draft.maxWeightOz ?? ''} placeholder="800 (50 lb) if blank" onChange={(e) => setDraft({ ...draft, maxWeightOz: e.target.value ? Number(e.target.value) : undefined })} /></div>
           </div>
 
           <div className="grid-2" style={{ marginTop: '.5rem' }}>

@@ -6,8 +6,8 @@ import {
   epCreateShipment, epBuyShipment, epFetchShipment, epRefundShipment, epTestConnection,
   type EpCreateShipmentInput, type EpAddress,
 } from '../../lib/easypost.js';
-import { perUnitWeightGrams } from '../../lib/shipping-weight.js';
-import { autoPack, type PackageOption } from '../../lib/auto-pack.js';
+import { perUnitWeightGrams, unitDimensionsIn } from '../../lib/shipping-weight.js';
+import { autoPack, type PackageOption, type UnitToPack } from '../../lib/auto-pack.js';
 import { getEasyPostConfig } from '../../lib/settings.js';
 
 const router = Router();
@@ -280,7 +280,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
       allocated.set(si.orderItemId, (allocated.get(si.orderItemId) ?? 0) + si.quantity);
     }
   }
-  const units: { orderItemId: string; weightOz: number; packageId?: string | null }[] = [];
+  const units: UnitToPack[] = [];
   for (const item of (order.items as any[])) {
     const remaining = item.quantity - (allocated.get(item.id) ?? 0);
     if (remaining <= 0) continue;
@@ -288,8 +288,9 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     // than packing 1000 weightless items into one mailer and then having
     // USPS reject it.
     const perUnitOz = (perUnitWeightGrams(item) / 28.3495) || 1;
+    const dims = unitDimensionsIn(item);
     for (let i = 0; i < remaining; i++) {
-      units.push({ orderItemId: item.id, weightOz: perUnitOz, packageId: item.product?.packageId ?? null });
+      units.push({ orderItemId: item.id, weightOz: perUnitOz, dims, packageId: item.product?.packageId ?? null });
     }
   }
 
@@ -305,6 +306,8 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     lengthIn: p.lengthIn,
     widthIn: p.widthIn,
     heightIn: p.heightIn,
+    costCents: p.costCents,
+    sortOrder: p.sortOrder,
   }));
   const plan = autoPack(units, pkgOptions);
 

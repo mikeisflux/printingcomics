@@ -33,6 +33,30 @@ const COVER_GSM: Record<string, number> = {
 const DEFAULT_TEXT_GSM = 118;
 const DEFAULT_COVER_GSM = 270;
 
+/** Sheet thickness (inches) for the same stocks — how tall a stack of books gets. */
+const TEXT_CALIPER_IN: Record<string, number> = {
+  uncoated: 0.0050,   // 60# uncoated text
+  semigloss: 0.0040,  // 80# silk text
+  gloss: 0.0040,      // 80# gloss text
+};
+const COVER_CALIPER_IN: Record<string, number> = {
+  selfcover: 0.0040,
+  standardmatte: 0.0085,    // 80# cover
+  standardsemigloss: 0.0085,
+  standardgloss: 0.0085,
+  deluxegloss: 0.0110,      // 100# cover
+  premiumgloss: 0.0110,
+  sketch: 0.0110,
+  holochrome: 0.0120,
+  metalcovers: 0.0260,      // 80# cover with the plate stuck on
+  raisedmetal: 0.0300,
+  glowinthedarkmetal: 0.0260,
+};
+const DEFAULT_TEXT_CALIPER_IN = 0.0045;
+const DEFAULT_COVER_CALIPER_IN = 0.0110;
+/** Folded signatures and air between sheets: a stack is a little taller than its paper. */
+const STACK_BULK = 1.15;
+
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** Trim size in inches parsed from a product name, e.g. `… (6.625" × 10.25")`. */
@@ -91,6 +115,42 @@ function estimateBookGrams(item: WeighableItem): number | null {
   // The cover is a single sheet folded to make front + back.
   const coverGrams = coverKey === 'selfcover' ? 0 : 2 * areaM2 * coverGsm;
   return interiorGrams + coverGrams;
+}
+
+export interface UnitDimsIn {
+  lengthIn: number;
+  widthIn: number;
+  thicknessIn: number;
+}
+
+/**
+ * Footprint and thickness of one unit, for packing: a book from its trim size
+ * and page count (interior sheets plus the folded cover), an art print from
+ * the size it was ordered in. Null when the line's size is not known (shelf
+ * goods), in which case only weight limits how many go in a box.
+ */
+export function unitDimensionsIn(item: WeighableItem): UnitDimsIn | null {
+  const opts = (item.options ?? {}) as Record<string, unknown>;
+
+  const size = opts['print_size'];
+  const cfg = item.product?.pricingConfig as { sizeWeightsGrams?: Record<string, number> } | null | undefined;
+  if (cfg?.sizeWeightsGrams && typeof size === 'string') {
+    const trim = parseTrimInches(size);
+    if (trim) return { lengthIn: trim.h, widthIn: trim.w, thicknessIn: 0.012 };
+  }
+
+  const trim = parseTrimInches(String(item.product?.name ?? item.name ?? ''));
+  if (!trim) return null;
+  const rawPages = opts['interior_pages'];
+  const pages = typeof rawPages === 'number' ? rawPages : Number(rawPages);
+  if (!Number.isFinite(pages) || pages <= 0) return null;
+
+  const text = TEXT_CALIPER_IN[norm(String(opts['interior_paper'] ?? ''))] ?? DEFAULT_TEXT_CALIPER_IN;
+  const coverKey = norm(String(opts['cover_paper'] ?? ''));
+  const cover = COVER_CALIPER_IN[coverKey] ?? DEFAULT_COVER_CALIPER_IN;
+  // pages/2 sheets of text; the cover wraps front and back (two plies).
+  const thicknessIn = ((pages / 2) * text + (coverKey === 'selfcover' ? 0 : 2 * cover)) * STACK_BULK;
+  return { lengthIn: trim.h, widthIn: trim.w, thicknessIn: +thicknessIn.toFixed(4) };
 }
 
 /** Per-unit weight in grams for a cart/order line. Never negative. */

@@ -1,35 +1,50 @@
 /**
- * Automatic bin-packing for order fulfillment.
+ * Bin-packing shared by the checkout shipping quote and fulfillment's
+ * Auto-pack, so the customer is charged for the boxes that will actually
+ * ship.
  *
- * Given a list of "units" (individual item copies with a weight each) and a
- * catalog of available packages (box types with a max weight), produce a
- * plan that tells you which items go in which box. Uses first-fit-decreasing
- * by weight — a standard 1-D bin-packing heuristic that's within ~22% of
- * optimal in the worst case and much better in practice for the workloads
- * we see (comics in mailers).
+ * Units carry a weight and, when known, a footprint and thickness (books
+ * from trim size and page count, prints from their size). Packages carry
+ * inner dimensions and an optional max packed weight. A unit "fits" a
+ * package when its footprint lies on one face of the box in some
+ * orientation and its weight is within the cap; what it uses up is its share
+ * of that face (a 6.6×10.3 comic in a 12×9 mailer stacks one column, so it
+ * uses the whole 12×9 face) times its thickness — so a box is "full" when
+ * the stacks reach the lid, not when some abstract volume is used.
  *
- * We pack on WEIGHT only, not volume. Comics are thin and stackable — the
- * dominant real-world constraint at the mail-tier is weight, and carriers
- * penalise dimensional-weight only at much larger box sizes than we ship.
- * If you later want volume/dimensional packing, extend PackageOption with
- * dimension caps and track remaining capacity per box.
+ * Choosing boxes: for each package type that could take every unit, the
+ * units are poured into boxes of that type first-fit; the type that needs the
+ * fewest boxes wins (ties → the smallest box). Every box is then shrunk to
+ * the smallest package that still holds its contents, so a 25-copy order
+ * never ships in the 300-copy carton. Units that no single package can take
+ * come back as `unpacked`.
  */
+
+export interface UnitDims {
+  lengthIn: number;
+  widthIn: number;
+  thicknessIn: number;
+}
 
 export interface UnitToPack {
   orderItemId: string;
   weightOz: number;
   /** The only package this unit may go in (Product.packageId), if any. */
   packageId?: string | null;
+  /** Footprint and thickness, when known. Unknown → weight is the only limit. */
+  dims?: UnitDims | null;
 }
 
 export interface PackageOption {
   id: string;
   name: string;
-  maxWeightOz: number | null;   // null → no cap (effectively unlimited)
+  maxWeightOz: number | null;   // null → the default cap below
   emptyWeightOz: number;
   lengthIn: number;
   widthIn: number;
   heightIn: number;
+  costCents?: number;
+  sortOrder?: number;
 }
 
 export interface PackedBox {
@@ -38,21 +53,179 @@ export interface PackedBox {
   allocations: { orderItemId: string; quantity: number }[];
   contentWeightOz: number;
   emptyWeightOz: number;
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
+  /** Share of the box's inside used by the contents (0–1; 0 when sizes are unknown). */
+  fill: number;
 }
 
 export interface PackPlan {
   boxes: PackedBox[];
-  unpacked: UnitToPack[];   // items too heavy for any single box
+  unpacked: UnitToPack[];   // items too heavy or too big for any single box
 }
 
-function capOf(p: PackageOption): number {
-  return p.maxWeightOz ?? Infinity;
+/**
+ * A box with no max packed weight is capped at 50 lb: carriers take up to
+ * 70 lb, but a heavier carton of books is unsafe to lift and splits anyway.
+ */
+export const DEFAULT_MAX_PACKED_OZ = 50 * 16;
+
+export function weightCapOz(p: PackageOption): number {
+  return p.maxWeightOz && p.maxWeightOz > 0 ? p.maxWeightOz : DEFAULT_MAX_PACKED_OZ;
 }
 
-export function autoPack(
-  units: UnitToPack[],
-  packages: PackageOption[],
-): PackPlan {
+export function volumeIn3(p: PackageOption): number {
+  return p.lengthIn * p.widthIn * p.heightIn;
+}
+
+/**
+ * Cubic inches of `p` one unit uses, counting the face area its column
+ * wastes; Infinity when it does not fit in any orientation, 0 when its size is
+ * unknown.
+ */
+export function unitShareIn3(unit: UnitToPack, p: PackageOption): number {
+  if (!unit.dims) return 0;
+  const { lengthIn: a, widthIn: b, thicknessIn: t } = unit.dims;
+  if (!(a > 0) || !(b > 0) || !(t > 0)) return 0;
+  const dims = [p.lengthIn, p.widthIn, p.heightIn];
+  let best = Infinity;
+  for (let k = 0; k < 3; k++) {
+    // Columns stand along axis k; the other two dims are the face they sit on.
+    const height = dims[k]!;
+    if (t > height + 1e-9) continue;
+    const [f1, f2] = dims.filter((_, i) => i !== k) as [number, number];
+    const columns = Math.max(Math.floor(f1 / a) * Math.floor(f2 / b), Math.floor(f1 / b) * Math.floor(f2 / a));
+    if (columns < 1) continue;
+    best = Math.min(best, ((f1 * f2) / columns) * t);
+  }
+  return best;
+}
+
+function fits(unit: UnitToPack, p: PackageOption): boolean {
+  return unit.weightOz <= weightCapOz(p) && unitShareIn3(unit, p) <= volumeIn3(p);
+}
+
+interface OpenBox {
+  pkg: PackageOption;
+  units: UnitToPack[];
+  weightOz: number;
+  usedIn3: number;
+}
+
+function canAdd(box: OpenBox, unit: UnitToPack): boolean {
+  const share = unitShareIn3(unit, box.pkg);
+  return share !== Infinity
+    && box.weightOz + unit.weightOz <= weightCapOz(box.pkg)
+    && box.usedIn3 + share <= volumeIn3(box.pkg) + 1e-9;
+}
+
+function add(box: OpenBox, unit: UnitToPack): void {
+  box.units.push(unit);
+  box.weightOz += unit.weightOz;
+  box.usedIn3 += unitShareIn3(unit, box.pkg);
+}
+
+/** Biggest first, so the small ones fill the gaps. */
+function sortForPacking(units: UnitToPack[], p: PackageOption): UnitToPack[] {
+  return [...units].sort((x, y) => (unitShareIn3(y, p) - unitShareIn3(x, p)) || (y.weightOz - x.weightOz));
+}
+
+/** Pour every unit into boxes of one package type, first-fit. */
+function fillWith(units: UnitToPack[], p: PackageOption): OpenBox[] {
+  const open: OpenBox[] = [];
+  for (const unit of sortForPacking(units, p)) {
+    const box = open.find((b) => canAdd(b, unit));
+    if (box) add(box, unit);
+    else {
+      const fresh: OpenBox = { pkg: p, units: [], weightOz: 0, usedIn3: 0 };
+      add(fresh, unit);
+      open.push(fresh);
+    }
+  }
+  return open;
+}
+
+/** Smallest first: by inside volume, then cost, then the admin's order. */
+function byVolume(a: PackageOption, b: PackageOption): number {
+  return (volumeIn3(a) - volumeIn3(b)) || ((a.costCents ?? 0) - (b.costCents ?? 0)) || ((a.sortOrder ?? 0) - (b.sortOrder ?? 0)) || a.name.localeCompare(b.name);
+}
+
+/** The smallest package that holds this box's contents (its own type at worst). */
+function shrink(box: OpenBox, packages: PackageOption[]): OpenBox {
+  for (const p of [...packages].sort(byVolume)) {
+    if (volumeIn3(p) >= volumeIn3(box.pkg)) break;
+    if (box.weightOz > weightCapOz(p)) continue;
+    let used = 0;
+    let ok = true;
+    for (const u of box.units) {
+      const share = unitShareIn3(u, p);
+      if (share === Infinity || u.weightOz > weightCapOz(p)) { ok = false; break; }
+      used += share;
+    }
+    if (ok && used <= volumeIn3(p) + 1e-9) return { ...box, pkg: p, usedIn3: used };
+  }
+  return box;
+}
+
+function toPacked(box: OpenBox): PackedBox {
+  const allocations: { orderItemId: string; quantity: number }[] = [];
+  for (const u of box.units) {
+    const a = allocations.find((x) => x.orderItemId === u.orderItemId);
+    if (a) a.quantity += 1; else allocations.push({ orderItemId: u.orderItemId, quantity: 1 });
+  }
+  return {
+    packageId: box.pkg.id,
+    packageName: box.pkg.name,
+    allocations,
+    contentWeightOz: +box.weightOz.toFixed(3),
+    emptyWeightOz: box.pkg.emptyWeightOz,
+    lengthIn: box.pkg.lengthIn,
+    widthIn: box.pkg.widthIn,
+    heightIn: box.pkg.heightIn,
+    fill: volumeIn3(box.pkg) > 0 ? Math.min(1, box.usedIn3 / volumeIn3(box.pkg)) : 0,
+  };
+}
+
+function packOnce(units: UnitToPack[], packages: PackageOption[]): PackPlan {
+  if (units.length === 0) return { boxes: [], unpacked: [] };
+  if (packages.length === 0) return { boxes: [], unpacked: [...units] };
+
+  // Anything no package can take on its own is reported, not silently dropped.
+  const unpacked = units.filter((u) => !packages.some((p) => fits(u, p)));
+  const packable = units.filter((u) => !unpacked.includes(u));
+  if (packable.length === 0) return { boxes: [], unpacked };
+
+  const sorted = [...packages].sort(byVolume);
+  const takesAll = sorted.filter((p) => packable.every((u) => fits(u, p)));
+
+  let open: OpenBox[];
+  if (takesAll.length > 0) {
+    // Fewest boxes wins; `sorted` is smallest-first so a tie keeps the smaller box.
+    let best: OpenBox[] | null = null;
+    for (const p of takesAll) {
+      const plan = fillWith(packable, p);
+      if (!best || plan.length < best.length) best = plan;
+    }
+    open = best!;
+  } else {
+    // No single type suits every unit: each unit opens the smallest box that
+    // takes it, after trying the boxes already open.
+    open = [];
+    for (const unit of sortForPacking(packable, sorted[sorted.length - 1]!)) {
+      const box = open.find((b) => canAdd(b, unit));
+      if (box) { add(box, unit); continue; }
+      const p = sorted.find((q) => fits(unit, q))!;
+      const fresh: OpenBox = { pkg: p, units: [], weightOz: 0, usedIn3: 0 };
+      add(fresh, unit);
+      open.push(fresh);
+    }
+  }
+
+  return { boxes: open.map((b) => toPacked(shrink(b, sorted))), unpacked };
+}
+
+export function autoPack(units: UnitToPack[], packages: PackageOption[]): PackPlan {
   if (packages.length === 0) return { boxes: [], unpacked: [...units] };
 
   // Units that name their own box are packed among themselves into that box
@@ -63,61 +236,11 @@ export function autoPack(
     const key = u.packageId && packages.some((p) => p.id === u.packageId) ? u.packageId : '';
     groups.set(key, [...(groups.get(key) ?? []), u]);
   }
-  if (groups.size > 1 || (groups.size === 1 && !groups.has(''))) {
-    const merged: PackPlan = { boxes: [], unpacked: [] };
-    for (const [key, group] of groups) {
-      const plan = packOnce(group, key ? packages.filter((p) => p.id === key) : packages);
-      merged.boxes.push(...plan.boxes);
-      merged.unpacked.push(...plan.unpacked);
-    }
-    return merged;
+  const merged: PackPlan = { boxes: [], unpacked: [] };
+  for (const [key, group] of groups) {
+    const plan = packOnce(group, key ? packages.filter((p) => p.id === key) : packages);
+    merged.boxes.push(...plan.boxes);
+    merged.unpacked.push(...plan.unpacked);
   }
-  return packOnce(units, packages);
-}
-
-function packOnce(units: UnitToPack[], packages: PackageOption[]): PackPlan {
-
-  // Packages sorted smallest-capacity-first; we prefer to open the tightest
-  // box that still fits each unit so mid-sized orders don't always grab the
-  // biggest mailer.
-  const byCapAsc = [...packages].sort((a, b) => capOf(a) - capOf(b));
-
-  // Pack the heaviest units first — FFD.
-  const sorted = [...units].sort((a, b) => b.weightOz - a.weightOz);
-
-  const open: (PackedBox & { cap: number })[] = [];
-  const unpacked: UnitToPack[] = [];
-
-  for (const unit of sorted) {
-    // Try to fit into an already-open box.
-    const fit = open.find((b) => b.contentWeightOz + unit.weightOz <= b.cap);
-    if (fit) {
-      const existing = fit.allocations.find((a) => a.orderItemId === unit.orderItemId);
-      if (existing) existing.quantity += 1;
-      else fit.allocations.push({ orderItemId: unit.orderItemId, quantity: 1 });
-      fit.contentWeightOz += unit.weightOz;
-      continue;
-    }
-    // No open box fits — open a new one. Pick the smallest package that
-    // can hold this unit all by itself.
-    const newPkg = byCapAsc.find((p) => capOf(p) >= unit.weightOz);
-    if (!newPkg) {
-      // Even the biggest box can't hold this one item — flag it.
-      unpacked.push(unit);
-      continue;
-    }
-    open.push({
-      packageId: newPkg.id,
-      packageName: newPkg.name,
-      allocations: [{ orderItemId: unit.orderItemId, quantity: 1 }],
-      contentWeightOz: unit.weightOz,
-      emptyWeightOz: newPkg.emptyWeightOz,
-      cap: capOf(newPkg),
-    });
-  }
-
-  return {
-    boxes: open.map(({ cap: _cap, ...rest }) => rest),
-    unpacked,
-  };
+  return merged;
 }

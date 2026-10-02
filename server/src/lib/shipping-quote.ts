@@ -7,8 +7,9 @@
  *
  *   1. Weigh the cart (see shipping-weight.ts — art prints by size, books
  *      estimated from trim size / page count / stock).
- *   2. Pack it into boxes: products with their own box get it; the rest
- *      share the default Package, split by its max packed weight.
+ *   2. Pack it into boxes with the same packer fulfillment's Auto-pack uses
+ *      (auto-pack.ts): every active Package is a candidate, units are placed
+ *      by footprint, thickness and weight, products with their own box get it.
  *   3. Ask EasyPost for live rates and return them.
  *   4. If EasyPost isn't configured or errors, fall back to the ShippingRate
  *      table — now honoring its `perKg` flag so the fallback still scales
@@ -21,7 +22,8 @@
 import { prisma } from '../db.js';
 import { getEasyPostConfig } from './settings.js';
 import { epCreateShipment, type EpAddress } from './easypost.js';
-import { contentWeightOz, perUnitWeightGrams, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
+import { contentWeightOz, perUnitWeightGrams, unitDimensionsIn, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
+import { autoPack, type PackageOption, type UnitToPack } from './auto-pack.js';
 
 export interface QuoteAddress {
   line1?: string;
@@ -70,11 +72,13 @@ interface Parcel {
 }
 
 /**
- * Split the cart across boxes. Products that name their own box (a 135-pack
- * of mailers only fits the 24×20×6) get parcels of that box — as many as
- * the box's max packed weight allows per box, one per item when no max is
- * set. Everything else rides in the default (or first active) Package,
- * split by its max packed weight; without a cap it all goes in one box.
+ * Split the cart across boxes — the same packing fulfillment's Auto-pack
+ * does, so the quote prices the boxes that will actually ship. Every active
+ * Package is a candidate: units are packed by footprint, thickness and
+ * weight into the fewest boxes, each shrunk to the smallest box that holds
+ * it. Products that name their own box (a 135-pack of mailers only fits the
+ * 24×20×6) get parcels of that box only. A unit no box can take ships on its
+ * own in the largest box, so it is still rated rather than dropped.
  */
 async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; boxes: number; weightOz: number }> {
   const parcels: Parcel[] = [];
@@ -83,38 +87,59 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
     if (same) same.count += p.count; else parcels.push(p);
   };
 
-  const own = items.filter((i) => i.product?.package && i.quantity > 0);
-  for (const i of own) {
-    const box = i.product!.package!;
-    const unitOz = Math.max(0.1, perUnitWeightGrams(i) / GRAMS_PER_OZ);
-    const cap = box.maxWeightOz && box.maxWeightOz > box.emptyWeightOz ? box.maxWeightOz - box.emptyWeightOz : null;
-    const perBox = cap ? Math.max(1, Math.floor(cap / unitOz)) : 1;
-    let left = i.quantity;
-    while (left > 0) {
-      const n = Math.min(perBox, left);
-      pushParcel({ lengthIn: box.lengthIn, widthIn: box.widthIn, heightIn: box.heightIn, weightOz: +(n * unitOz + box.emptyWeightOz).toFixed(2), count: 1, label: box.name });
-      left -= n;
+  const units: UnitToPack[] = [];
+  items.forEach((item, idx) => {
+    const qty = Math.max(0, Math.floor(item.quantity ?? 0));
+    if (qty === 0) return;
+    // A weightless line still takes room: never pack 1000 of it into one mailer.
+    const weightOz = Math.max(0.1, perUnitWeightGrams(item) / GRAMS_PER_OZ);
+    const dims = unitDimensionsIn(item);
+    for (let i = 0; i < qty; i++) units.push({ orderItemId: String(idx), weightOz, dims, packageId: item.product?.package?.id ?? null });
+  });
+
+  const catalogue = await prisma.package.findMany({
+    where: { active: true },
+    orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+  });
+  // Boxes products ship in on their own belong in the catalogue even when retired.
+  for (const item of items) {
+    const box = item.product?.package;
+    if (box && !catalogue.some((p) => p.id === box.id)) {
+      catalogue.push({ ...box, description: null, costCents: 0, isDefault: false, active: true, sortOrder: 999 } as (typeof catalogue)[number]);
     }
   }
+  const packages: PackageOption[] = catalogue.map((p) => ({
+    id: p.id, name: p.name, maxWeightOz: p.maxWeightOz, emptyWeightOz: p.emptyWeightOz,
+    lengthIn: p.lengthIn, widthIn: p.widthIn, heightIn: p.heightIn, costCents: p.costCents, sortOrder: p.sortOrder,
+  }));
 
-  const rest = items.filter((i) => !i.product?.package);
-  const restOz = contentWeightOz(rest);
-  if (restOz > 0 || parcels.length === 0) {
-    const pkg =
-      (await prisma.package.findFirst({
-        where: { active: true },
-        orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-      })) ?? null;
+  if (packages.length === 0) {
     // No packages configured — assume a modest mailer so live rating still works.
-    const dims = pkg
-      ? { lengthIn: pkg.lengthIn, widthIn: pkg.widthIn, heightIn: pkg.heightIn, emptyWeightOz: pkg.emptyWeightOz }
-      : { lengthIn: 12, widthIn: 9, heightIn: 3, emptyWeightOz: 2 };
-    const cap = pkg?.maxWeightOz && pkg.maxWeightOz > 0 ? pkg.maxWeightOz : null;
-    const usable = cap ? Math.max(1, cap - dims.emptyWeightOz) : null;
-    const boxes = usable ? Math.max(1, Math.ceil(restOz / usable)) : 1;
-    // EasyPost needs a positive weight; never rate a zero-ounce parcel.
-    const perBoxOz = Math.max(0.5, +(restOz / boxes + dims.emptyWeightOz).toFixed(2));
-    pushParcel({ ...dims, weightOz: perBoxOz, count: boxes, label: pkg?.name ?? 'Default parcel' });
+    const weightOz = Math.max(0.5, +(contentWeightOz(items) + 2).toFixed(2));
+    pushParcel({ lengthIn: 12, widthIn: 9, heightIn: 3, weightOz, count: 1, label: 'Default parcel' });
+    return { parcels, boxes: 1, weightOz: contentWeightOz(items) };
+  }
+
+  const plan = autoPack(units, packages);
+  for (const box of plan.boxes) {
+    pushParcel({
+      lengthIn: box.lengthIn, widthIn: box.widthIn, heightIn: box.heightIn,
+      // EasyPost needs a positive weight; never rate a zero-ounce parcel.
+      weightOz: Math.max(0.5, +(box.contentWeightOz + box.emptyWeightOz).toFixed(2)),
+      count: 1,
+      label: box.packageName,
+    });
+  }
+  if (plan.unpacked.length > 0) {
+    const biggest = [...packages].sort((a, b) => b.lengthIn * b.widthIn * b.heightIn - a.lengthIn * a.widthIn * a.heightIn)[0]!;
+    for (const u of plan.unpacked) {
+      pushParcel({
+        lengthIn: biggest.lengthIn, widthIn: biggest.widthIn, heightIn: biggest.heightIn,
+        weightOz: Math.max(0.5, +(u.weightOz + biggest.emptyWeightOz).toFixed(2)),
+        count: 1,
+        label: biggest.name,
+      });
+    }
   }
 
   return { parcels, boxes: parcels.reduce((s, p) => s + p.count, 0), weightOz: contentWeightOz(items) };
