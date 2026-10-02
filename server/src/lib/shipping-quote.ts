@@ -208,14 +208,21 @@ async function epFromAddress(): Promise<EpAddress | null> {
   } as EpAddress;
 }
 
+/** A table rate for a shipment: per kilogram over the whole weight, or flat per box. */
+function tableRateCents(rate: { rateCents: number; perKg: boolean }, weightOz: number, boxes: number): number {
+  const kg = (weightOz * 28.3495) / 1000;
+  // `perKg` rows are priced per kilogram — bill at least one unit. A flat
+  // row is the price of one label, so it is charged for every box.
+  return rate.perKg ? Math.round(rate.rateCents * Math.max(1, kg)) : rate.rateCents * Math.max(1, boxes);
+}
+
 /** Flat/per-kg options from the ShippingRate table for a destination. */
-async function tableOptions(address: QuoteAddress, weightOz: number, subtotalCents: number): Promise<ShippingOption[]> {
+async function tableOptions(address: QuoteAddress, weightOz: number, subtotalCents: number, boxes: number): Promise<ShippingOption[]> {
   const country = address.country || 'US';
   const zones = await prisma.shippingZone.findMany({
     where: { countries: { has: country } },
     include: { rates: true },
   });
-  const kg = (weightOz * 28.3495) / 1000;
   const out: ShippingOption[] = [];
   for (const z of zones) {
     for (const r of z.rates) {
@@ -224,8 +231,7 @@ async function tableOptions(address: QuoteAddress, weightOz: number, subtotalCen
       out.push({
         id: r.id,
         name: r.name,
-        // `perKg` rows are priced per kilogram — bill at least one unit.
-        rateCents: r.perKg ? Math.round(r.rateCents * Math.max(1, kg)) : r.rateCents,
+        rateCents: tableRateCents(r, weightOz, boxes),
         estimatedDays: r.estimatedDays,
         source: 'table',
       });
@@ -256,9 +262,8 @@ export async function quoteShipping(args: {
 
   if (canLive) {
     try {
-      // Rate each kind of parcel once; an option is offered only when the
-      // carrier quoted every parcel, and its price is the sum across boxes.
-      const perService = new Map<string, { carrier: string; service: string; cents: number; days: number | null; parcels: number }>();
+      // Rate each kind of parcel once (identical boxes share a rating).
+      const rated: RatedParcel[] = [];
       for (const parcel of plan.parcels) {
         const shipment = await epCreateShipment({
           from_address: from!,
@@ -267,33 +272,12 @@ export async function quoteShipping(args: {
         });
         const rates = shipment.rates ?? [];
         if (rates.length === 0) throw new Error(`carrier returned no rates for a ${parcel.label} (${parcel.weightOz} oz)`);
-        for (const r of rates) {
-          // Identify by carrier+service, not the EasyPost rate id: quotes are
-          // re-run at order time and EasyPost shipments/rate ids rotate, so a
-          // stable id keeps the customer's choice resolvable.
-          const key = `${LIVE_PREFIX}${r.carrier}:${r.service}`;
-          const cur = perService.get(key) ?? { carrier: r.carrier, service: r.service, cents: 0, days: null, parcels: 0 };
-          cur.cents += toCents(r.rate) * parcel.count;
-          cur.parcels += 1;
-          if (r.delivery_days) cur.days = Math.max(cur.days ?? 0, r.delivery_days);
-          perService.set(key, cur);
-        }
+        rated.push({ count: parcel.count, rates: rates.map((r) => ({ carrier: r.carrier, service: r.service, cents: toCents(r.rate), days: r.delivery_days ?? null })) });
       }
-      const options: ShippingOption[] = [...perService.entries()]
-        .filter(([, v]) => v.parcels === plan.parcels.length)
-        .map(([id, v]) => ({
-          id,
-          name: `${v.carrier} ${v.service}`.trim(),
-          rateCents: v.cents,
-          estimatedDays: v.days ? `${v.days} days` : null,
-          source: 'live' as const,
-          carrier: v.carrier,
-          service: v.service,
-        }))
-        .sort((a, b) => a.rateCents - b.rateCents);
+      const options = aggregateLiveRates(rated);
       if (options.length > 0) return { options: withBoxes(options), weightOz, boxes: plan.boxes, packagingCents };
       return {
-        options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents)),
+        options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents, plan.boxes)),
         weightOz,
         boxes: plan.boxes,
         packagingCents,
@@ -302,7 +286,7 @@ export async function quoteShipping(args: {
     } catch (e: any) {
       // Never block checkout on a carrier outage — fall back to the table.
       return {
-        options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents)),
+        options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents, plan.boxes)),
         weightOz,
         boxes: plan.boxes,
         packagingCents,
@@ -318,12 +302,78 @@ export async function quoteShipping(args: {
     console.warn('[shipping] live rating unavailable (EasyPost not configured) — using flat rate table');
   }
   return {
-    options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents)),
+    options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents, plan.boxes)),
     weightOz,
     boxes: plan.boxes,
     packagingCents,
     liveError,
   };
+}
+
+export interface RatedParcel {
+  /** How many boxes of this kind ship. */
+  count: number;
+  rates: { carrier: string; service: string; cents: number; days: number | null }[];
+}
+
+export const BEST_PER_BOX_ID = `${LIVE_PREFIX}best:per-box`;
+
+/**
+ * Turn per-box carrier rates into the options a customer can pick.
+ *
+ * One option per carrier service that can take EVERY box, priced as the sum
+ * over boxes — that is what buying one label per box costs. When the boxes
+ * would be cheaper on different services (a carton on FedEx, a sleeve on
+ * USPS), or no single service can take them all, a "best rate per box"
+ * option sums the cheapest rate of each box, so a multi-box order is never
+ * thrown back to the flat table just because the carriers disagree.
+ */
+export function aggregateLiveRates(parcels: RatedParcel[]): ShippingOption[] {
+  const perService = new Map<string, { carrier: string; service: string; cents: number; days: number | null; parcels: number }>();
+  let bestCents = 0;
+  let bestDays: number | null = null;
+  for (const parcel of parcels) {
+    let cheapest: RatedParcel['rates'][number] | null = null;
+    for (const r of parcel.rates) {
+      // Identify by carrier+service, not the EasyPost rate id: quotes are
+      // re-run at order time and EasyPost shipments/rate ids rotate, so a
+      // stable id keeps the customer's choice resolvable.
+      const key = `${LIVE_PREFIX}${r.carrier}:${r.service}`;
+      const cur = perService.get(key) ?? { carrier: r.carrier, service: r.service, cents: 0, days: null, parcels: 0 };
+      cur.cents += r.cents * parcel.count;
+      cur.parcels += 1;
+      if (r.days) cur.days = Math.max(cur.days ?? 0, r.days);
+      perService.set(key, cur);
+      if (!cheapest || r.cents < cheapest.cents) cheapest = r;
+    }
+    if (!cheapest) return [];
+    bestCents += cheapest.cents * parcel.count;
+    if (cheapest.days) bestDays = Math.max(bestDays ?? 0, cheapest.days);
+  }
+  const options: ShippingOption[] = [...perService.entries()]
+    .filter(([, v]) => v.parcels === parcels.length)
+    .map(([id, v]) => ({
+      id,
+      name: `${v.carrier} ${v.service}`.trim(),
+      rateCents: v.cents,
+      estimatedDays: v.days ? `${v.days} days` : null,
+      source: 'live' as const,
+      carrier: v.carrier,
+      service: v.service,
+    }));
+  const cheapestSingle = options.reduce((m, o) => Math.min(m, o.rateCents), Number.POSITIVE_INFINITY);
+  if (parcels.length > 1 && bestCents < cheapestSingle) {
+    options.push({
+      id: BEST_PER_BOX_ID,
+      name: 'Best available rate per box',
+      rateCents: bestCents,
+      estimatedDays: bestDays ? `${bestDays} days` : null,
+      source: 'live',
+      carrier: null,
+      service: null,
+    });
+  }
+  return options.sort((a, b) => a.rateCents - b.rateCents);
 }
 
 /** Package.costCents over every box in the plan. */
@@ -361,11 +411,9 @@ export async function resolveShippingSelection(args: {
 
   const rate = await prisma.shippingRate.findUnique({ where: { id: args.optionId } });
   if (!rate) return { cents: 0, name: null };
-  const weightOz = contentWeightOz(args.items);
-  const kg = (weightOz * 28.3495) / 1000;
   const plan = await planShipment(args.items);
   return {
-    cents: (rate.perKg ? Math.round(rate.rateCents * Math.max(1, kg)) : rate.rateCents) + packagingCostCents(plan.parcels),
+    cents: tableRateCents(rate, plan.weightOz, plan.boxes) + packagingCostCents(plan.parcels),
     name: rate.name,
   };
 }
