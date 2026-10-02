@@ -96,13 +96,18 @@ export async function sendMediaRequestEmail(requestId: string) {
   if (!mr) return;
   const name = await storeName();
   const account = await ensureCustomerAccount(mr.order.email);
-  const link = await magicLink(account.id, `/account/proofs?order=${encodeURIComponent(mr.order.number)}`);
+  const link = await magicLink(account.id, `/account/orders/${encodeURIComponent(mr.order.number)}`);
   const html = wrap(
     `<h2 style="color:#C61A22">We need updated files for your order</h2>
-     <p>For order <strong>${esc(mr.order.number)}</strong>, our team needs corrected artwork from you:</p>
+     <p>For order <strong>${esc(mr.order.number)}</strong>, our team needs corrected print files from you:</p>
      <blockquote style="border-left:3px solid #C61A22;margin:1rem 0;padding:.25rem 1rem;color:#333">${esc(mr.message)}</blockquote>
-     ${btn(link, 'Upload the files in your account')}
-     <p style="color:#666;font-size:.85rem">The link signs you in; the upload box is on your order under Proofs &amp; files.</p>`,
+     ${btn(link, 'Open your order and upload the files')}
+     <p>Each book on the order has two upload spots:</p>
+     <ul style="color:#333">
+       <li><strong>Cover PDF</strong> — exactly 4 pages, in this order: front cover, inside front cover, inside back cover, back cover. No interior pages.</li>
+       <li><strong>Interior PDF</strong> — every interior page in reading order, as many pages as the book was ordered with. No covers.</li>
+     </ul>
+     <p style="color:#666;font-size:.85rem">The link signs you in and opens the order; the exact page counts are shown next to each upload spot. Press “Done” on the request once the files are up.</p>`,
     name,
   );
   await trySend(

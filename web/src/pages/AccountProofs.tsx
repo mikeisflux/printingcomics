@@ -33,30 +33,11 @@ export function useAccountProofs() {
   return { data, error, reload: load };
 }
 
-function FileRequest({ request, orderNumber, onDone }: { request: ProofOrder['mediaRequests'][number]; orderNumber: string; onDone: () => void }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<number | null>(null);
-
-  async function upload() {
-    if (files.length === 0) return;
-    setBusy(true); setError(null);
-    try {
-      const fd = new FormData();
-      for (const f of files) fd.append('files', f);
-      const res = await fetch(`/api/account/media-requests/${request.id}/upload`, { method: 'POST', credentials: 'include', body: fd });
-      if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? 'Upload failed. Please try again.');
-      const r = (await res.json()) as { count: number };
-      setDone(r.count); setFiles([]); onDone();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Upload failed. Please try again.'); }
-    finally { setBusy(false); }
-  }
-
-  if (request.status === 'fulfilled' || done !== null) {
+function FileRequest({ request, orderNumber }: { request: ProofOrder['mediaRequests'][number]; orderNumber: string; onDone: () => void }) {
+  if (request.status === 'fulfilled') {
     return (
       <div className="admin-card" style={{ background: '#d4f5dc', border: '1px solid #166534' }}>
-        <strong>✓ Files received{done !== null ? ` — ${done} file${done === 1 ? '' : 's'} uploaded` : ''}.</strong>
+        <strong>✓ Files received.</strong>
         <div className="muted" style={{ fontSize: '.85rem' }}>Our team will take it from here for order {orderNumber}.</div>
       </div>
     );
@@ -65,12 +46,10 @@ function FileRequest({ request, orderNumber, onDone }: { request: ProofOrder['me
     <div className="admin-card" style={{ borderLeft: '4px solid var(--brand)' }}>
       <h3 style={{ marginTop: 0 }}>We need updated files</h3>
       <blockquote style={{ borderLeft: '3px solid var(--border)', margin: '0 0 .75rem', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{request.message}</blockquote>
-      <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-      {files.length > 0 && <p className="muted" style={{ fontSize: '.85rem', margin: '.35rem 0 0' }}>{files.map((f) => f.name).join(', ')}</p>}
-      {error && <div className="error">{error}</div>}
-      <button className="btn" type="button" style={{ marginTop: '.75rem' }} disabled={busy || files.length === 0} onClick={upload}>
-        {busy ? 'Uploading…' : `Send ${files.length || ''} file${files.length === 1 ? '' : 's'}`}
-      </button>
+      <p className="muted" style={{ fontSize: '.9rem', margin: '0 0 .75rem' }}>
+        Each book on the order has a <strong>Cover PDF</strong> spot (4 pages: front, inside front, inside back, back) and an <strong>Interior PDF</strong> spot (every inside page, no covers). Upload there, then press Done.
+      </p>
+      <Link to={`/account/orders/${encodeURIComponent(orderNumber)}`} className="btn">Open the order and upload →</Link>
     </div>
   );
 }

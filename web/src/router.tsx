@@ -37,6 +37,7 @@ import { Developers } from './pages/Developers';
 import { ProofReview } from './pages/ProofReview';
 import { ReviewForm } from './pages/ReviewForm';
 import { CorrectedUpload } from './pages/CorrectedUpload';
+import { AccountOrder } from './pages/AccountOrder';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminProducts } from './pages/admin/Products';
@@ -92,6 +93,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AccountDashboard /> },
           { path: 'orders', element: <OrdersPage /> },
+          { path: 'orders/:number', element: <AccountOrder /> },
           { path: 'proofs', element: <AccountProofs /> },
           { path: 'profile', element: <AccountProfile /> },
           { path: 'addresses', element: <AccountAddresses /> },

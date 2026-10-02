@@ -3,6 +3,9 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { verifyOrderView } from '../lib/order-view.js';
+import { completeMediaRequest, isPrintFileKind, orderFilesNeeded, printFileSlotsFor, storeItemPrintFile } from '../lib/print-files.js';
+import { customerUpload } from './proofs.js';
+import { promises as fs } from 'node:fs';
 
 const router = Router();
 
@@ -23,7 +26,9 @@ router.get('/', requireAuth, async (req, res) => {
       },
     },
   });
-  res.json({ orders });
+  // "Files needed": a book line without its Cover or Interior PDF, or an open file request.
+  const flagged = await Promise.all(orders.map((o) => orderFilesNeeded(o.id)));
+  res.json({ orders: orders.map((o, i) => ({ ...o, filesNeeded: flagged[i] })) });
 });
 
 // Account dashboard summary: totals + recent orders.
@@ -77,12 +82,16 @@ router.get('/:number', async (req, res) => {
               id: true,
               slug: true,
               name: true,
+              pricingConfig: true,
+              madeToOrder: true,
               options: { include: { values: true } },
               images: { take: 1, orderBy: { sortOrder: 'asc' } },
             },
           },
+          files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } },
         },
       },
+      mediaRequests: { orderBy: { createdAt: 'desc' }, select: { id: true, message: true, status: true, createdAt: true, fulfilledAt: true } },
       payments: {
         orderBy: { createdAt: 'asc' },
         select: {
@@ -102,8 +111,52 @@ router.get('/:number', async (req, res) => {
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
+  // Each line carries its print-file slots (Cover PDF / Interior PDF, or the
+  // artwork for a print) with the current file in each; the raw file rows
+  // stay out of the customer's view.
+  const items = order.items.map(({ files, ...it }) => ({ ...it, printFiles: printFileSlotsFor({ ...it, files }) }));
   // A link viewer sees the order, not the account's actions (reorder…).
-  res.json({ order, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
+  res.json({ order: { ...order, items }, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
+});
+
+// ---- Print files on a placed order: upload into a slot, as the owner ----
+// The order screen in the account is where a customer sends the Cover PDF
+// and the Interior PDF for each book — at first, and again when staff ask for
+// corrected files. The file is checked (PDF, page count) before it is kept.
+router.post('/:number/items/:itemId/files', requireAuth, customerUpload.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) throw new HttpError(400, 'No file received');
+  const kind = req.body?.kind;
+  if (!isPrintFileKind(kind)) {
+    await fs.unlink(file.path).catch(() => undefined);
+    throw new HttpError(400, 'Say which file this is: cover, interior or artwork.');
+  }
+  const item = await prisma.orderItem.findFirst({
+    where: { id: String(req.params.itemId), order: { number: String(req.params.number), userId: req.session!.sub } },
+    select: { id: true },
+  });
+  if (!item) {
+    await fs.unlink(file.path).catch(() => undefined);
+    throw new HttpError(404, 'Order line not found');
+  }
+  const result = await storeItemPrintFile({ orderItemId: item.id, kind, file, uploaderId: req.session!.sub, via: 'account' });
+  const refreshed = await prisma.orderItem.findUniqueOrThrow({
+    where: { id: item.id },
+    include: { product: { select: { slug: true, pricingConfig: true, madeToOrder: true } }, files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } } },
+  });
+  const open = await prisma.mediaRequest.count({ where: { order: { number: String(req.params.number) }, status: 'open' } });
+  res.json({ ok: true, file: result.file, printFiles: printFileSlotsFor(refreshed), openRequests: open });
+});
+
+// The customer tells us the files we asked for are up.
+router.post('/:number/requests/:requestId/done', requireAuth, async (req, res) => {
+  const mr = await prisma.mediaRequest.findFirst({
+    where: { id: String(req.params.requestId), order: { number: String(req.params.number), userId: req.session!.sub } },
+    select: { id: true },
+  });
+  if (!mr) throw new HttpError(404, 'Request not found');
+  await completeMediaRequest(mr.id, 'account');
+  res.json({ ok: true });
 });
 
 // Reorder: creates a new cart (or merges into the user's current cart) with

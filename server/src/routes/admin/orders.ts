@@ -15,6 +15,8 @@ import { sendProofReadyEmail, sendProofsReadyEmail, sendMediaRequestEmail, sendA
 import { requestReviewForOrder } from '../../lib/reviews.js';
 import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl, optionKey } from '../../lib/order-adjustments.js';
 import { backfillOrderUploads } from '../../lib/order-files.js';
+import { missingPrintFiles } from '../../lib/print-files.js';
+import { ensureCustomerAccount, magicLink } from '../../lib/customer-accounts.js';
 import { sendAdjustmentRequestEmail } from '../../lib/order-emails.js';
 import multer from 'multer';
 import { MAX_UPLOAD_BYTES } from '../../config.js';
@@ -98,11 +100,14 @@ router.get('/:id', async (req, res) => {
           product: {
             select: {
               slug: true,
+              pricingConfig: true,
+              madeToOrder: true,
               images: { take: 1, orderBy: { sortOrder: 'asc' } },
               options: { include: { values: true } },
             },
           },
           files: {
+            orderBy: { createdAt: 'desc' },
             include: {
               media: {
                 select: {
@@ -132,7 +137,14 @@ router.get('/:id', async (req, res) => {
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
-  res.json({ order });
+  // Which print files each book line still lacks, and a link that signs the
+  // customer in to the order screen where they upload them (what "Copy
+  // upload link" hands out, and what the request email contains).
+  const items = order.items.map((it) => ({ ...it, missingPrintFiles: missingPrintFiles(it) }));
+  const account = await ensureCustomerAccount(order.email, { firstName: (order.shippingAddress as any)?.firstName, lastName: (order.shippingAddress as any)?.lastName });
+  const uploadLink = await magicLink(account.id, `/account/orders/${encodeURIComponent(order.number)}`);
+  const mediaRequests = order.mediaRequests.map((mr) => ({ ...mr, link: uploadLink }));
+  res.json({ order: { ...order, items, mediaRequests, uploadLink } });
 });
 
 // ---- Post-order item changes + "pay the difference" requests ----

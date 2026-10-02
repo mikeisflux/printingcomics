@@ -62,6 +62,8 @@ interface OrderFull {
         values: { id?: string; label: string; subLabel?: string | null; imageUrl?: string | null; priceModifierCents?: number; sortOrder?: number }[];
       }[];
     };
+    /** Print-file slots on this line that have no file yet ("Cover PDF", …). */
+    missingPrintFiles?: string[];
     files?: {
       id: string;
       purpose: string | null;
@@ -103,8 +105,7 @@ interface OrderFull {
     media: { id: string; originalName: string; url: string; size: number; mimeType: string };
   }[];
   mediaRequests?: {
-    id: string; message: string; token: string; status: string; fulfilledAt: string | null; createdAt: string;
-  }[];
+    id: string; message: string; token: string; status: string; fulfilledAt: string | null; createdAt: string; link?: string }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -499,7 +500,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
                 <span className="muted">{new Date(mr.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ marginTop: '.2rem' }}>{mr.message}</div>
-              <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem', marginTop: '.3rem' }} onClick={() => { void navigator.clipboard?.writeText(`${origin}/upload/${mr.token}`); }}>Copy upload link</button>
+              <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem', marginTop: '.3rem' }} onClick={() => { void navigator.clipboard?.writeText(mr.link ?? `${origin}/upload/${mr.token}`); }} title="Signs the customer in and opens the order, where each book has its Cover PDF and Interior PDF upload spots">Copy upload link</button>
             </div>
           ))}
         </div>
@@ -863,6 +864,11 @@ export function AdminOrderDetail() {
                         ✎ Edit options
                       </button>
                     )}
+                    {i.missingPrintFiles && i.missingPrintFiles.length > 0 && (
+                      <div style={{ marginTop: '.4rem', color: '#b91c1c', fontWeight: 600, fontSize: '.8rem' }}>
+                        ⚠ Missing from the customer: {i.missingPrintFiles.join(' and ')}
+                      </div>
+                    )}
                     {i.files && i.files.length > 0 && (
                       <div style={{ marginTop: '.4rem', display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
                         {i.files.map((f) => (
@@ -894,7 +900,7 @@ export function AdminOrderDetail() {
                               }}
                             >
                               <span style={{ fontWeight: 600 }}>
-                                {f.purpose ? f.purpose.toUpperCase() : 'FILE'}
+                                {({ cover: 'COVER PDF', interior: 'INTERIOR PDF', artwork: 'ARTWORK', corrected: 'CORRECTED' } as Record<string, string>)[f.purpose ?? ''] ?? (f.purpose ? f.purpose.toUpperCase() : 'FILE')}
                               </span>
                               <span style={{ color: 'var(--ink)' }}>{f.media.originalName}</span>
                               <span className="muted">({formatBytes(f.media.size)})</span>

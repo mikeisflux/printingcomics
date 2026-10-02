@@ -15,7 +15,7 @@ import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { proofKindLabel, proofSlotLabel } from '../lib/proofs.js';
 import { APPROVAL_TERMS, approveProof, fulfilMediaRequest, latestProofInSlot, requestProofChanges } from '../lib/proof-decisions.js';
-import { ensureCustomerAccount } from '../lib/customer-accounts.js';
+import { ensureCustomerAccount, magicLink } from '../lib/customer-accounts.js';
 import { hashPassword } from '../lib/password.js';
 import { startSession } from '../lib/session-cookie.js';
 
@@ -93,6 +93,19 @@ router.get('/media-request/:token', async (req, res) => {
   });
   if (!mr) throw new HttpError(404, 'Request not found');
   res.json({ mediaRequest: { id: mr.id, message: mr.message, status: mr.status, orderNumber: mr.order.number } });
+});
+
+// An /upload/<token> link from an email proves the visitor has the order's
+// inbox — the same thing a magic link proves — so it is swapped for one that
+// signs them in to the order screen, where the Cover and Interior PDFs live.
+router.post('/media-request/:token/link', async (req, res) => {
+  const mr = await prisma.mediaRequest.findUnique({
+    where: { token: String(req.params.token) },
+    include: { order: { select: { number: true, email: true } } },
+  });
+  if (!mr) throw new HttpError(404, 'Request not found');
+  const account = await ensureCustomerAccount(mr.order.email);
+  res.json({ url: await magicLink(account.id, `/account/orders/${encodeURIComponent(mr.order.number)}`), orderNumber: mr.order.number });
 });
 
 router.post('/media-request/:token/upload', customerUpload.any(), async (req, res) => {

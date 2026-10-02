@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '../db.js';
 import { publishUpload } from '../lib/storage.js';
 import { HttpError } from '../middleware/error.js';
+import { checkPrintPdf, isPrintFileKind, PRINT_FILE_KIND_BY_OPTION_KEY } from '../lib/print-files.js';
 
 const router = Router();
 
@@ -42,7 +43,28 @@ router.post('/customer', upload.any(), async (req, res) => {
   const productId = typeof req.body?.productId === 'string' ? req.body.productId : undefined;
   const optionKey = typeof req.body?.optionKey === 'string' ? req.body.optionKey : undefined;
 
-  const created: Array<{ id: string; url: string; filename: string; size: number; mimeType: string }> = [];
+  // A cover / interior / artwork slot takes exactly one PDF, checked for what
+  // it must contain (the Cover PDF has 4 pages; the Interior PDF as many as
+  // the page count picked) before anything is stored.
+  const kindRaw = typeof req.body?.kind === 'string' ? req.body.kind : optionKey ? PRINT_FILE_KIND_BY_OPTION_KEY[optionKey] : undefined;
+  const kind = isPrintFileKind(kindRaw) ? kindRaw : null;
+  const expectedRaw = Number(req.body?.expectedPages);
+  const expectedPages = kind === 'cover' ? 4 : kind === 'interior' && Number.isFinite(expectedRaw) && expectedRaw > 0 ? expectedRaw : null;
+  const pagesByPath = new Map<string, number | null>();
+  if (kind) {
+    if (files.length !== 1) {
+      await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => undefined)));
+      throw new HttpError(400, 'Upload one PDF here.');
+    }
+    try {
+      pagesByPath.set(files[0]!.path, (await checkPrintPdf(files[0]!, kind, expectedPages, 'cart')).pages);
+    } catch (e) {
+      await fs.unlink(files[0]!.path).catch(() => undefined);
+      throw e;
+    }
+  }
+
+  const created: Array<{ id: string; url: string; filename: string; size: number; mimeType: string; pages: number | null }> = [];
   for (const f of files) {
     const stored = await publishUpload({
       subdir: CUSTOMER_SUBDIR,
@@ -59,7 +81,7 @@ router.post('/customer', upload.any(), async (req, res) => {
         size: f.size,
         url: stored.url,
         folder: '/customer-uploads',
-        tags: ['customer-upload', ...(productId ? [`product:${productId}`] : []), ...(optionKey ? [`option:${optionKey}`] : [])],
+        tags: ['customer-upload', ...(productId ? [`product:${productId}`] : []), ...(optionKey ? [`option:${optionKey}`] : []), ...(kind ? [`kind:${kind}`] : []), ...(pagesByPath.get(f.path) ? [`pages:${pagesByPath.get(f.path)}`] : [])],
         uploaderId: req.session?.sub,
       },
     });
@@ -69,6 +91,7 @@ router.post('/customer', upload.any(), async (req, res) => {
       filename: f.originalname,
       size: f.size,
       mimeType: f.mimetype,
+      pages: pagesByPath.get(f.path) ?? null,
     });
   }
 

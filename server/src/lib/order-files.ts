@@ -17,20 +17,48 @@ import { prisma } from '../db.js';
 /** Anything that looks like a stored upload: absolute URL, or one of our served paths. */
 const URL_RE = /(?:https?:\/\/[^\s"'<>]+|\/(?:uploads|api\/files)\/[^\s"'<>]+)/g;
 
-/** Every upload URL referenced anywhere in an item's options, deduplicated. */
-export function uploadUrlsInOptions(options: unknown): string[] {
+/** Every upload referenced in an item's options, with the option key it sits under. */
+export function uploadsInOptions(options: unknown): { url: string; key: string }[] {
   if (!options || typeof options !== 'object') return [];
-  const urls = new Set<string>();
-  for (const v of Object.values(options as Record<string, unknown>)) {
+  const seen = new Set<string>();
+  const out: { url: string; key: string }[] = [];
+  for (const [key, v] of Object.entries(options as Record<string, unknown>)) {
     if (typeof v !== 'string') continue;
     // The upload control stores one URL per line.
     for (const line of v.split('\n')) {
       const t = line.trim();
-      if (/^(https?:\/\/|\/(uploads|api\/files)\/)/.test(t)) urls.add(t);
-      else for (const m of t.matchAll(URL_RE)) urls.add(m[0]);
+      const found: string[] = [];
+      if (/^(https?:\/\/|\/(uploads|api\/files)\/)/.test(t)) found.push(t);
+      else for (const m of t.matchAll(URL_RE)) found.push(m[0]);
+      for (const url of found) {
+        if (seen.has(url)) continue;
+        seen.add(url);
+        out.push({ url, key });
+      }
     }
   }
-  return [...urls];
+  return out;
+}
+
+/** Every upload URL referenced anywhere in an item's options, deduplicated. */
+export function uploadUrlsInOptions(options: unknown): string[] {
+  return uploadsInOptions(options).map((u) => u.url);
+}
+
+/**
+ * What a file uploaded under an option is: the Cover PDF, the Interior PDF,
+ * or (older orders, prints) just artwork.
+ */
+export function purposeForOptionKey(key: string): 'cover' | 'interior' | 'artwork' {
+  if (key === 'cover_pdf') return 'cover';
+  if (key === 'interior_pdf') return 'interior';
+  return 'artwork';
+}
+
+/** The page count the upload endpoint recorded on the media (`pages:N`), as the file row's note. */
+export function pagesNoteFromTags(tags: string[] | null | undefined): string | null {
+  const t = (tags ?? []).find((x) => /^pages:\d+$/.test(x));
+  return t ? `${t.slice(6)} pages` : null;
 }
 
 /**
@@ -44,16 +72,17 @@ export async function linkItemUploads(orderItemId: string): Promise<number> {
     select: { id: true, options: true, files: { select: { mediaFileId: true } } },
   });
   if (!item) return 0;
-  const urls = uploadUrlsInOptions(item.options);
-  if (urls.length === 0) return 0;
+  const uploads = uploadsInOptions(item.options);
+  if (uploads.length === 0) return 0;
 
   const have = new Set(item.files.map((f) => f.mediaFileId));
-  const medias = await prisma.mediaFile.findMany({ where: { url: { in: urls } }, select: { id: true } });
+  const medias = await prisma.mediaFile.findMany({ where: { url: { in: uploads.map((u) => u.url) } }, select: { id: true, url: true, tags: true } });
   const missing = medias.filter((m) => !have.has(m.id));
   if (missing.length === 0) return 0;
 
+  const keyByUrl = new Map(uploads.map((u) => [u.url, u.key]));
   await prisma.orderItemFile.createMany({
-    data: missing.map((m) => ({ orderItemId: item.id, mediaFileId: m.id, purpose: 'artwork' })),
+    data: missing.map((m) => ({ orderItemId: item.id, mediaFileId: m.id, purpose: purposeForOptionKey(keyByUrl.get(m.url) ?? ''), notes: pagesNoteFromTags(m.tags) })),
   });
   return missing.length;
 }

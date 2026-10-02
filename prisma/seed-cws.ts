@@ -392,13 +392,29 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
             required: false,
             sortOrder: 41,
           },
+          // Two files per book, each checked on upload (PDF, page count):
+          // the cover's four pages, and the interior with exactly the page
+          // count ordered. The wording lives in server/src/lib/print-files.ts
+          // and web/src/lib/print-files.ts; this is what the admin editor shows.
           {
-            name: 'Upload your work',
-            internalKey: 'upload',
+            name: 'Cover PDF',
+            internalKey: 'cover_pdf',
             section: 'Finalize Setup',
             type: 'UPLOAD' as const,
             required: true,
             sortOrder: 42,
+            helpText: 'One PDF, exactly 4 pages: front cover, inside front cover, inside back cover, back cover.',
+            longDescription: 'One PDF with exactly 4 pages, in this order: front cover, inside front cover, inside back cover, back cover. No interior pages. Trim size plus 0.125″ bleed on every side, CMYK, fonts embedded or outlined.',
+          },
+          {
+            name: 'Interior PDF',
+            internalKey: 'interior_pdf',
+            section: 'Finalize Setup',
+            type: 'UPLOAD' as const,
+            required: true,
+            sortOrder: 43,
+            helpText: 'One PDF with every interior page in reading order — no covers. The page count must match the one ordered.',
+            longDescription: 'One PDF with every interior page in reading order — every page between the inside front cover and the inside back cover, as many pages as ordered. Do not include the front cover, inside covers or back cover; they go in the Cover PDF. Single pages, not spreads. Trim size plus 0.125″ bleed, CMYK, fonts embedded or outlined.',
           },
           {
             name: 'File Prep Checklist Confirmation',
@@ -406,7 +422,7 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
             section: 'Finalize Setup',
             type: 'CONFIRM' as const,
             required: true,
-            sortOrder: 43,
+            sortOrder: 44,
             longDescription:
               'I confirm that my files are correctly sized according to the selected format, are flattened high-resolution PDFs or JPGs and labeled accurately, and meet the required page count multiples (4 for saddle stitch, 2 for glue bind). I understand that all files will be reviewed during prepress; if no issues are found, I will not receive a notification until proof approval. If any problems are identified, I will be contacted after purchase and required to submit corrected files from emailed link before production can proceed.',
           },
@@ -625,7 +641,7 @@ async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
         { name: 'PDF proof before printing', internalKey: 'pdf_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 38, helpText: 'Free — we email a PDF proof to approve before anything prints.' },
         { name: 'Hard-copy proof before printing', internalKey: 'hard_copy_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 39, helpText: 'A single printed proof shipped to you first. Adds the price of one print plus a $19.95 proof & shipping fee.' },
         { name: 'Is this a reorder?', internalKey: 'is_reorder', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 41 },
-        { name: 'Upload your art', internalKey: 'upload', section: 'Finalize Setup', type: 'UPLOAD' as const, required: true, sortOrder: 42 },
+        { name: 'Print-ready PDF', internalKey: 'upload', section: 'Finalize Setup', type: 'UPLOAD' as const, required: true, sortOrder: 42, helpText: 'One print-ready PDF at the ordered size with 0.125″ bleed on every side.', longDescription: 'One print-ready PDF at the ordered size, with 0.125″ bleed on every side. CMYK, 300 DPI, flattened, fonts embedded or outlined.' },
         { name: 'File Prep Checklist Confirmation', internalKey: 'file_prep_ok', section: 'Finalize Setup', type: 'CONFIRM' as const, required: true, sortOrder: 43, longDescription: 'I confirm my art matches the selected print size at 300 DPI with 0.125" bleed, CMYK, flattened and print-ready. Files are reviewed in prepress; I will be contacted if corrections are needed.' },
       ],
     },

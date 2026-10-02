@@ -25,6 +25,8 @@ interface Order {
   items: OrderItem[];
   createdAt: string;
   updatedAt: string;
+  /** A book is missing its Cover or Interior PDF, or we asked for new files. */
+  filesNeeded?: boolean;
 }
 
 const STATUS_FILTERS: { label: string; match: (o: Order) => boolean }[] = [
@@ -86,9 +88,14 @@ export function OrdersPage() {
             <div key={o.id} className="admin-card" style={{ margin: 0 }}>
               <div className="spread" style={{ flexWrap: 'wrap', gap: '.75rem', marginBottom: '.75rem' }}>
                 <div>
-                  <Link to={`/order/${o.number}`} style={{ fontWeight: 600, fontSize: '1.05rem' }}>
+                  <Link to={`/account/orders/${o.number}`} style={{ fontWeight: 600, fontSize: '1.05rem' }}>
                     Order {o.number}
                   </Link>
+                  {o.filesNeeded && (
+                    <Link to={`/account/orders/${o.number}`} style={{ marginLeft: '.6rem', fontSize: '.8rem', fontWeight: 700, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: '.03em' }}>
+                      Files needed →
+                    </Link>
+                  )}
                   <div className="muted" style={{ fontSize: '.85rem' }}>
                     Placed {new Date(o.createdAt).toLocaleDateString()}
                   </div>
@@ -137,8 +144,8 @@ export function OrdersPage() {
                   {o.items.reduce((s, i) => s + i.quantity, 0)} item{o.items.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'} · {formatMoney(o.totalCents)}
                 </div>
                 <div className="row" style={{ gap: '.5rem', flexWrap: 'wrap' }}>
-                  <Link to={`/order/${o.number}`} className="btn secondary" style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>
-                    View details
+                  <Link to={`/account/orders/${o.number}`} className="btn secondary" style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>
+                    Manage order & files
                   </Link>
                   <button
                     className="btn"

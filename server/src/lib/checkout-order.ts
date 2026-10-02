@@ -13,7 +13,7 @@ import { assertCartInStock } from './inventory.js';
 import { evaluateCoupon, type Coupon } from './coupons.js';
 import { itemsRequestProof } from './proofs.js';
 import { resolveShippingSelection } from './shipping-quote.js';
-import { uploadUrlsInOptions } from './order-files.js';
+import { uploadsInOptions, purposeForOptionKey, pagesNoteFromTags } from './order-files.js';
 import { settlePaidOrder } from './paid-order.js';
 import { sendOrderConfirmationEmail } from './order-emails.js';
 
@@ -129,12 +129,13 @@ export async function createOrderFromCart(totals: CartTotals, input: CheckoutInp
   // Matched by URL shape so it works for local, R2 and CDN-hosted uploads
   // alike — the old `/uploads/customer/` regex silently linked nothing once
   // uploads moved to R2.
-  const itemUploadIds = new Map<string, string[]>();
+  const itemUploadIds = new Map<string, { mediaFileId: string; purpose: string; notes: string | null }[]>();
   for (const ci of totals.cart.items) {
-    const urls = uploadUrlsInOptions(ci.options);
-    if (urls.length === 0) continue;
-    const medias = await prisma.mediaFile.findMany({ where: { url: { in: urls } }, select: { id: true } });
-    if (medias.length) itemUploadIds.set(ci.id, medias.map((m) => m.id));
+    const uploads = uploadsInOptions(ci.options);
+    if (uploads.length === 0) continue;
+    const medias = await prisma.mediaFile.findMany({ where: { url: { in: uploads.map((u) => u.url) } }, select: { id: true, url: true, tags: true } });
+    const keyByUrl = new Map(uploads.map((u) => [u.url, u.key]));
+    if (medias.length) itemUploadIds.set(ci.id, medias.map((m) => ({ mediaFileId: m.id, purpose: purposeForOptionKey(keyByUrl.get(m.url) ?? ''), notes: pagesNoteFromTags(m.tags) })));
   }
 
   return prisma.$transaction(async (tx) => {
@@ -160,7 +161,7 @@ export async function createOrderFromCart(totals: CartTotals, input: CheckoutInp
         proofStatus: itemsRequestProof(totals.cart.items) ? 'requested' : null,
         items: {
           create: totals.cart.items.map((ci) => {
-            const uploadIds = itemUploadIds.get(ci.id) ?? [];
+            const uploads = itemUploadIds.get(ci.id) ?? [];
             return {
               productId: ci.productId,
               variantId: ci.variantId,
@@ -169,8 +170,8 @@ export async function createOrderFromCart(totals: CartTotals, input: CheckoutInp
               quantity: ci.quantity,
               unitPriceCents: ci.unitPriceCents,
               totalCents: ci.unitPriceCents * ci.quantity,
-              files: uploadIds.length
-                ? { create: uploadIds.map((mediaFileId) => ({ mediaFileId, purpose: 'artwork' })) }
+              files: uploads.length
+                ? { create: uploads.map((u) => ({ mediaFileId: u.mediaFileId, purpose: u.purpose, notes: u.notes })) }
                 : undefined,
             };
           }),

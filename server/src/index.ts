@@ -75,7 +75,12 @@ app.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyH
 app.get('/api/health', (_req, res) => res.json({ ok: true, now: new Date().toISOString() }));
 
 app.use('/api/config', configRoutes);
-app.use('/api/auth', rateLimit({ windowMs: 60_000, limit: 20 }), authRoutes);
+// Credentials are tried at most 20 times a minute per address. The
+// "who am I" read every page makes (several times a load) is not a
+// credential attempt: counting it locked customers out of their own
+// sign-in links after a few pages, so it stays on the general limit only.
+const authLimiter = rateLimit({ windowMs: 60_000, limit: 20 });
+app.use('/api/auth', (req, res, next) => (req.method === 'GET' && req.path === '/me' ? next() : authLimiter(req, res, next)), authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/checkout', checkoutRoutes);

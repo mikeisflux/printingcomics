@@ -62,6 +62,7 @@ interface Order {
     unitPriceCents: number;
     totalCents: number;
     options?: any;
+    printFiles?: { kind: string; label: string; file: { name: string; pages: number | null } | null }[];
     product: {
       id: string;
       slug: string;
@@ -255,6 +256,36 @@ export function OrderConfirmation() {
           </div>
         </div>
       </div>
+
+      {order.items.some((i) => (i.printFiles?.length ?? 0) > 0) && (() => {
+        const lines = order.items.filter((i) => (i.printFiles?.length ?? 0) > 0);
+        const missing = lines.reduce((n, i) => n + (i.printFiles ?? []).filter((s) => !s.file).length, 0);
+        return (
+          <div className="admin-card" data-testid="print-files-summary" style={{ borderLeft: `5px solid ${missing ? '#c61a22' : '#16a34a'}` }}>
+            <h4 style={{ marginTop: 0 }}>Print files</h4>
+            <p className="muted" style={{ margin: '0 0 .5rem', fontSize: '.9rem' }}>
+              {missing
+                ? `${missing} file${missing === 1 ? '' : 's'} still missing — every book needs a Cover PDF (4 pages) and an Interior PDF (every inside page). Nothing prints until both are here.`
+                : 'Every book has its Cover PDF and Interior PDF. You can replace either until the order goes to print.'}
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '.9rem' }}>
+              {lines.map((i) => (
+                <li key={i.id}>
+                  <strong>{typeof i.options?.title === 'string' && i.options.title ? `“${i.options.title}”` : i.name}</strong>
+                  {(i.printFiles ?? []).map((s) => (
+                    <span key={s.kind} style={{ marginLeft: '.75rem', color: s.file ? '#166534' : '#b91c1c', fontWeight: 600 }}>
+                      {s.label}: {s.file ? `✓ ${s.file.name}${s.file.pages ? ` (${s.file.pages} pages)` : ''}` : 'missing'}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+            {viewer === 'owner'
+              ? <Link to={`/account/orders/${order.number}`} className={missing ? 'btn' : 'btn secondary'} style={{ marginTop: '.75rem', display: 'inline-block' }}>{missing ? 'Upload the missing files' : 'Manage print files'}</Link>
+              : <p className="muted" style={{ margin: '.5rem 0 0', fontSize: '.85rem' }}>To upload or replace files, sign in with the link in your confirmation email.</p>}
+          </div>
+        );
+      })()}
 
       <h3>Items</h3>
       <div className="admin-card">

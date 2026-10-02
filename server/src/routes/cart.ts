@@ -82,6 +82,23 @@ const addSchema = z.object({
 type TitleOption = { name: string; internalKey: string | null; type: string; required: boolean };
 
 /**
+ * Every required upload (the Cover PDF and the Interior PDF of a book, the
+ * artwork of a print) must be in place before the line goes in the cart —
+ * a book cannot be printed without them, and a missing one used to surface
+ * only when staff opened the order.
+ */
+function guardUploads(options: Record<string, string> | undefined, productOptions: TitleOption[]): void {
+  const missing = productOptions
+    .filter((o) => o.type === 'UPLOAD' && o.required)
+    .filter((o) => !/^(https?:\/\/|\/(uploads|api\/files)\/)/.test((options?.[optionKey(o)] ?? '').trim()))
+    .map((o) => o.name);
+  if (missing.length === 0) return;
+  throw new HttpError(400, missing.length === 1
+    ? `Please upload the ${missing[0]} before adding this to your cart.`
+    : `Please upload the ${missing.slice(0, -1).join(', ')} and the ${missing[missing.length - 1]} before adding this to your cart.`);
+}
+
+/**
  * Every book needs its own title. The title is the only thing that tells
  * two lines of the same product apart — on the order, in the proof queue
  * and in the customer's proof emails. One customer once titled twelve
@@ -161,6 +178,7 @@ router.post('/items', async (req, res) => {
   }
 
   data.options = await guardTitle(cart.id, data.options, product.options);
+  guardUploads(data.options, product.options);
 
   let unitPriceCents = product.priceCents;
   let variantId: string | undefined = data.variantId;
@@ -248,6 +266,7 @@ router.patch('/items/:id', async (req, res) => {
   const options = data.options !== undefined
     ? await guardTitle(cart.id, data.options, product.options, item.id)
     : ((item.options as Record<string, string> | null) ?? undefined);
+  if (data.options !== undefined) guardUploads(options, product.options);
 
   assertInStock(product, quantity, variant, await unitsAlreadyInCart(cart.id, product, variant?.id, item.id));
 

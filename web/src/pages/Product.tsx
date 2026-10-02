@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { QuantityInput } from '../components/QuantityInput';
 import { useCart } from '../store/cart';
+import { UploadOption } from '../components/UploadOption';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
 import { useSiteDiscount } from '../lib/useSiteDiscount';
 
@@ -310,7 +311,7 @@ export function Product() {
         {/* Title input (non-sectioned) */}
         {nonSectionOpts.map((opt) => (
           <div key={opt.id} style={{ marginTop: '1rem' }}>
-            <OptionControl opt={opt} value={selections[keyOf(opt)]} onChange={(v) => setSel(keyOf(opt), v)} productId={product.id} />
+            <OptionControl opt={opt} value={selections[keyOf(opt)]} onChange={(v) => setSel(keyOf(opt), v)} productId={product.id} expectedPages={keyOf(opt) === 'interior_pdf' ? (Number(selections['interior_pages']) || null) : null} />
           </div>
         ))}
 
@@ -355,7 +356,7 @@ export function Product() {
                           opt={opt}
                           value={selections[keyOf(opt)]}
                           onChange={(v) => setSel(keyOf(opt), v)}
-                          productId={product.id}
+                          productId={product.id} expectedPages={keyOf(opt) === 'interior_pdf' ? (Number(selections['interior_pages']) || null) : null}
                         />
                       </div>
                     ))}
@@ -472,12 +473,14 @@ export function Product() {
 /* ------------------------------------------------------------------ */
 
 function OptionControl({
-  opt, value, onChange, productId,
+  opt, value, onChange, productId, expectedPages,
 }: {
   opt: ProductOption;
   value: string | number | boolean | undefined;
   onChange: (v: string | number | boolean) => void;
   productId?: string;
+  /** For the Interior PDF: the page count picked, which the file must match. */
+  expectedPages?: number | null;
 }) {
   const label = (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: '.75rem', marginBottom: '.5rem', flexWrap: 'wrap' }}>
@@ -561,9 +564,7 @@ function OptionControl({
         </div>
       );
     case 'UPLOAD':
-      return (
-        <UploadControl opt={opt} value={value} onChange={onChange} productId={productId} label={label} />
-      );
+      return <UploadOption opt={opt} value={value} onChange={onChange} productId={productId} expectedPages={expectedPages} />;
     case 'CONFIRM':
       return (
         <div>
@@ -631,118 +632,6 @@ function OptionControl({
   }
 }
 
-function UploadControl({
-  opt, value, onChange, productId, label,
-}: {
-  opt: ProductOption;
-  value: string | number | boolean | undefined;
-  onChange: (v: string) => void;
-  productId?: string;
-  label: ReactNode;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [nameByUrl, setNameByUrl] = useState<Record<string, string>>({});
-
-  // The option stores every uploaded file's URL, one per line.
-  const urls = typeof value === 'string' && value ? value.split('\n').map((s) => s.trim()).filter(Boolean) : [];
-
-  async function handleFiles(list: FileList | null) {
-    if (!list || list.length === 0) return;
-    setBusy(true);
-    setErr(null);
-    setProgress(0);
-    try {
-      const fd = new FormData();
-      for (const file of Array.from(list)) fd.append('files', file);
-      if (productId) fd.append('productId', productId);
-      fd.append('optionKey', opt.internalKey ?? opt.id);
-
-      const uploaded: { url: string; filename: string }[] = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/uploads/customer');
-        xhr.withCredentials = true;
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const body = JSON.parse(xhr.responseText);
-              const arr = Array.isArray(body.files)
-                ? body.files
-                : body.url ? [{ url: body.url, filename: body.filename }] : [];
-              resolve(arr);
-            } catch (e) { reject(e); }
-          } else {
-            reject(new Error(xhr.statusText || 'Upload failed'));
-          }
-        };
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.send(fd);
-      });
-      if (uploaded.length) {
-        setNameByUrl((m) => {
-          const next = { ...m };
-          for (const u of uploaded) next[u.url] = u.filename;
-          return next;
-        });
-        onChange([...urls, ...uploaded.map((u) => u.url)].join('\n'));
-      }
-    } catch (e: any) {
-      setErr(e.message ?? 'Upload failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function removeAt(idx: number) {
-    onChange(urls.filter((_, i) => i !== idx).join('\n'));
-  }
-
-  return (
-    <div>
-      {label}
-      <label className="btn secondary" style={{ cursor: busy ? 'wait' : 'pointer', display: 'inline-block' }}>
-        {busy ? `Uploading… ${progress}%` : urls.length ? 'Add more files' : 'Upload your work'}
-        <input
-          type="file"
-          multiple
-          style={{ display: 'none' }}
-          disabled={busy}
-          onChange={(e) => { void handleFiles(e.target.files); e.currentTarget.value = ''; }}
-        />
-      </label>
-      {urls.length > 0 && (
-        <ul style={{ listStyle: 'none', padding: 0, margin: '.6rem 0 0', display: 'grid', gap: '.35rem' }}>
-          {urls.map((u, i) => (
-            <li key={u} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.85rem' }}>
-              <span aria-hidden="true">📄</span>
-              <a href={u} target="_blank" rel="noreferrer" style={{ flex: 1, wordBreak: 'break-all' }}>
-                {nameByUrl[u] ?? u.split('/').pop()}
-              </a>
-              {!busy && (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  style={{ padding: '.1rem .45rem', fontSize: '.75rem' }}
-                  onClick={() => removeAt(i)}
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="muted" style={{ fontSize: '.78rem', marginTop: '.4rem' }}>
-        Upload every print-ready file for this book — you can add multiple files (e.g. interior + cover).
-      </div>
-      {err && <div className="error" style={{ marginTop: '.5rem' }}>{err}</div>}
-    </div>
-  );
-}
 
 // The admin order editor renders the same controls the customer used, so a
 // staff-made change looks like the choice the customer would have made.
