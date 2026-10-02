@@ -277,7 +277,7 @@ export function AdminProductEdit() {
               {packages.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.lengthIn} × {b.widthIn} × {b.heightIn} in)</option>)}
             </select>
             <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
-              Checkout quotes and auto-pack put this product in that box — as many per box as the packed size below (and the box's max packed weight) allow; one per box when no size is set and the box has no max weight. A product with a different box means another box, and the quote prices every box. Boxes are managed under Fulfillment → Packages.
+              Checkout quotes and auto-pack put this product in that box — as many per box as the packed size below (and the box's max packed weight) allow; one per box when no size is set and the box has no max weight. A product with a different box means another box, and the quote prices every box. A product that sells from a shared pool with boxes of its own (Products → Shared stock) uses the pool's boxes instead. Boxes are managed under Fulfillment → Packages.
             </p>
           </div>
           <div>

@@ -22,7 +22,7 @@
 import { prisma } from '../db.js';
 import { getEasyPostConfig } from './settings.js';
 import { epCreateShipment, type EpAddress } from './easypost.js';
-import { contentWeightOz, perUnitWeightGrams, unitDimensionsIn, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
+import { contentWeightOz, perUnitWeightGrams, unitDimensionsIn, allowedBoxesFor, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
 import { autoPack, type PackageOption, type UnitToPack } from './auto-pack.js';
 
 export interface QuoteAddress {
@@ -92,19 +92,13 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
     const qty = Math.max(0, Math.floor(item.quantity ?? 0));
     if (qty === 0) return;
     // A weightless line still takes room: never pack 1000 of it into one mailer.
-    let weightOz = Math.max(0.1, perUnitWeightGrams(item) / GRAMS_PER_OZ);
-    let dims = unitDimensionsIn(item);
-    const box = item.product?.package ?? null;
-    // A pack of loose units taller than its box (a 100-pack of mailers in the
-    // box that takes 50) is counted out across boxes: rate it as the pieces
-    // it ships in, not as one parcel that cannot exist.
-    let pieces = 1;
-    if (box && dims && dims.thicknessIn > box.heightIn && (item.product?.unitsPerItem ?? 1) > 1) {
-      pieces = Math.ceil(dims.thicknessIn / box.heightIn);
-      weightOz = weightOz / pieces;
-      dims = { ...dims, thicknessIn: dims.thicknessIn / pieces };
-    }
-    for (let i = 0; i < qty * pieces; i++) units.push({ orderItemId: String(idx), weightOz, dims, packageId: box?.id ?? null });
+    const weightOz = Math.max(0.1, perUnitWeightGrams(item) / GRAMS_PER_OZ);
+    // A pile with boxes of its own (mailers: 50 to the small box, 135 to the
+    // big one) is packed by count; otherwise by the product's box and size.
+    const allowed = allowedBoxesFor(item);
+    const dims = allowed ? null : unitDimensionsIn(item);
+    const box = allowed ? null : item.product?.package ?? null;
+    for (let i = 0; i < qty; i++) units.push({ orderItemId: String(idx), weightOz, dims, packageId: box?.id ?? null, allowed });
   });
 
   const catalogue = await prisma.package.findMany({
@@ -118,6 +112,8 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
       catalogue.push({ ...box, description: null, costCents: 0, isDefault: false, active: true, sortOrder: 999 } as (typeof catalogue)[number]);
     }
   }
+  const listed = [...new Set(units.flatMap((u) => (u.allowed ?? []).map((a) => a.packageId)))].filter((id) => !catalogue.some((p) => p.id === id));
+  if (listed.length > 0) catalogue.push(...(await prisma.package.findMany({ where: { id: { in: listed } } })));
   const packages: PackageOption[] = catalogue.map((p) => ({
     id: p.id, name: p.name, maxWeightOz: p.maxWeightOz, emptyWeightOz: p.emptyWeightOz,
     lengthIn: p.lengthIn, widthIn: p.widthIn, heightIn: p.heightIn, costCents: p.costCents, sortOrder: p.sortOrder,

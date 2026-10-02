@@ -95,7 +95,38 @@ export interface WeighableItem {
     unitHeightIn?: number | null;
     /** Loose units in one of this product (a 25-pack of mailers = 25). */
     unitsPerItem?: number | null;
+    /** The pile this product sells from, with the boxes that pile ships in. */
+    stockPool?: { boxes?: unknown } | null;
   } | null;
+}
+
+export interface PoolBox {
+  packageId: string;
+  maxUnits: number;
+}
+
+/** A stock pool's `boxes` JSON, validated: [{ packageId, maxUnits }]. */
+export function poolBoxes(raw: unknown): PoolBox[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PoolBox[] = [];
+  for (const b of raw) {
+    const packageId = (b as any)?.packageId;
+    const maxUnits = Number((b as any)?.maxUnits);
+    if (typeof packageId === 'string' && packageId && Number.isFinite(maxUnits) && maxUnits > 0) out.push({ packageId, maxUnits });
+  }
+  return out;
+}
+
+/**
+ * The boxes one of this line may ship in and the share of each box's count
+ * it takes — from its stock pool's boxes (a 25-pack of mailers takes half of
+ * the box that holds 50). Null when the product has no such rule.
+ */
+export function allowedBoxesFor(item: WeighableItem): { packageId: string; share: number }[] | null {
+  const boxes = poolBoxes(item.product?.stockPool?.boxes);
+  if (boxes.length === 0) return null;
+  const units = Math.max(1, item.product?.unitsPerItem ?? 1);
+  return boxes.map((b) => ({ packageId: b.packageId, share: units / b.maxUnits }));
 }
 
 /**

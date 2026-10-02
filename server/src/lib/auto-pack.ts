@@ -33,6 +33,12 @@ export interface UnitToPack {
   packageId?: string | null;
   /** Footprint and thickness, when known. Unknown → weight is the only limit. */
   dims?: UnitDims | null;
+  /**
+   * Boxes this unit may ship in, with the share of the box's count it takes
+   * (a 25-pack of mailers in the box that holds 50 is 0.5). Set from a stock
+   * pool's boxes; outranks `packageId` and `dims`.
+   */
+  allowed?: { packageId: string; share: number }[] | null;
 }
 
 export interface PackageOption {
@@ -111,8 +117,15 @@ export function unitShareIn3(unit: UnitToPack, p: PackageOption): number {
   return best;
 }
 
+/** Share of box `p`'s count this unit takes: Infinity when the box is not on its list. */
+function countShare(unit: UnitToPack, p: PackageOption): number {
+  if (!unit.allowed) return 0;
+  const entry = unit.allowed.find((a) => a.packageId === p.id);
+  return entry && entry.share > 0 ? entry.share : Infinity;
+}
+
 function fits(unit: UnitToPack, p: PackageOption): boolean {
-  return unit.weightOz <= weightCapOz(p) && unitShareIn3(unit, p) <= volumeIn3(p);
+  return unit.weightOz <= weightCapOz(p) && unitShareIn3(unit, p) <= volumeIn3(p) && countShare(unit, p) <= 1 + 1e-9;
 }
 
 interface OpenBox {
@@ -120,25 +133,31 @@ interface OpenBox {
   units: UnitToPack[];
   weightOz: number;
   usedIn3: number;
+  /** Of the box's count (0–1), for units with an allowed-boxes list. */
+  countUsed: number;
 }
 
 function canAdd(box: OpenBox, unit: UnitToPack): boolean {
   if (box.units.length > 0 && (onePerBox(unit, box.pkg) || box.units.some((u) => onePerBox(u, box.pkg)))) return false;
   const share = unitShareIn3(unit, box.pkg);
-  return share !== Infinity
+  const count = countShare(unit, box.pkg);
+  return share !== Infinity && count !== Infinity
     && box.weightOz + unit.weightOz <= weightCapOz(box.pkg)
-    && box.usedIn3 + share <= volumeIn3(box.pkg) + 1e-9;
+    && box.usedIn3 + share <= volumeIn3(box.pkg) + 1e-9
+    && box.countUsed + count <= 1 + 1e-9;
 }
 
 function add(box: OpenBox, unit: UnitToPack): void {
   box.units.push(unit);
   box.weightOz += unit.weightOz;
   box.usedIn3 += unitShareIn3(unit, box.pkg);
+  box.countUsed += countShare(unit, box.pkg);
 }
 
 /** Biggest first, so the small ones fill the gaps. */
 function sortForPacking(units: UnitToPack[], p: PackageOption): UnitToPack[] {
-  return [...units].sort((x, y) => (unitShareIn3(y, p) - unitShareIn3(x, p)) || (y.weightOz - x.weightOz));
+  const size = (u: UnitToPack) => (u.allowed ? countShare(u, p) : unitShareIn3(u, p));
+  return [...units].sort((x, y) => (size(y) - size(x)) || (y.weightOz - x.weightOz));
 }
 
 /** Pour every unit into boxes of one package type, first-fit. */
@@ -148,7 +167,7 @@ function fillWith(units: UnitToPack[], p: PackageOption): OpenBox[] {
     const box = open.find((b) => canAdd(b, unit));
     if (box) add(box, unit);
     else {
-      const fresh: OpenBox = { pkg: p, units: [], weightOz: 0, usedIn3: 0 };
+      const fresh: OpenBox = { pkg: p, units: [], weightOz: 0, usedIn3: 0, countUsed: 0 };
       add(fresh, unit);
       open.push(fresh);
     }
@@ -167,13 +186,16 @@ function shrink(box: OpenBox, packages: PackageOption[]): OpenBox {
     if (volumeIn3(p) >= volumeIn3(box.pkg)) break;
     if (box.weightOz > weightCapOz(p)) continue;
     let used = 0;
+    let count = 0;
     let ok = true;
     for (const u of box.units) {
       const share = unitShareIn3(u, p);
-      if (share === Infinity || u.weightOz > weightCapOz(p)) { ok = false; break; }
+      const c = countShare(u, p);
+      if (share === Infinity || c === Infinity || u.weightOz > weightCapOz(p)) { ok = false; break; }
       used += share;
+      count += c;
     }
-    if (ok && used <= volumeIn3(p) + 1e-9) return { ...box, pkg: p, usedIn3: used };
+    if (ok && used <= volumeIn3(p) + 1e-9 && count <= 1 + 1e-9) return { ...box, pkg: p, usedIn3: used, countUsed: count };
   }
   return box;
 }
@@ -226,7 +248,7 @@ function packOnce(units: UnitToPack[], packages: PackageOption[]): PackPlan {
       const box = open.find((b) => canAdd(b, unit));
       if (box) { add(box, unit); continue; }
       const p = sorted.find((q) => fits(unit, q))!;
-      const fresh: OpenBox = { pkg: p, units: [], weightOz: 0, usedIn3: 0 };
+      const fresh: OpenBox = { pkg: p, units: [], weightOz: 0, usedIn3: 0, countUsed: 0 };
       add(fresh, unit);
       open.push(fresh);
     }
@@ -238,17 +260,29 @@ function packOnce(units: UnitToPack[], packages: PackageOption[]): PackPlan {
 export function autoPack(units: UnitToPack[], packages: PackageOption[]): PackPlan {
   if (packages.length === 0) return { boxes: [], unpacked: [...units] };
 
-  // Units that name their own box are packed among themselves into that box
-  // only (a 135-pack of mailers never lands in a comic mailer); the rest use
-  // the whole catalogue. Plans are merged.
-  const groups = new Map<string, UnitToPack[]>();
+  // Units with their own list of boxes (a stock pool's: mailers go in the
+  // box that takes 50 or the one that takes 135) are packed among themselves
+  // into those boxes; units that name one box are packed into that box only
+  // (a 135 case never lands in a comic mailer); the rest use the whole
+  // catalogue. Plans are merged.
+  const groups = new Map<string, { units: UnitToPack[]; packages: PackageOption[] }>();
   for (const u of units) {
-    const key = u.packageId && packages.some((p) => p.id === u.packageId) ? u.packageId : '';
-    groups.set(key, [...(groups.get(key) ?? []), u]);
+    let key = '';
+    let allowed = packages;
+    if (u.allowed && u.allowed.length > 0) {
+      const ids = u.allowed.map((a) => a.packageId).filter((id) => packages.some((p) => p.id === id)).sort();
+      if (ids.length > 0) { key = `list:${ids.join(',')}`; allowed = packages.filter((p) => ids.includes(p.id)); }
+    } else if (u.packageId && packages.some((p) => p.id === u.packageId)) {
+      key = u.packageId;
+      allowed = packages.filter((p) => p.id === u.packageId);
+    }
+    const g = groups.get(key) ?? { units: [], packages: allowed };
+    g.units.push(u);
+    groups.set(key, g);
   }
   const merged: PackPlan = { boxes: [], unpacked: [] };
-  for (const [key, group] of groups) {
-    const plan = packOnce(group, key ? packages.filter((p) => p.id === key) : packages);
+  for (const g of groups.values()) {
+    const plan = packOnce(g.units, g.packages);
     merged.boxes.push(...plan.boxes);
     merged.unpacked.push(...plan.unpacked);
   }

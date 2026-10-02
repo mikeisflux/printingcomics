@@ -670,7 +670,7 @@ interface SupplyDef {
    *  many units of it one item takes. The pool is created with
    *  `initialUnits` the first time it is seen and never touched again — the
    *  live count is edited in admin (Products → Shared stock). */
-  stockPool?: { key: string; name: string; initialUnits: number };
+  stockPool?: { key: string; name: string; initialUnits: number; boxes?: { name: string; maxUnits: number }[] };
   unitsPerItem?: number;
   /** Packed size of one unit in inches — with the ships-in box this decides
    *  how many go in each box (a 25-pack is a quarter of a 100-pack's height). */
@@ -722,17 +722,6 @@ const GRAMS_PER_OZ = 28.3495;
 const TMAILER_UNIT_WEIGHT_OZ = 5.5;
 const TMAILER_UNIT_WEIGHT_GRAMS = Math.round(TMAILER_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
 
-/**
- * How a pack sits in its box. The rule from the bench: the 24×24×4 takes at
- * most 50 mailers (any mix of packs), and the 135 case is the one that fills
- * the 24×20×6. So one counted-out blank is 4 in / 50 = 0.08 in tall — two
- * 25-packs share a box, a 50-pack fills one, and a 100-pack is two boxes —
- * while the case is packed tighter by the maker and goes as it is. The
- * footprint is the blank, sized to lie flat in either box.
- */
-const TMAILER_BLANK_IN = { lengthIn: 23.5, widthIn: 19.5 };
-const TMAILER_UNIT_HEIGHT_IN = 0.08;
-const TMAILER_CASE_HEIGHT_IN = 5.4;
 
 // Stock item: in stock and sold from inventory (stock counts live in the DB,
 // set from admin; the seed never touches them).
@@ -774,8 +763,18 @@ const TMAILER_IMAGES = [
   '/products/T-Fold_Comic_Mailer.jpg',    // flat blank, as it ships
 ];
 
-/** The shared shelf count the pack listings sell from. 5000 mailers landed. */
-const TMAILER_POOL = { key: 't-mailer', name: 'T-Mailers (mailers on the shelf)', initialUnits: 5000 };
+/**
+ * The shared shelf count the pack listings sell from (5000 mailers landed),
+ * and the two boxes the pile ships in: the 24×24×4 takes up to 50 mailers,
+ * the 24×20×6 up to 135. An order's packs are counted together and go in
+ * the fewest boxes — two 25-packs in a small box, 50 + 25 in one big box.
+ */
+const TMAILER_POOL = {
+  key: 't-mailer',
+  name: 'T-Mailers (mailers on the shelf)',
+  initialUnits: 5000,
+  boxes: [{ name: 'Comic Mailer Small', maxUnits: 50 }, { name: 'Comic Mailer Big', maxUnits: 135 }],
+};
 
 function tmailerSupplies(): SupplyDef[] {
   return GEMINI_TMAILER_LIST.map((t) => ({
@@ -802,12 +801,11 @@ function tmailerSupplies(): SupplyDef[] {
       + `${t.qty} mailers per pack.`,
     priceCents: t.perMailerUSD !== undefined ? Math.round(cents(t.perMailerUSD) * t.qty) : undercutCents(t.listUSD),
     weightGrams: t.qty * TMAILER_UNIT_WEIGHT_GRAMS,
-    unitSizeIn: { ...TMAILER_BLANK_IN, heightIn: t.qty >= 135 ? TMAILER_CASE_HEIGHT_IN : +(t.qty * TMAILER_UNIT_HEIGHT_IN).toFixed(2) },
     backorder: false,
     // Five listings, one pile of mailers: a 25-pack takes 25 of the shared count.
     stockPool: TMAILER_POOL,
     unitsPerItem: t.qty,
-    // The 135 case ships as it comes, in the 24×20×6; counted-out packs go in the 24×24×4 (50 mailers to a box).
+    // Fallback box when the pool's boxes are not set up yet (see TMAILER_POOL.boxes).
     shipsIn: t.qty >= 135 ? 'Comic Mailer Big' : 'Comic Mailer Small',
     images: TMAILER_IMAGES,
     faq: [
@@ -875,11 +873,34 @@ const SUPPLIES: SupplyDef[] = armorSupplies();
 /** Listings replaced by the current range: kept for old orders, hidden from the store. */
 const RETIRED_SUPPLY_SLUGS = ['comic-armor-10-pack'];
 
-/** The pool's id, creating it with its starting count only when it does not exist yet. */
+/** `[{ packageId, maxUnits }]` for the named boxes that exist (a missing one is skipped with a note). */
+async function poolBoxRows(boxes: { name: string; maxUnits: number }[] | undefined) {
+  const rows: { packageId: string; maxUnits: number }[] = [];
+  for (const b of boxes ?? []) {
+    const pkg = await prisma.package.findFirst({ where: { name: { equals: b.name, mode: 'insensitive' } }, select: { id: true } });
+    if (!pkg) { console.warn(`  no Package named "${b.name}" yet — add it under Fulfillment, then set the pool's boxes under Products → Shared stock`); continue; }
+    rows.push({ packageId: pkg.id, maxUnits: b.maxUnits });
+  }
+  return rows;
+}
+
+/**
+ * The pool's id, creating it with its starting count only when it does not
+ * exist yet. Its boxes are set when still blank; a rule edited in admin stays.
+ */
 async function ensureStockPool(pool: NonNullable<SupplyDef['stockPool']>): Promise<string> {
-  const existing = await prisma.stockPool.findUnique({ where: { key: pool.key }, select: { id: true } });
-  if (existing) return existing.id;
-  const created = await prisma.stockPool.create({ data: { key: pool.key, name: pool.name, units: pool.initialUnits }, select: { id: true } });
+  const existing = await prisma.stockPool.findUnique({ where: { key: pool.key }, select: { id: true, boxes: true } });
+  if (existing) {
+    if (!Array.isArray(existing.boxes) || existing.boxes.length === 0) {
+      const rows = await poolBoxRows(pool.boxes);
+      if (rows.length > 0) await prisma.stockPool.update({ where: { id: existing.id }, data: { boxes: rows } });
+    }
+    return existing.id;
+  }
+  const created = await prisma.stockPool.create({
+    data: { key: pool.key, name: pool.name, units: pool.initialUnits, boxes: await poolBoxRows(pool.boxes) },
+    select: { id: true },
+  });
   console.log(`  created stock pool ${pool.key} with ${pool.initialUnits} units`);
   return created.id;
 }

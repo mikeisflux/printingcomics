@@ -213,7 +213,58 @@ export function AdminProducts() {
 // ---------------------------------------------------------------------------
 interface StockPool {
   id: string; key: string; name: string; units: number; updatedAt: string;
+  /** The boxes the pile ships in and how many units each holds. */
+  boxes?: { packageId: string; maxUnits: number }[] | null;
   products: { id: string; slug: string; name: string; unitsPerItem: number; active: boolean }[];
+}
+
+interface BoxOption { id: string; name: string; lengthIn: number; widthIn: number; heightIn: number }
+
+/**
+ * Which boxes a pile ships in and how many units each takes (mailers: 50 to
+ * the small box, 135 to the big one). An order's packs are counted together
+ * and quoted in the fewest boxes.
+ */
+function PoolBoxesEditor({ pool, packages, onSaved }: { pool: StockPool; packages: BoxOption[]; onSaved: () => Promise<void> }) {
+  const toast = useToast();
+  const [rows, setRows] = useState<{ packageId: string; maxUnits: string }[]>(() => (pool.boxes ?? []).map((b) => ({ packageId: b.packageId, maxUnits: String(b.maxUnits) })));
+  const [saving, setSaving] = useState(false);
+  const saved = JSON.stringify((pool.boxes ?? []).map((b) => ({ packageId: b.packageId, maxUnits: String(b.maxUnits) })));
+  const dirty = JSON.stringify(rows) !== saved;
+
+  const save = async () => {
+    const boxes = rows.filter((r) => r.packageId).map((r) => ({ packageId: r.packageId, maxUnits: Math.floor(Number(r.maxUnits)) }));
+    if (boxes.some((b) => !Number.isFinite(b.maxUnits) || b.maxUnits < 1)) { toast.error('Give each box a whole number of units it holds.'); return; }
+    setSaving(true);
+    try {
+      await api.put(`/admin/stock-pools/${pool.id}`, { boxes });
+      toast.success(boxes.length ? `${pool.name} ships in ${boxes.length} box size${boxes.length === 1 ? '' : 's'}.` : `${pool.name}: no box rule — each listing uses its own box.`);
+      await onSaved();
+    } catch (e) { toast.error(errorMessage(e, 'Could not save the boxes')); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ marginTop: '.5rem', fontSize: '.85rem' }}>
+      <div className="muted" style={{ marginBottom: '.25rem' }}>Ships in — the boxes this pile goes in and how many units each holds; an order's packs are counted together and quoted in the fewest boxes.</div>
+      {rows.map((r, i) => (
+        <div key={i} className="row" style={{ gap: '.4rem', alignItems: 'center', marginBottom: '.3rem' }}>
+          <select value={r.packageId} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, packageId: e.target.value } : x)))} style={{ margin: 0, maxWidth: 320 }}>
+            <option value="">— pick a box —</option>
+            {packages.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.lengthIn} × {b.widthIn} × {b.heightIn} in)</option>)}
+          </select>
+          <span className="muted">holds up to</span>
+          <input type="number" min={1} value={r.maxUnits} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, maxUnits: e.target.value } : x)))} style={{ width: 90, margin: 0 }} />
+          <span className="muted">units</span>
+          <button type="button" className="btn secondary sm" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+      <div className="row" style={{ gap: '.4rem' }}>
+        <button type="button" className="btn secondary sm" onClick={() => setRows([...rows, { packageId: '', maxUnits: '' }])}>+ Box</button>
+        {dirty && <button type="button" className="btn sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save boxes'}</button>}
+      </div>
+    </div>
+  );
 }
 
 function SharedStockCard() {
@@ -223,9 +274,11 @@ function SharedStockCard() {
   const [saving, setSaving] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newPool, setNewPool] = useState({ name: '', key: '', units: '' });
+  const [packages, setPackages] = useState<BoxOption[]>([]);
 
   const load = () => api.get<{ pools: StockPool[] }>('/admin/stock-pools').then((r) => { setPools(r.pools); setDrafts({}); }).catch(() => setPools([]));
   useEffect(() => { void load(); }, []);
+  useEffect(() => { api.get<{ items: BoxOption[] }>('/admin/fulfillment/packages').then((r) => setPackages(r.items)).catch(() => setPackages([])); }, []);
 
   const save = async (pool: StockPool) => {
     const units = Number(drafts[pool.id]);
@@ -290,6 +343,7 @@ function SharedStockCard() {
                   </span>
                 ))}
               </div>
+              <PoolBoxesEditor key={`${pool.id}:${pool.updatedAt}`} pool={pool} packages={packages} onSaved={load} />
             </div>
             <div className="row" style={{ gap: '.4rem', alignItems: 'center' }}>
               <input type="number" min={0} value={draft} onChange={(e) => setDrafts({ ...drafts, [pool.id]: e.target.value })} style={{ width: 120, margin: 0 }} />

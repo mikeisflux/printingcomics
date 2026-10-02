@@ -45,7 +45,7 @@ router.post('/quote', async (req, res) => {
   // listed flat table rates, so 50 books quoted the same as one.)
   const items = await prisma.cartItem.findMany({
     where: { cartId: cart.id },
-    include: { product: { select: { name: true, weightGrams: true, pricingConfig: true, package: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true, unitsPerItem: true } } },
+    include: { product: { select: { name: true, weightGrams: true, pricingConfig: true, package: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true, unitsPerItem: true, stockPool: { select: { boxes: true } } } } },
   });
   const subtotal = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 

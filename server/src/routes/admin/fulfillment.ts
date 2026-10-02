@@ -6,7 +6,7 @@ import {
   epCreateShipment, epBuyShipment, epFetchShipment, epRefundShipment, epTestConnection,
   type EpCreateShipmentInput, type EpAddress,
 } from '../../lib/easypost.js';
-import { perUnitWeightGrams, unitDimensionsIn } from '../../lib/shipping-weight.js';
+import { perUnitWeightGrams, unitDimensionsIn, allowedBoxesFor } from '../../lib/shipping-weight.js';
 import { autoPack, type PackageOption, type UnitToPack } from '../../lib/auto-pack.js';
 import { getEasyPostConfig } from '../../lib/settings.js';
 
@@ -260,7 +260,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
   const order = await prisma.order.findUnique({
     where: { id: req.params.orderId },
     include: {
-      items: { include: { product: true } },
+      items: { include: { product: { include: { stockPool: { select: { boxes: true } } } } } },
       shipments: { include: { items: true } },
     },
   });
@@ -288,9 +288,10 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     // than packing 1000 weightless items into one mailer and then having
     // USPS reject it.
     const perUnitOz = (perUnitWeightGrams(item) / 28.3495) || 1;
-    const dims = unitDimensionsIn(item);
+    const allowed = allowedBoxesFor(item);
+    const dims = allowed ? null : unitDimensionsIn(item);
     for (let i = 0; i < remaining; i++) {
-      units.push({ orderItemId: item.id, weightOz: perUnitOz, dims, packageId: item.product?.packageId ?? null });
+      units.push({ orderItemId: item.id, weightOz: perUnitOz, dims, packageId: allowed ? null : item.product?.packageId ?? null, allowed });
     }
   }
 

@@ -645,6 +645,10 @@ model StockPool {
   key       String    @unique
   name      String
   units     Int       @default(0)
+  // The boxes this pile ships in and how many units each holds, e.g.
+  // [{ "packageId": "…", "maxUnits": 50 }, { "packageId": "…", "maxUnits": 135 }].
+  // An order's packs are counted together and go in the fewest boxes.
+  boxes     Json?
   products  Product[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
