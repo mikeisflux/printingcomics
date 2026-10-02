@@ -297,7 +297,7 @@ export function AdminProductEdit() {
               ))}
             </div>
             <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
-              One pack as it lies in the box — a 25-pack of mailers is 23.5 × 19.5 × 1. Leave blank for printed books and art prints; they are sized from their pages and print size.
+              One unit as it lies in the box, e.g. a pack of sleeves 11.5 × 8 × 1.5. Leave blank for printed books and art prints (sized from their pages and print size) and for products whose shared pool has boxes of its own (packed by count).
             </p>
           </div>
         </div>

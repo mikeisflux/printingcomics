@@ -76,8 +76,9 @@ interface Parcel {
  * does, so the quote prices the boxes that will actually ship. Every active
  * Package is a candidate: units are packed by footprint, thickness and
  * weight into the fewest boxes, each shrunk to the smallest box that holds
- * it. Products that name their own box (a 135-pack of mailers only fits the
- * 24×20×6) get parcels of that box only. A unit no box can take ships on its
+ * it. A stock pool with boxes of its own (mailers: 50 to the 24×24×4, 135 to
+ * the 24×20×10) is packed by count into those; products that name their own
+ * box get parcels of that box only. A unit no box can take ships on its
  * own in the largest box, so it is still rated rather than dropped.
  */
 async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; boxes: number; weightOz: number }> {

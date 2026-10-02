@@ -766,8 +766,9 @@ const TMAILER_IMAGES = [
 /**
  * The shared shelf count the pack listings sell from (5000 mailers landed),
  * and the two boxes the pile ships in: the 24×24×4 takes up to 50 mailers,
- * the 24×20×6 up to 135. An order's packs are counted together and go in
+ * the 24×20×10 up to 135. An order's packs are counted together and go in
  * the fewest boxes — two 25-packs in a small box, 50 + 25 in one big box.
+ * The boxes are found by name; their sizes come from Fulfillment → Packages.
  */
 const TMAILER_POOL = {
   key: 't-mailer',
