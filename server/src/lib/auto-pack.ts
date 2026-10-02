@@ -75,6 +75,15 @@ export function weightCapOz(p: PackageOption): number {
   return p.maxWeightOz && p.maxWeightOz > 0 ? p.maxWeightOz : DEFAULT_MAX_PACKED_OZ;
 }
 
+/**
+ * A product that names its own box but has no packed size, in a box with no
+ * max packed weight, ships one per box: weight alone cannot say how many
+ * fit, and that is what the product editor promises.
+ */
+function onePerBox(unit: UnitToPack, p: PackageOption): boolean {
+  return !!unit.packageId && unit.packageId === p.id && !unit.dims && !(p.maxWeightOz && p.maxWeightOz > 0);
+}
+
 export function volumeIn3(p: PackageOption): number {
   return p.lengthIn * p.widthIn * p.heightIn;
 }
@@ -114,6 +123,7 @@ interface OpenBox {
 }
 
 function canAdd(box: OpenBox, unit: UnitToPack): boolean {
+  if (box.units.length > 0 && (onePerBox(unit, box.pkg) || box.units.some((u) => onePerBox(u, box.pkg)))) return false;
   const share = unitShareIn3(unit, box.pkg);
   return share !== Infinity
     && box.weightOz + unit.weightOz <= weightCapOz(box.pkg)

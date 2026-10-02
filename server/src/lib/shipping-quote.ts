@@ -92,9 +92,19 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
     const qty = Math.max(0, Math.floor(item.quantity ?? 0));
     if (qty === 0) return;
     // A weightless line still takes room: never pack 1000 of it into one mailer.
-    const weightOz = Math.max(0.1, perUnitWeightGrams(item) / GRAMS_PER_OZ);
-    const dims = unitDimensionsIn(item);
-    for (let i = 0; i < qty; i++) units.push({ orderItemId: String(idx), weightOz, dims, packageId: item.product?.package?.id ?? null });
+    let weightOz = Math.max(0.1, perUnitWeightGrams(item) / GRAMS_PER_OZ);
+    let dims = unitDimensionsIn(item);
+    const box = item.product?.package ?? null;
+    // A pack of loose units taller than its box (a 100-pack of mailers in the
+    // box that takes 50) is counted out across boxes: rate it as the pieces
+    // it ships in, not as one parcel that cannot exist.
+    let pieces = 1;
+    if (box && dims && dims.thicknessIn > box.heightIn && (item.product?.unitsPerItem ?? 1) > 1) {
+      pieces = Math.ceil(dims.thicknessIn / box.heightIn);
+      weightOz = weightOz / pieces;
+      dims = { ...dims, thicknessIn: dims.thicknessIn / pieces };
+    }
+    for (let i = 0; i < qty * pieces; i++) units.push({ orderItemId: String(idx), weightOz, dims, packageId: box?.id ?? null });
   });
 
   const catalogue = await prisma.package.findMany({

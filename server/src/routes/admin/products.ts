@@ -43,6 +43,10 @@ const productWriteSchema = z.object({
   active: z.boolean().optional(),
   minQuantity: z.number().int().min(1).optional(),
   weightGrams: z.number().int().min(0).optional(),
+  // Packed size of one unit (inches); null clears it.
+  unitLengthIn: z.number().positive().nullable().optional(),
+  unitWidthIn: z.number().positive().nullable().optional(),
+  unitHeightIn: z.number().positive().nullable().optional(),
   volumeTiers: z.array(volumeTierSchema).optional(),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),

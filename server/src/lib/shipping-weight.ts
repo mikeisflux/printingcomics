@@ -89,6 +89,12 @@ export interface WeighableItem {
     pricingConfig?: unknown;
     /** The box this product ships in on its own (see Product.package). */
     package?: ShipsInBox | null;
+    /** Packed size of one unit, when the product declares it (shelf goods). */
+    unitLengthIn?: number | null;
+    unitWidthIn?: number | null;
+    unitHeightIn?: number | null;
+    /** Loose units in one of this product (a 25-pack of mailers = 25). */
+    unitsPerItem?: number | null;
   } | null;
 }
 
@@ -124,12 +130,17 @@ export interface UnitDimsIn {
 }
 
 /**
- * Footprint and thickness of one unit, for packing: a book from its trim size
- * and page count (interior sheets plus the folded cover), an art print from
- * the size it was ordered in. Null when the line's size is not known (shelf
- * goods), in which case only weight limits how many go in a box.
+ * Footprint and thickness of one unit, for packing: the size the product
+ * declares (a pack of mailers, a case of sleeves), else a book from its trim
+ * size and page count (interior sheets plus the folded cover), or an art print
+ * from the size it was ordered in. Null when the line's size is not known, in
+ * which case only weight limits how many go in a box.
  */
 export function unitDimensionsIn(item: WeighableItem): UnitDimsIn | null {
+  const p = item.product;
+  if (p && (p.unitLengthIn ?? 0) > 0 && (p.unitWidthIn ?? 0) > 0 && (p.unitHeightIn ?? 0) > 0) {
+    return { lengthIn: p.unitLengthIn!, widthIn: p.unitWidthIn!, thicknessIn: p.unitHeightIn! };
+  }
   const opts = (item.options ?? {}) as Record<string, unknown>;
 
   const size = opts['print_size'];

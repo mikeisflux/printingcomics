@@ -23,6 +23,9 @@ interface ProductDraft {
   stockPoolId: string | null;
   unitsPerItem: number;
   packageId: string | null;
+  unitLengthIn: number | null;
+  unitWidthIn: number | null;
+  unitHeightIn: number | null;
   trackStock: boolean;
   madeToOrder: boolean;
   backorder: boolean;
@@ -41,6 +44,7 @@ interface ProductDraft {
 const emptyDraft: ProductDraft = {
   slug: '', name: '', shortDescription: '', description: '',
   priceCents: 0, hasVariants: false, sku: '', stock: 0, stockPoolId: null, unitsPerItem: 1, packageId: null, trackStock: false,
+  unitLengthIn: null, unitWidthIn: null, unitHeightIn: null,
   madeToOrder: true, backorder: false, backorderEta: '',
   active: true, minQuantity: 1, weightGrams: 0,
   volumeTiers: [], seoTitle: '', seoDescription: '',
@@ -89,6 +93,9 @@ export function AdminProductEdit() {
         stockPoolId: p.stockPoolId ?? null,
         unitsPerItem: p.unitsPerItem ?? 1,
         packageId: p.packageId ?? null,
+        unitLengthIn: p.unitLengthIn ?? null,
+        unitWidthIn: p.unitWidthIn ?? null,
+        unitHeightIn: p.unitHeightIn ?? null,
         trackStock: p.trackStock ?? false,
         backorder: p.backorder ?? false,
         backorderEta: p.backorderEta ? String(p.backorderEta).slice(0, 10) : '',
@@ -270,7 +277,27 @@ export function AdminProductEdit() {
               {packages.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.lengthIn} × {b.widthIn} × {b.heightIn} in)</option>)}
             </select>
             <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
-              Checkout quotes and auto-pack put this product in that box (as many per box as its max packed weight allows, one per box if none). Boxes are managed under Fulfillment → Packages.
+              Checkout quotes and auto-pack put this product in that box — as many per box as the packed size below (and the box's max packed weight) allow; one per box when no size is set and the box has no max weight. A product with a different box means another box, and the quote prices every box. Boxes are managed under Fulfillment → Packages.
+            </p>
+          </div>
+          <div>
+            <label>Packed size of one unit (inches)</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.4rem' }}>
+              {(['unitLengthIn', 'unitWidthIn', 'unitHeightIn'] as const).map((k, i) => (
+                <input
+                  key={k}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={['Length', 'Width', 'Height'][i]}
+                  aria-label={['Unit length (in)', 'Unit width (in)', 'Unit height (in)'][i]}
+                  value={draft[k] ?? ''}
+                  onChange={(e) => setDraft({ ...draft, [k]: e.target.value === '' ? null : Number(e.target.value) })}
+                />
+              ))}
+            </div>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
+              One pack as it lies in the box — a 25-pack of mailers is 23.5 × 19.5 × 1. Leave blank for printed books and art prints; they are sized from their pages and print size.
             </p>
           </div>
         </div>

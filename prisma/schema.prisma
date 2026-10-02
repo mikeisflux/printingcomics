@@ -171,6 +171,12 @@ model Product {
   active          Boolean  @default(true)
   minQuantity     Int      @default(1)
   weightGrams     Int      @default(0)
+  // Packed size of one unit in inches (a pack of mailers as it sits in its
+  // box). With the ships-in box this says how many go in each box; printed
+  // books and prints are sized from their pages instead when these are blank.
+  unitLengthIn    Float?
+  unitWidthIn     Float?
+  unitHeightIn    Float?
   // Tier-based volume discounts: JSON array of { minQty, pricePerUnitCents }.
   volumeTiers     Json?
   // PDF print template the buyer downloads before uploading artwork.

@@ -672,6 +672,9 @@ interface SupplyDef {
    *  live count is edited in admin (Products → Shared stock). */
   stockPool?: { key: string; name: string; initialUnits: number };
   unitsPerItem?: number;
+  /** Packed size of one unit in inches — with the ships-in box this decides
+   *  how many go in each box (a 25-pack is a quarter of a 100-pack's height). */
+  unitSizeIn?: { lengthIn: number; widthIn: number; heightIn: number };
   /** Name of the admin-defined Package (Fulfillment → Packages) this item
    *  ships in on its own. Matched case-insensitively; left alone when no
    *  package of that name exists yet. */
@@ -718,6 +721,18 @@ const TMAILER_UNDERCUT = 0.20;
 const GRAMS_PER_OZ = 28.3495;
 const TMAILER_UNIT_WEIGHT_OZ = 5.5;
 const TMAILER_UNIT_WEIGHT_GRAMS = Math.round(TMAILER_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
+
+/**
+ * How a pack sits in its box. The rule from the bench: the 24×24×4 takes at
+ * most 50 mailers (any mix of packs), and the 135 case is the one that fills
+ * the 24×20×6. So one counted-out blank is 4 in / 50 = 0.08 in tall — two
+ * 25-packs share a box, a 50-pack fills one, and a 100-pack is two boxes —
+ * while the case is packed tighter by the maker and goes as it is. The
+ * footprint is the blank, sized to lie flat in either box.
+ */
+const TMAILER_BLANK_IN = { lengthIn: 23.5, widthIn: 19.5 };
+const TMAILER_UNIT_HEIGHT_IN = 0.08;
+const TMAILER_CASE_HEIGHT_IN = 5.4;
 
 // Stock item: in stock and sold from inventory (stock counts live in the DB,
 // set from admin; the seed never touches them).
@@ -787,11 +802,12 @@ function tmailerSupplies(): SupplyDef[] {
       + `${t.qty} mailers per pack.`,
     priceCents: t.perMailerUSD !== undefined ? Math.round(cents(t.perMailerUSD) * t.qty) : undercutCents(t.listUSD),
     weightGrams: t.qty * TMAILER_UNIT_WEIGHT_GRAMS,
+    unitSizeIn: { ...TMAILER_BLANK_IN, heightIn: t.qty >= 135 ? TMAILER_CASE_HEIGHT_IN : +(t.qty * TMAILER_UNIT_HEIGHT_IN).toFixed(2) },
     backorder: false,
     // Five listings, one pile of mailers: a 25-pack takes 25 of the shared count.
     stockPool: TMAILER_POOL,
     unitsPerItem: t.qty,
-    // The 135-pack only fits the 24×24×6 box; every other pack ships in the 24×24×4.
+    // The 135 case ships as it comes, in the 24×20×6; counted-out packs go in the 24×24×4 (50 mailers to a box).
     shipsIn: t.qty >= 135 ? 'Comic Mailer Big' : 'Comic Mailer Small',
     images: TMAILER_IMAGES,
     faq: [
@@ -810,6 +826,7 @@ function tmailerSupplies(): SupplyDef[] {
  */
 const ARMOR_UNIT_WEIGHT_OZ = 0.8;
 const armorPackGrams = (count: number) => Math.round(count * ARMOR_UNIT_WEIGHT_OZ * GRAMS_PER_OZ);
+
 
 /**
  * Comic Armor packs mirror the mailer packs at twice the count (a mailer
@@ -845,6 +862,7 @@ function armorSupplies(): SupplyDef[] {
       // n × per-sleeve price, in integer cents.
       priceCents: Math.round(cents(perSleeve) * n),
       weightGrams: armorPackGrams(n),
+      // Box and packed size are set on the product in admin, not here.
       // One photo for the range until each pack has its own.
       images: [n === 270 ? '/products/comic-armor-270-pack.webp' : '/products/comic-armor-20-pack.webp'],
       faq,
@@ -875,8 +893,13 @@ async function packageByName(name: string): Promise<{ packageId: string } | Reco
 
 async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
   // Reuse the existing row so cart / order references survive a re-seed.
-  const existing = await prisma.product.findUnique({ where: { slug: def.slug }, select: { id: true } });
-  const data = {
+  const existing = await prisma.product.findUnique({
+    where: { slug: def.slug },
+    select: { id: true, weightGrams: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true, packageId: true, stockPoolId: true },
+  });
+
+  // The listing itself — what the seed is the source of truth for.
+  const listing = {
     slug: def.slug,
     name: def.name,
     shortDescription: def.shortDescription,
@@ -886,17 +909,7 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     hasVariants: false,
     // Stock item, not printed to order — no proof or artwork workflow.
     madeToOrder: false,
-    active: true,
     minQuantity: 1,
-    weightGrams: def.weightGrams,
-    backorder: def.backorder ?? false,
-    backorderEta: def.backorderEta ?? null,
-    stockPoolId: def.stockPool ? await ensureStockPool(def.stockPool) : null,
-    unitsPerItem: def.unitsPerItem ?? 1,
-    // Only pooled goods refuse orders when the count runs out; the others
-    // sell freely until someone sets a count and turns tracking on in admin.
-    trackStock: !!def.stockPool,
-    ...(def.shipsIn ? await packageByName(def.shipsIn) : {}),
     // No pricingConfig on purpose: flat price, no configurator, no promo.
     seoTitle: def.name,
     seoDescription: def.shortDescription,
@@ -904,16 +917,49 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     categories: { create: [{ category: { connect: { id: categoryId } } }] },
   };
 
+  // How it ships and sells from the shelf — set once when the product is
+  // created, then owned by admin (Products → the product's box, packed size,
+  // weight, stock, backorder). A re-seed never overwrites those; it only
+  // fills one in that is still blank.
+  const shipping = {
+    weightGrams: def.weightGrams,
+    unitLengthIn: def.unitSizeIn?.lengthIn ?? null,
+    unitWidthIn: def.unitSizeIn?.widthIn ?? null,
+    unitHeightIn: def.unitSizeIn?.heightIn ?? null,
+    ...(def.shipsIn ? await packageByName(def.shipsIn) : {}),
+    stockPoolId: def.stockPool ? await ensureStockPool(def.stockPool) : null,
+    unitsPerItem: def.unitsPerItem ?? 1,
+  };
+
   let productId: string;
   if (existing) {
+    const fillIn: Record<string, unknown> = {};
+    if (!existing.weightGrams && def.weightGrams) fillIn.weightGrams = def.weightGrams;
+    if (existing.unitLengthIn == null && existing.unitWidthIn == null && existing.unitHeightIn == null && def.unitSizeIn) {
+      Object.assign(fillIn, { unitLengthIn: shipping.unitLengthIn, unitWidthIn: shipping.unitWidthIn, unitHeightIn: shipping.unitHeightIn });
+    }
+    if (!existing.packageId && 'packageId' in shipping) fillIn.packageId = shipping.packageId;
+    if (!existing.stockPoolId && shipping.stockPoolId) Object.assign(fillIn, { stockPoolId: shipping.stockPoolId, unitsPerItem: shipping.unitsPerItem, trackStock: true });
     await prisma.$transaction(async (tx) => {
       await tx.productOption.deleteMany({ where: { productId: existing.id } });
       await tx.productCategory.deleteMany({ where: { productId: existing.id } });
-      await tx.product.update({ where: { id: existing.id }, data });
+      await tx.product.update({ where: { id: existing.id }, data: { ...listing, ...fillIn } });
     }, { timeout: 30000 });
     productId = existing.id;
   } else {
-    productId = (await prisma.product.create({ data, select: { id: true } })).id;
+    productId = (await prisma.product.create({
+      data: {
+        ...listing,
+        ...shipping,
+        active: true,
+        backorder: def.backorder ?? false,
+        backorderEta: def.backorderEta ?? null,
+        // Only pooled goods refuse orders when the count runs out; the others
+        // sell freely until someone sets a count and turns tracking on in admin.
+        trackStock: !!def.stockPool,
+      },
+      select: { id: true },
+    })).id;
   }
 
   // Only when the product has no photo at all — never clobber one an admin
