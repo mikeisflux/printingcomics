@@ -21,3 +21,9 @@ server/src/generated/
 
 # Per-server deploy bookkeeping written by scripts/deploy.sh (what was last installed/pushed/seeded).
 .deploy-state
+
+# Runtime upload storage (customer files, proofs) — never source. The API
+# writes here relative to its working directory (UPLOADS_DIR), so both the
+# repo root and server/ are covered.
+/uploads/
+/server/uploads/
