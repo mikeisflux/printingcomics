@@ -237,6 +237,47 @@ export async function storeItemPrintFile(args: {
   };
 }
 
+/**
+ * Trash the file in a slot — uploaded by mistake, the wrong book. The slot is
+ * emptied outright: every upload it ever held is re-labelled "removed" (an
+ * earlier version must not quietly become current and get printed), the rows
+ * stay so staff can see what happened and the order-time link to the cart
+ * upload is not re-created by the next backfill. The slot reads "missing"
+ * until another file is sent.
+ */
+export async function removeItemPrintFile(args: { orderItemId: string; fileId: string; via: string }): Promise<void> {
+  const row = await prisma.orderItemFile.findFirst({
+    where: { id: args.fileId, orderItemId: args.orderItemId },
+    include: {
+      media: { select: { originalName: true } },
+      orderItem: { include: { order: { select: { id: true, number: true, status: true } } } },
+    },
+  });
+  if (!row) throw new HttpError(404, 'File not found on this line');
+  if (!isPrintFileKind(row.purpose)) throw new HttpError(400, 'That file is not in an upload slot.');
+  const order = row.orderItem.order;
+  if (CLOSED_FOR_UPLOADS.has(order.status)) {
+    throw new HttpError(409, `Order ${order.number} is ${order.status.toLowerCase()} — files can no longer be changed on it. Reply to any of our emails and we will sort it out.`);
+  }
+  const kind = row.purpose;
+  const label = PRINT_FILE_LABELS[kind];
+  const slotRows = await prisma.orderItemFile.findMany({
+    where: { orderItemId: args.orderItemId, purpose: kind },
+    include: { media: { select: { originalName: true } } },
+  });
+  for (const r of slotRows) {
+    const pages = pagesFromNotes(r.notes);
+    await prisma.orderItemFile.update({
+      where: { id: r.id },
+      data: { purpose: 'removed', notes: `${label} removed by customer — ${r.media.originalName}${pages ? ` (${pages} pages)` : ''}` },
+    });
+  }
+  const names = slotRows.map((r) => r.media.originalName).join(', ');
+  const what = `${label} for ${itemLabel(row.orderItem)}: ${names}`;
+  await prisma.orderStatusEvent.create({ data: { orderId: order.id, kind: 'status', message: `Customer removed ${what} via ${args.via}` } });
+  await notifyStaff(order.id, `${label} removed — order ${order.number}`, `The customer removed the ${what} on order ${order.number}. The slot is empty until they upload another.`);
+}
+
 /** Every slot on the order, with its current file, plus the files uploaded after `since`. */
 async function orderSlots(orderId: string) {
   const items = await prisma.orderItem.findMany({
@@ -266,12 +307,20 @@ export async function autoFulfilMediaRequests(orderId: string): Promise<number> 
   return closed;
 }
 
-/** The customer says the request is done; at least one file must have come in since. */
+/**
+ * The customer says the request is done: something must have come in since,
+ * and no slot may be empty — a book cannot print without both its files.
+ */
 export async function completeMediaRequest(requestId: string, via: string): Promise<void> {
   const mr = await prisma.mediaRequest.findUnique({ where: { id: requestId }, include: { order: { select: { id: true, number: true } } } });
   if (!mr) throw new HttpError(404, 'Request not found');
   if (mr.status === 'fulfilled') return;
-  const since = await prisma.orderItemFile.count({ where: { orderItem: { orderId: mr.orderId }, createdAt: { gte: mr.createdAt } } });
+  // An empty slot is the more useful thing to say — it names what to upload.
+  for (const { item, slots } of await orderSlots(mr.orderId)) {
+    const empty = slots.filter((s) => !s.file);
+    if (empty.length) throw new HttpError(400, `${itemLabel(item)} still has no ${empty.map((s) => s.label).join(' or ')}. Upload it first, then mark the request done.`);
+  }
+  const since = await prisma.orderItemFile.count({ where: { orderItem: { orderId: mr.orderId }, createdAt: { gte: mr.createdAt }, purpose: { not: 'removed' } } });
   if (since === 0) throw new HttpError(400, 'Nothing has been uploaded since we asked. Upload the files first, then mark the request done.');
   await prisma.mediaRequest.update({ where: { id: mr.id }, data: { status: 'fulfilled', fulfilledAt: new Date() } });
   await prisma.orderStatusEvent.create({ data: { orderId: mr.orderId, kind: 'status', message: `Customer marked the file request done via ${via} (${since} file${since === 1 ? '' : 's'} uploaded since)` } });

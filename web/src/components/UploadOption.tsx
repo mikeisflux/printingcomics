@@ -95,6 +95,16 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
               {busy ? `Uploading… ${progress}%` : 'Replace'}
               <input type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { void send(e.target.files, true); e.currentTarget.value = ''; }} />
             </label>
+            <button
+              type="button"
+              className="btn secondary"
+              style={{ padding: '.2rem .6rem', fontSize: '.8rem' }}
+              disabled={busy}
+              title="Take this file out — the spot goes back to empty so you can choose another"
+              onClick={() => { setErr(null); onChange(''); }}
+            >
+              Remove
+            </button>
           </div>
         ) : (
           <label className="btn" style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>

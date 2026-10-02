@@ -3,7 +3,7 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { verifyOrderView } from '../lib/order-view.js';
-import { completeMediaRequest, isPrintFileKind, orderFilesNeeded, printFileSlotsFor, storeItemPrintFile } from '../lib/print-files.js';
+import { completeMediaRequest, isPrintFileKind, orderFilesNeeded, printFileSlotsFor, removeItemPrintFile, storeItemPrintFile } from '../lib/print-files.js';
 import { customerUpload } from './proofs.js';
 import { promises as fs } from 'node:fs';
 
@@ -146,6 +146,22 @@ router.post('/:number/items/:itemId/files', requireAuth, customerUpload.single('
   });
   const open = await prisma.mediaRequest.count({ where: { order: { number: String(req.params.number) }, status: 'open' } });
   res.json({ ok: true, file: result.file, printFiles: printFileSlotsFor(refreshed), openRequests: open });
+});
+
+// A file uploaded by mistake comes out of its slot (kept on record for staff).
+router.delete('/:number/items/:itemId/files/:fileId', requireAuth, async (req, res) => {
+  const item = await prisma.orderItem.findFirst({
+    where: { id: String(req.params.itemId), order: { number: String(req.params.number), userId: req.session!.sub } },
+    select: { id: true },
+  });
+  if (!item) throw new HttpError(404, 'Order line not found');
+  await removeItemPrintFile({ orderItemId: item.id, fileId: String(req.params.fileId), via: 'account' });
+  const refreshed = await prisma.orderItem.findUniqueOrThrow({
+    where: { id: item.id },
+    include: { product: { select: { slug: true, pricingConfig: true, madeToOrder: true } }, files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } } },
+  });
+  const open = await prisma.mediaRequest.count({ where: { order: { number: String(req.params.number) }, status: 'open' } });
+  res.json({ ok: true, printFiles: printFileSlotsFor(refreshed), openRequests: open });
 });
 
 // The customer tells us the files we asked for are up.

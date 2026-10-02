@@ -206,7 +206,7 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
       id: it.id,
       name: it.name,
       title: titleOf(it),
-      uploads: (it.files ?? []).map((f) => f.media.originalName),
+      uploads: (it.files ?? []).filter((f) => f.purpose !== 'removed').map((f) => f.media.originalName),
       kinds: proofKindsForSlug(it.product.slug),
     }));
     setQueue((cur) => {
@@ -881,6 +881,8 @@ export function AdminOrderDetail() {
                               border: '1px solid var(--border)',
                               overflow: 'hidden',
                               fontSize: '.8rem',
+                              opacity: f.purpose === 'removed' ? 0.55 : 1,
+                              textDecoration: f.purpose === 'removed' ? 'line-through' : undefined,
                             }}
                           >
                             <button
@@ -900,7 +902,7 @@ export function AdminOrderDetail() {
                               }}
                             >
                               <span style={{ fontWeight: 600 }}>
-                                {({ cover: 'COVER PDF', interior: 'INTERIOR PDF', artwork: 'ARTWORK', corrected: 'CORRECTED' } as Record<string, string>)[f.purpose ?? ''] ?? (f.purpose ? f.purpose.toUpperCase() : 'FILE')}
+                                {({ cover: 'COVER PDF', interior: 'INTERIOR PDF', artwork: 'ARTWORK', corrected: 'CORRECTED', removed: 'REMOVED BY CUSTOMER' } as Record<string, string>)[f.purpose ?? ''] ?? (f.purpose ? f.purpose.toUpperCase() : 'FILE')}
                               </span>
                               <span style={{ color: 'var(--ink)' }}>{f.media.originalName}</span>
                               <span className="muted">({formatBytes(f.media.size)})</span>

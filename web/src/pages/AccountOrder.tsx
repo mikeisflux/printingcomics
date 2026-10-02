@@ -78,6 +78,20 @@ function SlotCard({ orderNumber, item, slot, onChange }: { orderNumber: string; 
     }
   }
 
+  async function remove() {
+    if (!slot.file) return;
+    if (!window.confirm(`Remove ${slot.file.name}? The ${slot.label} spot will show as missing until you upload another.`)) return;
+    setBusy(true); setErr(null); setJustDone(false);
+    try {
+      const r = await api.del<{ printFiles: PrintFileSlot[]; openRequests: number }>(`/orders/${encodeURIComponent(orderNumber)}/items/${item.id}/files/${slot.file.id}`);
+      onChange(r.printFiles, r.openRequests);
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not remove the file');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const has = !!slot.file;
   return (
     <div
@@ -101,11 +115,16 @@ function SlotCard({ orderNumber, item, slot, onChange }: { orderNumber: string; 
           {slot.previous > 0 && <span className="muted"> · replaces {slot.previous} earlier upload{slot.previous === 1 ? '' : 's'}</span>}
         </div>
       )}
-      <div>
+      <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <label className={has ? 'btn secondary' : 'btn'} style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>
-          {busy ? `Uploading… ${progress}%` : has ? `Replace ${slot.label}` : `Upload ${slot.label}`}
+          {busy ? (progress ? `Uploading… ${progress}%` : 'Working…') : has ? `Replace ${slot.label}` : `Upload ${slot.label}`}
           <input type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { void send(e.target.files); e.currentTarget.value = ''; }} />
         </label>
+        {has && (
+          <button type="button" className="btn secondary" disabled={busy} onClick={() => void remove()} title="Take this file out — the spot shows as missing until you upload another">
+            Remove
+          </button>
+        )}
       </div>
       {err && <div className="error" style={{ margin: 0 }}>{err}</div>}
     </div>
