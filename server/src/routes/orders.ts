@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
+import { verifyOrderView } from '../lib/order-view.js';
 
 const router = Router();
 
@@ -52,9 +53,22 @@ router.get('/summary', requireAuth, async (req, res) => {
   });
 });
 
-router.get('/:number', requireAuth, async (req, res) => {
+// The signed-in owner sees their order; so does whoever holds the view link
+// the checkout handed out for it (`?t=`), since a guest's account exists but
+// is not signed in until they follow an emailed link.
+router.get('/:number', async (req, res) => {
+  const number = String(req.params.number);
+  const sessionUser = req.session?.sub;
+  const linkedOrderId = verifyOrderView(req.query.t);
+  if (!sessionUser && !linkedOrderId) throw new HttpError(401, 'Not authenticated');
   const order = await prisma.order.findFirst({
-    where: { number: String(req.params.number), userId: req.session!.sub },
+    where: {
+      number,
+      OR: [
+        ...(sessionUser ? [{ userId: sessionUser }] : []),
+        ...(linkedOrderId ? [{ id: linkedOrderId }] : []),
+      ],
+    },
     include: {
       items: {
         include: {
@@ -88,7 +102,8 @@ router.get('/:number', requireAuth, async (req, res) => {
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
-  res.json({ order });
+  // A link viewer sees the order, not the account's actions (reorder…).
+  res.json({ order, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
 });
 
 // Reorder: creates a new cart (or merges into the user's current cart) with

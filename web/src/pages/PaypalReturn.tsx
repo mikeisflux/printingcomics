@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { orderPath } from './PaypalCheckout';
 
 /**
  * Landing page for PayPal's `return_url`. PayPal appends `?token=<orderId>`
@@ -20,10 +21,10 @@ export function PaypalReturn() {
     }
     (async () => {
       try {
-        const r = await api.post<{ orderNumber: string; status: string }>(
+        const r = await api.post<{ orderNumber: string; status: string; viewToken?: string }>(
           `/checkout/paypal/capture/${paypalOrderId}`,
         );
-        navigate(`/order/${r.orderNumber}`, { replace: true });
+        navigate(orderPath(r), { replace: true });
       } catch (e: any) {
         setError(e.message ?? 'Payment capture failed.');
       }

@@ -1,6 +1,7 @@
 import { prisma } from '../db.js';
 import { sendEmail } from './mailgun.js';
 import { getSetting } from './settings.js';
+import { magicLink } from './customer-accounts.js';
 
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -26,6 +27,9 @@ export async function sendOrderConfirmationEmail(orderId: string) {
     : order.proofStatus === 'requested'
       ? 'We\'ll send a proof within 2 business days; you approve it in your account, and nothing prints until you do.'
       : 'We\'ll get it into production and email you when it ships.';
+  // Signs the customer in from the email (their address proves it is them)
+  // and lands on this order — a guest's account has no password yet.
+  const viewUrl = order.userId ? await magicLink(order.userId, `/order/${order.number}`) : null;
   const itemsHtml = order.items.map((i) =>
     `<tr>
       <td style="padding:8px;border-bottom:1px solid #eee">${escape(i.name)} × ${i.quantity}</td>
@@ -46,6 +50,7 @@ export async function sendOrderConfirmationEmail(orderId: string) {
         <tr style="font-weight:700"><td>Total</td><td style="text-align:right">${formatMoney(order.totalCents)}</td></tr>
       </table>
       ${order.totalCents === 0 ? `<p style="color:#666">Nothing was charged${order.couponCode ? ` — code ${escape(order.couponCode)} covered this order` : ''}.</p>` : ''}
+      ${viewUrl ? `<p style="margin-top:1.5rem"><a href="${viewUrl}" style="display:inline-block;padding:10px 18px;background:#c61a22;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">View your order</a></p>` : ''}
       <p style="margin-top:2rem;color:#666;font-size:0.9rem">${escape(storeName)}</p>
     </div>
   `;

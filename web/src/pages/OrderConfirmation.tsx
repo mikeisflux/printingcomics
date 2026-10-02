@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 import { formatCartItemOptions } from '../lib/cart-options';
 import { useCart } from '../store/cart';
@@ -91,6 +91,11 @@ function OrderProofs({ number }: { number: string }) {
 
 export function OrderConfirmation() {
   const { number } = useParams();
+  // `?t=` is the view link checkout hands the buyer who just placed this
+  // order; it opens this one order without an account session.
+  const [searchParams] = useSearchParams();
+  const viewToken = searchParams.get('t');
+  const [viewer, setViewer] = useState<'owner' | 'link'>('owner');
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
@@ -120,10 +125,10 @@ export function OrderConfirmation() {
   useEffect(() => {
     if (!number) return;
     api
-      .get<{ order: Order }>(`/orders/${number}`)
-      .then((r) => setOrder(r.order))
+      .get<{ order: Order; viewer?: 'owner' | 'link' }>(`/orders/${number}${viewToken ? `?t=${encodeURIComponent(viewToken)}` : ''}`)
+      .then((r) => { setOrder(r.order); setViewer(r.viewer ?? 'owner'); })
       .catch((e) => setError(e.message));
-  }, [number]);
+  }, [number, viewToken]);
 
   if (error) {
     return (
@@ -322,11 +327,18 @@ export function OrderConfirmation() {
         </div>
       )}
 
+      {viewer === 'link' && (
+        <p className="muted" style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+          To follow this order, see your proofs or reorder later, sign in with the link in your confirmation email.
+        </p>
+      )}
       <div className="row" style={{ justifyContent: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-        <Link to="/account/orders" className="btn secondary">All orders</Link>
-        <button className="btn secondary" disabled={reordering} onClick={() => void reorder()}>
-          {reordering ? 'Adding to cart…' : 'Reorder these items'}
-        </button>
+        {viewer === 'owner' && <Link to="/account/orders" className="btn secondary">All orders</Link>}
+        {viewer === 'owner' && (
+          <button className="btn secondary" disabled={reordering} onClick={() => void reorder()}>
+            {reordering ? 'Adding to cart…' : 'Reorder these items'}
+          </button>
+        )}
         <Link to="/shop" className="btn">Keep shopping</Link>
       </div>
     </div>

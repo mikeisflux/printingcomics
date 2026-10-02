@@ -180,8 +180,9 @@ export function PaypalCheckout() {
     setError(null);
     setPlacingFree(true);
     try {
-      const r = await api.post<{ orderNumber: string }>('/checkout/free', orderBody());
-      navigate(`/order/${r.orderNumber}`);
+      const r = await api.post<{ orderNumber: string; viewToken?: string }>('/checkout/free', orderBody());
+      void load(); // the server emptied the cart; the header badge follows
+      navigate(orderPath(r));
     } catch (e: any) {
       setError(describeError(e));
     } finally {
@@ -192,8 +193,9 @@ export function PaypalCheckout() {
   const onApprove = async (data: { orderID: string }, actions?: { restart?: () => unknown }) => {
     setError(null);
     try {
-      const r = await api.post<{ orderNumber: string }>(`/checkout/paypal/capture/${data.orderID}`);
-      navigate(`/order/${r.orderNumber}`);
+      const r = await api.post<{ orderNumber: string; viewToken?: string }>(`/checkout/paypal/capture/${data.orderID}`);
+      void load(); // the server emptied the cart; the header badge follows
+      navigate(orderPath(r));
     } catch (e: any) {
       setError(describeError(e));
       // PayPal's documented handling for a declined instrument: restart the
@@ -442,6 +444,14 @@ export function PaypalCheckout() {
       </aside>
     </div>
   );
+}
+
+/**
+ * Where a freshly placed order's confirmation lives. The view token lets a
+ * guest (whose account is not signed in yet) open this one order.
+ */
+export function orderPath(r: { orderNumber: string; viewToken?: string }): string {
+  return `/order/${r.orderNumber}${r.viewToken ? `?t=${encodeURIComponent(r.viewToken)}` : ''}`;
 }
 
 /** One line a buyer can act on, from whatever shape the SDK or our API threw. */

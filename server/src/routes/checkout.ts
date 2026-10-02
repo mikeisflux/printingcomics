@@ -7,6 +7,7 @@ import { quoteShipping } from '../lib/shipping-quote.js';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 import { ensureCustomerAccount } from '../lib/customer-accounts.js';
 import { placeFreeOrder } from '../lib/checkout-order.js';
+import { orderViewToken } from '../lib/order-view.js';
 
 const router = Router();
 
@@ -169,7 +170,7 @@ router.post('/free', async (req, res) => {
   const { cart, input } = await checkoutInput(req, data);
   const result = await placeFreeOrder(input);
   await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
-  res.json(result);
+  res.json({ ...result, viewToken: orderViewToken(result.orderId) });
 });
 
 // ---- Capture after buyer approves on PayPal ----
@@ -184,7 +185,7 @@ router.post('/paypal/capture/:paypalOrderId', async (req, res) => {
     if (cart) await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
   }
 
-  res.json(result);
+  res.json({ ...result, viewToken: orderViewToken(result.orderId) });
 });
 
 export default router;
