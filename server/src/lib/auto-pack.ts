@@ -51,6 +51,12 @@ export interface PackageOption {
   heightIn: number;
   costCents?: number;
   sortOrder?: number;
+  /**
+   * Claimed by a product (ships in its own box) or a stock pool's boxes: only
+   * those units go in it. Anything else is packed from the open boxes, so a
+   * few comics are never quoted in the Comic Armor box or a mailer carton.
+   */
+  reserved?: boolean;
 }
 
 export interface PackedBox {
@@ -77,8 +83,10 @@ export interface PackPlan {
  */
 export const DEFAULT_MAX_PACKED_OZ = 50 * 16;
 
+/** How much the contents may weigh: the max packed weight less the empty box. */
 export function weightCapOz(p: PackageOption): number {
-  return p.maxWeightOz && p.maxWeightOz > 0 ? p.maxWeightOz : DEFAULT_MAX_PACKED_OZ;
+  const packed = p.maxWeightOz && p.maxWeightOz > 0 ? p.maxWeightOz : DEFAULT_MAX_PACKED_OZ;
+  return Math.max(1, packed - Math.max(0, p.emptyWeightOz));
 }
 
 /**
@@ -275,6 +283,11 @@ export function autoPack(units: UnitToPack[], packages: PackageOption[]): PackPl
     } else if (u.packageId && packages.some((p) => p.id === u.packageId)) {
       key = u.packageId;
       allowed = packages.filter((p) => p.id === u.packageId);
+    }
+    if (key === '') {
+      // Open boxes only, unless every box is spoken for.
+      const open = packages.filter((p) => !p.reserved);
+      allowed = open.length > 0 ? open : packages;
     }
     const g = groups.get(key) ?? { units: [], packages: allowed };
     g.units.push(u);

@@ -22,7 +22,7 @@
 import { prisma } from '../db.js';
 import { getEasyPostConfig } from './settings.js';
 import { epCreateShipment, type EpAddress } from './easypost.js';
-import { contentWeightOz, perUnitWeightGrams, unitDimensionsIn, allowedBoxesFor, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
+import { contentWeightOz, perUnitWeightGrams, unitDimensionsIn, allowedBoxesFor, poolBoxes, GRAMS_PER_OZ, type WeighableItem } from './shipping-weight.js';
 import { autoPack, type PackageOption, type UnitToPack } from './auto-pack.js';
 
 export interface QuoteAddress {
@@ -48,6 +48,8 @@ export interface ShippingQuote {
   options: ShippingOption[];
   weightOz: number;
   boxes: number;
+  /** The boxes themselves (Package.costCents × boxes), included in every option's price. */
+  packagingCents: number;
   /** Set when live rating was attempted but unavailable, for admin diagnostics. */
   liveError?: string;
 }
@@ -62,13 +64,15 @@ function toCents(rate: string): number {
 }
 
 /** One kind of parcel to rate: its dimensions, packed weight, and how many of it ship. */
-interface Parcel {
+export interface Parcel {
   lengthIn: number;
   widthIn: number;
   heightIn: number;
   weightOz: number;
   count: number;
   label: string;
+  /** What one of these boxes costs us (Package.costCents) — charged with the postage. */
+  costCents: number;
 }
 
 /**
@@ -81,12 +85,14 @@ interface Parcel {
  * box get parcels of that box only. A unit no box can take ships on its
  * own in the largest box, so it is still rated rather than dropped.
  */
-async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; boxes: number; weightOz: number }> {
+export async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; boxes: number; weightOz: number }> {
   const parcels: Parcel[] = [];
   const pushParcel = (p: Parcel) => {
     const same = parcels.find((x) => x.label === p.label && Math.abs(x.weightOz - p.weightOz) < 0.01);
     if (same) same.count += p.count; else parcels.push(p);
   };
+  const costOf = (name: string) => catalogueCost.get(name) ?? 0;
+  const catalogueCost = new Map<string, number>();
 
   const units: UnitToPack[] = [];
   items.forEach((item, idx) => {
@@ -115,15 +121,19 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
   }
   const listed = [...new Set(units.flatMap((u) => (u.allowed ?? []).map((a) => a.packageId)))].filter((id) => !catalogue.some((p) => p.id === id));
   if (listed.length > 0) catalogue.push(...(await prisma.package.findMany({ where: { id: { in: listed } } })));
+  const reserved = await reservedPackageIds();
   const packages: PackageOption[] = catalogue.map((p) => ({
     id: p.id, name: p.name, maxWeightOz: p.maxWeightOz, emptyWeightOz: p.emptyWeightOz,
     lengthIn: p.lengthIn, widthIn: p.widthIn, heightIn: p.heightIn, costCents: p.costCents, sortOrder: p.sortOrder,
+    reserved: reserved.has(p.id),
   }));
+
+  for (const p of packages) catalogueCost.set(p.name, p.costCents ?? 0);
 
   if (packages.length === 0) {
     // No packages configured — assume a modest mailer so live rating still works.
     const weightOz = Math.max(0.5, +(contentWeightOz(items) + 2).toFixed(2));
-    pushParcel({ lengthIn: 12, widthIn: 9, heightIn: 3, weightOz, count: 1, label: 'Default parcel' });
+    pushParcel({ lengthIn: 12, widthIn: 9, heightIn: 3, weightOz, count: 1, label: 'Default parcel', costCents: 0 });
     return { parcels, boxes: 1, weightOz: contentWeightOz(items) };
   }
 
@@ -135,6 +145,7 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
       weightOz: Math.max(0.5, +(box.contentWeightOz + box.emptyWeightOz).toFixed(2)),
       count: 1,
       label: box.packageName,
+      costCents: costOf(box.packageName),
     });
   }
   if (plan.unpacked.length > 0) {
@@ -145,11 +156,28 @@ async function planShipment(items: QuoteItem[]): Promise<{ parcels: Parcel[]; bo
         weightOz: Math.max(0.5, +(u.weightOz + biggest.emptyWeightOz).toFixed(2)),
         count: 1,
         label: biggest.name,
+        costCents: costOf(biggest.name),
       });
     }
   }
 
   return { parcels, boxes: parcels.reduce((s, p) => s + p.count, 0), weightOz: contentWeightOz(items) };
+}
+
+/**
+ * Boxes claimed by a product ("ships in its own box") or by a stock pool's
+ * boxes. They are packed only with what claims them; the open boxes take
+ * everything else.
+ */
+export async function reservedPackageIds(): Promise<Set<string>> {
+  const [products, pools] = await Promise.all([
+    prisma.product.findMany({ where: { packageId: { not: null } }, select: { packageId: true } }),
+    prisma.stockPool.findMany({ select: { boxes: true } }),
+  ]);
+  const ids = new Set<string>();
+  for (const p of products) if (p.packageId) ids.add(p.packageId);
+  for (const pool of pools) for (const b of poolBoxes(pool.boxes)) ids.add(b.packageId);
+  return ids;
 }
 
 function epToAddress(a: QuoteAddress): EpAddress {
@@ -218,6 +246,10 @@ export async function quoteShipping(args: {
   const plan = await planShipment(args.items);
   const weightOz = plan.weightOz;
   const subtotalCents = args.subtotalCents ?? 0;
+  // The boxes are part of the shipping price: a 135 case goes out in a
+  // $5.02 carton, and the customer pays for it with the postage.
+  const packagingCents = packagingCostCents(plan.parcels);
+  const withBoxes = (options: ShippingOption[]): ShippingOption[] => options.map((o) => ({ ...o, rateCents: o.rateCents + packagingCents }));
 
   const from = await epFromAddress();
   const canLive = !!from && !!args.address.postalCode && !!args.address.country;
@@ -259,19 +291,21 @@ export async function quoteShipping(args: {
           service: v.service,
         }))
         .sort((a, b) => a.rateCents - b.rateCents);
-      if (options.length > 0) return { options, weightOz, boxes: plan.boxes };
+      if (options.length > 0) return { options: withBoxes(options), weightOz, boxes: plan.boxes, packagingCents };
       return {
-        options: await tableOptions(args.address, weightOz, subtotalCents),
+        options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents)),
         weightOz,
         boxes: plan.boxes,
+        packagingCents,
         liveError: 'no carrier service could take every box in this order',
       };
     } catch (e: any) {
       // Never block checkout on a carrier outage — fall back to the table.
       return {
-        options: await tableOptions(args.address, weightOz, subtotalCents),
+        options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents)),
         weightOz,
         boxes: plan.boxes,
+        packagingCents,
         liveError: e?.message ?? 'live rating failed',
       };
     }
@@ -284,11 +318,17 @@ export async function quoteShipping(args: {
     console.warn('[shipping] live rating unavailable (EasyPost not configured) — using flat rate table');
   }
   return {
-    options: await tableOptions(args.address, weightOz, subtotalCents),
+    options: withBoxes(await tableOptions(args.address, weightOz, subtotalCents)),
     weightOz,
     boxes: plan.boxes,
+    packagingCents,
     liveError,
   };
+}
+
+/** Package.costCents over every box in the plan. */
+function packagingCostCents(parcels: Parcel[]): number {
+  return parcels.reduce((sum, p) => sum + Math.max(0, p.costCents) * p.count, 0);
 }
 
 /**
@@ -323,8 +363,9 @@ export async function resolveShippingSelection(args: {
   if (!rate) return { cents: 0, name: null };
   const weightOz = contentWeightOz(args.items);
   const kg = (weightOz * 28.3495) / 1000;
+  const plan = await planShipment(args.items);
   return {
-    cents: rate.perKg ? Math.round(rate.rateCents * Math.max(1, kg)) : rate.rateCents,
+    cents: (rate.perKg ? Math.round(rate.rateCents * Math.max(1, kg)) : rate.rateCents) + packagingCostCents(plan.parcels),
     name: rate.name,
   };
 }

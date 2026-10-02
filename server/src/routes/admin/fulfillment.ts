@@ -7,6 +7,7 @@ import {
   type EpCreateShipmentInput, type EpAddress,
 } from '../../lib/easypost.js';
 import { perUnitWeightGrams, unitDimensionsIn, allowedBoxesFor } from '../../lib/shipping-weight.js';
+import { reservedPackageIds } from '../../lib/shipping-quote.js';
 import { autoPack, type PackageOption, type UnitToPack } from '../../lib/auto-pack.js';
 import { getEasyPostConfig } from '../../lib/settings.js';
 
@@ -299,6 +300,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     return res.json({ message: 'All items already packed', shipments: [], unpacked: [], estimatedShippingCents: 0 });
   }
 
+  const reserved = await reservedPackageIds();
   const pkgOptions: PackageOption[] = packages.map((p: any) => ({
     id: p.id,
     name: p.name,
@@ -309,6 +311,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     heightIn: p.heightIn,
     costCents: p.costCents,
     sortOrder: p.sortOrder,
+    reserved: reserved.has(p.id),
   }));
   const plan = autoPack(units, pkgOptions);
 
@@ -318,7 +321,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
   const from = await fromAddress();
   const to = toAddressFromOrder(order);
   const itemById = new Map<string, any>((order.items as any[]).map((i: any) => [i.id, i]));
-  const created: Array<{ shipment: any; rates: any[]; insuredValueCents: number; cheapestCents: number | null }> = [];
+  const created: Array<{ shipment: any; rates: any[]; insuredValueCents: number; cheapestCents: number | null; boxCostCents: number }> = [];
 
   for (const box of plan.boxes) {
     const pkg = packages.find((p: any) => p.id === box.packageId) as any;
@@ -374,13 +377,14 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
       include: { items: true },
     });
 
-    created.push({ shipment, rates, insuredValueCents, cheapestCents });
+    created.push({ shipment, rates, insuredValueCents, cheapestCents, boxCostCents: pkg.costCents ?? 0 });
   }
 
-  // Sum cheapest-rate + insurance-fee across all boxes → the number you'd
-  // bill the customer if you went with the least expensive option everywhere.
+  // Sum cheapest-rate + box cost + insurance-fee across all boxes → the
+  // number you'd bill the customer if you went with the least expensive
+  // option everywhere (checkout quotes charge the box with the postage too).
   const estimatedShippingCents = created.reduce(
-    (sum, b) => sum + (b.cheapestCents ?? 0) + Math.max(100, Math.round((b.insuredValueCents ?? 0) * 0.01)),
+    (sum, b) => sum + (b.cheapestCents ?? 0) + b.boxCostCents + Math.max(100, Math.round((b.insuredValueCents ?? 0) * 0.01)),
     0,
   );
 
