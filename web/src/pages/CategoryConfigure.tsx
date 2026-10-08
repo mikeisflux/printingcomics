@@ -8,6 +8,7 @@ import { api } from '../api/client';
 import { useCart, type CartItem } from '../store/cart';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
 import { useSiteDiscount } from '../lib/useSiteDiscount';
+import { useSeo, breadcrumbs } from '../lib/seo';
 import '../styles/configurator.css';
 
 // 3D book preview lives behind a lazy import — its R3F deps add ~250KB and
@@ -250,6 +251,14 @@ export function CategoryConfigure() {
     setSelections(defaults);
     setQty(product.minQuantity);
   }, [productId]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Head tags for this category's configurator; the server renders the same on first load.
+  useSeo(category ? {
+    title: `${category.name} — Custom Printing`,
+    description: category.description || `Print ${category.name.toLowerCase()} to order: pick a trim size, paper and cover, upload your files, and get a quote with live shipping rates.`,
+    canonical: `/shop/${category.slug}`,
+    jsonLd: [breadcrumbs([{ name: 'Home', path: '/' }, { name: category.name, path: `/shop/${category.slug}` }])],
+  } : null, [category?.slug]);
 
   // Edit mode: once the category's products and the cart are both here, make
   // the edited line's product active and restore its selections and quantity.

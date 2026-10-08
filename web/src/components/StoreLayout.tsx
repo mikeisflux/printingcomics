@@ -147,7 +147,8 @@ export function StoreLayout() {
                 <li><Link to="/shop/comic-books">Comic Books</Link></li>
                 <li><Link to="/shop/graphic-novels">Graphic Novels</Link></li>
                 <li><Link to="/shop/art-prints">Art Prints</Link></li>
-                <li><Link to="/shop/shipping-supplies">Shipping Supplies</Link></li>
+                <li><Link to="/comic-book-mailers">Comic Book Mailers</Link></li>
+                <li><Link to="/shop/shipping-supplies">Comic Armor &amp; Shipping Supplies</Link></li>
                 <li><Link to="/shop/artist-tools">Artist Tools</Link></li>
               </ul>
             </div>
@@ -158,6 +159,7 @@ export function StoreLayout() {
                 <li><Link to="/resources/file-prep">File Prep</Link></li>
                 <li><Link to="/resources/templates">Templates</Link></li>
                 <li><Link to="/account/orders">Order Status</Link></li>
+                <li><Link to="/resources/how-to-ship-comic-books">How to Ship Comic Books</Link></li>
                 <li><Link to="/resources/faq">FAQ</Link></li>
               </ul>
             </div>
@@ -438,7 +440,8 @@ const NAV_GROUPS = {
     { to: '/shop/graphic-novels', label: 'Graphic Novels' },
     { to: '/shop/art-prints', label: 'Art Prints' },
     { to: '/shop/artist-tools', label: 'Artist Tools' },
-    { to: '/shop/shipping-supplies', label: 'Shipping Supplies' },
+    { to: '/comic-book-mailers', label: 'Comic Book Mailers' },
+    { to: '/shop/shipping-supplies', label: 'Comic Armor & Shipping Supplies' },
   ],
   resources: [
     { to: '/resources/make-a-comic', label: 'Make A Comic' },

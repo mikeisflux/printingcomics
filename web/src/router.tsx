@@ -38,6 +38,7 @@ import { ProofReview } from './pages/ProofReview';
 import { ReviewForm } from './pages/ReviewForm';
 import { CorrectedUpload } from './pages/CorrectedUpload';
 import { AccountOrder } from './pages/AccountOrder';
+import { ContentPage } from './pages/ContentPage';
 
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminProducts } from './pages/admin/Products';
@@ -74,6 +75,10 @@ export const router = createBrowserRouter([
       // they have no artwork, proofs or file prep, so they must NOT go through
       // the print configurator that every made-to-order category uses.
       { path: 'shop/shipping-supplies', element: <ShippingSupplies /> },
+      // Search-landing pages: their words come from the API and are also
+      // rendered server-side for crawlers (server/src/lib/seo-content.ts).
+      { path: 'comic-book-mailers', element: <ContentPage slug="comic-book-mailers" /> },
+      { path: 'resources/how-to-ship-comic-books', element: <ContentPage slug="how-to-ship-comic-books" /> },
       { path: 'shop/:category', element: <CategoryConfigure /> },
       { path: 'product/:slug', element: <Product /> },
       { path: 'cart', element: <CartPage /> },

@@ -1,12 +1,19 @@
 import { Link } from 'react-router-dom';
 import { ReviewSlider } from '../components/ReviewSlider';
-import { useDocumentTitle, useMetaDescription } from '../hooks/useDocumentTitle';
+import { useSeo } from '../lib/seo';
 
 export function Home() {
-  useDocumentTitle(null);
-  useMetaDescription(
-    'Custom comic book and graphic novel printing for independent creators. Every run funds Divinity Comics, our 501(c)(3) nonprofit for youth and community storytelling.',
-  );
+  useSeo({
+    title: 'Printing Comics — Custom Comic & Graphic Novel Printing',
+    fullTitle: true,
+    description: 'High-quality custom printing for comics, graphic novels and trade paperbacks, plus comic book mailers and Comic Armor shipping sleeves. Short runs and bulk orders.',
+    canonical: '/',
+    jsonLd: [
+      { '@context': 'https://schema.org', '@type': 'Organization', name: 'Printing Comics', url: window.location.origin, logo: `${window.location.origin}/favicon.png` },
+      { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Printing Comics', url: window.location.origin,
+        potentialAction: { '@type': 'SearchAction', target: { '@type': 'EntryPoint', urlTemplate: `${window.location.origin}/shop?q={search_term_string}` }, 'query-input': 'required name=search_term_string' } },
+    ],
+  });
   return (
     <>
       {/* Hero */}
@@ -137,6 +144,26 @@ export function Home() {
       </section>
 
       {/* CTA strip */}
+      {/* Shipping supplies — the other thing people come here for */}
+      <section className="container" style={{ padding: '3rem 0' }}>
+        <div className="admin-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ marginTop: 0 }}>Comic book mailers &amp; Comic Armor</h2>
+            <p style={{ lineHeight: 1.7 }}>
+              Ship comics the way we ship ours: an adjustable T-fold <Link to="/comic-book-mailers">comic book mailer</Link> that
+              folds to fit one issue or ten, and <Link to="/shop/shipping-supplies">Comic Armor sleeves</Link> that keep corners
+              and spines straight in the mail. In stock, priced per piece, shipped from our shop.
+            </p>
+            <div className="row" style={{ gap: '.75rem', flexWrap: 'wrap' }}>
+              <Link to="/comic-book-mailers" className="btn">Comic book mailers</Link>
+              <Link to="/shop/shipping-supplies" className="btn secondary">Comic Armor</Link>
+              <Link to="/resources/how-to-ship-comic-books">How to ship comic books →</Link>
+            </div>
+          </div>
+          <img src="/products/T-Fold_Comic_Mailer_1.jpg" alt="Comic book mailer folded around a single bagged and boarded comic" width={480} height={480} loading="lazy" decoding="async" style={{ width: '100%', height: 'auto', borderRadius: 8 }} />
+        </div>
+      </section>
+
       <section style={{ background: 'var(--brand)', padding: '3rem 0', color: '#fff', textAlign: 'center' }}>
         <div className="container">
           <h2 style={{ color: '#fff', marginBottom: '.5rem' }}>Ready to print?</h2>

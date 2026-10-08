@@ -6,6 +6,7 @@ import { useCart } from '../store/cart';
 import { UploadOption } from '../components/UploadOption';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
 import { useSiteDiscount } from '../lib/useSiteDiscount';
+import { useSeo, productSchema, breadcrumbs, faqSchema } from '../lib/seo';
 
 type OptionType = 'TILES' | 'RADIO' | 'SELECT' | 'TOGGLE' | 'TEXT' | 'NUMBER' | 'UPLOAD' | 'CONFIRM';
 
@@ -53,6 +54,10 @@ interface ProductDetail {
   pricingConfig?: PricingConfig | null;
   images: { id: string; url: string; alt?: string | null }[];
   options: ProductOption[];
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  sku?: string | null;
+  categories?: { category: { slug: string; name: string } }[];
 }
 
 /**
@@ -137,6 +142,21 @@ export function Product() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const siteDiscountBps = useSiteDiscount();
+
+  // The head a search engine reads: the server renders the same on first load.
+  useSeo(product ? {
+    title: product.seoTitle?.trim() || product.name,
+    fullTitle: !!product.seoTitle?.trim(),
+    description: (product.seoDescription || product.shortDescription || product.description || '').replace(/\s+/g, ' ').slice(0, 300),
+    canonical: `/product/${product.slug}`,
+    image: product.images?.[0]?.url ?? null,
+    type: 'product',
+    jsonLd: [
+      productSchema(product),
+      breadcrumbs([{ name: 'Home', path: '/' }, ...(product.categories?.[0] ? [{ name: product.categories[0].category.name, path: `/shop/${product.categories[0].category.slug}` }] : []), { name: product.name, path: `/product/${product.slug}` }]),
+      faqSchema(product.faq),
+    ],
+  } : null, [product?.slug]);
 
   useEffect(() => {
     if (!slug) return;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
-import { useDocumentTitle, useMetaDescription } from '../hooks/useDocumentTitle';
+import { useSeo, breadcrumbs } from '../lib/seo';
 import { formatEta } from './Product';
 
 /**
@@ -459,13 +459,6 @@ function useComicArmorFonts() {
 }
 
 export function ShippingSupplies() {
-  // comicarmor.com now redirects here, so this page has to carry the brand's
-  // search presence on its own.
-  useDocumentTitle('Comic Armor & Shipping Supplies');
-  useMetaDescription(
-    'Comic Armor protective inserts and adjustable foldable T-mailers — military-grade '
-    + 'protection that keeps comics, trades and graphic novels in mint condition in the mail.',
-  );
   useComicArmorFonts();
 
   const [products, setProducts] = useState<ProductCard[]>([]);
@@ -514,6 +507,22 @@ export function ShippingSupplies() {
 
   const heroVideoId = heroVideoUrl ? youtubeId(heroVideoUrl) : null;
   const review = reviews[Math.min(reviewIndex, reviews.length - 1)];
+
+  // comicarmor.com now redirects here, so this page has to carry the brand's
+  // search presence on its own; the server renders the same head for crawlers.
+  useSeo({
+    title: 'Comic Armor Shipping Sleeves & Comic Book Mailers',
+    description: 'Comic Armor protective shipping sleeves and adjustable T-fold comic book mailers. Rigid, cushioned protection that gets comics, trades and graphic novels through the mail in mint condition.',
+    canonical: '/shop/shipping-supplies',
+    image: ordered[0]?.image ?? null,
+    jsonLd: [
+      breadcrumbs([{ name: 'Home', path: '/' }, { name: 'Shipping Supplies', path: '/shop/shipping-supplies' }]),
+      ordered.length ? {
+        '@context': 'https://schema.org', '@type': 'ItemList', name: 'Comic Armor & Comic Book Mailers',
+        itemListElement: ordered.map((p, i) => ({ '@type': 'ListItem', position: i + 1, name: p.name, url: `${window.location.origin}/product/${p.slug}` })),
+      } : null,
+    ],
+  }, [ordered.length]);
 
   return (
     <div className="ca">
@@ -584,6 +593,24 @@ export function ShippingSupplies() {
               </Link>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Comic book mailers — the other half of the range, with its own page */}
+      <section className="ca-section ca-light" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
+        <div className="container" style={{ maxWidth: 820 }}>
+          <div className="ca-eyebrow">Comic book mailers</div>
+          <h2 className="ca-title" style={{ fontSize: 'clamp(1.6rem,4vw,2.4rem)' }}>One Mailer, <span>Every Stack</span></h2>
+          <p style={{ marginTop: '.75rem', lineHeight: 1.7 }}>
+            Our adjustable T-fold comic book mailers fold to the thickness of what you are shipping — one bagged and
+            boarded issue or a stack of ten — so there is no size to guess and nothing to pad out. Heavy kraft corrugated,
+            ships flat, stores flat, and priced per mailer in packs of 10 to 135.
+          </p>
+          <p style={{ marginTop: '.75rem' }}>
+            <Link to="/comic-book-mailers" className="ca-btn ca-btn-primary" style={{ background: 'var(--camo-dark)', color: 'var(--text-light)', borderColor: 'var(--camo-dark)' }}>All about the comic book mailers</Link>
+            {' '}
+            <Link to="/resources/how-to-ship-comic-books" style={{ marginLeft: '1rem', fontWeight: 600 }}>How to ship comic books so they arrive mint →</Link>
+          </p>
         </div>
       </section>
 

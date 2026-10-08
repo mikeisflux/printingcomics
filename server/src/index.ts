@@ -30,6 +30,8 @@ import accountRoutes from './routes/account.js';
 import contactRoutes from './routes/contact.js';
 import aiRoutes from './routes/ai.js';
 import publicRoutes from './routes/public.js';
+import seoPublicRoutes from './routes/seo-public.js';
+import shellRoutes from './routes/shell.js';
 import mailgunWebhookRoutes from './routes/webhooks/mailgun.js';
 import paypalWebhookRoutes from './routes/webhooks/paypal.js';
 import fileRoutes from './routes/files.js';
@@ -192,6 +194,11 @@ app.use('/uploads', async (req, res, next) => {
   }
   next();
 });
+
+// What crawlers fetch by name, at the root.
+app.use('/', seoPublicRoutes);
+// Every other page URL: the built storefront with this page's head and words.
+app.use(shellRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

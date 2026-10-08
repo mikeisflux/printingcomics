@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
-import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useSeo } from '../lib/seo';
 
 interface ProductCard {
   id: string;
@@ -40,7 +40,12 @@ export function Shop({ categorySlug }: { categorySlug?: string } = {}) {
   const [cat, setCat] = useState<Category | null>(null);
   const [search, setSearch] = useState(params.get('q') ?? '');
   const [sort, setSort] = useState<SortKey>('newest');
-  useDocumentTitle(cat?.name ?? (search ? `Search: ${search}` : 'Shop'));
+  useSeo({
+    title: cat?.name ? `${cat.name} — Custom Printing` : search ? `Search: ${search}` : 'Shop — Comics, Graphic Novels, Prints & Shipping Supplies',
+    description: cat?.description || 'Custom comic book and graphic novel printing, art prints, trading cards, comic book mailers and Comic Armor shipping sleeves.',
+    canonical: cat ? `/shop/${cat.slug}` : '/shop',
+    noindex: !!search,
+  }, [cat?.slug, search]);
 
   // Sync the search input when the ?q= param changes (e.g. header search navigates here).
   useEffect(() => {

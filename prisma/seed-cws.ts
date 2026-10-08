@@ -674,10 +674,14 @@ interface SupplyDef {
   /** Per-unit shipping weight. Checkout rates live carrier prices off this,
    *  so a wrong figure here shows up as wrong postage at checkout. */
   weightGrams: number;
-  /** Public paths under web/public, e.g. `/products/comic-armor-10-pack.webp`.
+  /** Public paths under web/public, e.g. `/products/comic-armor-10-pack.webp`,
+   *  optionally with the alt text search engines and screen readers get.
    *  First one is the card thumbnail. Only the files that actually exist are
    *  seeded — see seedSupplyImages. */
-  images?: string[];
+  images?: (string | { url: string; alt: string })[];
+  /** What the search result says — the name and short description otherwise. */
+  seoTitle?: string;
+  seoDescription?: string;
   /** Sold before stock lands. `backorderEta` is the estimated arrival shown
    *  to the buyer on the product page, in the cart and on the confirmation. */
   backorder?: boolean;
@@ -705,15 +709,25 @@ interface SupplyDef {
  * card falls back to.
  */
 async function seedSupplyImages(productId: string, def: SupplyDef) {
-  const present = (def.images ?? []).filter((url) => {
-    if (existsSync(`web/public${url}`)) return true;
-    console.warn(`  ${def.slug}: no image at web/public${url} — skipping it`);
-    return false;
-  });
+  const present = (def.images ?? [])
+    .map((img) => (typeof img === 'string' ? { url: img, alt: def.name } : img))
+    .filter((img) => {
+      if (existsSync(`web/public${img.url}`)) return true;
+      console.warn(`  ${def.slug}: no image at web/public${img.url} — skipping it`);
+      return false;
+    });
   if (present.length === 0) return;
   await prisma.productImage.createMany({
-    data: present.map((url, i) => ({ productId, url, alt: def.name, sortOrder: i })),
+    data: present.map((img, i) => ({ productId, url: img.url, alt: img.alt, sortOrder: i })),
   });
+}
+
+/** Keep an existing product's image alt text in step with the seed (the search-visible text). */
+async function refreshSupplyImageAlts(productId: string, def: SupplyDef) {
+  for (const img of def.images ?? []) {
+    if (typeof img === 'string') continue;
+    await prisma.productImage.updateMany({ where: { productId, url: img.url }, data: { alt: img.alt } });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -773,10 +787,10 @@ function undercutCents(listUSD: number): number {
  * back to back — that pairing is what sells "adjustable" at a glance.
  */
 const TMAILER_IMAGES = [
-  '/products/T-Fold_Comic_Mailer_1.jpg',  // folded shallow — a single issue
-  '/products/T-Fold_Comic_Mailer_2.jpg',  // folded deep — a full stack
-  '/products/T-Fold_Comic_Mailer_3.jpg',  // the score ladder, open
-  '/products/T-Fold_Comic_Mailer.jpg',    // flat blank, as it ships
+  { url: '/products/T-Fold_Comic_Mailer_1.jpg', alt: 'Comic book mailer folded shallow around a single bagged and boarded comic' },
+  { url: '/products/T-Fold_Comic_Mailer_2.jpg', alt: 'Adjustable T-fold comic book mailer folded deep around a stack of ten comics' },
+  { url: '/products/T-Fold_Comic_Mailer_3.jpg', alt: 'Open comic book mailer showing the ladder of score lines that set its depth' },
+  { url: '/products/T-Fold_Comic_Mailer.jpg', alt: 'Flat kraft corrugated comic book mailer blank, as it ships and stores' },
 ];
 
 /**
@@ -796,10 +810,14 @@ const TMAILER_POOL = {
 function tmailerSupplies(): SupplyDef[] {
   return GEMINI_TMAILER_LIST.map((t) => ({
     slug: `t-mailer-${t.qty}-pack`,
-    name: `Adjustable Foldable T-Mailer — ${t.qty} Pack`,
+    name: `Comic Book Mailers — Adjustable T-Fold Mailer, ${t.qty} Pack`,
     sku: `TMAIL-${t.qty}`,
+    seoTitle: `Comic Book Mailers, ${t.qty} Pack — Adjustable T-Fold Mailers for Shipping Comics | Printing Comics`,
+    seoDescription:
+      `${t.qty} comic book mailers that fold to fit 1 to 10 bagged-and-boarded comics. Heavy kraft corrugated, `
+      + `ships flat and stores flat. $${(t.perMailerUSD ?? undercutCents(t.listUSD) / 100 / t.qty).toFixed(2)} per mailer, in stock and shipped from Indiana.`,
     shortDescription:
-      'Four mailers in one box — set the depth and ship anywhere from 1 to 10 comics '
+      'Comic book mailers with four fold depths in one box — set the depth and ship anywhere from 1 to 10 comics '
       + `in the same mailer. ${t.qty} per pack.`,
     description:
       'ONE MAILER. FOUR DEPTHS.\n\n'
@@ -826,10 +844,13 @@ function tmailerSupplies(): SupplyDef[] {
     shipsIn: t.qty >= 135 ? 'Comic Mailer Big' : 'Comic Mailer Small',
     images: TMAILER_IMAGES,
     faq: [
-      { q: 'How many comics fit in one mailer?', a: 'Anywhere from 1 to 10. Fold along whichever score line matches your stack — that is the whole point of the design.' },
+      { q: 'How many comics fit in one comic book mailer?', a: 'Anywhere from 1 to 10 bagged-and-boarded comics. Fold along whichever score line matches your stack — that is the whole point of the design.' },
+      { q: 'What size comic book mailer do I need?', a: 'Just this one. The same mailer handles a single current-age or silver-age issue, a few, or a stack of ten, and trade paperbacks and graphic novels of the same footprint.' },
       { q: 'Why is it called a T-Fold?', a: 'The flat blank is die-cut in a T. That extra panel is what wraps and locks the mailer closed at any depth, instead of only one fixed thickness.' },
       { q: 'Do I still need bubble wrap or void fill?', a: 'No. Folding it down to the exact thickness is what stops the contents shifting, so there is nothing to pad out.' },
       { q: 'Does it ship flat?', a: 'Yes — flat blanks that stack on a shelf and fold up in seconds when you need one.' },
+      { q: 'Can I ship these with USPS?', a: 'Yes. A folded mailer travels as a small parcel with USPS Ground Advantage or Priority Mail, and with UPS or FedEx. Most comics do not qualify for Media Mail because they contain advertising.' },
+      { q: 'How do the mailers arrive?', a: 'Flat, in a carton: packs up to 50 ship in one box and bigger quantities in a larger one, so they arrive unbent.' },
     ],
   }));
 }
@@ -855,20 +876,26 @@ const ARMOR_PACKS = [20, 50, 100, 200, 270];
 
 function armorSupplies(): SupplyDef[] {
   const faq = [
-    { q: 'What size comics does it fit?', a: 'Standard current and silver-age comics, including bagged and boarded books.' },
+    { q: 'What size comics does Comic Armor fit?', a: 'Standard current-age and silver-age comics, bagged and boarded. Slide the bagged book in and seal it.' },
+    { q: 'How do I ship a comic with Comic Armor?', a: 'Bag and board the comic, slide it into the sleeve, then put the sleeve in a comic book mailer folded to fit. The sleeve takes the corner hits and bends; the mailer takes the handling.' },
+    { q: 'Does it protect against water?', a: 'The sleeve is moisture-resistant, so rain and humidity in transit stay off the bag. It is not a substitute for a sealed bag.' },
     { q: 'How is this priced?', a: 'Twenty-five cents a sleeve in every pack; the 270 case drops to twenty cents a sleeve.' },
     { q: 'Can I reuse it?', a: 'Yes — the sleeves hold up to repeated use for storage or resale shipping.' },
+    { q: 'Do the sleeves ship with the mailers?', a: 'Yes. Order both and the sleeves go out in their own box alongside the mailer carton; checkout shows the exact shipping for every box.' },
   ];
   return ARMOR_PACKS.map((n) => {
     const perSleeve = n >= 270 ? ARMOR_CASE_PER_SLEEVE_USD : ARMOR_PER_SLEEVE_USD;
     const isCase = n >= 270;
     return {
       slug: `comic-armor-${n}-pack`,
-      name: `Comic Armor — ${n} Pack`,
+      name: `Comic Armor — Comic Book Shipping Sleeves, ${n} Pack`,
       sku: `ARMOR-${n}`,
+      seoTitle: `Comic Armor Comic Book Shipping Sleeves, ${n} Pack — Rigid Protection for Mailing Comics | Printing Comics`,
+      seoDescription: `${n} Comic Armor protective sleeves: a rigid, cushioned shell for a bagged and boarded comic so it ships without bent corners or spine rolls. `
+        + `${perSleeve === ARMOR_CASE_PER_SLEEVE_USD ? '20' : '25'}¢ a sleeve, in stock, ships from Indiana.`,
       shortDescription: isCase
-        ? `A full case of ${n} Comic Armor sleeves — 20¢ a sleeve, for stores and sellers shipping every week.`
-        : `${n} Comic Armor protective sleeves for shipping and storing comics — 25¢ a sleeve.`,
+        ? `A full case of ${n} Comic Armor comic book shipping sleeves — 20¢ a sleeve, for stores and sellers shipping every week.`
+        : `${n} Comic Armor protective sleeves for shipping and storing comic books — 25¢ a sleeve.`,
       description:
         'Comic Armor wraps each book in a cushioned protective sleeve so it survives the trip. '
         + 'Slide the bagged and boarded comic in, seal it, and ship — no loose bubble wrap, no shifting, '
@@ -879,7 +906,9 @@ function armorSupplies(): SupplyDef[] {
       weightGrams: armorPackGrams(n),
       // Box and packed size are set on the product in admin, not here.
       // One photo for the range until each pack has its own.
-      images: [n === 270 ? '/products/comic-armor-270-pack.webp' : '/products/comic-armor-20-pack.webp'],
+      images: [n === 270
+        ? { url: '/products/comic-armor-270-pack.webp', alt: `Case of ${n} Comic Armor comic book shipping sleeves` }
+        : { url: '/products/comic-armor-20-pack.webp', alt: `Stack of Comic Armor comic book shipping sleeves, ${n} pack` }],
       faq,
     };
   });
@@ -949,8 +978,8 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
     madeToOrder: false,
     minQuantity: 1,
     // No pricingConfig on purpose: flat price, no configurator, no promo.
-    seoTitle: def.name,
-    seoDescription: def.shortDescription,
+    seoTitle: def.seoTitle ?? def.name,
+    seoDescription: def.seoDescription ?? def.shortDescription,
     faq: (def.faq ?? []) as any,
     categories: { create: [{ category: { connect: { id: categoryId } } }] },
   };
@@ -1004,6 +1033,8 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
   // uploaded through the media library.
   if ((await prisma.productImage.count({ where: { productId } })) === 0) {
     await seedSupplyImages(productId, def);
+  } else {
+    await refreshSupplyImageAlts(productId, def);
   }
 }
 
