@@ -1139,6 +1139,8 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
   const [remaining, setRemaining] = useState<RemainingItem[]>([]);
   const [packages, setPackages] = useState<{ id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[]>([]);
   const [building, setBuilding] = useState(false);
+  /** A box with no label yet, opened to change it or just to get its rates back. */
+  const [editing, setEditing] = useState<ShipmentRow | null>(null);
   const [autoPacking, setAutoPacking] = useState(false);
   const [autoPackSummary, setAutoPackSummary] = useState<{ boxCount: number; estimatedShippingCents: number; unpacked: number } | null>(null);
 
@@ -1189,7 +1191,7 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
       <div className="spread" style={{ marginBottom: '.75rem' }}>
         <h3 style={{ margin: 0 }}>Shipments ({shipments.length})</h3>
         <div className="row" style={{ gap: '.5rem' }}>
-          {!building && remainingCount > 0 && (
+          {!building && !editing && remainingCount > 0 && (
             <>
               <button className="btn secondary" disabled={autoPacking} onClick={() => void autoPack()}>
                 {autoPacking ? 'Auto-packing…' : `Auto-pack ${remainingCount} item${remainingCount === 1 ? '' : 's'}`}
@@ -1197,7 +1199,7 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
               <button className="btn" onClick={() => setBuilding(true)}>Add shipment</button>
             </>
           )}
-          {!building && remainingCount === 0 && shipments.length > 0 && (
+          {!building && !editing && remainingCount === 0 && shipments.length > 0 && (
             <span className="muted" style={{ fontSize: '.85rem' }}>All items allocated.</span>
           )}
         </div>
@@ -1218,6 +1220,9 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
       {shipments.length === 0 && !building && (
         <p className="muted">No shipments yet. Click <em>Auto-pack</em> to let the system size boxes automatically, or <em>Add shipment</em> to build one manually.</p>
       )}
+      {shipments.some((s) => s.status === 'CREATED') && !editing && !building && (
+        <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>A box without a label can be opened with <em>Edit / rates</em> to change its package, items or weight and to get its rates back.</p>
+      )}
 
       {shipments.length > 0 && cheapestTotalCents > 0 && (
         <div style={{ fontSize: '.85rem', marginBottom: '.5rem', color: 'var(--muted)' }}>
@@ -1232,7 +1237,7 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
           </tr></thead>
           <tbody>
             {shipments.map((s, i) => (
-              <tr key={s.id}>
+              <tr key={s.id} style={editing?.id === s.id ? { background: '#fffbeb' } : undefined}>
                 <td>
                   <strong>#{i + 1}</strong>
                   {s.package && <div className="muted" style={{ fontSize: '.75rem' }}>{s.package.name}</div>}
@@ -1265,11 +1270,20 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
                     >Refund label</button>
                   )}
                   {s.status === 'CREATED' && (
+                    <button className="btn secondary" style={{ marginRight: '.4rem' }} disabled={!!editing || building} onClick={() => { setEditing(s); setBuilding(false); }}>
+                      Edit / rates
+                    </button>
+                  )}
+                  {(s.status === 'CREATED' || s.status === 'REFUNDED' || s.status === 'VOIDED') && (
                     <button
                       className="btn secondary"
                       style={{ color: '#b91c1c' }}
+                      disabled={editing?.id === s.id}
                       onClick={async () => {
-                        if (!(await confirm({ title: 'Delete this shipment?', body: 'No label was bought, so nothing is refunded — the box is just removed.', confirmLabel: 'Delete', danger: true }))) return;
+                        const body = s.status === 'CREATED'
+                          ? 'No label was bought, so nothing is refunded — the box is just removed.'
+                          : 'The label was already refunded; removing the box puts its items back to be shipped in a new one. The timeline keeps the old label\'s details.';
+                        if (!(await confirm({ title: 'Delete this shipment?', body, confirmLabel: 'Delete', danger: true }))) return;
                         try {
                           await api.del(`/admin/fulfillment/shipments/${s.id}`);
                           await load();
@@ -1294,28 +1308,43 @@ function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { o
           onDone={async () => { setBuilding(false); await load(); }}
         />
       )}
+      {editing && (
+        <ShipmentBuilder
+          key={editing.id}
+          orderId={orderId}
+          // This box's own items are free to move around; the rest of the pool is what the other boxes left.
+          remaining={remaining.map((r) => ({ ...r, remaining: r.remaining + (editing.items.find((it) => it.orderItemId === r.orderItemId)?.quantity ?? 0) }))}
+          packages={packages}
+          quotedOptionId={quote?.optionId ?? null}
+          existing={{ id: editing.id, number: shipments.findIndex((s) => s.id === editing.id) + 1, packageId: editing.package?.id ?? null, weightOz: editing.weightOz ?? null, items: editing.items }}
+          onCancel={() => setEditing(null)}
+          onDone={async () => { setEditing(null); await load(); }}
+        />
+      )}
     </div>
   );
 }
 
 function ShipmentBuilder({
-  orderId, remaining, packages, quotedOptionId, onCancel, onDone,
+  orderId, remaining, packages, quotedOptionId, existing, onCancel, onDone,
 }: {
   orderId: string;
   remaining: RemainingItem[];
   packages: { id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[];
   /** The checkout option the customer paid for ("ep:UPSDAP:Ground"), to mark its row. */
   quotedOptionId?: string | null;
+  /** Set when a built box (no label yet) is being changed or re-rated instead of a new one added. */
+  existing?: { id: string; number: number; packageId: string | null; weightOz: number | null; items: { orderItemId: string; quantity: number }[] } | null;
   onCancel: () => void;
   onDone: () => void | Promise<void>;
 }) {
   const toast = useToast(); const confirm = useConfirm();
-  const [packageId, setPackageId] = useState<string>(packages[0]?.id ?? '');
+  const [packageId, setPackageId] = useState<string>(existing?.packageId ?? packages[0]?.id ?? '');
   const [qtys, setQtys] = useState<Record<string, number>>(
-    () => Object.fromEntries(remaining.map((r) => [r.orderItemId, 0])),
+    () => Object.fromEntries(remaining.map((r) => [r.orderItemId, existing?.items.find((it) => it.orderItemId === r.orderItemId)?.quantity ?? 0])),
   );
   const [rates, setRates] = useState<EpRate[] | null>(null);
-  const [shipmentId, setShipmentId] = useState<string | null>(null);
+  const [shipmentId, setShipmentId] = useState<string | null>(existing?.id ?? null);
   const [insuredValueCents, setInsuredValueCents] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -1336,8 +1365,8 @@ function ShipmentBuilder({
   // gets rated. It keeps tracking the computed weight while untouched, so
   // changing the allocation still updates it; once edited it stays put until
   // "Recalculate" is clicked.
-  const [weightInput, setWeightInput] = useState('');
-  const [weightEdited, setWeightEdited] = useState(false);
+  const [weightInput, setWeightInput] = useState(() => (existing?.weightOz ? existing.weightOz.toFixed(1) : ''));
+  const [weightEdited, setWeightEdited] = useState(() => !!existing?.weightOz && Math.abs(existing.weightOz - computedOz) > 0.05);
   useEffect(() => {
     if (!weightEdited) setWeightInput(computedOz.toFixed(1));
   }, [computedOz, weightEdited]);
@@ -1355,10 +1384,10 @@ function ShipmentBuilder({
         .map((r) => ({ orderItemId: r.orderItemId, quantity: qtys[r.orderItemId] }));
       if (allocations.length === 0) { toast.error('Put at least one item in this box first.'); return; }
       if (!packageId) { toast.error('Pick a box size first.'); return; }
-      const r = await api.post<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(
-        `/admin/fulfillment/orders/${orderId}/shipments`,
-        { packageId, allocations, weightOz: +effectiveOz.toFixed(2) },
-      );
+      const body = { packageId, allocations, weightOz: +effectiveOz.toFixed(2) };
+      const r = existing
+        ? await api.put<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(`/admin/fulfillment/shipments/${existing.id}`, body)
+        : await api.post<{ shipment: { id: string }; rates: EpRate[]; insuredValueCents: number }>(`/admin/fulfillment/orders/${orderId}/shipments`, body);
       setShipmentId(r.shipment.id);
       setRates([...r.rates].sort((a, b) => parseFloat(a.rate) - parseFloat(b.rate)));
       setInsuredValueCents(r.insuredValueCents);
@@ -1383,7 +1412,12 @@ function ShipmentBuilder({
 
   return (
     <div style={{ border: '1px dashed var(--border)', padding: '1rem', borderRadius: 8, marginTop: '1rem' }}>
-      <h4 style={{ marginTop: 0 }}>New shipment</h4>
+      <h4 style={{ marginTop: 0 }}>{existing ? `Edit shipment #${existing.number}` : 'New shipment'}</h4>
+      {existing && !rates && (
+        <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>
+          Change the package, the items or the weight, then <em>Get rates</em> — or get them straight away to buy this box as it is. Nothing is bought until you pick a rate.
+        </p>
+      )}
 
       {!rates && (
         <>
@@ -1486,7 +1520,7 @@ function ShipmentBuilder({
             <div className="row" style={{ gap: '.5rem' }}>
               <button type="button" className="btn secondary" onClick={onCancel}>Cancel</button>
               <button type="button" className="btn" disabled={busy || allocatedCount === 0 || !packageId} onClick={getRates}>
-                {busy ? 'Fetching rates…' : 'Get rates'}
+                {busy ? 'Fetching rates…' : existing ? 'Save & get rates' : 'Get rates'}
               </button>
             </div>
           </div>
@@ -1526,8 +1560,9 @@ function ShipmentBuilder({
               })}
             </tbody>
           </table>
-          <div className="row" style={{ marginTop: '.75rem', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn secondary" onClick={onCancel}>Cancel</button>
+          <div className="row" style={{ marginTop: '.75rem', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="muted" style={{ fontSize: '.8rem' }}>{existing ? 'The box is saved with these details; buy a label now or come back to it later.' : 'The box is saved; buy a label now or come back to it later.'}</span>
+            <button type="button" className="btn secondary" onClick={() => void onDone()}>Close</button>
           </div>
         </>
       )}

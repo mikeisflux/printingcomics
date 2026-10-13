@@ -139,7 +139,52 @@ router.get('/easypost/test', async (_req, res) => {
   }
 });
 
-// ============ Shipments: list / create / buy / refund ============
+// ============ Shipments: list / create / edit / buy / refund ============
+
+/** A refunded or voided label no longer holds its items — they go back in the pool to be boxed again. */
+function holdsItems(s: { status: string }): boolean {
+  return s.status !== 'REFUNDED' && s.status !== 'VOIDED';
+}
+
+/** Quantity of each order item already in other boxes of the order. */
+function allocatedQuantities(shipments: { status: string; items: { orderItemId: string; quantity: number }[] }[], exceptShipmentId?: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const s of shipments) {
+    if (!holdsItems(s) || (exceptShipmentId && (s as any).id === exceptShipmentId)) continue;
+    for (const si of s.items) out.set(si.orderItemId, (out.get(si.orderItemId) ?? 0) + si.quantity);
+  }
+  return out;
+}
+
+/**
+ * Check an allocation against what is left of the order and weigh the box:
+ * the items' weights plus the empty box, unless staff typed the real weight.
+ */
+function parcelFor(
+  order: { items: any[] },
+  allocations: { orderItemId: string; quantity: number }[],
+  already: Map<string, number>,
+  pkg: { emptyWeightOz: number },
+  weightOz: number | undefined,
+): { totalWeightOz: number; insuredValueCents: number } {
+  let contentWeightOz = 0;
+  let insuredValueCents = 0;
+  for (const a of allocations) {
+    const item = order.items.find((i: any) => i.id === a.orderItemId);
+    if (!item) throw new HttpError(400, `Order item ${a.orderItemId} not on this order`);
+    const alreadyAllocated = already.get(a.orderItemId) ?? 0;
+    if (alreadyAllocated + a.quantity > item.quantity) {
+      throw new HttpError(400, `Allocation for "${item.name}" exceeds remaining qty (${item.quantity - alreadyAllocated} left)`);
+    }
+    const perUnitOz = perUnitWeightGrams(item) / 28.3495;
+    contentWeightOz += perUnitOz * a.quantity;
+    insuredValueCents += (item.unitPriceCents as number) * a.quantity;
+  }
+  const totalWeightOz = weightOz
+    ? +weightOz.toFixed(2)
+    : Math.max(0.5, +(contentWeightOz + pkg.emptyWeightOz).toFixed(2));
+  return { totalWeightOz, insuredValueCents };
+}
 
 /** List shipments on an order, with enough info for the admin UI to render
  *  both the "already built" list and the remaining-to-pack item pool. */
@@ -158,12 +203,7 @@ router.get('/orders/:orderId/shipments', async (req, res) => {
   if (!order) throw new HttpError(404, 'Order not found');
 
   // Compute remaining quantity per order item (total qty − already-allocated qty).
-  const allocatedByItem = new Map<string, number>();
-  for (const s of shipments) {
-    for (const si of s.items) {
-      allocatedByItem.set(si.orderItemId, (allocatedByItem.get(si.orderItemId) ?? 0) + si.quantity);
-    }
-  }
+  const allocatedByItem = allocatedQuantities(shipments);
   const remaining = order.items.map((i) => ({
     orderItemId: i.id,
     name: i.name,
@@ -212,28 +252,7 @@ router.post('/orders/:orderId/shipments', async (req, res) => {
   if (!pkg) throw new HttpError(404, 'Package not found');
 
   // Validate allocation against remaining quantities.
-  const allocatedByItem = new Map<string, number>();
-  for (const s of order.shipments) {
-    for (const si of s.items) {
-      allocatedByItem.set(si.orderItemId, (allocatedByItem.get(si.orderItemId) ?? 0) + si.quantity);
-    }
-  }
-  let contentWeightOz = 0;
-  let insuredValueCents = 0;
-  for (const a of allocations) {
-    const item = order.items.find((i: any) => i.id === a.orderItemId);
-    if (!item) throw new HttpError(400, `Order item ${a.orderItemId} not on this order`);
-    const alreadyAllocated = allocatedByItem.get(a.orderItemId) ?? 0;
-    if (alreadyAllocated + a.quantity > item.quantity) {
-      throw new HttpError(400, `Allocation for "${item.name}" exceeds remaining qty (${item.quantity - alreadyAllocated} left)`);
-    }
-    const perUnitOz = perUnitWeightGrams(item) / 28.3495;
-    contentWeightOz += perUnitOz * a.quantity;
-    insuredValueCents += (item.unitPriceCents as number) * a.quantity;
-  }
-  const totalWeightOz = weightOz
-    ? +weightOz.toFixed(2)
-    : Math.max(0.5, +(contentWeightOz + pkg.emptyWeightOz).toFixed(2));
+  const { totalWeightOz, insuredValueCents } = parcelFor(order, allocations, allocatedQuantities(order.shipments), pkg, weightOz);
 
   const from = await fromAddress();
   const to = toAddressFromOrder(order);
@@ -280,6 +299,61 @@ router.post('/orders/:orderId/shipments', async (req, res) => {
   });
 });
 
+/**
+ * Change a box that has no label yet — its package, what is in it, its
+ * weight — and rate it again. Rates are not kept on the row (EasyPost's
+ * shipments expire), so this is also how staff get a built box's rates
+ * back after leaving the page: send it unchanged. The old EasyPost shipment
+ * is abandoned (nothing was bought on it) and a fresh one rated.
+ */
+router.put('/shipments/:shipmentId', async (req, res) => {
+  const { packageId, allocations, weightOz } = createSchema.parse(req.body);
+
+  const shipment = await prisma.shipment.findUnique({ where: { id: req.params.shipmentId }, include: { items: true } });
+  if (!shipment) throw new HttpError(404, 'Shipment not found');
+  if (shipment.status !== 'CREATED') throw new HttpError(400, `This box already has a label (${shipment.status}) — refund it first, then build a new box`);
+
+  const order = await prisma.order.findUnique({
+    where: { id: shipment.orderId },
+    include: { items: { include: { product: true } }, shipments: { include: { items: true } } },
+  });
+  if (!order) throw new HttpError(404, 'Order not found');
+  const pkg = await prisma.package.findUnique({ where: { id: packageId } });
+  if (!pkg) throw new HttpError(404, 'Package not found');
+
+  // What the other boxes hold; this box's own items are free to re-allocate.
+  const { totalWeightOz, insuredValueCents } = parcelFor(order, allocations, allocatedQuantities(order.shipments, shipment.id), pkg, weightOz);
+
+  const epShipment = await epCreateShipment({
+    from_address: await fromAddress(),
+    to_address: toAddressFromOrder(order),
+    parcel: { length: pkg.lengthIn, width: pkg.widthIn, height: pkg.heightIn, weight: totalWeightOz },
+    options: { label_format: 'PDF', print_custom_1: order.number },
+    reference: order.number,
+  });
+
+  const updated = await prisma.shipment.update({
+    where: { id: shipment.id },
+    data: {
+      packageId: pkg.id,
+      easypostId: epShipment.id,
+      weightOz: totalWeightOz,
+      lengthIn: pkg.lengthIn,
+      widthIn: pkg.widthIn,
+      heightIn: pkg.heightIn,
+      insuredValueCents,
+      items: { deleteMany: {}, create: allocations.map((a) => ({ orderItemId: a.orderItemId, quantity: a.quantity })) },
+    },
+    include: { items: true, package: true },
+  });
+
+  res.json({
+    shipment: updated,
+    rates: (epShipment.rates ?? []).map(presentRate),
+    insuredValueCents,
+  });
+});
+
 /** Auto-pack: given an order's remaining un-allocated items and the active
  *  Package catalog, run first-fit-decreasing bin-packing and create one
  *  Shipment per box with EasyPost rates pre-fetched. Admin still picks
@@ -307,12 +381,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
   // Build the pool of units still needing to be packed. Subtract anything
   // already allocated into existing Shipments (so re-running auto-pack is
   // safe — it only adds boxes for what's left).
-  const allocated = new Map<string, number>();
-  for (const s of order.shipments) {
-    for (const si of s.items) {
-      allocated.set(si.orderItemId, (allocated.get(si.orderItemId) ?? 0) + si.quantity);
-    }
-  }
+  const allocated = allocatedQuantities(order.shipments);
   const rules = await loadPoolBoxRules();
   const units: UnitToPack[] = [];
   for (const item of (order.items as any[])) {
@@ -553,7 +622,9 @@ router.post('/shipments/:shipmentId/refund', async (req, res) => {
 router.delete('/shipments/:shipmentId', async (req, res) => {
   const shipment = await prisma.shipment.findUnique({ where: { id: req.params.shipmentId } });
   if (!shipment) throw new HttpError(404, 'Shipment not found');
-  if (shipment.status !== 'CREATED') {
+  // A box with no label, or one whose label was refunded or voided, can go;
+  // the activity timeline keeps the label's history.
+  if (shipment.status !== 'CREATED' && !['REFUNDED', 'VOIDED'].includes(shipment.status)) {
     throw new HttpError(400, `Cannot delete a ${shipment.status} shipment — refund the label first`);
   }
   await prisma.shipment.delete({ where: { id: shipment.id } });
