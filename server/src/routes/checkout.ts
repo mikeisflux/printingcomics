@@ -141,6 +141,105 @@ router.post('/estimate', async (req, res) => {
   });
 });
 
+// ---- Bulk quote: N mailers or sleeves to a postal code ----
+// The cheapest set of packs that covers the quantity (packs come in fixed
+// sizes, so a thousand mailers is 7 × 135 + 50 + 10), boxed by the same
+// packer checkout uses — seven full cartons and one part carton — with the
+// labels for every box added up. Buying it puts those packs in the cart.
+const bulkSchema = z.object({
+  productId: z.string(),
+  units: z.number().int().min(1).max(100_000),
+  country: z.string().min(2).max(2).default('US'),
+  postalCode: z.string().min(1).max(12),
+  region: z.string().max(60).optional(),
+  city: z.string().max(80).optional(),
+});
+
+/**
+ * The cheapest combination of packs giving at least `units` units — exact
+ * cover first, the smallest overshoot among equal prices. Dynamic programme
+ * over the unit count; packs ≤ 100k units keep it instant.
+ */
+export function cheapestPackCover(packs: { id: string; units: number; priceCents: number }[], units: number): Map<string, number> {
+  const sized = packs.filter((p) => p.units > 0 && p.priceCents >= 0);
+  if (sized.length === 0) return new Map();
+  const maxPack = Math.max(...sized.map((p) => p.units));
+  const top = units + maxPack;
+  const best = new Array<number>(top + 1).fill(Number.POSITIVE_INFINITY);
+  const pick = new Array<string | null>(top + 1).fill(null);
+  best[0] = 0;
+  for (let u = 1; u <= top; u++) {
+    for (const p of sized) {
+      if (p.units > u) continue;
+      const c = best[u - p.units]! + p.priceCents;
+      if (c < best[u]!) { best[u] = c; pick[u] = p.id; }
+    }
+  }
+  let at = -1;
+  for (let u = units; u <= top; u++) {
+    if (best[u] === Number.POSITIVE_INFINITY) continue;
+    if (at < 0 || best[u]! < best[at]!) at = u;
+  }
+  const out = new Map<string, number>();
+  while (at > 0 && pick[at]) {
+    const id = pick[at]!;
+    out.set(id, (out.get(id) ?? 0) + 1);
+    at -= sized.find((p) => p.id === id)!.units;
+  }
+  return out;
+}
+
+router.post('/bulk-quote', async (req, res) => {
+  const data = bulkSchema.parse(req.body);
+  const country = data.country.toUpperCase();
+  const postalCode = data.postalCode.trim();
+  if (!postalCodeLooksValid(country, postalCode)) {
+    throw new HttpError(400, country === 'US' ? 'Enter a 5-digit ZIP code.' : `That does not look like a postal code for ${country}.`);
+  }
+  const region = data.region?.trim() || regionForPostalCode(country, postalCode) || '';
+
+  const product = await prisma.product.findUnique({ where: { id: data.productId }, select: { id: true, active: true, stockPoolId: true } });
+  if (!product || !product.active) throw new HttpError(404, 'Product not found');
+  const packSelect = { id: true, slug: true, priceCents: true, ...quoteProductSelect } as const;
+  // The packs that sell these units: the product's family (same pile), or just itself.
+  const packs = product.stockPoolId
+    ? await prisma.product.findMany({ where: { stockPoolId: product.stockPoolId, active: true }, select: packSelect, orderBy: { unitsPerItem: 'desc' } })
+    : await prisma.product.findMany({ where: { id: product.id }, select: packSelect });
+  const combo = cheapestPackCover(packs.map((p) => ({ id: p.id, units: Math.max(1, p.unitsPerItem), priceCents: p.priceCents })), data.units);
+  const lines = packs
+    .filter((p) => (combo.get(p.id) ?? 0) > 0)
+    .map((p) => ({ product: p, quantity: combo.get(p.id)!, packUnits: Math.max(1, p.unitsPerItem) }))
+    .sort((a, b) => b.packUnits - a.packUnits);
+  if (lines.length === 0) throw new HttpError(400, 'No pack sizes are on sale for this product right now.');
+  const goodsCents = lines.reduce((s, l) => s + l.product.priceCents * l.quantity, 0);
+  const unitsSupplied = lines.reduce((s, l) => s + l.packUnits * l.quantity, 0);
+
+  const quote = await quoteShipping({
+    items: lines.map((l) => ({ quantity: l.quantity, options: null, product: l.product })),
+    address: { country, postalCode, region, city: data.city?.trim() || undefined },
+    subtotalCents: goodsCents,
+  });
+  // Every option packs the same boxes; list them once, without what they cost us.
+  const packing = new Map<string, { box: string; count: number; lengthIn: number; widthIn: number; heightIn: number }>();
+  for (const b of quote.options[0]?.breakdown?.boxes ?? []) {
+    const cur = packing.get(b.label) ?? { box: b.label, count: 0, lengthIn: b.lengthIn, widthIn: b.widthIn, heightIn: b.heightIn };
+    cur.count += b.count;
+    packing.set(b.label, cur);
+  }
+  res.json({
+    units: data.units,
+    unitsSupplied,
+    packs: lines.map((l) => ({ productId: l.product.id, slug: l.product.slug, name: l.product.name, packUnits: l.packUnits, quantity: l.quantity, unitPriceCents: l.product.priceCents, lineCents: l.product.priceCents * l.quantity })),
+    goodsCents,
+    packing: [...packing.values()],
+    boxes: quote.boxes,
+    shipmentWeightOz: Math.round(quote.weightOz * 100) / 100,
+    shippingOptions: quote.options.map(publicOption),
+    region: region || null,
+    liveError: customerQuoteMessage(quote.liveErrorKind, quote.liveErrorKind === 'address' ? quote.liveError : undefined),
+  });
+});
+
 // ---- Postal code → region (US ZIP → state) ----
 router.get('/postal-lookup', (req, res) => {
   const country = String(req.query.country ?? 'US').toUpperCase();

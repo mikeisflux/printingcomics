@@ -501,3 +501,17 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-wid
 .site-header .desktop-only button { min-height: 40px; }
 /* Standalone text links (related reading, "continue shopping") get room around them. */
 nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4rem 0; }
+
+/* ---- Bulk quote on a product page ---- */
+.bulk-quote { grid-column: 1 / -1; margin-top: 1.5rem; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-alt); }
+.bulk-quote-form { display: grid; grid-template-columns: 180px minmax(0, 1fr) 140px auto; gap: .75rem; align-items: end; }
+.bulk-quote-form .field label { margin-top: 0; }
+.bulk-quote-form .btn { padding: .7rem 1.2rem; white-space: nowrap; }
+.bulk-quote-result { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-top: 1rem; }
+.bulk-table { font-size: .95rem; margin-top: .5rem; }
+@media (max-width: 760px) {
+  .bulk-quote { padding: 1rem; }
+  .bulk-quote-form { grid-template-columns: 1fr 1fr; }
+  .bulk-quote-form .btn { grid-column: 1 / -1; }
+  .bulk-table th:nth-child(2), .bulk-table td:nth-child(2) { white-space: nowrap; }
+}

@@ -366,17 +366,18 @@ function SharedStockCard() {
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', fontSize: '.85rem', fontWeight: 500, marginTop: '.4rem' }}>
                 <input type="checkbox" checked={counted} onChange={(e) => void setTracking(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
-                Count stock as one pile (off: the pool only says how the packs ship together)
+                Count stock as one pile — paid orders take their units off the count on the right, the storefront says how many are left, and orders are refused when it runs out (off: the pool only says how the packs ship together)
               </label>
               <PoolBoxesEditor key={`${pool.id}:${pool.updatedAt}`} pool={pool} packages={packages} onSaved={load} />
             </div>
-            {counted ? (
+            <div>
               <div className="row" style={{ gap: '.4rem', alignItems: 'center' }}>
-                <input type="number" min={0} value={draft} onChange={(e) => setDrafts({ ...drafts, [pool.id]: e.target.value })} style={{ width: 120, margin: 0 }} />
+                <input type="number" min={0} value={draft} aria-label={`${pool.name} units on the shelf`} onChange={(e) => setDrafts({ ...drafts, [pool.id]: e.target.value })} style={{ width: 120, margin: 0 }} />
                 <span className="muted" style={{ fontSize: '.85rem' }}>units</span>
                 <button type="button" className="btn sm" disabled={!dirty || saving === pool.id} onClick={() => save(pool)}>{saving === pool.id ? 'Saving…' : 'Save'}</button>
               </div>
-            ) : <div />}
+              {!counted && <div className="muted" style={{ fontSize: '.78rem', marginTop: '.3rem', maxWidth: 260 }}>Not enforced yet — tick “Count stock as one pile” to sell from this count.</div>}
+            </div>
           </div>
         );
       })}

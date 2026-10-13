@@ -8,6 +8,7 @@ import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing'
 import { useSiteDiscount } from '../lib/useSiteDiscount';
 import { useSeo, productSchema, breadcrumbs, faqSchema } from '../lib/seo';
 import { ShippingEstimator } from '../components/ShippingEstimator';
+import { BulkQuote } from '../components/BulkQuote';
 
 type OptionType = 'TILES' | 'RADIO' | 'SELECT' | 'TOGGLE' | 'TEXT' | 'NUMBER' | 'UPLOAD' | 'CONFIRM';
 
@@ -49,6 +50,9 @@ interface ProductDetail {
   inStock?: number | null;
   /** False for shelf goods (mailers, sleeves): no artwork, no proof, ships from stock. */
   madeToOrder?: boolean;
+  /** Loose units in one of this product (a 25-pack of mailers = 25) and the family it sells with. */
+  unitsPerItem?: number;
+  stockPoolId?: string | null;
   volumeTiers?: { minQty: number; pricePerUnitCents: number }[] | null;
   templateUrl?: string | null;
   faq?: { q: string; a: string }[] | null;
@@ -500,6 +504,10 @@ export function Product() {
             ))}
           </div>
         </section>
+      )}
+
+      {product.madeToOrder === false && (product.unitsPerItem ?? 1) > 1 && (
+        <BulkQuote product={{ id: product.id, name: product.name }} />
       )}
     </div>
   );
