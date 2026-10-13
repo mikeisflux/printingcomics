@@ -515,3 +515,8 @@ nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4re
   .bulk-quote-form .btn { grid-column: 1 / -1; }
   .bulk-table th:nth-child(2), .bulk-table td:nth-child(2) { white-space: nowrap; }
 }
+
+.bulk-choice { grid-column: 1 / -1; }
+.bulk-pills { display: flex; gap: .5rem; flex-wrap: wrap; }
+.bulk-pill { padding: .55rem 1rem; border-radius: 999px; border: 2px solid var(--border); background: #fff; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); }
+.bulk-pill.selected { border-color: var(--brand); color: var(--brand); background: rgba(198, 26, 34, .06); }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 import { useSeo, breadcrumbs } from '../lib/seo';
 import { formatEta } from './Product';
+import { BulkQuote } from '../components/BulkQuote';
 
 /**
  * Shipping Supplies — the Comic Armor site folded into the storefront.
@@ -508,6 +509,8 @@ export function ShippingSupplies() {
   // Keep each product line together and cheapest-first inside it. Sorting on
   // price alone interleaved the Comic Armor packs with the T-mailers, which
   // reads as one jumbled list rather than two ranges.
+  const bulkMailer = useMemo(() => { const p = products.find((x) => /mailer/i.test(x.name)); return p ? { id: p.id, name: p.name } : null; }, [products]);
+  const bulkArmor = useMemo(() => { const p = products.find((x) => /armor|sleeve/i.test(x.name)); return p ? { id: p.id, name: p.name } : null; }, [products]);
   const ordered = useMemo(() => {
     const line = (p: ProductCard) => (p.slug.startsWith('comic-armor') ? 0 : 1);
     return [...products].sort((a, b) => line(a) - line(b) || a.priceCents - b.priceCents);
@@ -604,6 +607,24 @@ export function ShippingSupplies() {
           </div>
         </div>
       </section>
+
+      {/* Bulk orders: how many mailers or sleeves, where to — the cheapest packs,
+          the cartons, and every carton's label added up. */}
+      {(bulkMailer || bulkArmor) && (
+        <section id="bulk" className="ca-section ca-light" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
+          <div className="container" style={{ maxWidth: 980 }}>
+            <div className="ca-eyebrow">Bulk orders</div>
+            <h2 className="ca-title" style={{ fontSize: 'clamp(1.6rem,4vw,2.4rem)' }}>Need a lot? <span>Get a bulk quote</span></h2>
+            <BulkQuote
+              product={(bulkMailer ?? bulkArmor)!}
+              choices={[
+                ...(bulkMailer ? [{ label: 'Comic book mailers', product: bulkMailer }] : []),
+                ...(bulkArmor ? [{ label: 'Comic Armor sleeves', product: bulkArmor }] : []),
+              ]}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Comic book mailers — the other half of the range, with its own page */}
       <section className="ca-section ca-light" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>

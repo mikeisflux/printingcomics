@@ -36,10 +36,16 @@ function packLabel(name: string): string {
  * it, the boxes it ships in, and live carrier options with every box's label
  * added up. One click puts the packs in the cart.
  */
-export function BulkQuote({ product }: { product: { id: string; name: string } }) {
+export function BulkQuote({ product: initial, choices }: {
+  product: { id: string; name: string };
+  /** Several lines to quote from one place (the shipping-supplies page: mailers or Comic Armor). */
+  choices?: { label: string; product: { id: string; name: string } }[];
+}) {
   const navigate = useNavigate();
   const { add } = useCart();
+  const [product, setProduct] = useState(initial);
   const noun = unitNoun(product.name);
+  const headingNoun = choices && choices.length > 1 ? choices.map((c) => unitNoun(c.product.name)).join(' or ') : noun;
   const [open, setOpen] = useState(false);
   const [units, setUnits] = useState('');
   const [dest, setDest] = useState(rememberedDestination);
@@ -66,12 +72,13 @@ export function BulkQuote({ product }: { product: { id: string; name: string } }
     } finally { setBusy(false); }
   };
 
-  const addAll = async () => {
+  // Put the packs in the cart, then either review the cart or go straight to checkout.
+  const addAll = async (then: '/cart' | '/checkout') => {
     if (!result) return;
     setAdding(true); setError(null);
     try {
       for (const p of result.packs) await add({ productId: p.productId, quantity: p.quantity });
-      navigate('/cart');
+      navigate(then);
     } catch (e: any) {
       setError(e?.message ?? 'Could not add the packs to the cart.');
     } finally { setAdding(false); }
@@ -82,15 +89,32 @@ export function BulkQuote({ product }: { product: { id: string; name: string } }
 
   return (
     <section className="bulk-quote" id="bulk-quote" aria-labelledby="bulk-quote-title">
-      <h2 id="bulk-quote-title" style={{ marginBottom: '.25rem' }}>Buying {noun} in bulk?</h2>
+      <h2 id="bulk-quote-title" style={{ marginBottom: '.25rem' }}>Buying {headingNoun} in bulk?</h2>
       <p className="muted" style={{ marginTop: 0 }}>
-        Need 500, 1,000 or 5,000 {noun}? Tell us how many and where they are going. We pick the cheapest packs that cover it,
+        Need 500, 1,000 or 5,000 {headingNoun}? Tell us how many and where they are going. We pick the cheapest packs that cover it,
         pack them into as few cartons as it takes, and add up the carrier's price for every carton — the same live rates checkout charges.
       </p>
       {!open ? (
         <button type="button" className="btn" onClick={() => setOpen(true)} data-testid="bulk-quote-open">Click here for a bulk quote</button>
       ) : (
         <form className="bulk-quote-form" onSubmit={submit} data-testid="bulk-quote-form">
+          {choices && choices.length > 1 && (
+            <div className="field bulk-choice" role="radiogroup" aria-label="What do you need?">
+              <label>What do you need?</label>
+              <div className="bulk-pills">
+                {choices.map((c) => (
+                  <button
+                    key={c.product.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={product.id === c.product.id}
+                    className={`bulk-pill${product.id === c.product.id ? ' selected' : ''}`}
+                    onClick={() => { setProduct(c.product); setResult(null); setError(null); }}
+                  >{c.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="bulk-units">How many {noun}?</label>
             <input id="bulk-units" inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 1000" value={units} onChange={(e) => { setUnits(e.target.value); setError(null); }} />
@@ -155,9 +179,10 @@ export function BulkQuote({ product }: { product: { id: string; name: string } }
           )}
           {result.liveError && result.shippingOptions.length > 0 && <p className="muted" style={{ fontSize: '.85rem' }}>{result.liveError}</p>}
           <div className="row" style={{ gap: '.75rem', flexWrap: 'wrap', marginTop: '.75rem' }}>
-            <button type="button" className="btn" disabled={adding} onClick={() => void addAll()} data-testid="bulk-add">{adding ? 'Adding…' : 'Add these packs to cart'}</button>
-            <span className="muted" style={{ fontSize: '.85rem' }}>Shipping is confirmed at checkout with your full address. Sales tax, where it applies, is added there.</span>
+            <button type="button" className="btn" disabled={adding} onClick={() => void addAll('/checkout')} data-testid="bulk-buy">{adding ? 'Adding…' : `Buy now — ${formatMoney(result.goodsCents)} + shipping`}</button>
+            <button type="button" className="btn secondary" disabled={adding} onClick={() => void addAll('/cart')} data-testid="bulk-add">Add to cart</button>
           </div>
+          <p className="muted" style={{ fontSize: '.85rem', margin: '.5rem 0 0' }}>Buy now puts these packs in your cart and takes you to checkout; shipping is confirmed there with your full address, and sales tax, where it applies, is added.</p>
         </div>
       )}
     </section>
