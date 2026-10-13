@@ -92,6 +92,15 @@ export interface ShippingOption {
   breakdown?: QuoteBreakdown;
 }
 
+/**
+ * Why live carrier rates were not returned:
+ *   config      — EasyPost is not set up (no key / no sender address)
+ *   address     — the carrier rejected the destination (bad postal code…)
+ *   carrier     — no carrier service could take every box
+ *   unavailable — EasyPost errored or timed out
+ */
+export type QuoteFailureKind = 'config' | 'address' | 'carrier' | 'unavailable';
+
 export interface ShippingQuote {
   options: ShippingOption[];
   weightOz: number;
@@ -100,6 +109,45 @@ export interface ShippingQuote {
   packagingCents: number;
   /** Set when live rating was attempted but unavailable, for admin diagnostics. */
   liveError?: string;
+  liveErrorKind?: QuoteFailureKind;
+}
+
+/** What a shopper is told when live rates are missing — never our configuration details. */
+export function customerQuoteMessage(kind: QuoteFailureKind | undefined, detail: string | undefined): string | null {
+  if (!kind) return null;
+  switch (kind) {
+    case 'address': return `The carrier could not rate this address${detail ? ` (${detail})` : ''}. Please check the postal code and city.`;
+    case 'carrier': return 'No carrier service can take every box in this order to this address. Please contact us for a shipping quote.';
+    case 'config':
+    case 'unavailable':
+    default: return 'Live carrier rates are unavailable at the moment. Please try again in a minute.';
+  }
+}
+
+/** EasyPost's complaint about the destination (the whole clause), or null when the error was something else. */
+function addressComplaint(message: string): string | null {
+  const clean = message.replace(/EasyPost error \d+:\s*/gi, '');
+  const clause = clean.split(/[.;]\s+|\s[—–]\s/).map((c) => c.trim()).find((c) => /\b(zip|postal code|postcode|address|city|state)\b/i.test(c));
+  return clause ? clause.replace(/[.;]$/, '') : null;
+}
+
+/**
+ * Live quotes for the same boxes to the same destination are reused for a
+ * short while: a checkout page re-quotes as the address is typed, and every
+ * quote is one EasyPost shipment per box.
+ */
+const liveCache = new Map<string, { at: number; rated: RatedParcel[] }>();
+const LIVE_CACHE_MS = 2 * 60_000;
+
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e: any) {
+    // A rejected address will not change on retry; an outage or hiccup may.
+    if (e?.status === 402 || (typeof e?.message === 'string' && addressComplaint(e.message))) throw e;
+    await new Promise((r) => setTimeout(r, 400));
+    return fn();
+  }
 }
 
 type QuoteItem = WeighableItem & { quantity: number };
@@ -365,55 +413,57 @@ export async function quoteShipping(args: {
 
   const from = await epFromAddress();
   const canLive = !!from && !!args.address.postalCode && !!args.address.country;
+  const fallback = async (kind: QuoteFailureKind, liveError: string): Promise<ShippingQuote> => {
+    const where = `${args.address.postalCode ?? '?'} ${args.address.country ?? ''}`.trim();
+    const boxes = plan.parcels.map((p) => `${p.count}× ${p.label} ${p.lengthIn}×${p.widthIn}×${p.heightIn} @ ${p.weightOz} oz`).join('; ');
+    console.warn(`[shipping] no live rates (${kind}) for ${where} — ${liveError} — boxes: ${boxes || 'none'}`);
+    return { options: priced(await tableOptions(args.address, weightOz, subtotalCents, plan.parcels)), weightOz, boxes: plan.boxes, packagingCents: charged, liveError, liveErrorKind: kind };
+  };
 
   if (canLive) {
     try {
-      // Rate each kind of parcel once (identical boxes share a rating).
-      const rated: RatedParcel[] = [];
-      for (const parcel of plan.parcels) {
-        const shipment = await epCreateShipment({
-          from_address: from!,
-          to_address: epToAddress(args.address),
-          parcel: { length: parcel.lengthIn, width: parcel.widthIn, height: parcel.heightIn, weight: parcel.weightOz },
-        });
-        const rates = shipment.rates ?? [];
-        if (rates.length === 0) throw new Error(`carrier returned no rates for a ${parcel.label} (${parcel.weightOz} oz)`);
-        rated.push({ parcel, rates: rates.map(fromEpRate) });
+      const to = epToAddress(args.address);
+      const key = JSON.stringify([to, plan.parcels.map((p) => [p.label, p.lengthIn, p.widthIn, p.heightIn, p.weightOz, p.count])]);
+      const cached = liveCache.get(key);
+      let rated: RatedParcel[];
+      if (cached && Date.now() - cached.at < LIVE_CACHE_MS) {
+        rated = cached.rated;
+      } else {
+        // Rate each kind of parcel once (identical boxes share a rating).
+        rated = [];
+        for (const parcel of plan.parcels) {
+          const shipment = await withRetry(() => epCreateShipment({
+            from_address: from!,
+            to_address: to,
+            parcel: { length: parcel.lengthIn, width: parcel.widthIn, height: parcel.heightIn, weight: parcel.weightOz },
+          }));
+          const rates = shipment.rates ?? [];
+          if (rates.length === 0) {
+            const why = (shipment as any).messages?.map((m: any) => m?.message).filter(Boolean).join('; ');
+            throw new Error(`carrier returned no rates for a ${parcel.label} (${parcel.weightOz} oz)${why ? `: ${why}` : ''}`);
+          }
+          rated.push({ parcel, rates: rates.map(fromEpRate) });
+        }
+        liveCache.set(key, { at: Date.now(), rated });
+        if (liveCache.size > 500) for (const [k, v] of liveCache) if (Date.now() - v.at > LIVE_CACHE_MS) liveCache.delete(k);
       }
       const options = aggregateLiveRates(rated);
       if (options.length > 0) return { options: priced(options), weightOz, boxes: plan.boxes, packagingCents: charged };
-      return {
-        options: priced(await tableOptions(args.address, weightOz, subtotalCents, plan.parcels)),
-        weightOz,
-        boxes: plan.boxes,
-        packagingCents: charged,
-        liveError: 'no carrier service could take every box in this order',
-      };
+      return fallback('carrier', 'no carrier service could take every box in this order');
     } catch (e: any) {
       // Never block checkout on a carrier outage — fall back to the table.
-      return {
-        options: priced(await tableOptions(args.address, weightOz, subtotalCents, plan.parcels)),
-        weightOz,
-        boxes: plan.boxes,
-        packagingCents: charged,
-        liveError: e?.message ?? 'live rating failed',
-      };
+      const message: string = e?.message ?? 'live rating failed';
+      const complaint = addressComplaint(message);
+      return fallback(complaint ? 'address' : 'unavailable', complaint ?? message);
     }
   }
 
-  const liveError = from ? 'incomplete destination address' : 'EasyPost not configured';
   if (!from) {
     // Without live rating every order falls back to flat table pricing — the
     // exact failure that let a 50-book order ship for a single-book rate.
-    console.warn('[shipping] live rating unavailable (EasyPost not configured) — using flat rate table');
+    return fallback('config', 'EasyPost not configured (API key or sender address missing in Admin → Settings → EasyPost)');
   }
-  return {
-    options: priced(await tableOptions(args.address, weightOz, subtotalCents, plan.parcels)),
-    weightOz,
-    boxes: plan.boxes,
-    packagingCents: charged,
-    liveError,
-  };
+  return fallback('address', 'incomplete destination address');
 }
 
 export interface ParcelRate {

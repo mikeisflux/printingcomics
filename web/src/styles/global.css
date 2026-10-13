@@ -408,3 +408,63 @@ label { font-weight: 600; display: block; margin: .75rem 0 .25rem; font-size: .9
   .account-layout aside nav a { white-space: nowrap; border-radius: 999px; padding: .45rem .8rem !important; }
   .account-layout .spread { flex-wrap: wrap; }
 }
+
+/* ---- Checkout, cart and the shipping estimator ---- */
+.checkout-page { padding: 1.5rem 0 3rem; }
+.checkout-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 2.5rem; align-items: start; margin-top: 1rem; }
+.checkout-aside { position: sticky; top: 1rem; }
+.checkout-section { margin-top: 1.75rem; }
+.checkout-section h2 { font-size: 1.2rem; display: flex; align-items: center; gap: .6rem; margin-bottom: .25rem; }
+.step-num {
+  display: inline-flex; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--ink); color: #fff;
+  font-size: .85rem; font-weight: 700; align-items: center; justify-content: center; flex: none;
+}
+.field { margin: 0; min-width: 0; }
+.field label { margin: .75rem 0 .25rem; }
+.field-error { color: #b91c1c; font-size: .82rem; margin-top: .3rem; font-weight: 500; }
+.field-hint { color: var(--ink-muted); font-size: .8rem; margin-top: .3rem; }
+input[aria-invalid="true"], select[aria-invalid="true"] { border-color: #b91c1c; box-shadow: 0 0 0 3px rgba(185, 28, 28, .12); }
+.address-fields select { appearance: auto; }
+.rate-list { display: flex; flex-direction: column; gap: .5rem; margin-top: .5rem; }
+.rate-row {
+  display: flex; align-items: center; gap: .75rem; padding: .7rem .9rem; border: 1px solid var(--border);
+  border-radius: var(--radius); background: #fff; margin: 0; font-weight: 500;
+}
+label.rate-row { cursor: pointer; }
+label.rate-row:hover { border-color: var(--ink-muted); }
+.rate-row.selected { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(198, 26, 34, .15); }
+.rate-name { flex: 1; display: flex; flex-direction: column; font-weight: 600; min-width: 0; }
+.rate-eta { font-weight: 400; font-size: .82rem; color: var(--ink-muted); }
+.rate-price { font-weight: 700; white-space: nowrap; }
+.ship-status { padding: .75rem .9rem; border-radius: var(--radius); background: var(--bg-alt); font-size: .92rem; line-height: 1.5; }
+.ship-status.error { background: #fee2e2; color: #b91c1c; }
+.checklist { margin: .4rem 0 .6rem; padding-left: 1.2rem; }
+.checkout-summary { margin-bottom: 0; }
+.summary-item { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: .75rem; align-items: center; padding: .6rem 0; border-bottom: 1px solid var(--border); }
+.summary-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: var(--bg-alt); border: 1px solid var(--border); display: block; }
+.summary-toggle {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .8rem 1rem;
+  background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius); font: inherit; cursor: pointer; color: var(--ink);
+}
+.ship-estimator { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; background: var(--bg-alt); }
+.ship-estimator-head { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; font-size: .95rem; }
+.ship-estimator-form { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: .5rem; }
+.ship-estimator-form select, .ship-estimator-form input { margin: 0; min-width: 0; }
+.ship-estimator-form .btn { padding: .6rem .9rem; white-space: nowrap; }
+.ship-estimator .rate-row { background: #fff; padding: .5rem .75rem; font-size: .9rem; }
+.cart-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 2rem; align-items: start; }
+.cart-summary { position: sticky; top: 1rem; margin-bottom: 0; }
+.cart-item-cell { display: flex; gap: .75rem; align-items: flex-start; min-width: 0; }
+.cart-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-alt); flex: none; display: block; }
+@media (max-width: 900px) {
+  .checkout-grid { grid-template-columns: 1fr; gap: 1rem; }
+  .checkout-aside { position: static; order: -1; }
+  .checkout-section { margin-top: 1.5rem; }
+  .cart-layout { grid-template-columns: 1fr; }
+  .cart-summary { position: static; }
+}
+@media (max-width: 640px) {
+  .ship-estimator-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ship-estimator-form .btn { grid-column: 1 / -1; }
+  .checkout-page h1 { font-size: 1.6rem; }
+}

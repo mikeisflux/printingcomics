@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { evaluateCoupon } from '../lib/coupons.js';
-import { quoteShipping } from '../lib/shipping-quote.js';
+import { quoteShipping, customerQuoteMessage, type ShippingOption } from '../lib/shipping-quote.js';
+import { postalCodeLooksValid, regionForPostalCode } from '../lib/postal.js';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 import { ensureCustomerAccount } from '../lib/customer-accounts.js';
 import { placeFreeOrder } from '../lib/checkout-order.js';
@@ -35,6 +36,14 @@ async function findCart(req: any) {
   return null;
 }
 
+/** What the storefront sees of an option: name and price only. How a price was built (carrier rate, box cost, adjustment) is for the admin order page. */
+const publicOption = (o: ShippingOption) => ({ id: o.id, name: o.name, rateCents: o.rateCents, estimatedDays: o.estimatedDays ?? null });
+
+const quoteProductSelect = {
+  name: true, weightGrams: true, pricingConfig: true, package: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true,
+  unitsPerItem: true, stockPoolId: true, stockPool: { select: { boxes: true } },
+} as const;
+
 // ---- Quote shipping + tax (no PayPal interaction) ----
 router.post('/quote', async (req, res) => {
   const { shippingAddress } = z.object({ shippingAddress: addressSchema }).parse(req.body);
@@ -45,7 +54,7 @@ router.post('/quote', async (req, res) => {
   // listed flat table rates, so 50 books quoted the same as one.)
   const items = await prisma.cartItem.findMany({
     where: { cartId: cart.id },
-    include: { product: { select: { name: true, weightGrams: true, pricingConfig: true, package: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true, unitsPerItem: true, stockPoolId: true, stockPool: { select: { boxes: true } } } } },
+    include: { product: { select: quoteProductSelect } },
   });
   const subtotal = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
@@ -67,11 +76,80 @@ router.post('/quote', async (req, res) => {
   res.json({
     subtotalCents: subtotal,
     taxCents,
-    // Name and price only: how a price was built (carrier rate, box cost,
-    // adjustment) is for the admin order page, not the storefront.
-    shippingOptions: quote.options.map((o) => ({ id: o.id, name: o.name, rateCents: o.rateCents, estimatedDays: o.estimatedDays ?? null })),
+    shippingOptions: quote.options.map(publicOption),
     shipmentWeightOz: Math.round(quote.weightOz * 100) / 100,
     boxes: quote.boxes,
+    // Why live rates are missing, in words a shopper can act on (the full
+    // reason is in the server log).
+    liveError: customerQuoteMessage(quote.liveErrorKind, quote.liveErrorKind === 'address' ? quote.liveError : undefined),
+  });
+});
+
+// ---- Shipping estimate from a postal code alone ----
+// For the cart page, a product page, and the checkout before the address is
+// complete: country + postal code (+ state/city when known) is what the
+// carriers price on. Either the cart or the given lines are rated.
+const estimateSchema = z.object({
+  country: z.string().min(2).max(2).default('US'),
+  postalCode: z.string().min(1).max(12),
+  region: z.string().max(60).optional(),
+  city: z.string().max(80).optional(),
+  line1: z.string().max(120).optional(),
+  items: z.array(z.object({
+    productId: z.string(),
+    quantity: z.number().int().min(1).max(10_000),
+    options: z.record(z.string(), z.string()).optional(),
+  })).max(50).optional(),
+});
+router.post('/estimate', async (req, res) => {
+  const data = estimateSchema.parse(req.body);
+  const country = data.country.toUpperCase();
+  const postalCode = data.postalCode.trim();
+  if (!postalCodeLooksValid(country, postalCode)) {
+    throw new HttpError(400, country === 'US' ? 'Enter a 5-digit ZIP code.' : `That does not look like a postal code for ${country}.`);
+  }
+  const region = data.region?.trim() || regionForPostalCode(country, postalCode) || '';
+
+  let lines: { quantity: number; options: unknown; product: any; unitPriceCents: number }[];
+  if (data.items && data.items.length > 0) {
+    const products = await prisma.product.findMany({ where: { id: { in: data.items.map((i) => i.productId) } }, select: { id: true, priceCents: true, ...quoteProductSelect } });
+    lines = data.items.flatMap((i) => {
+      const product = products.find((p) => p.id === i.productId);
+      return product ? [{ quantity: i.quantity, options: i.options ?? null, product, unitPriceCents: product.priceCents }] : [];
+    });
+    if (lines.length === 0) throw new HttpError(404, 'Product not found');
+  } else {
+    const cart = await findCart(req);
+    if (!cart) throw new HttpError(400, 'No cart');
+    const items = await prisma.cartItem.findMany({ where: { cartId: cart.id }, include: { product: { select: quoteProductSelect } } });
+    if (items.length === 0) throw new HttpError(400, 'Your cart is empty.');
+    lines = items.map((i) => ({ quantity: i.quantity, options: i.options, product: i.product, unitPriceCents: i.unitPriceCents }));
+  }
+  const subtotal = lines.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
+
+  const quote = await quoteShipping({
+    items: lines.map((i) => ({ quantity: i.quantity, options: i.options, product: i.product })),
+    address: { country, postalCode, region, city: data.city?.trim() || undefined, line1: data.line1?.trim() || undefined },
+    subtotalCents: subtotal,
+  });
+  res.json({
+    shippingOptions: quote.options.map(publicOption),
+    shipmentWeightOz: Math.round(quote.weightOz * 100) / 100,
+    boxes: quote.boxes,
+    region: region || null,
+    liveError: customerQuoteMessage(quote.liveErrorKind, quote.liveErrorKind === 'address' ? quote.liveError : undefined),
+  });
+});
+
+// ---- Postal code → region (US ZIP → state) ----
+router.get('/postal-lookup', (req, res) => {
+  const country = String(req.query.country ?? 'US').toUpperCase();
+  const postalCode = String(req.query.postalCode ?? '').trim();
+  res.json({
+    country,
+    postalCode,
+    valid: postalCodeLooksValid(country, postalCode),
+    region: regionForPostalCode(country, postalCode),
   });
 });
 

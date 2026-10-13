@@ -7,6 +7,7 @@ import { UploadOption } from '../components/UploadOption';
 import { computePricing, formatMoney, type PricingConfig } from '../lib/pricing';
 import { useSiteDiscount } from '../lib/useSiteDiscount';
 import { useSeo, productSchema, breadcrumbs, faqSchema } from '../lib/seo';
+import { ShippingEstimator } from '../components/ShippingEstimator';
 
 type OptionType = 'TILES' | 'RADIO' | 'SELECT' | 'TOGGLE' | 'TEXT' | 'NUMBER' | 'UPLOAD' | 'CONFIRM';
 
@@ -414,6 +415,18 @@ export function Product() {
           <p style={{ margin: '.5rem 0 0', fontWeight: 600, color: soldOut ? '#b91c1c' : product.inStock <= 20 ? '#b45309' : '#166534' }}>
             {soldOut ? 'Out of stock — check back soon.' : product.inStock <= 20 ? `Only ${product.inStock} left in stock.` : 'In stock — ships from our shelf.'}
           </p>
+        )}
+
+        {/* Live shipping for this item and quantity, from a ZIP — the same
+            boxes and carrier rates checkout will charge. */}
+        {allComplete && !soldOut && (
+          <div style={{ marginTop: '1rem' }}>
+            <ShippingEstimator
+              compact
+              title="Shipping to your ZIP"
+              items={[{ productId: product.id, quantity: qty, options: Object.fromEntries(Object.entries(selections).filter(([, v]) => v !== '' && v !== undefined && v !== null).map(([k, v]) => [k, String(v)])) }]}
+            />
+          </div>
         )}
 
         {product.backorder ? (

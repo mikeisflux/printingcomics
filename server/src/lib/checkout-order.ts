@@ -86,6 +86,10 @@ export async function computeCartTotals(input: Pick<CheckoutInput, 'cartId' | 'c
   let shippingList = 0;
   let shippingMethodName: string | undefined;
   let shippingQuote: StoredShippingQuote | undefined;
+  // Everything we sell ships. A cart that reached payment without a rated
+  // method (the quote failed and the page let it through) must not be placed
+  // with $0 shipping — the customer is told to pick one instead.
+  if (!input.shippingMethodId) throw new HttpError(400, 'Choose a shipping method before paying. If none are offered, check the postal code or try again in a minute.');
   if (input.shippingMethodId) {
     const resolved = await resolveShippingSelection({
       optionId: input.shippingMethodId,
@@ -100,6 +104,7 @@ export async function computeCartTotals(input: Pick<CheckoutInput, 'cartId' | 'c
       },
       subtotalCents: subtotal,
     });
+    if (!resolved.name) throw new HttpError(400, 'That shipping method is no longer available — please pick one of the current options.');
     shippingList = resolved.cents;
     shippingMethodName = resolved.name ?? undefined;
     if (resolved.breakdown && resolved.optionId && resolved.name) {

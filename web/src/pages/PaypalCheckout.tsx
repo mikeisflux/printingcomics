@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   PayPalButtons,
   PayPalCardFieldsForm,
@@ -11,20 +11,34 @@ import { api, ApiError, formatMoney } from '../api/client';
 import { useCart } from '../store/cart';
 import { useAuth } from '../store/auth';
 import { formatCartItemOptions } from '../lib/cart-options';
+import { AddressFields } from '../components/AddressFields';
+import { RateRow, rememberedDestination, shipmentLine, type EstimateResult, type ShipRate } from '../components/ShippingEstimator';
+import { emptyAddress, emailLooksValid, postalCodeLooksValid, validateAddress, type Address, type AddressField } from '../lib/address';
 
-interface Address {
-  firstName: string; lastName: string; line1: string; line2?: string;
-  city: string; region: string; postalCode: string; country: string; phone?: string;
+/**
+ * Checkout, on one page: contact, shipping address, shipping method, billing,
+ * payment — with the order summary beside it (above it on a phone). Live
+ * carrier rates appear as soon as the ZIP code is typed and are confirmed
+ * against the full address; every field is named for browser autofill and
+ * checked as it is left; what still blocks payment is listed in words.
+ */
+
+function useNarrow(maxPx = 900): boolean {
+  const [narrow, setNarrow] = useState(() => (typeof window !== 'undefined' ? window.matchMedia(`(max-width: ${maxPx}px)`).matches : false));
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxPx}px)`);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [maxPx]);
+  return narrow;
 }
-
-const emptyAddress: Address = {
-  firstName: '', lastName: '', line1: '', line2: '', city: '', region: '', postalCode: '', country: 'US', phone: '',
-};
 
 export function PaypalCheckout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { cart, load, subtotal } = useCart();
+  const narrow = useNarrow();
 
   const [paypalClientId, setPaypalClientId] = useState<string | null>(null);
   const [enableCard, setEnableCard] = useState(true);
@@ -34,10 +48,15 @@ export function PaypalCheckout() {
   const [configError, setConfigError] = useState<string | null>(null);
 
   const [email, setEmail] = useState('');
-  const [ship, setShip] = useState<Address>(emptyAddress);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [ship, setShip] = useState<Address>(() => ({ ...emptyAddress, ...rememberedDestination() }));
   const [bill, setBill] = useState<Address>(emptyAddress);
   const [sameAsShip, setSameAsShip] = useState(true);
+  const [shipTouched, setShipTouched] = useState<Set<AddressField>>(new Set());
+  const [billTouched, setBillTouched] = useState<Set<AddressField>>(new Set());
+  const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   // Discount code (applied before payment; stacks on top of the site-wide
   // discount). A code can take its share off shipping too, so the applied
@@ -50,36 +69,62 @@ export function PaypalCheckout() {
   const [couponBusy, setCouponBusy] = useState(false);
   const [placingFree, setPlacingFree] = useState(false);
 
-  // Shipping rate selection
-  interface ShipRate { id: string; name: string; rateCents: number; estimatedDays?: string | null }
+  // Shipping: live rates for the boxes this order ships in.
   const [shipRates, setShipRates] = useState<ShipRate[]>([]);
   const [shipRateId, setShipRateId] = useState<string | null>(null);
   const [shipQuoting, setShipQuoting] = useState(false);
-  const [shipWeightOz, setShipWeightOz] = useState<number | null>(null);
+  const [shipInfo, setShipInfo] = useState<{ boxes?: number; shipmentWeightOz?: number } | null>(null);
+  const [shipError, setShipError] = useState<string | null>(null);
+  const [shipNote, setShipNote] = useState<string | null>(null);
+  const [shipConfirmed, setShipConfirmed] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+  const quoteSeq = useRef(0);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (user?.email) setEmail(user.email); }, [user]);
-  // Live shipping quote. Rates depend on the parcel's real weight, so this
-  // re-runs whenever the destination or the cart changes — a flat
-  // country-only lookup would quote 50 books the same as one.
+
+  const shipErrors = validateAddress(ship);
+  const shipOk = Object.keys(shipErrors).length === 0;
+  const billErrors = sameAsShip ? {} : validateAddress(bill);
+  const billOk = Object.keys(billErrors).length === 0;
+  const emailOk = emailLooksValid(email);
+  const zipOk = postalCodeLooksValid(ship.country, ship.postalCode);
+  const itemCount = cart?.items.length ?? 0;
+  const sub = subtotal();
+
+  // Rates come from the ZIP code the moment it is complete (an estimate for
+  // the boxes this order ships in), then from the full address once it is
+  // valid — that second quote is what the order is charged on.
   useEffect(() => {
-    if (!ship.country || !ship.postalCode || !cart?.items.length) { setShipRates([]); return; }
-    let cancelled = false;
+    if (!zipOk || itemCount === 0) { setShipRates([]); setShipInfo(null); setShipError(null); setShipQuoting(false); return; }
+    const seq = ++quoteSeq.current;
     setShipQuoting(true);
+    setShipError(null);
     const t = setTimeout(() => {
-      void api.post<{ shippingOptions: ShipRate[]; shipmentWeightOz?: number }>('/checkout/quote', { shippingAddress: ship })
+      const request = shipOk
+        ? api.post<EstimateResult>('/checkout/quote', { shippingAddress: ship })
+        : api.post<EstimateResult>('/checkout/estimate', { country: ship.country, postalCode: ship.postalCode.trim(), region: ship.region || undefined, city: ship.city || undefined, line1: ship.line1 || undefined });
+      request
         .then((j) => {
-          if (cancelled) return;
+          if (seq !== quoteSeq.current) return;
           const rates = j.shippingOptions ?? [];
           setShipRates(rates);
-          setShipWeightOz(j.shipmentWeightOz ?? null);
+          setShipInfo({ boxes: j.boxes, shipmentWeightOz: j.shipmentWeightOz });
+          setShipConfirmed(shipOk);
           setShipRateId((cur) => (cur && rates.some((r) => r.id === cur) ? cur : rates[0]?.id ?? null));
+          setShipError(rates.length === 0 ? (j.liveError ?? 'No shipping options for this address yet. Check the postal code, or try again in a minute.') : null);
+          setShipNote(rates.length > 0 && j.liveError ? j.liveError : null);
         })
-        .catch(() => { if (!cancelled) setShipRates([]); })
-        .finally(() => { if (!cancelled) setShipQuoting(false); });
-    }, 400); // debounce while the address is being typed
-    return () => { cancelled = true; clearTimeout(t); setShipQuoting(false); };
-  }, [ship.country, ship.postalCode, ship.region, ship.city, ship.line1, cart?.items.length, subtotal()]); // eslint-disable-line react-hooks/exhaustive-deps
+        .catch((e: any) => {
+          if (seq !== quoteSeq.current) return;
+          setShipRates([]);
+          setShipInfo(null);
+          setShipError(e?.message ?? 'Could not get shipping rates. Please try again.');
+        })
+        .finally(() => { if (seq === quoteSeq.current) setShipQuoting(false); });
+    }, 500); // debounce while the address is being typed
+    return () => clearTimeout(t);
+  }, [ship.country, ship.postalCode, ship.region, ship.city, ship.line1, shipOk, zipOk, itemCount, sub, retryTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch PayPal config from the API (reads from admin settings).
   useEffect(() => {
@@ -98,8 +143,6 @@ export function PaypalCheckout() {
       })
       .catch((e) => { setConfigError(String(e)); setConfigLoaded(true); });
   }, []);
-
-  const canCheckout = !!email && !!ship.line1 && !!ship.city && !!ship.postalCode && !!(cart?.items.length);
 
   const selectedRate = shipRates.find((r) => r.id === shipRateId) ?? null;
   const shipCents = selectedRate?.rateCents ?? 0;
@@ -154,7 +197,7 @@ export function PaypalCheckout() {
   };
 
   const orderBody = () => ({
-    email,
+    email: email.trim(),
     shippingAddress: ship,
     billingAddress: sameAsShip ? ship : bill,
     shippingRateId: shipRateId,
@@ -209,7 +252,7 @@ export function PaypalCheckout() {
 
   if (!configLoaded) {
     return (
-      <div className="container" style={{ padding: '2rem 0' }}>
+      <div className="container checkout-page">
         <h1>Checkout</h1>
         <p className="muted">Loading payment options…</p>
       </div>
@@ -217,7 +260,15 @@ export function PaypalCheckout() {
   }
 
   const items = cart?.items ?? [];
-  const sub = subtotal();
+  if (cart && items.length === 0) {
+    return (
+      <div className="container checkout-page">
+        <h1>Checkout</h1>
+        <p className="muted">Your cart is empty.</p>
+        <Link to="/shop" className="btn">Continue shopping</Link>
+      </div>
+    );
+  }
 
   // What is left after the code: on the goods, on shipping, and in all. Tax,
   // if any, is figured on the goods after the discount — so a $0 balance here
@@ -225,7 +276,23 @@ export function PaypalCheckout() {
   const goodsDiscount = Math.min(sub, appliedCoupon?.discountCents ?? 0);
   const shipDiscount = Math.min(shipCents, appliedCoupon?.shippingDiscountCents ?? 0);
   const totalDue = (sub - goodsDiscount) + (shipCents - shipDiscount);
-  const nothingToPay = items.length > 0 && !shipQuoting && totalDue === 0;
+
+  // What still stands between the customer and paying, in words.
+  const missing: string[] = [];
+  if (!emailOk) missing.push('an email address for the order confirmation');
+  if (!shipOk) missing.push('the shipping address');
+  if (!sameAsShip && !billOk) missing.push('the billing address');
+  if (!selectedRate) missing.push(shipQuoting ? 'the shipping rates (loading…)' : 'a shipping method');
+  const canCheckout = missing.length === 0 && !shipQuoting && items.length > 0;
+  const nothingToPay = canCheckout && totalDue === 0;
+
+  const checkDetails = () => {
+    setShowAll(true);
+    setEmailTouched(true);
+    const first = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+    first?.focus();
+    first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
 
   const paypalMissing = !paypalClientId && (
     <>
@@ -240,208 +307,261 @@ export function PaypalCheckout() {
     </>
   );
 
-  return (
-    <div className="container" style={{ padding: '2rem 0', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
-      <div>
-        <h1>Checkout</h1>
+  const summary = (
+    <div className="admin-card checkout-summary">
+      <div className="summary-items">
+        {items.map((i) => {
+          const pairs = formatCartItemOptions(i);
+          const img = i.product.images?.[0]?.url;
+          return (
+            <div key={i.id} className="summary-item">
+              {img ? <img className="summary-thumb" src={img} alt="" width={56} height={56} loading="lazy" /> : <div className="summary-thumb" aria-hidden="true" />}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '.92rem', lineHeight: 1.3 }}>{i.product.name}</div>
+                <div className="muted" style={{ fontSize: '.8rem' }}>
+                  Qty {i.quantity}{i.variant ? ` · ${i.variant.label}` : ''}
+                  {pairs.length > 0 && <> · {pairs.map((p) => `${p.label}: ${p.value}`).join(' · ')}</>}
+                </div>
+              </div>
+              <span style={{ fontWeight: 600 }}>{formatMoney(i.unitPriceCents * i.quantity)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ textAlign: 'right', margin: '.4rem 0 .2rem' }}><Link to="/cart" style={{ fontSize: '.85rem' }}>Edit cart</Link></div>
 
-        <h3 style={{ marginTop: '2rem' }}>Contact</h3>
-        <label>Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-
-        <h3 style={{ marginTop: '2rem' }}>Shipping</h3>
-        <AddressForm value={ship} onChange={setShip} />
-
-        <h3 style={{ marginTop: '2rem' }}>Billing</h3>
-        <label>
-          <input type="checkbox" checked={sameAsShip} onChange={(e) => setSameAsShip(e.target.checked)} style={{ width: 'auto', marginRight: '.5rem' }} />
-          Same as shipping
-        </label>
-        {!sameAsShip && <AddressForm value={bill} onChange={setBill} />}
-
-        <h3 style={{ marginTop: '2rem' }}>Payment</h3>
-        {error && <div className="error">{error}</div>}
-
-        {!canCheckout ? (
-          <p className="muted">Fill in the email and shipping address to enable payment.</p>
-        ) : nothingToPay ? (
-          <div className="admin-card" data-testid="nothing-to-pay">
-            <h4 style={{ marginTop: 0 }}>Nothing to pay</h4>
-            <p style={{ marginTop: 0 }}>
-              {appliedCoupon
-                ? <>Code <strong>{appliedCoupon.code}</strong> covers this order{shipCents > 0 ? ', shipping included' : ''}.</>
-                : 'This order has no charge.'}
-              {' '}No card or PayPal account is needed.
-            </p>
-            <button className="btn" style={{ width: '100%' }} disabled={placingFree} onClick={() => void placeFreeOrder()}>
-              {placingFree ? 'Placing order…' : 'Place order'}
+      {/* Discount code — applied here, before payment */}
+      <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
+        <label htmlFor="coupon" style={{ margin: '0 0 .35rem', fontSize: '.9rem' }}>Discount code</label>
+        {appliedCoupon ? (
+          <div className="spread" style={{ alignItems: 'center' }}>
+            <span style={{ fontSize: '.9rem' }}>
+              <strong>{appliedCoupon.code}</strong> applied
+              {appliedCoupon.description ? ` — ${appliedCoupon.description}` : ''}
+            </span>
+            <button type="button" className="btn secondary sm" onClick={removeCoupon}>Remove</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '.5rem' }}>
+            <input
+              id="coupon"
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon(); } }}
+              placeholder="Enter code"
+              autoComplete="off"
+              autoCapitalize="characters"
+              style={{ flex: 1, textTransform: 'uppercase', margin: 0 }}
+            />
+            <button type="button" className="btn secondary" onClick={applyCoupon} disabled={couponBusy || !couponInput.trim()}>
+              {couponBusy ? '…' : 'Apply'}
             </button>
           </div>
-        ) : paypalMissing ? (
-          paypalMissing
-        ) : (
-          <PayPalScriptProvider
-            options={{
-              clientId: paypalClientId!,
-              currency: 'USD',
-              intent: 'capture',
-              components: `buttons${enableCard ? ',card-fields' : ''}`,
-              environment: env === 'live' ? 'production' : 'sandbox',
-            }}
-          >
-            {enableButton && (
-              <div style={{ marginBottom: '1rem' }}>
-                <PayPalButtons
-                  style={{ layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' }}
-                  createOrder={createOrder}
-                  onApprove={onApprove}
-                  onError={(err) => setError((prev) => prev ?? describeError(err))}
-                />
-              </div>
-            )}
-
-            {enableCard && (
-              <div className="admin-card">
-                <h4>Pay with card</h4>
-                <PayPalCardFieldsProvider createOrder={createOrder} onApprove={onApprove} onError={(err) => setError((prev) => prev ?? describeError(err))}>
-                  <PayPalCardFieldsForm />
-                  <SubmitCardButton onError={(msg) => setError(msg)} />
-                </PayPalCardFieldsProvider>
-              </div>
-            )}
-          </PayPalScriptProvider>
         )}
+        {couponMsg && <div className="field-error" role="alert">{couponMsg}</div>}
       </div>
 
-      <aside>
-        <div className="admin-card">
-          <h3>Order summary</h3>
-          {items.map((i) => {
-            const pairs = formatCartItemOptions(i);
-            return (
-              <div key={i.id} style={{ padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>
-                <div className="spread">
-                  <span>{i.product.name} × {i.quantity}</span>
-                  <span>{formatMoney(i.unitPriceCents * i.quantity)}</span>
-                </div>
-                {pairs.length > 0 && (
-                  <ul className="muted" style={{ fontSize: '.8rem', margin: '.25rem 0 0', paddingLeft: '1rem' }}>
-                    {pairs.map((p, j) => (
-                      <li key={j}>{p.label}: {p.value}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-          <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
-            <span>Subtotal</span><span>{formatMoney(sub)}</span>
-          </div>
-
-          {/* Discount code — applied here, before payment */}
-          <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontWeight: 600, fontSize: '.9rem', marginBottom: '.35rem' }}>Discount code</div>
-            {appliedCoupon ? (
-              <div className="spread" style={{ alignItems: 'center' }}>
-                <span style={{ fontSize: '.9rem' }}>
-                  <strong>{appliedCoupon.code}</strong> applied
-                  {appliedCoupon.description ? ` — ${appliedCoupon.description}` : ''}
-                </span>
-                <button
-                  type="button"
-                  className="btn secondary"
-                  style={{ padding: '.2rem .6rem', fontSize: '.8rem' }}
-                  onClick={removeCoupon}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '.5rem' }}>
-                <input
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon(); } }}
-                  placeholder="Enter code"
-                  style={{ flex: 1, textTransform: 'uppercase' }}
-                />
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={applyCoupon}
-                  disabled={couponBusy || !couponInput.trim()}
-                >
-                  {couponBusy ? '…' : 'Apply'}
-                </button>
-              </div>
-            )}
-            {couponMsg && (
-              <div className="error" style={{ marginTop: '.4rem', fontSize: '.8rem' }}>{couponMsg}</div>
-            )}
-          </div>
-
-          {(shipRates.length > 0 || shipQuoting || !!ship.postalCode) && (
-            <div style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
-              <div className="spread" style={{ marginBottom: '.35rem' }}>
-                <span style={{ fontWeight: 600, fontSize: '.9rem' }}>Shipping</span>
-                {shipWeightOz != null && (
-                  <span className="muted" style={{ fontSize: '.75rem' }}>
-                    {shipWeightOz >= 16 ? `${(shipWeightOz / 16).toFixed(2)} lb` : `${shipWeightOz.toFixed(1)} oz`}
-                  </span>
-                )}
-              </div>
-              {shipQuoting && <div className="muted" style={{ fontSize: '.85rem' }}>Getting live rates…</div>}
-              {!shipQuoting && shipRates.length === 0 && (
-                <div className="muted" style={{ fontSize: '.85rem' }}>
-                  {ship.postalCode ? 'No rates for this address yet — check the postal code.' : 'Enter your postal code for shipping rates.'}
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
-                {shipRates.map((r) => (
-                  <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', fontSize: '.9rem' }}>
-                    <input
-                      type="radio"
-                      name="shiprate"
-                      checked={shipRateId === r.id}
-                      onChange={() => setShipRateId(r.id)}
-                      style={{ width: 'auto' }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      {r.name}
-                      {r.estimatedDays && <span className="muted" style={{ fontSize: '.8rem' }}> ({r.estimatedDays})</span>}
-                    </span>
-                    <span>{formatMoney(r.rateCents)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {appliedCoupon && goodsDiscount > 0 && (
-            <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: 'green' }}>
-              <span>Discount ({appliedCoupon.code})</span>
-              <span>−{formatMoney(goodsDiscount)}</span>
-            </div>
-          )}
-          {appliedCoupon && shipDiscount > 0 && (
-            <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: 'green' }}>
-              <span>Shipping discount ({appliedCoupon.code})</span>
-              <span>−{formatMoney(shipDiscount)}</span>
-            </div>
-          )}
-
-          <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid var(--border)' }}>
-            <span>Total</span><span data-testid="checkout-total">{formatMoney(totalDue)}</span>
-          </div>
-          {nothingToPay ? (
-            <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>Nothing to pay — place the order on the left.</p>
-          ) : (
-            <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>
-              Tax (if applicable) calculated on PayPal's review page.
-            </p>
-          )}
+      <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
+        <span>Subtotal</span><span>{formatMoney(sub)}</span>
+      </div>
+      <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)' }}>
+        <span>Shipping{selectedRate ? <span className="muted" style={{ fontSize: '.8rem' }}> · {selectedRate.name}</span> : null}</span>
+        <span>{shipQuoting ? <span className="muted">…</span> : selectedRate ? formatMoney(shipCents) : <span className="muted" style={{ fontSize: '.85rem' }}>{zipOk ? '—' : 'Enter ZIP'}</span>}</span>
+      </div>
+      {appliedCoupon && goodsDiscount > 0 && (
+        <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: '#166534' }}>
+          <span>Discount ({appliedCoupon.code})</span>
+          <span>−{formatMoney(goodsDiscount)}</span>
         </div>
-      </aside>
+      )}
+      {appliedCoupon && shipDiscount > 0 && (
+        <div className="spread" style={{ padding: '.5rem 0', borderTop: '1px solid var(--border)', color: '#166534' }}>
+          <span>Shipping discount ({appliedCoupon.code})</span>
+          <span>−{formatMoney(shipDiscount)}</span>
+        </div>
+      )}
+      <div className="spread" style={{ padding: '.75rem 0', fontWeight: 700, fontSize: '1.15rem', borderTop: '1px solid var(--border)' }}>
+        <span>Total</span><span data-testid="checkout-total">{formatMoney(totalDue)}</span>
+      </div>
+      <p className="muted" style={{ fontSize: '.8rem', margin: 0 }}>
+        {nothingToPay ? 'Nothing to pay — place the order below.' : 'Sales tax, where it applies, is added on PayPal’s review page before you confirm.'}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="container checkout-page">
+      <div className="spread" style={{ flexWrap: 'wrap', gap: '.5rem' }}>
+        <h1 style={{ margin: 0 }}>Checkout</h1>
+        <span className="muted" style={{ fontSize: '.85rem' }}>🔒 Secure checkout · PayPal or any card</span>
+      </div>
+
+      <div className="checkout-grid">
+        <main className="checkout-main">
+          <section className="checkout-section" aria-labelledby="s-contact">
+            <h2 id="s-contact"><span className="step-num">1</span> Contact</h2>
+            <div className="field">
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="email"
+                name="email"
+                autoComplete="email"
+                inputMode="email"
+                value={email}
+                aria-invalid={(emailTouched || showAll) && !emailOk ? true : undefined}
+                onBlur={() => setEmailTouched(true)}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              {(emailTouched || showAll) && !emailOk
+                ? <div className="field-error" role="alert">Enter a valid email address — the order confirmation and tracking go there.</div>
+                : <div className="field-hint">Order confirmation, proofs and tracking are sent here.{!user && <> Have an account? <Link to="/login?next=/checkout">Sign in</Link> to fill this in.</>}</div>}
+            </div>
+          </section>
+
+          <section className="checkout-section" aria-labelledby="s-ship">
+            <h2 id="s-ship"><span className="step-num">2</span> Shipping address</h2>
+            <AddressFields
+              value={ship}
+              onChange={setShip}
+              errors={shipErrors}
+              touched={showAll ? 'all' : shipTouched}
+              onBlur={(f) => setShipTouched((s) => new Set(s).add(f))}
+              idPrefix="ship"
+              section="shipping"
+            />
+          </section>
+
+          <section className="checkout-section" aria-labelledby="s-method">
+            <h2 id="s-method"><span className="step-num">3</span> Shipping method</h2>
+            {!zipOk ? (
+              <div className="ship-status">Enter your {ship.country === 'US' ? 'ZIP code' : 'postal code'} above to see live carrier rates for this order.</div>
+            ) : (
+              <>
+                {shipInfo && shipRates.length > 0 && (
+                  <div className="muted" style={{ fontSize: '.85rem', marginBottom: '.4rem' }}>
+                    {shipmentLine(shipInfo)} · rates to {ship.postalCode.trim()}{shipConfirmed ? '' : ' (confirmed once the address is complete)'}
+                  </div>
+                )}
+                {shipQuoting && shipRates.length === 0 && <div className="ship-status" aria-live="polite">Getting live rates from UPS, USPS and FedEx…</div>}
+                {shipError && (
+                  <div className="ship-status error" role="alert">
+                    {shipError}{' '}
+                    <button type="button" className="btn secondary sm" style={{ marginLeft: '.5rem' }} onClick={() => setRetryTick((n) => n + 1)}>Try again</button>
+                  </div>
+                )}
+                {shipNote && !shipError && <div className="ship-status" style={{ marginBottom: '.5rem' }}>{shipNote}</div>}
+                {shipRates.length > 0 && (
+                  <div className="rate-list" aria-busy={shipQuoting} style={shipQuoting ? { opacity: .6 } : undefined}>
+                    {shipRates.map((r) => <RateRow key={r.id} rate={r} selected={shipRateId === r.id} onSelect={() => setShipRateId(r.id)} />)}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="checkout-section" aria-labelledby="s-bill">
+            <h2 id="s-bill"><span className="step-num">4</span> Billing address</h2>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontWeight: 500, margin: 0 }}>
+              <input type="checkbox" checked={sameAsShip} onChange={(e) => setSameAsShip(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
+              Same as the shipping address
+            </label>
+            {!sameAsShip && (
+              <AddressFields
+                value={bill}
+                onChange={setBill}
+                errors={billErrors}
+                touched={showAll ? 'all' : billTouched}
+                onBlur={(f) => setBillTouched((s) => new Set(s).add(f))}
+                idPrefix="bill"
+                section="billing"
+                showPhone={false}
+              />
+            )}
+          </section>
+
+          <section className="checkout-section" aria-labelledby="s-pay">
+            <h2 id="s-pay"><span className="step-num">5</span> Payment</h2>
+            {error && <div className="error" role="alert">{error}</div>}
+
+            {!canCheckout ? (
+              <div className="ship-status" data-testid="payment-blocked">
+                <strong>Almost there.</strong> To pay, add:
+                <ul className="checklist">{missing.map((m) => <li key={m}>{m}</li>)}</ul>
+                <button type="button" className="btn secondary sm" onClick={checkDetails}>Show me what’s missing</button>
+              </div>
+            ) : nothingToPay ? (
+              <div className="admin-card" data-testid="nothing-to-pay">
+                <h4 style={{ marginTop: 0 }}>Nothing to pay</h4>
+                <p style={{ marginTop: 0 }}>
+                  {appliedCoupon
+                    ? <>Code <strong>{appliedCoupon.code}</strong> covers this order{shipCents > 0 ? ', shipping included' : ''}.</>
+                    : 'This order has no charge.'}
+                  {' '}No card or PayPal account is needed.
+                </p>
+                <button className="btn" style={{ width: '100%' }} disabled={placingFree} onClick={() => void placeFreeOrder()}>
+                  {placingFree ? 'Placing order…' : 'Place order'}
+                </button>
+              </div>
+            ) : paypalMissing ? (
+              paypalMissing
+            ) : (
+              <>
+                <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>
+                  You’ll pay <strong>{formatMoney(totalDue)}</strong>{selectedRate ? <> including {formatMoney(shipCents - shipDiscount)} shipping by {selectedRate.name}</> : null}. Sales tax, where it applies, is added on PayPal’s review page.
+                </p>
+                <PayPalScriptProvider
+                  options={{
+                    clientId: paypalClientId!,
+                    currency: 'USD',
+                    intent: 'capture',
+                    components: `buttons${enableCard ? ',card-fields' : ''}`,
+                    environment: env === 'live' ? 'production' : 'sandbox',
+                  }}
+                >
+                  {enableButton && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <PayPalButtons
+                        style={{ layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' }}
+                        createOrder={createOrder}
+                        onApprove={onApprove}
+                        onError={(err) => setError((prev) => prev ?? describeError(err))}
+                      />
+                    </div>
+                  )}
+
+                  {enableCard && (
+                    <div className="admin-card">
+                      <h4 style={{ marginTop: 0 }}>Pay with card</h4>
+                      <PayPalCardFieldsProvider createOrder={createOrder} onApprove={onApprove} onError={(err) => setError((prev) => prev ?? describeError(err))}>
+                        <PayPalCardFieldsForm />
+                        <SubmitCardButton onError={(msg) => setError(msg)} />
+                      </PayPalCardFieldsProvider>
+                    </div>
+                  )}
+                </PayPalScriptProvider>
+              </>
+            )}
+          </section>
+        </main>
+
+        <aside className="checkout-aside" aria-label="Order summary">
+          {narrow ? (
+            <>
+              <button type="button" className="summary-toggle" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((v) => !v)}>
+                <span>{summaryOpen ? 'Hide' : 'Show'} order summary · {items.length} item{items.length === 1 ? '' : 's'}</span>
+                <strong data-testid="summary-total-mobile">{formatMoney(totalDue)}</strong>
+              </button>
+              {summaryOpen && summary}
+            </>
+          ) : (
+            <>
+              <h3 style={{ marginTop: 0 }}>Order summary</h3>
+              {summary}
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -485,29 +605,5 @@ function SubmitCardButton({ onError }: { onError: (message: string) => void }) {
     <button className="btn" style={{ marginTop: '1rem', width: '100%' }} onClick={submit} disabled={submitting}>
       {submitting ? 'Processing…' : 'Pay with card'}
     </button>
-  );
-}
-
-function AddressForm({ value, onChange }: { value: Address; onChange: (v: Address) => void }) {
-  const set = (patch: Partial<Address>) => onChange({ ...value, ...patch });
-  return (
-    <div>
-      <div className="grid-2">
-        <div><label>First name</label><input value={value.firstName} onChange={(e) => set({ firstName: e.target.value })} /></div>
-        <div><label>Last name</label><input value={value.lastName} onChange={(e) => set({ lastName: e.target.value })} /></div>
-      </div>
-      <label>Street</label>
-      <input value={value.line1} onChange={(e) => set({ line1: e.target.value })} />
-      <label>Apt / suite (optional)</label>
-      <input value={value.line2 ?? ''} onChange={(e) => set({ line2: e.target.value })} />
-      <div className="grid-2">
-        <div><label>City</label><input value={value.city} onChange={(e) => set({ city: e.target.value })} /></div>
-        <div><label>State / region</label><input value={value.region} onChange={(e) => set({ region: e.target.value })} /></div>
-      </div>
-      <div className="grid-2">
-        <div><label>Postal code</label><input value={value.postalCode} onChange={(e) => set({ postalCode: e.target.value })} /></div>
-        <div><label>Country</label><input value={value.country} onChange={(e) => set({ country: e.target.value })} /></div>
-      </div>
-    </div>
   );
 }
