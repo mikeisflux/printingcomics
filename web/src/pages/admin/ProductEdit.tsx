@@ -58,10 +58,10 @@ export function AdminProductEdit() {
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft);
-  const [pools, setPools] = useState<{ id: string; name: string; units: number }[]>([]);
+  const [pools, setPools] = useState<{ id: string; name: string; units: number; trackUnits?: boolean }[]>([]);
   const [packages, setPackages] = useState<{ id: string; name: string; lengthIn: number; widthIn: number; heightIn: number }[]>([]);
   useEffect(() => {
-    api.get<{ pools: { id: string; name: string; units: number }[] }>('/admin/stock-pools').then((r) => setPools(r.pools)).catch(() => setPools([]));
+    api.get<{ pools: { id: string; name: string; units: number; trackUnits?: boolean }[] }>('/admin/stock-pools').then((r) => setPools(r.pools)).catch(() => setPools([]));
     api.get<{ items: { id: string; name: string; lengthIn: number; widthIn: number; heightIn: number }[] }>('/admin/fulfillment/packages').then((r) => setPackages(r.items)).catch(() => setPackages([]));
   }, []);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -199,6 +199,9 @@ export function AdminProductEdit() {
 
   if (!loaded) return <p className="muted">Loading…</p>;
 
+  // A counted pool owns the listing's stock; a packing family leaves it alone.
+  const pooledCount = !!draft.stockPoolId && pools.find((pl) => pl.id === draft.stockPoolId)?.trackUnits !== false;
+
   return (
     <div>
       <Link className="admin-back" to="/admin/products">← Products</Link>
@@ -239,13 +242,13 @@ export function AdminProductEdit() {
         </div>
         <div className="grid-2">
           <div>
-            <label>Stock{draft.stockPoolId ? ' (unused — sells from the shared pool)' : ''}</label>
-            <input type="number" value={draft.stock} disabled={!!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, stock: Number(e.target.value) })} />
+            <label>Stock{pooledCount ? ' (unused — sells from the shared pool)' : ''}</label>
+            <input type="number" value={draft.stock} disabled={pooledCount} onChange={(e) => setDraft({ ...draft, stock: Number(e.target.value) })} />
             <label style={{ fontWeight: 500, marginTop: '.4rem' }}>
-              <input type="checkbox" checked={draft.trackStock || !!draft.stockPoolId} disabled={!!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, trackStock: e.target.checked })} style={{ width: 'auto' }} />{' '}
+              <input type="checkbox" checked={draft.trackStock || pooledCount} disabled={pooledCount} onChange={(e) => setDraft({ ...draft, trackStock: e.target.checked })} style={{ width: 'auto' }} />{' '}
               Track stock — refuse orders when it runs out
             </label>
-            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>Off: the count is just a note and the product always sells. On (or in a shared pool): paid orders take from it and the storefront says how many are left.</p>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>Off: the count is just a note and the product always sells. On (or in a counted shared pool): paid orders take from it and the storefront says how many are left.</p>
           </div>
           <div>
             <label>Min quantity</label>
@@ -254,19 +257,19 @@ export function AdminProductEdit() {
         </div>
         <div className="grid-2">
           <div>
-            <label>Shared stock pool</label>
+            <label>Shared stock pool / packing family</label>
             <select value={draft.stockPoolId ?? ''} onChange={(e) => setDraft({ ...draft, stockPoolId: e.target.value || null })}>
               <option value="">— this product's own stock —</option>
-              {pools.map((pl) => <option key={pl.id} value={pl.id}>{pl.name} ({pl.units} units)</option>)}
+              {pools.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}{pl.trackUnits === false ? ' (packing family)' : ` (${pl.units} units)`}</option>)}
             </select>
             <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>
-              Separate listings that sell from one pile — manage the count under Products → Shared stock.
+              Separate listings that sell from one pile, or that ship together in the pool's boxes — set up under Products → Shared stock.
             </p>
           </div>
           <div>
             <label>Units per item</label>
             <input type="number" min={1} value={draft.unitsPerItem} disabled={!draft.stockPoolId} onChange={(e) => setDraft({ ...draft, unitsPerItem: Math.max(1, Number(e.target.value)) })} />
-            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>How many units of the pool one of this listing takes (a 25-pack = 25).</p>
+            <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>How many units of the pool one of this listing takes (a 25-pack = 25; a 100-pack of sleeves = 100). This is what decides which of the pool's boxes an order's packs fill.</p>
           </div>
         </div>
         <div className="grid-2">

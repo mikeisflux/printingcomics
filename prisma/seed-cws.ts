@@ -690,7 +690,14 @@ interface SupplyDef {
    *  many units of it one item takes. The pool is created with
    *  `initialUnits` the first time it is seen and never touched again — the
    *  live count is edited in admin (Products → Shared stock). */
-  stockPool?: { key: string; name: string; initialUnits: number; boxes?: { name: string; maxUnits: number }[] };
+  stockPool?: {
+    key: string; name: string; initialUnits: number;
+    /** Off: the pool is only a packing family — each listing keeps its own stock. */
+    trackUnits?: boolean;
+    /** Boxes by exact name, or by a pattern with the units each holds read from its name. */
+    boxes?: { name: string; maxUnits: number }[];
+    boxesMatching?: RegExp;
+  };
   unitsPerItem?: number;
   /** Packed size of one unit in inches — with the ships-in box this decides
    *  how many go in each box (a 25-pack is a quarter of a 100-pack's height). */
@@ -874,6 +881,23 @@ const ARMOR_PER_SLEEVE_USD = 0.25;
 const ARMOR_CASE_PER_SLEEVE_USD = 0.20;
 const ARMOR_PACKS = [20, 50, 100, 200, 270];
 
+/**
+ * The packs are one family for packing — two 100-packs go out in the
+ * "Comic Armor 200" box, not in two 100 boxes — but NOT one stock count:
+ * each listing keeps its own stock. The rule is read from the box names in
+ * Fulfillment → Packages ("12x16x9 Comic Armor 200" holds 200 sleeves,
+ * "11x8x3 Comic Armor 10 & 20" holds 20) the first time the family is
+ * created, and is edited under Products → Shared stock after that. Each
+ * listing's own box (set in admin) is left alone.
+ */
+const ARMOR_FAMILY = {
+  key: 'comic-armor',
+  name: 'Comic Armor (packs ship together)',
+  initialUnits: 0,
+  trackUnits: false,
+  boxesMatching: /comic\s*armor/i,
+};
+
 function armorSupplies(): SupplyDef[] {
   const faq = [
     { q: 'What size comics does Comic Armor fit?', a: 'Standard current-age and silver-age comics, bagged and boarded. Slide the bagged book in and seal it.' },
@@ -904,6 +928,9 @@ function armorSupplies(): SupplyDef[] {
       // n × per-sleeve price, in integer cents.
       priceCents: Math.round(cents(perSleeve) * n),
       weightGrams: armorPackGrams(n),
+      // One family for packing (see ARMOR_FAMILY); n sleeves to the pack.
+      stockPool: ARMOR_FAMILY,
+      unitsPerItem: n,
       // Box and packed size are set on the product in admin, not here.
       // One photo for the range until each pack has its own.
       images: [n === 270
@@ -919,13 +946,27 @@ const SUPPLIES: SupplyDef[] = armorSupplies();
 /** Listings replaced by the current range: kept for old orders, hidden from the store. */
 const RETIRED_SUPPLY_SLUGS = ['comic-armor-10-pack'];
 
-/** `[{ packageId, maxUnits }]` for the named boxes that exist (a missing one is skipped with a note). */
-async function poolBoxRows(boxes: { name: string; maxUnits: number }[] | undefined) {
+/**
+ * `[{ packageId, maxUnits }]` for the pool's boxes: the named boxes that
+ * exist (a missing one is skipped with a note), plus every box whose name
+ * matches the pattern, holding the largest number written after the match
+ * ("11x8x3 Comic Armor 10 & 20" → 20; "12x16x9 Comic Armor 200" → 200).
+ */
+async function poolBoxRows(pool: Pick<NonNullable<SupplyDef['stockPool']>, 'boxes' | 'boxesMatching'>) {
   const rows: { packageId: string; maxUnits: number }[] = [];
-  for (const b of boxes ?? []) {
+  for (const b of pool.boxes ?? []) {
     const pkg = await prisma.package.findFirst({ where: { name: { equals: b.name, mode: 'insensitive' } }, select: { id: true } });
     if (!pkg) { console.warn(`  no Package named "${b.name}" yet — add it under Fulfillment, then set the pool's boxes under Products → Shared stock`); continue; }
     rows.push({ packageId: pkg.id, maxUnits: b.maxUnits });
+  }
+  if (pool.boxesMatching) {
+    for (const pkg of await prisma.package.findMany({ select: { id: true, name: true } })) {
+      const m = pkg.name.match(pool.boxesMatching);
+      if (!m || rows.some((r) => r.packageId === pkg.id)) continue;
+      const counts = (pkg.name.slice((m.index ?? 0) + m[0].length).match(/\d+/g) ?? []).map(Number).filter((n) => n > 0);
+      if (counts.length === 0) { console.warn(`  box "${pkg.name}" matches ${pool.boxesMatching} but has no count after it — skipped`); continue; }
+      rows.push({ packageId: pkg.id, maxUnits: Math.max(...counts) });
+    }
   }
   return rows;
 }
@@ -938,16 +979,19 @@ async function ensureStockPool(pool: NonNullable<SupplyDef['stockPool']>): Promi
   const existing = await prisma.stockPool.findUnique({ where: { key: pool.key }, select: { id: true, boxes: true } });
   if (existing) {
     if (!Array.isArray(existing.boxes) || existing.boxes.length === 0) {
-      const rows = await poolBoxRows(pool.boxes);
+      const rows = await poolBoxRows(pool);
       if (rows.length > 0) await prisma.stockPool.update({ where: { id: existing.id }, data: { boxes: rows } });
     }
     return existing.id;
   }
+  const rows = await poolBoxRows(pool);
   const created = await prisma.stockPool.create({
-    data: { key: pool.key, name: pool.name, units: pool.initialUnits, boxes: await poolBoxRows(pool.boxes) },
+    data: { key: pool.key, name: pool.name, units: pool.initialUnits, trackUnits: pool.trackUnits ?? true, boxes: rows },
     select: { id: true },
   });
-  console.log(`  created stock pool ${pool.key} with ${pool.initialUnits} units`);
+  console.log(pool.trackUnits === false
+    ? `  created packing family ${pool.key} (${rows.length} box${rows.length === 1 ? '' : 'es'}; listings keep their own stock)`
+    : `  created stock pool ${pool.key} with ${pool.initialUnits} units`);
   return created.id;
 }
 
@@ -1006,7 +1050,11 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
       Object.assign(fillIn, { unitLengthIn: shipping.unitLengthIn, unitWidthIn: shipping.unitWidthIn, unitHeightIn: shipping.unitHeightIn });
     }
     if (!existing.packageId && 'packageId' in shipping) fillIn.packageId = shipping.packageId;
-    if (!existing.stockPoolId && shipping.stockPoolId) Object.assign(fillIn, { stockPoolId: shipping.stockPoolId, unitsPerItem: shipping.unitsPerItem, trackStock: true });
+    // Joining a family only says how the packs ship together; joining a
+    // counted pool also turns stock tracking on, as the pool enforces it.
+    if (!existing.stockPoolId && shipping.stockPoolId) {
+      Object.assign(fillIn, { stockPoolId: shipping.stockPoolId, unitsPerItem: shipping.unitsPerItem, ...(def.stockPool?.trackUnits === false ? {} : { trackStock: true }) });
+    }
     await prisma.$transaction(async (tx) => {
       await tx.productOption.deleteMany({ where: { productId: existing.id } });
       await tx.productCategory.deleteMany({ where: { productId: existing.id } });
@@ -1023,7 +1071,7 @@ async function buildSupplyProduct(def: SupplyDef, categoryId: string) {
         backorderEta: def.backorderEta ?? null,
         // Only pooled goods refuse orders when the count runs out; the others
         // sell freely until someone sets a count and turns tracking on in admin.
-        trackStock: !!def.stockPool,
+        trackStock: !!def.stockPool && def.stockPool.trackUnits !== false,
       },
       select: { id: true },
     })).id;

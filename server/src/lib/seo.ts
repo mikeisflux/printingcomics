@@ -55,7 +55,7 @@ export interface SeoProduct {
   backorder?: boolean;
   stock?: number;
   trackStock?: boolean;
-  stockPool?: { units: number } | null;
+  stockPool?: { units: number; trackUnits?: boolean } | null;
   unitsPerItem?: number;
   weightGrams?: number;
   images?: { url: string; alt?: string | null }[];
@@ -67,7 +67,7 @@ export interface SeoProduct {
 export function availabilityOf(p: SeoProduct): 'InStock' | 'BackOrder' | 'OutOfStock' | 'MadeToOrder' {
   if (p.madeToOrder !== false) return 'InStock';
   if (p.backorder) return 'BackOrder';
-  if (p.stockPool) return Math.floor(Math.max(0, p.stockPool.units) / Math.max(1, p.unitsPerItem ?? 1)) > 0 ? 'InStock' : 'OutOfStock';
+  if (p.stockPool && p.stockPool.trackUnits !== false) return Math.floor(Math.max(0, p.stockPool.units) / Math.max(1, p.unitsPerItem ?? 1)) > 0 ? 'InStock' : 'OutOfStock';
   if (p.trackStock) return (p.stock ?? 0) > 0 ? 'InStock' : 'OutOfStock';
   return 'InStock';
 }

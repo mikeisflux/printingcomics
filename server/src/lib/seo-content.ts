@@ -195,7 +195,7 @@ export async function pageProducts(line: 'mailers' | 'armor'): Promise<PageProdu
   const prefix = line === 'mailers' ? 't-mailer-' : 'comic-armor-';
   const products = await prisma.product.findMany({
     where: { active: true, slug: { startsWith: prefix } },
-    include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 }, stockPool: { select: { units: true } } },
+    include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 }, stockPool: { select: { units: true, trackUnits: true } } },
     orderBy: { priceCents: 'asc' },
   });
   return products.map((p) => {

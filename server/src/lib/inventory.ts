@@ -8,6 +8,10 @@
  *     and each says how many units one of it takes (unitsPerItem). The five
  *     T-Mailer pack sizes share one pool of mailers this way.
  *
+ * A pool with `trackUnits` off is only a packing family (its listings ship
+ * together in the pool's boxes) and each listing keeps its own stock, as if
+ * it were not in a pool at all.
+ *
  * Rules: adding to the cart and placing the order check stock unless the
  * product is on backorder (backorder sells ahead of stock by design); a paid
  * order consumes stock once (called inside the paid-order CAS); stock never
@@ -22,20 +26,26 @@ export interface StockView {
   backorder: boolean;
   stock: number;
   unitsPerItem: number;
-  /** Refuse orders when the count runs out; a pooled product is always tracked. */
+  /** Refuse orders when the count runs out; a product in a counted pool is always tracked. */
   trackStock: boolean;
-  stockPool: { units: number } | null;
+  stockPool: { units: number; trackUnits?: boolean } | null;
+}
+
+/** The pool whose count this listing sells from — none when the pool is only a packing family. */
+function countedPool(p: StockView): { units: number } | null {
+  return p.stockPool && p.stockPool.trackUnits !== false ? p.stockPool : null;
 }
 
 /** Is this listing's count enforced at all? Printed-to-order and untracked goods always sell. */
 export function isTracked(p: StockView): boolean {
-  return !p.madeToOrder && (p.stockPool !== null || p.trackStock);
+  return !p.madeToOrder && (countedPool(p) !== null || p.trackStock);
 }
 
 /** How many of this listing could be bought right now; null when not tracked. */
 export function availableItems(p: StockView, variant?: { stock: number } | null): number | null {
   if (!isTracked(p)) return null;
-  if (p.stockPool) return Math.floor(Math.max(0, p.stockPool.units) / Math.max(1, p.unitsPerItem));
+  const pool = countedPool(p);
+  if (pool) return Math.floor(Math.max(0, pool.units) / Math.max(1, p.unitsPerItem));
   return variant ? variant.stock : p.stock;
 }
 
@@ -47,10 +57,11 @@ export function availableItems(p: StockView, variant?: { stock: number } | null)
 export function assertInStock(p: StockView, quantity: number, variant?: { stock: number; label: string } | null, already = 0): void {
   if (!isTracked(p) || p.backorder) return;
   const label = `${p.name}${variant ? ` (${variant.label})` : ''}`;
-  if (p.stockPool) {
+  const pool = countedPool(p);
+  if (pool) {
     const upi = Math.max(1, p.unitsPerItem);
-    if (p.stockPool.units <= 0) throw new HttpError(409, `${label} is out of stock.`);
-    const left = Math.floor(Math.max(0, p.stockPool.units - already) / upi);
+    if (pool.units <= 0) throw new HttpError(409, `${label} is out of stock.`);
+    const left = Math.floor(Math.max(0, pool.units - already) / upi);
     if (quantity > left) {
       throw new HttpError(409, already > 0
         ? `Only ${left} more of ${label} can be added — the rest of your cart is already using the same stock.`
@@ -67,15 +78,15 @@ export function assertInStock(p: StockView, quantity: number, variant?: { stock:
   }
 }
 
-/** What the cart already holds against this listing's stock (units for a pool, items otherwise). */
+/** What the cart already holds against this listing's stock (units for a counted pool, items otherwise). */
 export async function unitsAlreadyInCart(
   cartId: string,
-  product: { id: string; stockPoolId: string | null },
+  product: { id: string; stockPoolId: string | null; stockPool?: { trackUnits?: boolean } | null },
   variantId: string | null | undefined,
   excludeItemId?: string,
 ): Promise<number> {
   const exclude = excludeItemId ? { id: { not: excludeItemId } } : {};
-  if (product.stockPoolId) {
+  if (product.stockPoolId && product.stockPool?.trackUnits !== false) {
     const rows = await prisma.cartItem.findMany({
       where: { cartId, product: { stockPoolId: product.stockPoolId }, ...exclude },
       select: { quantity: true, product: { select: { unitsPerItem: true } } },
@@ -98,7 +109,7 @@ export function assertCartInStock(
   for (const it of items) {
     const p = it.product;
     if (!isTracked(p) || p.backorder) continue;
-    if (p.stockPoolId) {
+    if (p.stockPoolId && countedPool(p)) {
       const before = poolUsed.get(p.stockPoolId) ?? 0;
       assertInStock(p, it.quantity, it.variant ?? null, before);
       poolUsed.set(p.stockPoolId, before + it.quantity * Math.max(1, p.unitsPerItem));
@@ -120,13 +131,14 @@ export async function consumeStockForOrder(orderId: string): Promise<void> {
     where: { orderId },
     select: {
       quantity: true, variantId: true,
-      product: { select: { id: true, madeToOrder: true, stock: true, stockPoolId: true, unitsPerItem: true, trackStock: true } },
+      product: { select: { id: true, madeToOrder: true, stock: true, stockPoolId: true, unitsPerItem: true, trackStock: true, stockPool: { select: { trackUnits: true } } } },
     },
   });
   for (const it of items) {
     const p = it.product;
-    if (p.madeToOrder || (!p.stockPoolId && !p.trackStock)) continue;
-    if (p.stockPoolId) {
+    const pooled = !!p.stockPoolId && p.stockPool?.trackUnits !== false;
+    if (p.madeToOrder || (!pooled && !p.trackStock)) continue;
+    if (pooled && p.stockPoolId) {
       const pool = await prisma.stockPool.findUnique({ where: { id: p.stockPoolId }, select: { units: true } });
       if (pool) await prisma.stockPool.update({ where: { id: p.stockPoolId }, data: { units: Math.max(0, pool.units - it.quantity * Math.max(1, p.unitsPerItem)) } });
       continue;

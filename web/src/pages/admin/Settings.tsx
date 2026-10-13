@@ -505,7 +505,61 @@ function EasyPostSection() {
   );
 }
 
+/**
+ * What the customer pays for shipping, in one place: the label price EasyPost
+ * bills us (never the carrier's retail price), summed over the boxes, plus the
+ * boxes themselves — adjustable up or down by a percentage.
+ */
+function ShippingPriceCard() {
+  const { settings, save } = useSettings();
+  const toast = useToast();
+  const bps = Number(settings['shipping.rateAdjustBps'] ?? 0) || 0;
+  const chargeBox = settings['shipping.chargeBoxCost'] === undefined ? true : settings['shipping.chargeBoxCost'] !== false && settings['shipping.chargeBoxCost'] !== 'false';
+  const [pct, setPct] = useState<string | null>(null);
+  const shown = pct ?? (bps / 100).toString();
+  const savePct = async () => {
+    const n = Number(shown);
+    if (!Number.isFinite(n) || n < -100 || n > 100) { toast.error('Enter a percentage between -100 and 100.'); return; }
+    await save('shipping.rateAdjustBps', Math.round(n * 100));
+    setPct(null);
+    toast.success(n === 0 ? 'Shipping is charged at exactly the label price.' : `Carrier rates are ${n > 0 ? 'marked up' : 'discounted'} ${Math.abs(n)}% at checkout.`);
+  };
+  return (
+    <div className="admin-card">
+      <h3 style={{ margin: 0 }}>Shipping price</h3>
+      <p className="muted" style={{ fontSize: '.85rem', margin: '.5rem 0 .75rem' }}>
+        Checkout packs the order into the boxes it will ship in, asks EasyPost for a rate on each box, and charges the customer
+        the <strong>label price EasyPost bills you</strong> for every box — never the carrier's retail counter price — plus the boxes.
+        Each order keeps that quote box by box; see the Shipments panel on an order to compare it with the labels you buy.
+      </p>
+      <div className="grid-2">
+        <div>
+          <label>Adjust carrier rates by (%)</label>
+          <div className="row" style={{ gap: '.5rem', alignItems: 'center' }}>
+            <input type="number" step="0.5" min={-100} max={100} value={shown} onChange={(e) => setPct(e.target.value)} style={{ margin: 0, width: 120 }} />
+            {pct !== null && pct !== (bps / 100).toString() && <button type="button" className="btn sm" onClick={savePct}>Save</button>}
+          </div>
+          <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>0 charges exactly what the labels cost you. 5 adds 5% to the carrier part; -5 takes 5% off. Box costs and flat table rates are never adjusted.</p>
+        </div>
+        <div>
+          <Toggle label="Charge the box cost with the postage" value={chargeBox} onSave={(v) => save('shipping.chargeBoxCost', v)} />
+          <p className="muted" style={{ fontSize: '.8rem', margin: '.2rem 0 0' }}>Adds each box's cost (Fulfillment → Packages) to the shipping price — a 135-pack of mailers in a $5.02 carton costs the customer the postage plus $5.02.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShippingSection() {
+  return (
+    <>
+      <ShippingPriceCard />
+      <ShippingZonesCard />
+    </>
+  );
+}
+
+function ShippingZonesCard() {
   const confirm = useConfirm(); const prompt = usePrompt();
   const [zones, setZones] = useState<any[]>([]);
   const load = () => api.get<{ zones: any[] }>('/admin/settings/shipping').then((r) => setZones(r.zones));
@@ -542,9 +596,10 @@ function ShippingSection() {
   return (
     <div className="admin-card">
       <div className="spread">
-        <h3 style={{ margin: 0 }}>Shipping zones</h3>
+        <h3 style={{ margin: 0 }}>Shipping zones (fallback table)</h3>
         <button className="btn" onClick={addZone}>Add zone</button>
       </div>
+      <p className="muted" style={{ fontSize: '.85rem', margin: '.5rem 0 0' }}>Flat rates used only when EasyPost cannot rate an order (not configured, carrier outage, or no service takes every box).</p>
       {zones.length === 0 && <p className="muted" style={{ marginTop: '1rem' }}>No zones yet.</p>}
       {zones.map((z) => (
         <div key={z.id} style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '1rem' }}>

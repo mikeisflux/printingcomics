@@ -12,7 +12,7 @@ import { HttpError } from '../middleware/error.js';
 import { assertCartInStock } from './inventory.js';
 import { evaluateCoupon, type Coupon } from './coupons.js';
 import { itemsRequestProof } from './proofs.js';
-import { resolveShippingSelection } from './shipping-quote.js';
+import { resolveShippingSelection, type QuoteBreakdown } from './shipping-quote.js';
 import { uploadsInOptions, purposeForOptionKey, pagesNoteFromTags } from './order-files.js';
 import { settlePaidOrder } from './paid-order.js';
 import { sendOrderConfirmationEmail } from './order-emails.js';
@@ -44,7 +44,18 @@ export interface CartTotals {
   tax: number;
   total: number;
   shippingMethodName?: string;
+  /** How the shipping charge was built — box by box — for the admin order page. */
+  shippingQuote?: StoredShippingQuote;
   coupon: Coupon | null;
+}
+
+/** What Order.shippingQuote holds. */
+export interface StoredShippingQuote extends QuoteBreakdown {
+  optionId: string;
+  name: string;
+  /** The charge after a discount code's share, if any (totalCents is before). */
+  chargedCents: number;
+  quotedAt: string;
 }
 
 async function loadCart(cartId: string) {
@@ -74,6 +85,7 @@ export async function computeCartTotals(input: Pick<CheckoutInput, 'cartId' | 'c
   // ShippingRate table) instead of silently charging zero.
   let shippingList = 0;
   let shippingMethodName: string | undefined;
+  let shippingQuote: StoredShippingQuote | undefined;
   if (input.shippingMethodId) {
     const resolved = await resolveShippingSelection({
       optionId: input.shippingMethodId,
@@ -90,6 +102,9 @@ export async function computeCartTotals(input: Pick<CheckoutInput, 'cartId' | 'c
     });
     shippingList = resolved.cents;
     shippingMethodName = resolved.name ?? undefined;
+    if (resolved.breakdown && resolved.optionId && resolved.name) {
+      shippingQuote = { ...resolved.breakdown, optionId: resolved.optionId, name: resolved.name, chargedCents: resolved.cents, quotedAt: new Date().toISOString() };
+    }
   }
 
   // Discount codes stack on top of the site-wide discount, which is already
@@ -112,7 +127,8 @@ export async function computeCartTotals(input: Pick<CheckoutInput, 'cartId' | 'c
   }
 
   const total = subtotal - discount + tax + shipping;
-  return { cart, subtotal, discount, shippingList, shippingDiscount, shipping, tax, total, shippingMethodName, coupon };
+  if (shippingQuote) shippingQuote.chargedCents = shipping;
+  return { cart, subtotal, discount, shippingList, shippingDiscount, shipping, tax, total, shippingMethodName, shippingQuote, coupon };
 }
 
 export interface OrderPlacement {
@@ -155,6 +171,7 @@ export async function createOrderFromCart(totals: CartTotals, input: CheckoutInp
         shippingAddress: input.shippingAddress as any,
         billingAddress: input.billingAddress as any,
         shippingMethod: totals.shippingMethodName,
+        shippingQuote: totals.shippingQuote ? (totals.shippingQuote as any) : undefined,
         notes: input.notes,
         // If any book asked for a PDF or hard-copy proof, the order can't go to
         // production until staff upload a proof and the customer approves it.

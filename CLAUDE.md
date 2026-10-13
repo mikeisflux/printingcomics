@@ -57,6 +57,15 @@ npm run db:studio                    # Prisma Studio
 - Building does not need a running database; `prisma generate` only reads the schema.
 - Production runs from `/opt/printingcomics` (pm2 + nginx; the botblock scripts
   read `/opt/printingcomics/.env`).
+- Shipping is quoted per box with the packer in `server/src/lib/auto-pack.ts`
+  (shared by checkout and fulfillment Auto-pack). A `StockPool` doubles as a
+  packing family: its listings' packs are counted together into the pool's
+  boxes (typed on the pool, else derived from each listing's own box and
+  `unitsPerItem`). With `trackUnits` off the pool is packing-only and each
+  listing keeps its own stock (the Comic Armor packs). Customers pay EasyPost's
+  billed `rate` per box plus the box cost (Settings → Shipping); the quote is
+  stored on `Order.shippingQuote`. Carrier codes stay raw in ids and on
+  `Shipment`; `lib/carriers.ts` turns them into "UPS Ground" everywhere shown.
 
 ## Configurator pricing
 

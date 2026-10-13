@@ -2,25 +2,42 @@
  * Shared stock: one physical pile sold through several listings.
  *
  *   GET    /admin/stock-pools          pools with their listings
- *   POST   /admin/stock-pools          { key, name, units, boxes? }
- *   PUT    /admin/stock-pools/:id      { name?, units?, boxes? }   boxes: [{ packageId, maxUnits }]
+ *   POST   /admin/stock-pools          { key, name, units, trackUnits?, boxes? }
+ *   PUT    /admin/stock-pools/:id      { name?, units?, trackUnits?, boxes? }   boxes: [{ packageId, maxUnits }]
  *   DELETE /admin/stock-pools/:id      listings fall back to their own stock
+ *
+ * A pool with trackUnits off is only a packing family: its listings keep
+ * their own stock, and the pool says how their packs ship together. Each
+ * pool is returned with `effectiveBoxes` — the rule in force: the boxes
+ * typed on it, else the ones its listings' own boxes imply.
  */
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
+import { effectivePoolBoxes } from '../../lib/shipping-weight.js';
 
 const router = Router();
 
 const poolSelect = {
-  id: true, key: true, name: true, units: true, boxes: true, updatedAt: true,
-  products: { select: { id: true, slug: true, name: true, unitsPerItem: true, active: true }, orderBy: { unitsPerItem: 'asc' as const } },
+  id: true, key: true, name: true, units: true, trackUnits: true, boxes: true, updatedAt: true,
+  products: {
+    select: { id: true, slug: true, name: true, unitsPerItem: true, active: true, packageId: true, package: { select: { name: true } } },
+    orderBy: { unitsPerItem: 'asc' as const },
+  },
 };
+
+type PoolRow = { boxes: unknown; products: { packageId: string | null; unitsPerItem: number }[] };
+async function present<T extends PoolRow>(pool: T) {
+  const effective = effectivePoolBoxes(pool);
+  const ids = effective.map((b) => b.packageId);
+  const names = ids.length ? await prisma.package.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+  return { ...pool, effectiveBoxes: effective.map((b) => ({ ...b, name: names.find((n) => n.id === b.packageId)?.name ?? '?' })) };
+}
 
 router.get('/', async (_req, res) => {
   const pools = await prisma.stockPool.findMany({ orderBy: { name: 'asc' }, select: poolSelect });
-  res.json({ pools });
+  res.json({ pools: await Promise.all(pools.map(present)) });
 });
 
 // The boxes the pile ships in, each with how many units it holds. Checked
@@ -38,28 +55,34 @@ const createSchema = z.object({
   key: z.string().min(1).max(60).regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes'),
   name: z.string().min(1).max(120),
   units: z.number().int().min(0).default(0),
+  trackUnits: z.boolean().optional(),
   boxes: boxesSchema.optional(),
 });
 router.post('/', async (req, res) => {
   const data = createSchema.parse(req.body);
   if (await prisma.stockPool.findUnique({ where: { key: data.key } })) throw new HttpError(409, 'A pool with that key already exists');
   const pool = await prisma.stockPool.create({
-    data: { key: data.key, name: data.name, units: data.units, boxes: data.boxes ? await checkBoxes(data.boxes) : undefined },
+    data: { key: data.key, name: data.name, units: data.units, trackUnits: data.trackUnits, boxes: data.boxes ? await checkBoxes(data.boxes) : undefined },
     select: poolSelect,
   });
-  res.json({ pool });
+  res.json({ pool: await present(pool) });
 });
 
-const updateSchema = z.object({ name: z.string().min(1).max(120).optional(), units: z.number().int().min(0).optional(), boxes: boxesSchema.optional() });
+const updateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  units: z.number().int().min(0).optional(),
+  trackUnits: z.boolean().optional(),
+  boxes: boxesSchema.optional(),
+});
 router.put('/:id', async (req, res) => {
   const data = updateSchema.parse(req.body);
   const pool = await prisma.stockPool.update({
     where: { id: String(req.params.id) },
-    data: { name: data.name, units: data.units, boxes: data.boxes ? await checkBoxes(data.boxes) : undefined },
+    data: { name: data.name, units: data.units, trackUnits: data.trackUnits, boxes: data.boxes ? await checkBoxes(data.boxes) : undefined },
     select: poolSelect,
   }).catch(() => null);
   if (!pool) throw new HttpError(404, 'Pool not found');
-  res.json({ pool });
+  res.json({ pool: await present(pool) });
 });
 
 router.delete('/:id', async (req, res) => {

@@ -91,10 +91,20 @@ export const SETTING_KEYS = {
   pricing: {
     siteDiscountBps: 'pricing.siteDiscountBps', // 0 = off; 1000 = 10% off everything
   },
+  shipping: {
+    // What the customer pays for shipping = the label price EasyPost bills us
+    // (its `rate`, never the retail rate) × (1 + rateAdjustBps/10000), plus
+    // the box's cost when chargeBoxCost is on. Both default to "exactly what
+    // we pay": 0 and true.
+    rateAdjustBps: 'shipping.rateAdjustBps',
+    chargeBoxCost: 'shipping.chargeBoxCost',
+  },
 };
 
 function envFallback(key: string): unknown {
   switch (key) {
+    case 'shipping.rateAdjustBps': return Number(process.env.SHIPPING_RATE_ADJUST_BPS ?? 0) || 0;
+    case 'shipping.chargeBoxCost': return process.env.SHIPPING_CHARGE_BOX_COST !== 'false';
     case 'paypal.environment':  return process.env.PAYPAL_ENV ?? 'sandbox';
     case 'paypal.clientId':     return process.env.PAYPAL_CLIENT_ID ?? '';
     case 'paypal.clientSecret': return process.env.PAYPAL_CLIENT_SECRET ?? '';
@@ -244,6 +254,13 @@ export async function getR2Config() {
     endpoint: v(5),
     publicBaseUrl: v(6),
   };
+}
+
+/** The checkout pricing rule for shipping (see the `shipping` keys above). */
+export async function getShippingPricing(): Promise<{ rateAdjustBps: number; chargeBoxCost: boolean }> {
+  const adjust = Number(await getSetting<number | string>('shipping.rateAdjustBps', 0)) || 0;
+  const box = await getSetting<boolean | string>('shipping.chargeBoxCost', true);
+  return { rateAdjustBps: Math.max(-10_000, Math.min(10_000, Math.round(adjust))), chargeBoxCost: box !== false && box !== 'false' };
 }
 
 export async function getEasyPostConfig() {

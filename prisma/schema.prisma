@@ -355,6 +355,10 @@ model Order {
   // shipping-notification email. See the Shipment table for the full list —
   // an order can have multiple shipments when split across boxes.
   shippingMethod  String?
+  // What checkout quoted for the method the customer paid for: each box with
+  // its carrier rate, the box costs and any adjustment — so staff can match
+  // the labels they buy against what was charged.
+  shippingQuote   Json?
   trackingNumber  String?
   notes           String?
 
@@ -645,9 +649,16 @@ model StockPool {
   key       String    @unique
   name      String
   units     Int       @default(0)
+  // Count stock as one pile (paid orders take their units off `units`, the
+  // storefront shows what is left). Off: each listing keeps its own stock
+  // and the pool only says how the packs ship together — Comic Armor packs
+  // are one family of sleeves for packing, but counted per listing.
+  trackUnits Boolean  @default(true)
   // The boxes this pile ships in and how many units each holds, e.g.
   // [{ "packageId": "…", "maxUnits": 50 }, { "packageId": "…", "maxUnits": 135 }].
-  // An order's packs are counted together and go in the fewest boxes.
+  // An order's packs are counted together and go in the fewest boxes. When
+  // blank, the rule comes from the listings' own boxes: the 200-pack claims
+  // the 200 box, so that box holds 200 units of the pool.
   boxes     Json?
   products  Product[]
   createdAt DateTime  @default(now())

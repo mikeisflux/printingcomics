@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
     include: {
       images: { orderBy: { sortOrder: 'asc' }, take: 1 },
       categories: { include: { category: true } },
-      stockPool: { select: { units: true } },
+      stockPool: { select: { units: true, trackUnits: true } },
     },
   });
 
@@ -65,7 +65,7 @@ router.get('/:slug', async (req, res) => {
         include: { values: { orderBy: { sortOrder: 'asc' } } },
       },
       categories: { include: { category: true } },
-      stockPool: { select: { units: true } },
+      stockPool: { select: { units: true, trackUnits: true } },
     },
   });
   if (!product || !product.active) throw new HttpError(404, 'Product not found');

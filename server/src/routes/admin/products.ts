@@ -82,7 +82,7 @@ router.get('/:id', async (req, res) => {
       variants: true,
       options: { include: { values: true } },
       categories: { include: { category: true } },
-      stockPool: { select: { id: true, key: true, name: true, units: true } },
+      stockPool: { select: { id: true, key: true, name: true, units: true, trackUnits: true } },
       package: { select: { id: true, name: true } },
     },
   });

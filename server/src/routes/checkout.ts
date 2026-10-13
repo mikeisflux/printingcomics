@@ -45,7 +45,7 @@ router.post('/quote', async (req, res) => {
   // listed flat table rates, so 50 books quoted the same as one.)
   const items = await prisma.cartItem.findMany({
     where: { cartId: cart.id },
-    include: { product: { select: { name: true, weightGrams: true, pricingConfig: true, package: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true, unitsPerItem: true, stockPool: { select: { boxes: true } } } } },
+    include: { product: { select: { name: true, weightGrams: true, pricingConfig: true, package: true, unitLengthIn: true, unitWidthIn: true, unitHeightIn: true, unitsPerItem: true, stockPoolId: true, stockPool: { select: { boxes: true } } } } },
   });
   const subtotal = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
 
@@ -67,7 +67,9 @@ router.post('/quote', async (req, res) => {
   res.json({
     subtotalCents: subtotal,
     taxCents,
-    shippingOptions: quote.options,
+    // Name and price only: how a price was built (carrier rate, box cost,
+    // adjustment) is for the admin order page, not the storefront.
+    shippingOptions: quote.options.map((o) => ({ id: o.id, name: o.name, rateCents: o.rateCents, estimatedDays: o.estimatedDays ?? null })),
     shipmentWeightOz: Math.round(quote.weightOz * 100) / 100,
     boxes: quote.boxes,
   });

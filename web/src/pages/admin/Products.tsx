@@ -213,9 +213,13 @@ export function AdminProducts() {
 // ---------------------------------------------------------------------------
 interface StockPool {
   id: string; key: string; name: string; units: number; updatedAt: string;
-  /** The boxes the pile ships in and how many units each holds. */
+  /** Off: a packing family only — each listing keeps its own stock. */
+  trackUnits: boolean;
+  /** The boxes the pile ships in and how many units each holds, as typed. */
   boxes?: { packageId: string; maxUnits: number }[] | null;
-  products: { id: string; slug: string; name: string; unitsPerItem: number; active: boolean }[];
+  /** The rule in force: `boxes`, or the one the listings' own boxes imply. */
+  effectiveBoxes?: { packageId: string; maxUnits: number; name: string }[];
+  products: { id: string; slug: string; name: string; unitsPerItem: number; active: boolean; packageId?: string | null; package?: { name: string } | null }[];
 }
 
 interface BoxOption { id: string; name: string; lengthIn: number; widthIn: number; heightIn: number }
@@ -244,9 +248,16 @@ function PoolBoxesEditor({ pool, packages, onSaved }: { pool: StockPool; package
     finally { setSaving(false); }
   };
 
+  const derived = (pool.boxes ?? []).length === 0 && (pool.effectiveBoxes ?? []).length > 0;
   return (
     <div style={{ marginTop: '.5rem', fontSize: '.85rem' }}>
-      <div className="muted" style={{ marginBottom: '.25rem' }}>Ships in — the boxes this pile goes in and how many units each holds; an order's packs are counted together and quoted in the fewest boxes.</div>
+      <div className="muted" style={{ marginBottom: '.25rem' }}>Ships in — the boxes this pile goes in and how many units each holds; an order's packs are counted together and quoted in the fewest boxes (two 100-packs go in the box that holds 200, not in two 100 boxes).</div>
+      {derived && (
+        <div style={{ marginBottom: '.35rem' }}>
+          Rule in force, from each listing's own box: {pool.effectiveBoxes!.map((b) => `${b.name} holds ${b.maxUnits}`).join(' · ')}.
+          <span className="muted"> Add rows below to set it by hand.</span>
+        </div>
+      )}
       {rows.map((r, i) => (
         <div key={i} className="row" style={{ gap: '.4rem', alignItems: 'center', marginBottom: '.3rem' }}>
           <select value={r.packageId} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, packageId: e.target.value } : x)))} style={{ margin: 0, maxWidth: 320 }}>
@@ -332,24 +343,40 @@ function SharedStockCard() {
       {pools.map((pool) => {
         const draft = drafts[pool.id] ?? String(pool.units);
         const dirty = draft !== String(pool.units);
+        const counted = pool.trackUnits !== false;
+        const setTracking = async (on: boolean) => {
+          try {
+            await api.put(`/admin/stock-pools/${pool.id}`, { trackUnits: on });
+            toast.success(on ? `${pool.name}: counted as one pile.` : `${pool.name}: packing only — each listing keeps its own stock.`);
+            await load();
+          } catch (e) { toast.error(errorMessage(e, 'Could not save')); }
+        };
         return (
           <div key={pool.id} style={{ borderTop: '1px solid var(--border)', padding: '.75rem 0', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '1rem', alignItems: 'start' }}>
             <div>
               <strong>{pool.name}</strong>
+              {!counted && <span className="muted" style={{ fontSize: '.8rem', marginLeft: '.5rem' }}>packing family — listings keep their own stock</span>}
               <div className="muted" style={{ fontSize: '.85rem', marginTop: '.2rem' }}>
                 {pool.products.length === 0 ? 'No listings use this pool yet — pick it on a product.' : pool.products.map((p) => (
                   <span key={p.id} style={{ display: 'inline-block', marginRight: '.75rem' }}>
-                    <Link to={`/admin/products/${p.id}`}>{p.name}</Link> · {p.unitsPerItem} each{p.active ? '' : ' (inactive)'} · {Math.floor(pool.units / Math.max(1, p.unitsPerItem))} available
+                    <Link to={`/admin/products/${p.id}`}>{p.name}</Link> · {p.unitsPerItem} each{p.active ? '' : ' (inactive)'}
+                    {counted ? ` · ${Math.floor(pool.units / Math.max(1, p.unitsPerItem))} available` : (p.package ? ` · ships in ${p.package.name}` : '')}
                   </span>
                 ))}
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', fontSize: '.85rem', fontWeight: 500, marginTop: '.4rem' }}>
+                <input type="checkbox" checked={counted} onChange={(e) => void setTracking(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
+                Count stock as one pile (off: the pool only says how the packs ship together)
+              </label>
               <PoolBoxesEditor key={`${pool.id}:${pool.updatedAt}`} pool={pool} packages={packages} onSaved={load} />
             </div>
-            <div className="row" style={{ gap: '.4rem', alignItems: 'center' }}>
-              <input type="number" min={0} value={draft} onChange={(e) => setDrafts({ ...drafts, [pool.id]: e.target.value })} style={{ width: 120, margin: 0 }} />
-              <span className="muted" style={{ fontSize: '.85rem' }}>units</span>
-              <button type="button" className="btn sm" disabled={!dirty || saving === pool.id} onClick={() => save(pool)}>{saving === pool.id ? 'Saving…' : 'Save'}</button>
-            </div>
+            {counted ? (
+              <div className="row" style={{ gap: '.4rem', alignItems: 'center' }}>
+                <input type="number" min={0} value={draft} onChange={(e) => setDrafts({ ...drafts, [pool.id]: e.target.value })} style={{ width: 120, margin: 0 }} />
+                <span className="muted" style={{ fontSize: '.85rem' }}>units</span>
+                <button type="button" className="btn sm" disabled={!dirty || saving === pool.id} onClick={() => save(pool)}>{saving === pool.id ? 'Saving…' : 'Save'}</button>
+              </div>
+            ) : <div />}
           </div>
         );
       })}

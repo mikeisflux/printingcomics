@@ -42,10 +42,14 @@ export interface EpParcel {
 
 export interface EpRate {
   id: string;
-  carrier: string;
-  service: string;
-  rate: string;           // string decimal, e.g. "5.67"
+  carrier: string;        // the carrier ACCOUNT, e.g. "UPSDAP", "FedExDefault", "USPS"
+  service: string;        // the carrier's service code, e.g. "GroundAdvantage", "FEDEX_GROUND"
+  rate: string;           // what EasyPost bills you for this label — string decimal, e.g. "5.67"
   currency: string;
+  retail_rate?: string | null;   // the counter price with no account — for comparison only
+  list_rate?: string | null;     // the carrier's published account price
+  carrier_account_id?: string | null;
+  billing_type?: string | null;  // "easypost" | "carrier"
   delivery_days: number | null;
   delivery_date: string | null;
   est_delivery_days: number | null;

@@ -87,7 +87,7 @@ router.get('/feeds/google-shopping.xml', async (_req, res) => {
   const base = await siteBase();
   const products = await prisma.product.findMany({
     where: { active: true, madeToOrder: false },
-    include: { images: { orderBy: { sortOrder: 'asc' } }, categories: { include: { category: true } }, stockPool: { select: { units: true } } },
+    include: { images: { orderBy: { sortOrder: 'asc' } }, categories: { include: { category: true } }, stockPool: { select: { units: true, trackUnits: true } } },
     orderBy: { name: 'asc' },
   });
   const items = products.map((p) => {

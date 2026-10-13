@@ -42,6 +42,8 @@ interface OrderFull {
   discountCents: number; totalCents: number; couponCode?: string | null;
   trackingNumber?: string | null;
   shippingMethod?: string | null;
+  /** How checkout built the shipping charge, box by box (orders placed before this was recorded have none). */
+  shippingQuote?: ShippingQuote | null;
   notes?: string | null;
   shippingAddress: any;
   billingAddress: any;
@@ -765,7 +767,7 @@ export function AdminOrderDetail() {
         />
       </div>
 
-      <ShipmentsSection orderId={order.id} />
+      <ShipmentsSection orderId={order.id} shippingCents={order.shippingCents} shippingMethod={order.shippingMethod ?? null} quote={order.shippingQuote ?? null} />
 
       {previewMedia && <FilePreviewModal media={previewMedia} onClose={() => setPreviewMedia(null)} />}
 
@@ -1042,6 +1044,9 @@ interface ShipmentRow {
   heightIn?: number | null;
   package?: { id: string; name: string } | null;
   items: { orderItemId: string; quantity: number }[];
+  /** "UPS Ground" — from the carrier/service codes on the row. */
+  methodName?: string | null;
+  insuranceFeeCents?: number | null;
   createdAt: string;
 }
 
@@ -1049,12 +1054,86 @@ interface EpRate {
   id: string;
   carrier: string;
   service: string;
+  /** "UPS", "Ground Saver" — the codes above are what EasyPost speaks. */
+  carrierName?: string;
+  serviceName?: string;
   rate: string;
   currency: string;
+  /** What EasyPost bills for the label (= `rate`), and the carrier's counter price for comparison. */
+  cents?: number;
+  retailCents?: number | null;
   delivery_days: number | null;
 }
 
-function ShipmentsSection({ orderId }: { orderId: string }) {
+interface QuotedBox {
+  label: string; count: number; weightOz: number; lengthIn: number; widthIn: number; heightIn: number;
+  carrier: string | null; service: string | null; carrierName: string | null; serviceName: string | null;
+  cents: number; retailCents: number | null; days: number | null; boxCents: number;
+}
+interface ShippingQuote {
+  optionId: string; name: string; boxes: QuotedBox[];
+  carrierCents: number; packagingCents: number; adjustBps: number; adjustCents: number; totalCents: number;
+  chargedCents: number; quotedAt: string;
+}
+
+const rateName = (r: { carrier: string | null; service: string | null; carrierName?: string | null; serviceName?: string | null }) =>
+  `${r.carrierName ?? r.carrier ?? ''} ${r.serviceName ?? r.service ?? ''}`.trim();
+
+/**
+ * What checkout charged for shipping and how: each box with the service and
+ * label price it was quoted at, the boxes, any adjustment — beside what the
+ * labels bought so far cost, so a gap is visible at a glance.
+ */
+function QuotePanel({ quote, shippingCents, shippingMethod, shipments }: { quote: ShippingQuote | null; shippingCents: number; shippingMethod: string | null; shipments: ShipmentRow[] }) {
+  const bought = shipments.filter((s) => s.rateAmountCents != null);
+  const labelsCents = bought.reduce((sum, s) => sum + (s.rateAmountCents ?? 0) + (s.insuranceFeeCents ?? 0), 0);
+  const boxesCents = quote ? quote.packagingCents : 0;
+  const spent = labelsCents + (bought.length > 0 ? boxesCents : 0);
+  const diff = shippingCents - spent;
+  if (!quote) {
+    return (
+      <div style={{ padding: '.6rem .75rem', background: 'var(--bg-alt, #f3f4f6)', borderRadius: 6, fontSize: '.85rem', marginBottom: '.75rem' }}>
+        <strong>Customer paid {formatMoney(shippingCents)} for shipping</strong>{shippingMethod ? <> — <em>{shippingMethod}</em></> : null}.
+        <span className="muted"> This order was placed before checkout recorded its quote box by box, so only the method name is known.</span>
+        {bought.length > 0 && <div style={{ marginTop: '.3rem' }}>Labels bought so far: <strong>{formatMoney(labelsCents)}</strong> (postage + insurance) — {diff >= 0 ? `${formatMoney(diff)} under` : `${formatMoney(-diff)} over`} what was charged.</div>}
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: '.6rem .75rem', background: 'var(--bg-alt, #f3f4f6)', borderRadius: 6, fontSize: '.85rem', marginBottom: '.75rem' }}>
+      <div><strong>Customer paid {formatMoney(shippingCents)} for shipping</strong> — quoted as <em>{quote.name}</em>, {quote.boxes.reduce((n, b) => n + b.count, 0)} box{quote.boxes.reduce((n, b) => n + b.count, 0) === 1 ? '' : 'es'}:</div>
+      <table className="admin-table" style={{ marginTop: '.4rem', fontSize: '.82rem' }}>
+        <thead><tr><th>Box</th><th>Size / weight</th><th>Service quoted</th><th>Label price</th><th>Retail</th></tr></thead>
+        <tbody>
+          {quote.boxes.map((b, i) => (
+            <tr key={i}>
+              <td>{b.count > 1 ? `${b.count} × ` : ''}{b.label}</td>
+              <td className="muted">{b.lengthIn}×{b.widthIn}×{b.heightIn}″, {b.weightOz.toFixed(1)} oz</td>
+              <td>{b.carrier ? rateName(b) : <span className="muted">table rate</span>}{b.days ? <span className="muted"> · {b.days}d</span> : null}</td>
+              <td>{b.carrier ? <>{formatMoney(b.cents)}{b.count > 1 ? <span className="muted"> each</span> : null}</> : <span className="muted">—</span>}</td>
+              <td className="muted">{b.retailCents != null ? formatMoney(b.retailCents) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ marginTop: '.4rem' }}>
+        Labels {formatMoney(quote.carrierCents)}
+        {quote.adjustCents !== 0 && <> {quote.adjustCents > 0 ? '+' : '−'} adjustment {formatMoney(Math.abs(quote.adjustCents))} ({quote.adjustBps / 100}%)</>}
+        {quote.packagingCents > 0 && <> + boxes {formatMoney(quote.packagingCents)}</>}
+        {' '}= <strong>{formatMoney(quote.totalCents)}</strong>
+        {quote.chargedCents !== quote.totalCents && <> → charged {formatMoney(quote.chargedCents)} after the discount code</>}.
+      </div>
+      {bought.length > 0 && (
+        <div style={{ marginTop: '.3rem' }}>
+          Labels bought so far: <strong>{formatMoney(labelsCents)}</strong> (postage + insurance){boxesCents > 0 ? ` + boxes ${formatMoney(boxesCents)}` : ''} = {formatMoney(spent)} —{' '}
+          <span style={{ color: diff >= 0 ? '#166534' : '#b91c1c', fontWeight: 600 }}>{diff >= 0 ? `${formatMoney(diff)} under` : `${formatMoney(-diff)} over`}</span> what the customer paid.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShipmentsSection({ orderId, shippingCents, shippingMethod, quote }: { orderId: string; shippingCents: number; shippingMethod: string | null; quote: ShippingQuote | null }) {
   const toast = useToast(); const confirm = useConfirm();
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
   const [remaining, setRemaining] = useState<RemainingItem[]>([]);
@@ -1134,6 +1213,8 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
         </div>
       )}
 
+      <QuotePanel quote={quote} shippingCents={shippingCents} shippingMethod={shippingMethod} shipments={shipments} />
+
       {shipments.length === 0 && !building && (
         <p className="muted">No shipments yet. Click <em>Auto-pack</em> to let the system size boxes automatically, or <em>Add shipment</em> to build one manually.</p>
       )}
@@ -1159,7 +1240,7 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
                     {s.lengthIn}×{s.widthIn}×{s.heightIn}″, {s.weightOz}oz
                   </div>
                 </td>
-                <td>{s.carrier && s.service ? `${s.carrier} ${s.service}` : <span className="muted">—</span>}</td>
+                <td>{s.carrier && s.service ? (s.methodName ?? `${s.carrier} ${s.service}`) : <span className="muted">—</span>}</td>
                 <td>{s.trackingCode ?? <span className="muted">—</span>}</td>
                 <td>{s.insuredValueCents != null ? formatMoney(s.insuredValueCents) : <span className="muted">—</span>}</td>
                 <td>{s.rateAmountCents != null ? formatMoney(s.rateAmountCents) : <span className="muted">—</span>}</td>
@@ -1208,6 +1289,7 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
           orderId={orderId}
           remaining={remaining}
           packages={packages}
+          quotedOptionId={quote?.optionId ?? null}
           onCancel={() => setBuilding(false)}
           onDone={async () => { setBuilding(false); await load(); }}
         />
@@ -1217,11 +1299,13 @@ function ShipmentsSection({ orderId }: { orderId: string }) {
 }
 
 function ShipmentBuilder({
-  orderId, remaining, packages, onCancel, onDone,
+  orderId, remaining, packages, quotedOptionId, onCancel, onDone,
 }: {
   orderId: string;
   remaining: RemainingItem[];
   packages: { id: string; name: string; emptyWeightOz: number; maxWeightOz: number | null }[];
+  /** The checkout option the customer paid for ("ep:UPSDAP:Ground"), to mark its row. */
+  quotedOptionId?: string | null;
   onCancel: () => void;
   onDone: () => void | Promise<void>;
 }) {
@@ -1285,8 +1369,8 @@ function ShipmentBuilder({
   async function buy(rate: EpRate) {
     if (!shipmentId) return;
     if (!(await confirm({
-      title: `Buy ${rate.carrier} ${rate.service} for $${rate.rate}?`,
-      body: `Insured for ${formatMoney(insuredValueCents)}. EasyPost charges the postage plus 1% of the declared value ($1 minimum) to your account.`,
+      title: `Buy ${rateName(rate)} for $${rate.rate}?`,
+      body: `Insured for ${formatMoney(insuredValueCents)}. EasyPost charges the postage ($${rate.rate}, the price you pay — not the retail price) plus 1% of the declared value ($1 minimum) to your account.`,
       confirmLabel: `Buy label — $${rate.rate}`,
     }))) return;
     setBusy(true);
@@ -1415,20 +1499,31 @@ function ShipmentBuilder({
             Insured value: <strong>{formatMoney(insuredValueCents)}</strong> —{' '}
             {rates.length} rate{rates.length === 1 ? '' : 's'} from EasyPost.
           </p>
+          <p className="muted" style={{ fontSize: '.8rem', marginTop: 0 }}>
+            <strong>You pay</strong> is what EasyPost bills for the label and what checkout quotes the customer; <strong>Retail</strong> is the carrier's counter price for the same label.
+            {quotedOptionId && !quotedOptionId.endsWith(':per-box') && ' The service the customer paid for is marked.'}
+          </p>
           <table className="admin-table">
-            <thead><tr><th>Carrier</th><th>Service</th><th>Postage</th><th>Transit</th><th /></tr></thead>
+            <thead><tr><th>Carrier</th><th>Service</th><th>You pay</th><th>Retail</th><th>Transit</th><th /></tr></thead>
             <tbody>
-              {rates.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.carrier}</td>
-                  <td>{r.service}</td>
-                  <td>${r.rate} {r.currency}</td>
-                  <td>{r.delivery_days ? `${r.delivery_days}d` : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button className="btn" disabled={busy} onClick={() => buy(r)}>Buy label</button>
-                  </td>
-                </tr>
-              ))}
+              {rates.map((r) => {
+                const chosen = !!quotedOptionId && quotedOptionId === `ep:${r.carrier}:${r.service}`;
+                return (
+                  <tr key={r.id} style={chosen ? { background: '#ecfdf5' } : undefined}>
+                    <td>{r.carrierName ?? r.carrier}</td>
+                    <td>
+                      {r.serviceName ?? r.service}
+                      {chosen && <span style={{ marginLeft: '.4rem', fontSize: '.72rem', fontWeight: 700, color: '#166534', border: '1px solid #166534', borderRadius: 4, padding: '0 .3rem' }}>CUSTOMER PAID FOR THIS</span>}
+                    </td>
+                    <td><strong>${r.rate}</strong> <span className="muted">{r.currency}</span></td>
+                    <td className="muted">{r.retailCents != null ? formatMoney(r.retailCents) : '—'}</td>
+                    <td>{r.delivery_days ? `${r.delivery_days}d` : '—'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn" disabled={busy} onClick={() => buy(r)}>Buy label</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <div className="row" style={{ marginTop: '.75rem', justifyContent: 'flex-end' }}>

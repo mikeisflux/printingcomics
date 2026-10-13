@@ -157,7 +157,7 @@ async function contentPageHtml(base: string, slug: string): Promise<{ head: Page
 async function productPageHtml(base: string, slug: string): Promise<{ head: PageHead; body: string; status: number }> {
   const p = await prisma.product.findFirst({
     where: { slug, active: true },
-    include: { images: { orderBy: { sortOrder: 'asc' } }, categories: { include: { category: true } }, stockPool: { select: { units: true } } },
+    include: { images: { orderBy: { sortOrder: 'asc' } }, categories: { include: { category: true } }, stockPool: { select: { units: true, trackUnits: true } } },
   });
   if (!p) {
     return { status: 404, body: '', head: { title: `Not found | ${SITE_NAME}`, description: DEFAULT_DESCRIPTION, canonical: `${base}/product/${encodeURIComponent(slug)}`, noindex: true } };
@@ -192,7 +192,7 @@ async function categoryPageHtml(base: string, slug: string): Promise<{ head: Pag
   if (!cat) return { status: 404, body: '', head: { title: `Not found | ${SITE_NAME}`, description: DEFAULT_DESCRIPTION, canonical: `${base}/shop/${encodeURIComponent(slug)}`, noindex: true } };
   const products = await prisma.product.findMany({
     where: { active: true, categories: { some: { categoryId: cat.id } } },
-    include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 }, stockPool: { select: { units: true } } },
+    include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 }, stockPool: { select: { units: true, trackUnits: true } } },
     orderBy: { priceCents: 'asc' },
   });
   const supplies = slug === 'shipping-supplies';

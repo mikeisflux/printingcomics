@@ -95,6 +95,8 @@ export interface WeighableItem {
     unitHeightIn?: number | null;
     /** Loose units in one of this product (a 25-pack of mailers = 25). */
     unitsPerItem?: number | null;
+    /** The pile (or packing family) this product belongs to — see PoolBoxRules. */
+    stockPoolId?: string | null;
     /** The pile this product sells from, with the boxes that pile ships in. */
     stockPool?: { boxes?: unknown } | null;
   } | null;
@@ -118,12 +120,37 @@ export function poolBoxes(raw: unknown): PoolBox[] {
 }
 
 /**
- * The boxes one of this line may ship in and the share of each box's count
- * it takes — from its stock pool's boxes (a 25-pack of mailers takes half of
- * the box that holds 50). Null when the product has no such rule.
+ * A pool's box rule: the boxes typed on it (mailers: 50 to the small box,
+ * 135 to the big one), or, when none are, the rule its listings imply — the
+ * 200-pack ships in the Comic Armor 200 box, so that box holds 200 units of
+ * the pool, and two 100-packs go in it instead of two 100 boxes. A listing
+ * that says nothing about its pack size (one unit per item) cannot size a
+ * box, so its box is left out of the derived rule.
  */
-export function allowedBoxesFor(item: WeighableItem): { packageId: string; share: number }[] | null {
-  const boxes = poolBoxes(item.product?.stockPool?.boxes);
+export function effectivePoolBoxes(pool: { boxes: unknown; products: { packageId: string | null; unitsPerItem: number }[] }): PoolBox[] {
+  const explicit = poolBoxes(pool.boxes);
+  if (explicit.length > 0) return explicit;
+  const cap = new Map<string, number>();
+  for (const p of pool.products) {
+    if (!p.packageId || p.unitsPerItem <= 1) continue;
+    cap.set(p.packageId, Math.max(cap.get(p.packageId) ?? 0, p.unitsPerItem));
+  }
+  return [...cap.entries()].map(([packageId, maxUnits]) => ({ packageId, maxUnits }));
+}
+
+/** Box rules by pool id, as loaded once per quote (see loadPoolBoxRules in shipping-quote.ts). */
+export type PoolBoxRules = Map<string, PoolBox[]>;
+
+/**
+ * The boxes one of this line may ship in and the share of each box's count
+ * it takes — from its pool's rule (a 25-pack of mailers takes half of the
+ * box that holds 50; a 100-pack of sleeves half of the 200 box). Null when
+ * the product has no such rule. Without `rules`, only the boxes typed on the
+ * pool count.
+ */
+export function allowedBoxesFor(item: WeighableItem, rules?: PoolBoxRules | null): { packageId: string; share: number }[] | null {
+  const poolId = item.product?.stockPoolId ?? null;
+  const boxes = rules && poolId ? rules.get(poolId) ?? [] : poolBoxes(item.product?.stockPool?.boxes);
   if (boxes.length === 0) return null;
   const units = Math.max(1, item.product?.unitsPerItem ?? 1);
   return boxes.map((b) => ({ packageId: b.packageId, share: units / b.maxUnits }));

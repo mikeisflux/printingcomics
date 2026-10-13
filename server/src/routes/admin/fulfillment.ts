@@ -4,14 +4,38 @@ import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import {
   epCreateShipment, epBuyShipment, epFetchShipment, epRefundShipment, epTestConnection,
-  type EpCreateShipmentInput, type EpAddress,
+  type EpCreateShipmentInput, type EpAddress, type EpRate,
 } from '../../lib/easypost.js';
 import { perUnitWeightGrams, unitDimensionsIn, allowedBoxesFor } from '../../lib/shipping-weight.js';
-import { reservedPackageIds } from '../../lib/shipping-quote.js';
+import { reservedPackageIds, loadPoolBoxRules } from '../../lib/shipping-quote.js';
 import { autoPack, type PackageOption, type UnitToPack } from '../../lib/auto-pack.js';
 import { getEasyPostConfig } from '../../lib/settings.js';
+import { carrierDisplayName, serviceDisplayName, methodDisplayName } from '../../lib/carriers.js';
 
 const router = Router();
+
+/**
+ * A rate as the admin sees it: EasyPost's codes (what the buy call needs),
+ * the plain names ("UPS Ground", not "UPSDAP Ground"), the price EasyPost
+ * bills us, and the carrier's retail price beside it for comparison.
+ */
+function presentRate(r: EpRate) {
+  const cents = (v: string | null | undefined) => (v ? Math.round(parseFloat(v) * 100) : null);
+  return {
+    id: r.id,
+    carrier: r.carrier,
+    service: r.service,
+    carrierName: carrierDisplayName(r.carrier),
+    serviceName: serviceDisplayName(r.carrier, r.service),
+    rate: r.rate,
+    currency: r.currency,
+    cents: cents(r.rate) ?? 0,
+    retailRate: r.retail_rate ?? null,
+    retailCents: cents(r.retail_rate),
+    listRate: r.list_rate ?? null,
+    delivery_days: r.delivery_days ?? r.est_delivery_days ?? null,
+  };
+}
 
 // ============ Packages CRUD ============
 
@@ -149,7 +173,15 @@ router.get('/orders/:orderId/shipments', async (req, res) => {
     weightGramsEach: perUnitWeightGrams(i),
   }));
 
-  res.json({ shipments, remaining });
+  res.json({
+    shipments: shipments.map((s) => ({
+      ...s,
+      carrierName: s.carrier ? carrierDisplayName(s.carrier) : null,
+      serviceName: s.service ? serviceDisplayName(s.carrier, s.service) : null,
+      methodName: s.carrier && s.service ? methodDisplayName(s.carrier, s.service) : null,
+    })),
+    remaining,
+  });
 });
 
 const createSchema = z.object({
@@ -243,7 +275,7 @@ router.post('/orders/:orderId/shipments', async (req, res) => {
 
   res.json({
     shipment,
-    rates: epShipment.rates ?? [],
+    rates: (epShipment.rates ?? []).map(presentRate),
     insuredValueCents,
   });
 });
@@ -281,6 +313,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
       allocated.set(si.orderItemId, (allocated.get(si.orderItemId) ?? 0) + si.quantity);
     }
   }
+  const rules = await loadPoolBoxRules();
   const units: UnitToPack[] = [];
   for (const item of (order.items as any[])) {
     const remaining = item.quantity - (allocated.get(item.id) ?? 0);
@@ -289,7 +322,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
     // than packing 1000 weightless items into one mailer and then having
     // USPS reject it.
     const perUnitOz = (perUnitWeightGrams(item) / 28.3495) || 1;
-    const allowed = allowedBoxesFor(item);
+    const allowed = allowedBoxesFor(item, rules);
     const dims = allowed ? null : unitDimensionsIn(item);
     for (let i = 0; i < remaining; i++) {
       units.push({ orderItemId: item.id, weightOz: perUnitOz, dims, packageId: allowed ? null : item.product?.packageId ?? null, allowed });
@@ -321,7 +354,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
   const from = await fromAddress();
   const to = toAddressFromOrder(order);
   const itemById = new Map<string, any>((order.items as any[]).map((i: any) => [i.id, i]));
-  const created: Array<{ shipment: any; rates: any[]; insuredValueCents: number; cheapestCents: number | null; boxCostCents: number }> = [];
+  const created: Array<{ shipment: any; rates: ReturnType<typeof presentRate>[]; insuredValueCents: number; cheapestCents: number | null; boxCostCents: number }> = [];
 
   for (const box of plan.boxes) {
     const pkg = packages.find((p: any) => p.id === box.packageId) as any;
@@ -377,7 +410,7 @@ router.post('/orders/:orderId/auto-pack', async (req, res) => {
       include: { items: true },
     });
 
-    created.push({ shipment, rates, insuredValueCents, cheapestCents, boxCostCents: pkg.costCents ?? 0 });
+    created.push({ shipment, rates: rates.map(presentRate), insuredValueCents, cheapestCents, boxCostCents: pkg.costCents ?? 0 });
   }
 
   // Sum cheapest-rate + box cost + insurance-fee across all boxes → the
@@ -458,7 +491,9 @@ router.post('/shipments/:shipmentId/buy', async (req, res) => {
   const carrier = bought.selected_rate?.carrier ?? null;
   const service = bought.selected_rate?.service ?? null;
   const rateAmount = bought.selected_rate ? Math.round(parseFloat(bought.selected_rate.rate) * 100) : null;
-  const method = [carrier, service].filter(Boolean).join(' ') || null;
+  // EasyPost's codes stay on the shipment (they are what its API speaks);
+  // the order and the customer's email get the plain name.
+  const method = carrier || service ? methodDisplayName(carrier, service) : null;
   const tracking = bought.tracking_code ?? null;
   const labelUrl = bought.postage_label?.label_url ?? null;
 
