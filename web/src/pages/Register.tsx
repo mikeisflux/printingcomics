@@ -1,8 +1,10 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/auth';
+import { useSeo } from '../lib/seo';
 
 export function Register() {
+  useSeo({ title: 'Create an account', noindex: true });
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -45,18 +47,18 @@ export function Register() {
       <form onSubmit={onSubmit}>
         <div className="grid-2">
           <div>
-            <label>First name</label>
-            <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+            <label htmlFor="register-1">First name</label>
+            <input id="register-1" autoComplete="given-name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
           </div>
           <div>
-            <label>Last name</label>
-            <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+            <label htmlFor="register-2">Last name</label>
+            <input id="register-2" autoComplete="family-name" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
           </div>
         </div>
-        <label>Email</label>
-        <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        <label>Password (min. 8 chars)</label>
-        <input type="password" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        <label htmlFor="register-3">Email</label>
+        <input id="register-3" type="email" autoComplete="email" inputMode="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <label htmlFor="register-4">Password (min. 8 chars)</label>
+        <input id="register-4" type="password" autoComplete="new-password" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         {error && <div className="error">{error}</div>}
         <button className="btn" style={{ width: '100%', marginTop: '1rem' }} disabled={busy}>
           {busy ? 'Creating account…' : 'Register'}

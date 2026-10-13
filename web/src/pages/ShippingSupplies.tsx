@@ -129,10 +129,10 @@ const CSS = `
   display:flex; align-items:center; gap:1rem; z-index:20;
 }
 .ca-dot {
-  width:12px; height:12px; padding:0; border:2px solid var(--camo-tan);
-  background:transparent; cursor:pointer; transition:all .2s ease;
+  width:32px; height:32px; padding:0; border:0; background:transparent; cursor:pointer; position:relative;
 }
-.ca-dot[aria-current="true"], .ca-dot:hover { background:var(--camo-tan); }
+.ca-dot::before { content:''; position:absolute; inset:10px; border:2px solid var(--camo-tan); transition:all .2s ease; }
+.ca-dot[aria-current="true"]::before, .ca-dot:hover::before { background:var(--camo-tan); }
 .ca-arrow {
   width:46px; height:46px; background:rgba(196,163,90,.2); border:2px solid var(--camo-tan);
   color:var(--camo-tan); display:flex; align-items:center; justify-content:center;
@@ -229,6 +229,14 @@ const CSS = `
 @media (max-width:1200px) {
   .ca-features, .ca-steps { grid-template-columns:repeat(2,1fr); }
   .ca-steps::before { display:none; }
+}
+@media (max-width:640px) {
+  .ca-products { gap:.75rem; }
+  .ca-product { width:calc(50% - .375rem); }
+  .ca-feature { padding:2rem 1rem; }
+  .ca-feature-icon { width:56px; height:56px; font-size:1.5rem; margin-bottom:1rem; }
+  .ca-slide { padding:3.5rem 1.25rem 5rem; }
+  .ca-slide-desc { font-size:1.05rem; margin-bottom:2rem; }
 }
 @media (max-width:768px) {
   .ca-section { padding:4rem 0; }
@@ -408,7 +416,7 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
         ) : (
           <>
             <div className="ca-slide-sub">{slide.subtitle}</div>
-            <h1 className="ca-slide-title">{slide.title}</h1>
+            <h2 className="ca-slide-title">{slide.title}</h2>
             <p className="ca-slide-desc">{slide.description}</p>
             <div className="ca-slide-buttons">
               {slide.buttons.map((b, i) => (
@@ -526,6 +534,7 @@ export function ShippingSupplies() {
 
   return (
     <div className="ca">
+      <h1 className="sr-only">Comic Armor shipping sleeves and comic book mailers</h1>
       <style>{CSS}</style>
 
       <HeroSlider slides={slides} />

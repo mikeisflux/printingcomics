@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { useSeo } from '../lib/seo';
 
 export function ForgotPassword() {
+  useSeo({ title: 'Reset your password', noindex: true });
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,8 +39,8 @@ export function ForgotPassword() {
           <p className="muted">
             Enter the email you used to sign up. We'll send you a one-time link to choose a new password.
           </p>
-          <label>Email</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label htmlFor="forgot-1">Email</label>
+          <input id="forgot-1" type="email" autoComplete="email" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           {error && <div className="error">{error}</div>}
           <div className="row" style={{ marginTop: '1rem' }}>
             <button className="btn" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</button>

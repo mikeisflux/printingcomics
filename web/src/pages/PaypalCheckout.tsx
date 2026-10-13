@@ -14,6 +14,7 @@ import { formatCartItemOptions } from '../lib/cart-options';
 import { AddressFields } from '../components/AddressFields';
 import { RateRow, rememberedDestination, shipmentLine, type EstimateResult, type ShipRate } from '../components/ShippingEstimator';
 import { emptyAddress, emailLooksValid, postalCodeLooksValid, validateAddress, type Address, type AddressField } from '../lib/address';
+import { useSeo } from '../lib/seo';
 
 /**
  * Checkout, on one page: contact, shipping address, shipping method, billing,
@@ -35,6 +36,7 @@ function useNarrow(maxPx = 900): boolean {
 }
 
 export function PaypalCheckout() {
+  useSeo({ title: 'Checkout', noindex: true });
   const navigate = useNavigate();
   const { user } = useAuth();
   const { cart, load, subtotal } = useCart();

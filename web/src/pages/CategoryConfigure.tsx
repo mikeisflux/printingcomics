@@ -547,9 +547,9 @@ export function CategoryConfigure() {
         </div>
       </section>
 
-      <div className="container" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 460px)', gap: '2rem', alignItems: 'flex-start' }}>
-        {/* Left: 3D preview pinned, vertically centered in the viewport */}
-        <div style={{ position: 'sticky', top: 'max(6rem, calc(50vh - 16rem))' }}>
+      <div className="container cfg-layout">
+        {/* Left: 3D preview pinned, vertically centered in the viewport (above the options on a phone) */}
+        <div className="cfg-preview">
           {isPrint ? (
             <div className="admin-card">
               <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em', marginBottom: '.5rem' }}>
@@ -634,7 +634,7 @@ export function CategoryConfigure() {
               )}
               {editGone && (
                 <div className="error" style={{ marginBottom: '.75rem', fontSize: '.85rem' }}>
-                  That cart line is no longer there, so anything you add here will be a new line. <Link to="/cart">Back to cart</Link>
+                  That cart line is no longer there, so anything you add here will be a new line. <Link to="/cart" className="link-cta">Back to cart</Link>
                 </div>
               )}
               <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.05em' }}>
@@ -825,9 +825,9 @@ function OptionField({ opt, value, onChange, deltas, productId, expectedPages }:
                 >
                   {v.imageUrl && <img src={v.imageUrl} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, marginBottom: '.25rem' }} />}
                   <div>{v.label}</div>
-                  {v.subLabel && <div style={{ fontSize: '.7rem', opacity: .8 }}>{v.subLabel}</div>}
+                  {v.subLabel && <div style={{ fontSize: '.78rem', opacity: .85 }}>{v.subLabel}</div>}
                   {(deltas?.get(v.label) ?? 0) > 0 && (
-                    <div style={{ fontSize: '.7rem', marginTop: '.2rem', opacity: .9 }}>
+                    <div style={{ fontSize: '.78rem', marginTop: '.2rem', opacity: .9 }}>
                       ({formatMoney(deltas!.get(v.label)!)})
                     </div>
                   )}
@@ -841,7 +841,7 @@ function OptionField({ opt, value, onChange, deltas, productId, expectedPages }:
       return (
         <div>
           {label}
-          <select value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
+          <select aria-label={opt.name} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
             {opt.values.map((v) => {
               // For bare-number values (page counts) repeat the option name so
               // the row reads like "12 Interior Pages ($0.19)".
@@ -897,14 +897,14 @@ function OptionField({ opt, value, onChange, deltas, productId, expectedPages }:
       return (
         <div>
           {label}
-          <input type="text" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+          <input type="text" aria-label={opt.name} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
         </div>
       );
     case 'NUMBER':
       return (
         <div>
           {label}
-          <input type="number" value={(value as number) ?? 0} onChange={(e) => onChange(Number(e.target.value))} />
+          <input type="number" aria-label={opt.name} value={(value as number) ?? 0} onChange={(e) => onChange(Number(e.target.value))} />
         </div>
       );
     case 'CONFIRM':

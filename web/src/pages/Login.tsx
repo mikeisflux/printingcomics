@@ -1,8 +1,10 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../store/auth';
+import { useSeo } from '../lib/seo';
 
 export function Login() {
+  useSeo({ title: 'Sign in', noindex: true });
   const { login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -31,10 +33,10 @@ export function Login() {
     <div className="auth-box">
       <h1>Log in</h1>
       <form onSubmit={onSubmit}>
-        <label>Email</label>
-        <input type="email" value={email} required onChange={(e) => setEmail(e.target.value)} />
-        <label>Password</label>
-        <input type="password" value={password} required onChange={(e) => setPassword(e.target.value)} />
+        <label htmlFor="login-1">Email</label>
+        <input id="login-1" type="email" autoComplete="email" inputMode="email" value={email} required onChange={(e) => setEmail(e.target.value)} />
+        <label htmlFor="login-2">Password</label>
+        <input id="login-2" type="password" autoComplete="current-password" value={password} required onChange={(e) => setPassword(e.target.value)} />
         {error && <div className="error">{error}</div>}
         <button className="btn" style={{ width: '100%', marginTop: '1rem' }} disabled={busy}>
           {busy ? 'Logging in…' : 'Log in'}

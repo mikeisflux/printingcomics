@@ -10,6 +10,7 @@ import {
   RelatedLinks,
 } from './ResourceLayout';
 import { Link } from 'react-router-dom';
+import { useSeo } from '../../lib/seo';
 
 /* ------------------------------------------------------------------ */
 /*  Palette (kept in sync with the brand + ResourceLayout accents)     */
@@ -593,6 +594,7 @@ const TOC = [
 ];
 
 export function MakeAComic() {
+  useSeo({ title: 'How to Make a Comic Book — From Script to Printed Copies', description: 'A step-by-step guide to making a comic book: script, pages, lettering, page counts, covers and getting it printed.' });
   return (
     <ResourcePage
       eyebrow="Make a Comic"

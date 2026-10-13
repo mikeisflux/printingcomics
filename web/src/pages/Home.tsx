@@ -157,7 +157,7 @@ export function Home() {
             <div className="row" style={{ gap: '.75rem', flexWrap: 'wrap' }}>
               <Link to="/comic-book-mailers" className="btn">Comic book mailers</Link>
               <Link to="/shop/shipping-supplies" className="btn secondary">Comic Armor</Link>
-              <Link to="/resources/how-to-ship-comic-books">How to ship comic books →</Link>
+              <Link to="/resources/how-to-ship-comic-books" className="link-cta">How to ship comic books →</Link>
             </div>
           </div>
           <img src="/products/T-Fold_Comic_Mailer_1.jpg" alt="Comic book mailer folded around a single bagged and boarded comic" width={480} height={480} loading="lazy" decoding="async" style={{ width: '100%', height: 'auto', borderRadius: 8 }} />

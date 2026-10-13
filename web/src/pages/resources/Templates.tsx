@@ -11,6 +11,7 @@ import {
   RelatedLinks,
 } from './ResourceLayout';
 import { Link } from 'react-router-dom';
+import { useSeo } from '../../lib/seo';
 
 interface Tpl {
   title: string;
@@ -49,6 +50,7 @@ function GuidesDiagram() {
 }
 
 export function Templates() {
+  useSeo({ title: 'Comic Book Templates — Free Print-Ready Downloads', description: 'Free templates for standard, A5, magazine and letter comic books and graphic novels, with bleed, trim and safe area marked.' });
   return (
     <ResourcePage
       eyebrow="Templates"

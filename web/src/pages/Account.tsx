@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 import { useAuth, type CurrentUser } from '../store/auth';
+import { useSeo } from '../lib/seo';
 
 export interface Address {
   id: string;
@@ -82,6 +83,7 @@ export function useProofCounts(user: CurrentUser | null) {
 }
 
 export function AccountLayout() {
+  useSeo({ title: 'Your account', noindex: true });
   const { user, loaded, load } = useAuth();
   const navigate = useNavigate();
   const counts = useProofCounts(user);
@@ -244,20 +246,20 @@ export function AccountProfile() {
     <form onSubmit={submit}>
       <h1 style={{ marginTop: 0 }}>Profile</h1>
       <div className="admin-card">
-        <label>Email</label>
-        <input value={user?.email ?? ''} disabled />
+        <label htmlFor="acct-1">Email</label>
+        <input id="acct-1" value={user?.email ?? ''} disabled />
         <div className="grid-2">
           <div>
-            <label>First name</label>
-            <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            <label htmlFor="acct-2">First name</label>
+            <input id="acct-2" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </div>
           <div>
-            <label>Last name</label>
-            <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+            <label htmlFor="acct-3">Last name</label>
+            <input id="acct-3" value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </div>
         </div>
-        <label>Phone</label>
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <label htmlFor="acct-4">Phone</label>
+        <input id="acct-4" value={phone} onChange={(e) => setPhone(e.target.value)} />
         <div className="row" style={{ marginTop: '1rem', alignItems: 'center' }}>
           <button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
           {message && <span className="muted">{message}</span>}
@@ -304,14 +306,14 @@ export function AccountPassword() {
       <div className="admin-card">
         {!firstPassword && (
           <>
-            <label>Current password</label>
-            <input type="password" value={currentPassword} onChange={(e) => setCurrent(e.target.value)} required />
+            <label htmlFor="acct-5">Current password</label>
+            <input id="acct-5" type="password" value={currentPassword} onChange={(e) => setCurrent(e.target.value)} required />
           </>
         )}
-        <label>New password</label>
-        <input type="password" value={newPassword} onChange={(e) => setNew(e.target.value)} required minLength={8} />
-        <label>Confirm new password</label>
-        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} />
+        <label htmlFor="acct-6">New password</label>
+        <input id="acct-6" type="password" value={newPassword} onChange={(e) => setNew(e.target.value)} required minLength={8} />
+        <label htmlFor="acct-7">Confirm new password</label>
+        <input id="acct-7" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} />
         {error && <div className="error">{error}</div>}
         <div className="row" style={{ marginTop: '1rem', alignItems: 'center' }}>
           <button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Update password'}</button>
@@ -394,28 +396,28 @@ export function AccountAddresses() {
 
       {editing !== null ? (
         <form onSubmit={save} className="admin-card">
-          <label>Label (e.g. "Home")</label>
-          <input value={draft.label ?? ''} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+          <label htmlFor="acct-8">Label (e.g. "Home")</label>
+          <input id="acct-8" value={draft.label ?? ''} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
           <div className="grid-2">
-            <div><label>First name</label><input value={draft.firstName} required onChange={(e) => setDraft({ ...draft, firstName: e.target.value })} /></div>
-            <div><label>Last name</label><input value={draft.lastName} required onChange={(e) => setDraft({ ...draft, lastName: e.target.value })} /></div>
+            <div><label htmlFor="acct-9">First name</label><input id="acct-9" value={draft.firstName} required onChange={(e) => setDraft({ ...draft, firstName: e.target.value })} /></div>
+            <div><label htmlFor="acct-10">Last name</label><input id="acct-10" value={draft.lastName} required onChange={(e) => setDraft({ ...draft, lastName: e.target.value })} /></div>
           </div>
-          <label>Company (optional)</label>
-          <input value={draft.company ?? ''} onChange={(e) => setDraft({ ...draft, company: e.target.value })} />
-          <label>Street</label>
-          <input value={draft.line1} required onChange={(e) => setDraft({ ...draft, line1: e.target.value })} />
-          <label>Apt / suite</label>
-          <input value={draft.line2 ?? ''} onChange={(e) => setDraft({ ...draft, line2: e.target.value })} />
+          <label htmlFor="acct-11">Company (optional)</label>
+          <input id="acct-11" value={draft.company ?? ''} onChange={(e) => setDraft({ ...draft, company: e.target.value })} />
+          <label htmlFor="acct-12">Street</label>
+          <input id="acct-12" value={draft.line1} required onChange={(e) => setDraft({ ...draft, line1: e.target.value })} />
+          <label htmlFor="acct-13">Apt / suite</label>
+          <input id="acct-13" value={draft.line2 ?? ''} onChange={(e) => setDraft({ ...draft, line2: e.target.value })} />
           <div className="grid-2">
-            <div><label>City</label><input value={draft.city} required onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
-            <div><label>State / region</label><input value={draft.region} required onChange={(e) => setDraft({ ...draft, region: e.target.value })} /></div>
+            <div><label htmlFor="acct-14">City</label><input id="acct-14" value={draft.city} required onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></div>
+            <div><label htmlFor="acct-15">State / region</label><input id="acct-15" value={draft.region} required onChange={(e) => setDraft({ ...draft, region: e.target.value })} /></div>
           </div>
           <div className="grid-2">
-            <div><label>Postal code</label><input value={draft.postalCode} required onChange={(e) => setDraft({ ...draft, postalCode: e.target.value })} /></div>
-            <div><label>Country</label><input value={draft.country} required maxLength={2} onChange={(e) => setDraft({ ...draft, country: e.target.value.toUpperCase() })} /></div>
+            <div><label htmlFor="acct-16">Postal code</label><input id="acct-16" value={draft.postalCode} required onChange={(e) => setDraft({ ...draft, postalCode: e.target.value })} /></div>
+            <div><label htmlFor="acct-17">Country</label><input id="acct-17" value={draft.country} required maxLength={2} onChange={(e) => setDraft({ ...draft, country: e.target.value.toUpperCase() })} /></div>
           </div>
-          <label>Phone</label>
-          <input value={draft.phone ?? ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
+          <label htmlFor="acct-18">Phone</label>
+          <input id="acct-18" value={draft.phone ?? ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
           <label>
             <input
               type="checkbox"

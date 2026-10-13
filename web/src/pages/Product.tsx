@@ -262,9 +262,9 @@ export function Product() {
   };
 
   return (
-    <div className="container" style={{ padding: '1.5rem 1.25rem', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
-      {/* LEFT — image gallery + trust + FAQ */}
-      <aside>
+    <div className="container product-page">
+      {/* LEFT — image gallery + trust; the FAQ sits under both columns */}
+      <aside className="product-side">
         <Gallery images={product.images} name={product.name} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginTop: '1rem' }}>
@@ -302,23 +302,11 @@ export function Product() {
           </div>
         )}
 
-        {product.faq && product.faq.length > 0 && (
-          <div style={{ marginTop: '1rem' }}>
-            <h2>FAQ</h2>
-            {product.faq.map((f, i) => (
-              <details key={i} className="admin-card" style={{ padding: '.75rem 1rem', cursor: 'pointer' }}>
-                <summary style={{ fontWeight: 600, listStyle: 'none', display: 'flex', justifyContent: 'space-between' }}>
-                  {f.q} <span style={{ color: 'var(--brand)' }}>▾</span>
-                </summary>
-                <p style={{ marginTop: '.5rem', color: 'var(--ink-muted)' }}>{f.a}</p>
-              </details>
-            ))}
-          </div>
-        )}
       </aside>
 
-      {/* RIGHT — configurator */}
-      <div>
+
+      {/* RIGHT — details and the configurator */}
+      <div className="product-main">
         <h1 style={{ marginBottom: '.25rem' }}>{product.name}</h1>
         {product.shortDescription && <p className="muted">{product.shortDescription}</p>}
         {product.description && (
@@ -497,6 +485,22 @@ export function Product() {
           )}
         </details>
       </div>
+
+      {product.faq && product.faq.length > 0 && (
+        <section className="product-faq">
+          <div style={{ marginTop: '1rem' }}>
+            <h2>FAQ</h2>
+            {product.faq.map((f, i) => (
+              <details key={i} className="admin-card" style={{ padding: '.75rem 1rem', cursor: 'pointer' }}>
+                <summary style={{ fontWeight: 600, listStyle: 'none', display: 'flex', justifyContent: 'space-between' }}>
+                  {f.q} <span style={{ color: 'var(--brand)' }}>▾</span>
+                </summary>
+                <p style={{ marginTop: '.5rem', color: 'var(--ink-muted)' }}>{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

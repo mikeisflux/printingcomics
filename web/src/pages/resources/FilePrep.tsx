@@ -10,6 +10,7 @@ import {
   RelatedLinks,
 } from './ResourceLayout';
 import { Link } from 'react-router-dom';
+import { useSeo } from '../../lib/seo';
 
 /* Printing Comics — File Prep / prepress guide.
  * Graphics are hand-authored inline SVG (no external assets). Palette below. */
@@ -277,6 +278,7 @@ function BindingDiagram() {
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 export function FilePrep() {
+  useSeo({ title: 'File Prep — How to Set Up Your Comic Book Print Files', description: 'Bleed, trim, safe area, resolution, color and PDF export settings for printing comic books and graphic novels.' });
   const appTips = [
     {
       name: 'Photoshop',

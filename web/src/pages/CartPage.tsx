@@ -6,6 +6,7 @@ import { formatCartItemOptions } from '../lib/cart-options';
 import { QuantityInput } from '../components/QuantityInput';
 import { ShippingEstimator } from '../components/ShippingEstimator';
 import { formatEta } from './Product';
+import { useSeo } from '../lib/seo';
 
 /** Where a configured line is edited: the configurator it was built in, pointed at this line. */
 function editHref(item: CartItem): string | null {
@@ -17,6 +18,7 @@ function editHref(item: CartItem): string | null {
 }
 
 export function CartPage() {
+  useSeo({ title: 'Your cart', noindex: true });
   const { cart, load, update, remove, subtotal } = useCart();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export function CartPage() {
     <div className="container" style={{ padding: '2rem 0 3rem' }}>
       <div className="spread" style={{ flexWrap: 'wrap', gap: '.5rem', marginBottom: '1rem' }}>
         <h1 style={{ margin: 0 }}>Your cart{items.length > 0 && <span className="muted" style={{ fontSize: '1rem', fontWeight: 500 }}> · {count} item{count === 1 ? '' : 's'}</span>}</h1>
-        <Link to="/shop">← Continue shopping</Link>
+        <Link to="/shop" className="link-cta">← Continue shopping</Link>
       </div>
       {!cart ? (
         <p className="muted">Loading your cart…</p>

@@ -1,6 +1,7 @@
 import { Suspense, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, ContactShadows, OrbitControls, Float, Sparkles } from '@react-three/drei';
+import { ErrorBoundary } from './ErrorBoundary';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
@@ -526,7 +527,12 @@ export function BookPreview3D({ spec }: { spec: BookSpec }) {
               />
             )}
           </Float>
-          <Environment preset="city" />
+          {/* The environment map comes from a CDN; when it cannot load the book is lit by the lights above instead of the page erroring. */}
+          <ErrorBoundary fallback={null}>
+            <Suspense fallback={null}>
+              <Environment preset="city" />
+            </Suspense>
+          </ErrorBoundary>
         </Suspense>
 
         <ContactShadows position={[0, -2.4, 0]} opacity={0.5} scale={10} blur={2.5} far={4} />

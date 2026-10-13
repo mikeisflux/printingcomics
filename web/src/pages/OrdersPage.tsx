@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, formatMoney } from '../api/client';
 import { useCart } from '../store/cart';
 import { StatusBadge } from './Account';
+import { useSeo } from '../lib/seo';
 
 interface OrderItem {
   id: string;
@@ -37,6 +38,7 @@ const STATUS_FILTERS: { label: string; match: (o: Order) => boolean }[] = [
 ];
 
 export function OrdersPage() {
+  useSeo({ title: 'Your orders', noindex: true });
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);

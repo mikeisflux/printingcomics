@@ -45,7 +45,7 @@ export function StoreLayout() {
         >
           <a
             href="tel:+12192386540"
-            style={{ color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '.4rem' }}
+            style={{ color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '.4rem', padding: '.35rem 0', minHeight: 32 }}
           >
             <span aria-hidden="true">📞</span> (219) 238-6540
           </a>

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useSeo } from '../lib/seo';
 
 function Page({ title, intro, children }: { title: string; intro?: string; children?: ReactNode }) {
   return (
@@ -12,6 +13,7 @@ function Page({ title, intro, children }: { title: string; intro?: string; child
 }
 
 export function Crowdfunding() {
+  useSeo({ title: 'Crowdfunding Fulfillment — Print and Ship Your Kickstarter Comic', description: 'We print, pick, pack and ship your Kickstarter or IndieGoGo comic rewards from one place. One partner, one invoice, one timeline.' });
   return (
     <Page
       title="Crowdfunding"
@@ -35,6 +37,7 @@ export function Crowdfunding() {
 }
 
 export function About() {
+  useSeo({ title: 'About Printing Comics — US-Based Comic Book Printer', description: 'Printing Comics is a US-based printer of comic books, graphic novels and art prints for independent creators, publishers and studios.' });
   return (
     <Page
       title="About Printing Comics"
@@ -94,6 +97,7 @@ export function About() {
 }
 
 export function Terms() {
+  useSeo({ title: 'Terms and Conditions' });
   return (
     <Page title="Terms &amp; Conditions">
       <p>
@@ -126,6 +130,7 @@ export function Terms() {
 }
 
 export function Contact() {
+  useSeo({ title: 'Contact Us — Quotes, Orders and Questions', description: 'Talk to a real person about your print run, your order or a custom quote. Call (219) 238-6540 or send a message.' });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [subject, setSubject] = useState('');
@@ -179,24 +184,23 @@ export function Contact() {
         <form onSubmit={submit} className="admin-card">
           <div className="grid-2">
             <div>
-              <label>Your name</label>
-              <input required value={name} onChange={(e) => setName(e.target.value)} />
+              <label htmlFor="contact-1">Your name</label>
+              <input id="contact-1" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
-              <label>Email</label>
-              <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <label htmlFor="contact-2">Email</label>
+              <input id="contact-2" autoComplete="email" inputMode="email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
           </div>
-          <label>Subject</label>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Optional" />
-          <label>Message</label>
-          <textarea rows={6} required value={message} onChange={(e) => setMessage(e.target.value)} />
+          <label htmlFor="contact-3">Subject</label>
+          <input id="contact-3" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Optional" />
+          <label htmlFor="contact-4">Message</label>
+          <textarea id="contact-4" rows={6} required value={message} onChange={(e) => setMessage(e.target.value)} />
 
           {/* Honeypot — hidden from real users, tempting to bots */}
           <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
-            <label>Website (leave blank)</label>
-            <input
-              tabIndex={-1}
+            <label htmlFor="contact-5">Website (leave blank)</label>
+            <input id="contact-5"               tabIndex={-1}
               autoComplete="off"
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
@@ -234,6 +238,7 @@ export function Media() {
 }
 
 export function SamplePack() {
+  useSeo({ title: 'Sample Pack — See Our Paper and Print Quality', description: 'Order a sample pack of our comic book paper stocks, covers and finishes before you print.' });
   return (
     <Page
       title="Sample pack"
@@ -252,6 +257,7 @@ export function SamplePack() {
 }
 
 export function Faq() {
+  useSeo({ title: 'FAQ — Comic Book Printing Questions Answered', description: 'Answers about file setup, paper, turnaround, proofs, shipping and ordering comic books and graphic novels from Printing Comics.' });
   const items: { q: string; a: string }[] = [
     { q: 'What is your minimum order quantity?', a: 'As low as 1 for graphic novels and 25 for saddle-stitched comics.' },
     { q: 'How long does production take?', a: 'Typical production is 10–15 business days after proof approval. Rush options are available at checkout.' },

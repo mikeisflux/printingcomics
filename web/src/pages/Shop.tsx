@@ -163,8 +163,9 @@ export function Shop({ categorySlug }: { categorySlug?: string } = {}) {
               style={{ maxWidth: 280 }}
             />
             <div className="row" style={{ gap: '.5rem', alignItems: 'center' }}>
-              <span className="muted" style={{ fontSize: '.85rem' }}>Sort:</span>
+              <label htmlFor="shop-sort" className="muted" style={{ fontSize: '.85rem', margin: 0 }}>Sort:</label>
               <select
+                id="shop-sort"
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
                 style={{ width: 'auto' }}
