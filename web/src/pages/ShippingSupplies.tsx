@@ -156,6 +156,9 @@ const CSS = `
 .ca-feature p { font-size:.95rem; opacity:.8; line-height:1.7; }
 
 /* Products */
+.ca-bulk { max-width:980px; margin:-1.5rem auto 3rem; }
+.ca-bulk .bulk-quote { color:var(--ink); }
+.ca-bulk .bulk-quote h2, .ca-bulk .bulk-quote h3 { color:var(--ink); }
 .ca-products-section { background:linear-gradient(180deg, var(--bg-medium) 0%, var(--bg-dark) 100%); color:var(--text-light); }
 .ca-products { display:flex; flex-wrap:wrap; gap:2rem; justify-content:center; }
 .ca-product {
@@ -573,6 +576,20 @@ export function ShippingSupplies() {
             description="Choose the protection level that fits your needs. From single comics to bulk shipments."
           />
 
+          {/* Bulk orders, right under the header: how many mailers or sleeves,
+              where to — the cheapest packs, the cartons, every carton's label added up. */}
+          {(bulkMailer || bulkArmor) && (
+            <div id="bulk" className="ca-bulk">
+              <BulkQuote
+                product={(bulkMailer ?? bulkArmor)!}
+                choices={[
+                  ...(bulkMailer ? [{ label: 'Comic book mailers', product: bulkMailer }] : []),
+                  ...(bulkArmor ? [{ label: 'Comic Armor sleeves', product: bulkArmor }] : []),
+                ]}
+              />
+            </div>
+          )}
+
           {loaded && ordered.length === 0 && (
             <p className="ca-desc" style={{ textAlign: 'center' }}>
               Products are on the way — check back shortly.
@@ -607,24 +624,6 @@ export function ShippingSupplies() {
           </div>
         </div>
       </section>
-
-      {/* Bulk orders: how many mailers or sleeves, where to — the cheapest packs,
-          the cartons, and every carton's label added up. */}
-      {(bulkMailer || bulkArmor) && (
-        <section id="bulk" className="ca-section ca-light" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
-          <div className="container" style={{ maxWidth: 980 }}>
-            <div className="ca-eyebrow">Bulk orders</div>
-            <h2 className="ca-title" style={{ fontSize: 'clamp(1.6rem,4vw,2.4rem)' }}>Need a lot? <span>Get a bulk quote</span></h2>
-            <BulkQuote
-              product={(bulkMailer ?? bulkArmor)!}
-              choices={[
-                ...(bulkMailer ? [{ label: 'Comic book mailers', product: bulkMailer }] : []),
-                ...(bulkArmor ? [{ label: 'Comic Armor sleeves', product: bulkArmor }] : []),
-              ]}
-            />
-          </div>
-        </section>
-      )}
 
       {/* Comic book mailers — the other half of the range, with its own page */}
       <section className="ca-section ca-light" style={{ paddingTop: '3rem', paddingBottom: '3rem' }}>
