@@ -41,6 +41,7 @@ import previewRoutes from './routes/previews.js';
 import v1Routes from './routes/v1/index.js';
 import { attachAllGuestOrders } from './lib/customer-accounts.js';
 import { normalizeStoredMethodNames } from './lib/method-names.js';
+import { backfillEmailThreads } from './lib/email-threads.js';
 
 const app = express();
 
@@ -223,6 +224,10 @@ const server = app.listen(config.port, () => {
   void attachAllGuestOrders()
     .then((r) => { if (r.orders) console.log(`[accounts] attached ${r.orders} guest order(s) to ${r.accounts} new account(s)`); })
     .catch((e: any) => console.warn('[accounts] guest order attach failed:', e?.message ?? e));
+  // Messages stored before the inbox had conversations are grouped into them once. Idempotent.
+  void backfillEmailThreads()
+    .then((n) => { if (n) console.log(`[email] grouped ${n} stored message(s) into conversations`); })
+    .catch((e: any) => console.warn('[email] thread backfill failed:', e?.message ?? e));
   // Older orders say "UPSDAP Ground" where they should say "UPS Ground". Idempotent.
   void normalizeStoredMethodNames()
     .then((n) => { if (n) console.log(`[shipping] renamed the shipping method on ${n} order(s) to plain carrier names`); })

@@ -78,6 +78,8 @@ export const SETTING_KEYS = {
     replyTo: 'mailgun.replyTo',
     webhookSigningKey: 'mailgun.webhookSigningKey',
     testMode: 'mailgun.testMode',
+    // Appended to every reply sent from the inbox (plain text; blank for none).
+    signature: 'mailgun.signature',
   },
   anthropic: {
     apiKey: 'anthropic.apiKey',
@@ -129,6 +131,7 @@ function envFallback(key: string): unknown {
     case 'mailgun.replyTo':           return process.env.MAILGUN_REPLY_TO ?? '';
     case 'mailgun.webhookSigningKey': return process.env.MAILGUN_WEBHOOK_SIGNING_KEY ?? '';
     case 'mailgun.testMode':          return process.env.MAILGUN_TEST_MODE === 'true';
+    case 'mailgun.signature':         return process.env.MAILGUN_SIGNATURE ?? '';
     case 'anthropic.apiKey':    return process.env.ANTHROPIC_API_KEY ?? '';
     case 'anthropic.model':     return process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-7';
     case 'store.currency':      return 'USD';
@@ -294,7 +297,7 @@ export async function getEasyPostConfig() {
 }
 
 export async function getMailgunConfig() {
-  const [apiKey, domain, region, fromEmail, fromName, replyTo, webhookSigningKey, testMode] = await Promise.all([
+  const [apiKey, domain, region, fromEmail, fromName, replyTo, webhookSigningKey, testMode, signature] = await Promise.all([
     getSetting<string>('mailgun.apiKey'),
     getSetting<string>('mailgun.domain'),
     getSetting<string>('mailgun.region'),
@@ -303,11 +306,13 @@ export async function getMailgunConfig() {
     getSetting<string>('mailgun.replyTo'),
     getSetting<string>('mailgun.webhookSigningKey'),
     getSetting<boolean>('mailgun.testMode'),
+    getSetting<string>('mailgun.signature'),
   ]);
   // Trim every credential/field — a stray space or newline pasted into the
   // API key or domain is a common cause of Mailgun 401s.
   return {
     apiKey: (apiKey ?? '').trim(),
+    signature: (signature ?? '').trim(),
     domain: (domain ?? '').trim(),
     region: (String(region ?? 'us').trim().toLowerCase() === 'eu' ? 'eu' : 'us') as 'us' | 'eu',
     fromEmail: (fromEmail ?? '').trim(),

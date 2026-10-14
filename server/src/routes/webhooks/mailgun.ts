@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import multer from 'multer';
 import { prisma } from '../../db.js';
 import { getMailgunConfig } from '../../lib/settings.js';
+import { attachInbound } from '../../lib/email-threads.js';
 
 const router = Router();
 
@@ -104,6 +105,7 @@ router.post('/inbound', upload.any(), async (req, res) => {
 
   const messageId = (f['Message-Id'] as string | undefined) ?? undefined;
   const inReplyTo = (f['In-Reply-To'] as string | undefined) ?? undefined;
+  const references = (f['References'] as string | undefined) ?? undefined;
   const sender = f.sender ?? '';
   const from = f.from ?? sender;
   const recipient = f.recipient ?? '';
@@ -168,10 +170,11 @@ router.post('/inbound', upload.any(), async (req, res) => {
     rawHeaders = Object.fromEntries(parsed);
   } catch { /* leave null */ }
 
-  await prisma.inboundEmail.create({
+  const created = await prisma.inboundEmail.create({
     data: {
       messageId: messageId ?? null,
       inReplyTo: inReplyTo ?? null,
+      references: references ?? null,
       fromEmail,
       fromName,
       toEmail: recipient,
@@ -188,7 +191,11 @@ router.post('/inbound', upload.any(), async (req, res) => {
   }).catch((e: any) => {
     // Duplicate delivery — ignore.
     if (!String(e.message).includes('Unique')) throw e;
+    return null;
   });
+  if (created) {
+    await attachInbound(created.id).catch((e: any) => console.warn('[email] could not thread an incoming message:', e?.message ?? e));
+  }
 
   res.status(204).end();
 });

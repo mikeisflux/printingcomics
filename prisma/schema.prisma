@@ -1215,13 +1215,49 @@ model EmailSend {
   @@index([providerRef])
 }
 
-// Incoming email delivered by Mailgun Routes → /api/webhooks/mailgun/inbound.
-// Replies thread back to our outbound sends by matching inReplyTo against
-// EmailSend.providerRef (Mailgun's message-id we stored on send).
+// One conversation with one outside address: every message they sent us and
+// every reply we sent them, in order. The inbox lists threads, not messages,
+// so a reply never makes the conversation vanish. Threads are matched by the
+// mail headers (In-Reply-To / References against our stored message ids) and,
+// failing that, by the same address and subject.
+model EmailThread {
+  id            String   @id @default(cuid())
+  subject       String
+  contactEmail  String
+  contactName   String?
+  // "open" (needs us) | "closed" (dealt with) — a new message from the
+  // contact reopens a closed thread.
+  status        String   @default("open")
+  // Messages from the contact not yet read by staff.
+  unreadCount   Int      @default(0)
+  lastMessageAt DateTime @default(now())
+  // "in" when the contact spoke last, "out" when we did.
+  lastDirection String   @default("in")
+  lastSnippet   String?
+  // Staff-only notes about the conversation (not emailed).
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages      InboundEmail[]
+
+  @@index([status, lastMessageAt])
+  @@index([contactEmail])
+}
+
+// A message in a thread: delivered by Mailgun Routes → /api/webhooks/mailgun/inbound
+// (direction "in"), or a reply staff sent from the inbox (direction "out",
+// messageId = Mailgun's id for it, so the contact's next reply threads back).
 model InboundEmail {
   id             String   @id @default(cuid())
+  thread         EmailThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId       String?
+  direction      String   @default("in")   // "in" | "out"
+  sentBy         String?                   // staff email, for "out"
+  providerRef    String?                   // Mailgun id of an outbound message
   messageId      String?  @unique
   inReplyTo      String?
+  references     String?
   fromEmail      String
   fromName       String?
   toEmail        String
@@ -1231,14 +1267,16 @@ model InboundEmail {
   htmlBody       String?
   rawHeaders     Json?
   attachments    Json?    // [{ filename, url, size, contentType }]
-  kind           String   @default("inbound")  // "inbound" | "bounce" | "complaint"
+  kind           String   @default("inbound")  // "inbound" | "bounce" | "complaint" | "reply"
   bounceType     String?  // "hard" | "soft" | null
   linkedSendId   String?
   handled        Boolean  @default(false)
+  readAt         DateTime?
   receivedAt     DateTime @default(now())
 
   @@index([receivedAt])
   @@index([kind])
   @@index([fromEmail])
   @@index([inReplyTo])
+  @@index([threadId, receivedAt])
 }

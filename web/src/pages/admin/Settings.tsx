@@ -171,6 +171,23 @@ function Field({
   );
 }
 
+/** The lines added under every reply sent from the inbox. */
+function SignatureField({ value, onSave }: { value: unknown; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const current = typeof value === 'string' ? value : '';
+  const shown = draft ?? current;
+  return (
+    <div style={{ marginTop: '.75rem' }}>
+      <label htmlFor="mailgun-signature">Signature on inbox replies</label>
+      <textarea id="mailgun-signature" rows={4} value={shown} onChange={(e) => setDraft(e.target.value)} placeholder={'Thanks,\nMike\nPrinting Comics · (219) 238-6540'} />
+      <div className="row" style={{ gap: '.5rem', marginTop: '.35rem' }}>
+        {draft !== null && draft !== current && <button type="button" className="btn sm" onClick={() => { onSave(draft); setDraft(null); }}>Save signature</button>}
+        <span className="muted" style={{ fontSize: '.8rem' }}>Added once under each reply and new email sent from Email → Inbox. Leave blank for none.</span>
+      </div>
+    </div>
+  );
+}
+
 function Toggle({ value, onSave, label }: { value: unknown; onSave: (v: boolean) => void; label: string }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', margin: '.5rem 0' }}>
@@ -306,6 +323,7 @@ function EmailSection() {
           <Field label="Reply-to (optional)" value={settings['mailgun.replyTo']} onSave={(v) => save('mailgun.replyTo', v)} />
         </div>
         <Toggle label="Test mode (log only, don't actually send)" value={settings['mailgun.testMode']} onSave={(v) => save('mailgun.testMode', v)} />
+        <SignatureField value={settings['mailgun.signature']} onSave={(v) => save('mailgun.signature', v)} />
       </div>
 
       <div className="admin-card">

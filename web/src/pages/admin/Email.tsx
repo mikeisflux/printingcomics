@@ -1,22 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useToast, useConfirm, errorMessage } from '../../components/admin/ui';
 
-type Tab = 'compose' | 'inbox' | 'campaigns' | 'templates' | 'subscribers' | 'sends';
+type Tab = 'inbox' | 'campaigns' | 'templates' | 'subscribers' | 'sends';
 
 export function AdminEmail() {
-  const [tab, setTab] = useState<Tab>('compose');
+  const [tab, setTab] = useState<Tab>('inbox');
 
   return (
     <div>
       <div className="spread" style={{ marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>Email Center</h1>
+        <h1 style={{ margin: 0 }}>Email</h1>
         {tab === 'campaigns' && <Link to="/admin/email/campaigns/new" className="btn">New campaign</Link>}
       </div>
       <div className="admin-card" style={{ padding: 0, marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 .5rem' }}>
-          {(['compose', 'inbox', 'campaigns', 'templates', 'subscribers', 'sends'] as Tab[]).map((t) => (
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 .5rem', overflowX: 'auto' }}>
+          {(['inbox', 'campaigns', 'templates', 'subscribers', 'sends'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -29,6 +29,7 @@ export function AdminEmail() {
                 fontWeight: 600,
                 cursor: 'pointer',
                 textTransform: 'capitalize',
+                whiteSpace: 'nowrap',
               }}
             >
               {t}
@@ -36,7 +37,6 @@ export function AdminEmail() {
           ))}
         </div>
       </div>
-      {tab === 'compose' && <ComposeTab />}
       {tab === 'inbox' && <InboxTab />}
       {tab === 'campaigns' && <CampaignsTab />}
       {tab === 'templates' && <TemplatesTab />}
@@ -46,297 +46,364 @@ export function AdminEmail() {
   );
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] ?? c));
+// ---------------------------------------------------------------------------
+// Inbox: conversations. The list on the left is threads — one per person and
+// subject — each holding what they sent and what we replied, in order. A
+// reply goes into the open conversation and stays on screen; closing is a
+// separate choice. Beside the conversation: who they are, their orders, notes.
+// ---------------------------------------------------------------------------
+
+interface ThreadRow {
+  id: string; subject: string; contactEmail: string; contactName?: string | null;
+  status: 'open' | 'closed'; unreadCount: number; lastMessageAt: string; lastDirection: 'in' | 'out';
+  lastSnippet?: string | null; messageCount: number; orderCount: number; hasBounce: boolean;
+}
+interface ThreadMessage {
+  id: string; direction: 'in' | 'out'; sentBy?: string | null; fromEmail: string; fromName?: string | null; toEmail: string;
+  subject: string; textBody?: string | null; strippedText?: string | null; htmlBody?: string | null;
+  attachments?: { filename: string; contentType: string; size: number }[] | null;
+  kind: string; bounceType?: string | null; receivedAt: string; readAt?: string | null;
+  delivery?: { status: string; openedAt?: string | null; error?: string | null } | null;
+}
+interface ThreadDetail extends Omit<ThreadRow, 'messageCount' | 'orderCount' | 'hasBounce'> {
+  notes?: string | null;
+  messages: ThreadMessage[];
+  orders: { id: string; number: string; status: string; paymentStatus: string; totalCents: number; createdAt: string; proofStatus?: string | null }[];
+  customer: { id: string; firstName?: string | null; lastName?: string | null } | null;
 }
 
-function ComposeTab() {
-  const [to, setTo] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
+const money = (c: number) => `$${(c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const when = (iso: string) => {
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + (d.getFullYear() !== new Date().getFullYear() ? `, ${d.getFullYear()}` : '');
+};
 
-  const canSend = /.+@.+\..+/.test(to.trim()) && subject.trim().length > 0 && body.trim().length > 0 && status !== 'sending';
+function InboxTab() {
+  const toast = useToast(); const confirm = useConfirm();
+  const [status, setStatus] = useState<'open' | 'closed' | 'all'>('open');
+  const [q, setQ] = useState('');
+  const [threads, setThreads] = useState<ThreadRow[]>([]);
+  const [counts, setCounts] = useState({ open: 0, closed: 0 });
+  const [loaded, setLoaded] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ThreadDetail | null>(null);
+  const [composing, setComposing] = useState(false);
 
-  async function send() {
-    setStatus('sending');
-    setError(null);
+  const load = useCallback(async (keep?: string | null) => {
+    const params = new URLSearchParams({ status });
+    if (q.trim()) params.set('q', q.trim());
+    const r = await api.get<{ threads: ThreadRow[]; counts: { open: number; closed: number } }>(`/admin/email/threads?${params}`);
+    setThreads(r.threads);
+    setCounts(r.counts);
+    setLoaded(true);
+    const want = keep === undefined ? selectedId : keep;
+    if (want && r.threads.some((t) => t.id === want)) return;
+    // The selected conversation left this list (closed, filtered) — keep showing it; only pick another when nothing is open.
+    if (!want && r.threads[0]) setSelectedId(r.threads[0].id);
+  }, [status, q, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { void load(null); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+  // New mail shows up without a reload.
+  useEffect(() => { const t = setInterval(() => { void load(); }, 60_000); return () => clearInterval(t); }, [load]);
+
+  useEffect(() => {
+    if (!selectedId) { setDetail(null); return; }
+    let cancelled = false;
+    void api.get<{ thread: ThreadDetail }>(`/admin/email/threads/${selectedId}`).then((r) => {
+      if (cancelled) return;
+      setDetail(r.thread);
+      setThreads((rows) => rows.map((t) => (t.id === selectedId ? { ...t, unreadCount: 0 } : t)));
+    }).catch((e) => toast.error(errorMessage(e, 'Could not open the conversation')));
+    return () => { cancelled = true; };
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applyDetail = (t: ThreadDetail) => {
+    setDetail(t);
+    setThreads((rows) => rows.map((r) => (r.id === t.id ? { ...r, status: t.status, unreadCount: t.unreadCount, lastMessageAt: t.lastMessageAt, lastDirection: t.lastDirection, lastSnippet: t.lastSnippet, messageCount: t.messages.length } : r)));
+  };
+
+  const patch = async (id: string, body: Record<string, unknown>, done?: string) => {
     try {
-      const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">${body
-        .split('\n')
-        .map((l) => escapeHtml(l))
-        .join('<br>')}</div>`;
-      await api.post('/admin/email/send', { to: to.trim(), subject: subject.trim(), html, text: body });
-      setStatus('sent');
-      setTo(''); setSubject(''); setBody('');
-      setTimeout(() => setStatus('idle'), 3500);
-    } catch (e: any) {
-      setStatus('error');
-      setError(e.message ?? 'Send failed');
-    }
-  }
+      const r = await api.patch<{ thread: ThreadDetail }>(`/admin/email/threads/${id}`, body);
+      applyDetail(r.thread);
+      if (done) toast.success(done);
+      await load(id);
+    } catch (e) { toast.error(errorMessage(e, 'Could not update the conversation')); }
+  };
+
+  const remove = async (id: string) => {
+    if (!(await confirm({ title: 'Delete this conversation?', body: 'Every message in it, theirs and ours, is removed. The emails themselves were already sent.', confirmLabel: 'Delete', danger: true }))) return;
+    await api.del(`/admin/email/threads/${id}`);
+    setSelectedId(null);
+    await load(null);
+  };
+
+  const unread = threads.reduce((n, t) => n + (t.unreadCount > 0 ? 1 : 0), 0);
 
   return (
-    <div className="admin-card" style={{ maxWidth: 680 }}>
-      <h3 style={{ marginTop: 0 }}>Compose email</h3>
-      <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>
-        Send a one-off email to any address via Mailgun. It's recorded under the <strong>Sends</strong> tab.
-      </p>
-      <label>To</label>
-      <input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="customer@example.com" />
-      <label>Subject</label>
-      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject line" />
-      <label>Message</label>
-      <textarea rows={12} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your message…" />
-      {error && <div className="error" style={{ marginTop: '.75rem' }}>{error}</div>}
-      {status === 'sent' && <div style={{ marginTop: '.75rem', color: 'green', fontWeight: 600 }}>Sent ✓</div>}
-      <div style={{ marginTop: '1rem' }}>
-        <button className="btn" onClick={send} disabled={!canSend}>
-          {status === 'sending' ? 'Sending…' : 'Send email'}
-        </button>
+    <div className="inbox">
+      <div className="inbox-list admin-card">
+        <div className="inbox-toolbar">
+          <div className="row" style={{ gap: '.35rem', flexWrap: 'wrap' }}>
+            {([['open', `Open${counts.open ? ` (${counts.open})` : ''}`], ['closed', 'Closed'], ['all', 'All']] as const).map(([k, label]) => (
+              <button key={k} type="button" className={status === k ? 'btn sm' : 'btn secondary sm'} onClick={() => { setStatus(k); }}>{label}</button>
+            ))}
+          </div>
+          <button type="button" className="btn secondary sm" onClick={() => { setComposing(true); }}>+ New email</button>
+        </div>
+        <form className="inbox-search" onSubmit={(e) => { e.preventDefault(); void load(null); }}>
+          <input placeholder="Search name, email, subject or words in the message" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search conversations" />
+          <button type="submit" className="btn secondary sm">Search</button>
+        </form>
+        <div className="inbox-rows">
+          {!loaded ? <p className="muted" style={{ padding: '1rem' }}>Loading…</p>
+            : threads.length === 0 ? <p className="muted" style={{ padding: '1rem' }}>{status === 'open' ? 'Nothing waiting for a reply.' : 'No conversations here.'}</p>
+            : threads.map((t) => (
+              <button key={t.id} type="button" className={`inbox-row${selectedId === t.id ? ' selected' : ''}${t.unreadCount > 0 ? ' unread' : ''}`} onClick={() => { setComposing(false); setSelectedId(t.id); }}>
+                <div className="inbox-row-top">
+                  <span className="inbox-row-who">{t.contactName || t.contactEmail}</span>
+                  <span className="inbox-row-when">{when(t.lastMessageAt)}</span>
+                </div>
+                <div className="inbox-row-subject">
+                  {t.hasBounce && <span className="inbox-pill bounce">bounce</span>}
+                  {t.status === 'closed' && status !== 'closed' && <span className="inbox-pill">closed</span>}
+                  {t.subject || '(no subject)'}
+                </div>
+                <div className="inbox-row-snippet">
+                  {t.lastDirection === 'out' ? <span className="muted">You: </span> : null}{t.lastSnippet || ''}
+                </div>
+                <div className="inbox-row-meta">
+                  {t.messageCount} message{t.messageCount === 1 ? '' : 's'}{t.orderCount > 0 && <> · {t.orderCount} order{t.orderCount === 1 ? '' : 's'}</>}
+                </div>
+              </button>
+            ))}
+        </div>
+        {unread > 0 && <div className="muted" style={{ fontSize: '.78rem', padding: '.4rem .9rem', borderTop: '1px solid var(--border)' }}>{unread} unread</div>}
+      </div>
+
+      {composing ? (
+        <ComposeCard
+          onCancel={() => setComposing(false)}
+          onSent={async (t) => { setComposing(false); setSelectedId(t.id); setDetail(t); await load(t.id); }}
+        />
+      ) : !detail ? (
+        <div className="admin-card inbox-empty">
+          <p className="muted" style={{ margin: 0 }}>{threads.length ? 'Pick a conversation.' : 'When someone emails your Mailgun address, it shows up here. Replies you send from here stay in the conversation.'}</p>
+        </div>
+      ) : (
+        <Conversation
+          key={detail.id}
+          thread={detail}
+          onUpdated={applyDetail}
+          onReplied={async (t) => { applyDetail(t); await load(t.id); }}
+          onClose={() => void patch(detail.id, { status: 'closed' }, 'Closed. Find it under Closed; a new message from them reopens it.')}
+          onReopen={() => void patch(detail.id, { status: 'open' }, 'Reopened.')}
+          onUnread={() => void patch(detail.id, { unread: true }, 'Marked unread.')}
+          onDelete={() => void remove(detail.id)}
+          onSaveNotes={(notes) => void patch(detail.id, { notes }, 'Notes saved.')}
+        />
+      )}
+    </div>
+  );
+}
+
+function ComposeCard({ onCancel, onSent }: { onCancel: () => void; onSent: (thread: ThreadDetail) => void | Promise<void> }) {
+  const toast = useToast();
+  const [to, setTo] = useState('');
+  const [name, setName] = useState('');
+  const [subject, setSubject] = useState('');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const canSend = /.+@.+\..+/.test(to.trim()) && subject.trim().length > 0 && text.trim().length > 0 && !busy;
+  const send = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post<{ thread: ThreadDetail }>('/admin/email/threads', { to: to.trim(), name: name.trim() || undefined, subject: subject.trim(), text });
+      toast.success(`Sent to ${to.trim()}.`);
+      await onSent(r.thread);
+    } catch (e) { toast.error(errorMessage(e, 'Send failed')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="admin-card inbox-main">
+      <div className="spread"><h3 style={{ margin: 0 }}>New email</h3><button type="button" className="btn secondary sm" onClick={onCancel}>Cancel</button></div>
+      <p className="muted" style={{ fontSize: '.85rem' }}>Sent from your Mailgun address with your signature. It starts a conversation here, so their answer lands in this inbox.</p>
+      <div className="grid-2">
+        <div><label htmlFor="compose-to">To (email)</label><input id="compose-to" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="customer@example.com" /></div>
+        <div><label htmlFor="compose-name">Name (optional)</label><input id="compose-name" value={name} onChange={(e) => setName(e.target.value)} /></div>
+      </div>
+      <label htmlFor="compose-subject">Subject</label>
+      <input id="compose-subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
+      <label htmlFor="compose-text">Message</label>
+      <textarea id="compose-text" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your message…" />
+      <TemplatePicker onPick={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${t}` : t))} onSubject={(s) => { if (!subject.trim()) setSubject(s); }} />
+      <div className="row" style={{ marginTop: '.75rem' }}>
+        <button type="button" className="btn" disabled={!canSend} onClick={() => void send()}>{busy ? 'Sending…' : 'Send email'}</button>
       </div>
     </div>
   );
 }
 
-interface InboundMessage {
-  id: string;
-  messageId?: string | null;
-  inReplyTo?: string | null;
-  fromEmail: string;
-  fromName?: string | null;
-  toEmail: string;
-  subject: string;
-  strippedText?: string | null;
-  kind: string;
-  bounceType?: string | null;
-  linkedSendId?: string | null;
-  handled: boolean;
-  receivedAt: string;
+/** Drop a saved template's words into the reply. */
+function TemplatePicker({ onPick, onSubject }: { onPick: (text: string) => void; onSubject?: (subject: string) => void }) {
+  const [templates, setTemplates] = useState<{ id: string; name: string; subject: string; html: string; text?: string | null }[]>([]);
+  useEffect(() => { void api.get<{ templates: any[] }>('/admin/email/templates').then((r) => setTemplates(r.templates)).catch(() => setTemplates([])); }, []);
+  if (templates.length === 0) return null;
+  return (
+    <div className="row" style={{ gap: '.5rem', marginTop: '.5rem', fontSize: '.85rem' }}>
+      <label htmlFor="tpl-pick" style={{ margin: 0 }}>Insert template</label>
+      <select id="tpl-pick" value="" style={{ width: 'auto', margin: 0 }} onChange={(e) => {
+        const t = templates.find((x) => x.id === e.target.value);
+        if (!t) return;
+        const text = (t.text && t.text.trim()) || t.html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+        onPick(text);
+        onSubject?.(t.subject);
+      }}>
+        <option value="">— pick —</option>
+        {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    </div>
+  );
 }
 
-interface InboundFull extends InboundMessage {
-  textBody?: string | null;
-  htmlBody?: string | null;
-  attachments?: { filename: string; contentType: string; size: number }[] | null;
-}
+function Conversation({ thread, onUpdated, onReplied, onClose, onReopen, onUnread, onDelete, onSaveNotes }: {
+  thread: ThreadDetail;
+  onUpdated: (t: ThreadDetail) => void;
+  onReplied: (t: ThreadDetail) => void | Promise<void>;
+  onClose: () => void; onReopen: () => void; onUnread: () => void; onDelete: () => void;
+  onSaveNotes: (notes: string) => void;
+}) {
+  const toast = useToast();
+  const [reply, setReply] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState(thread.notes ?? '');
+  const [showFull, setShowFull] = useState<Record<string, boolean>>({});
+  const endRef = useRef<HTMLDivElement>(null);
+  void onUpdated;
 
-const INBOX_FILTERS: { label: string; query: Record<string, string> }[] = [
-  { label: 'Unhandled', query: { handled: 'false' } },
-  { label: 'All', query: {} },
-  { label: 'Replies', query: { kind: 'inbound' } },
-  { label: 'Bounces', query: { kind: 'bounce' } },
-  { label: 'Handled', query: { handled: 'true' } },
-];
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.messages.length]);
 
-function InboxTab() {
-  const toast = useToast(); const confirm = useConfirm();
-  const [items, setItems] = useState<InboundMessage[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [filter, setFilter] = useState(0);
-  const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<InboundFull | null>(null);
-  const [replyHtml, setReplyHtml] = useState('');
-  const [replyBusy, setReplyBusy] = useState(false);
-
-  const load = async () => {
-    const params = { ...INBOX_FILTERS[filter]!.query };
-    if (search) (params as any).q = search;
-    const qs = new URLSearchParams(params).toString();
-    const r = await api.get<{ items: InboundMessage[] }>(`/admin/email/inbound${qs ? `?${qs}` : ''}`);
-    setItems(r.items);
-    setLoaded(true);
-    if (r.items.length > 0 && !selectedId) setSelectedId(r.items[0]!.id);
-    else if (r.items.length === 0) { setSelectedId(null); setSelected(null); }
+  const send = async (close: boolean) => {
+    if (!reply.trim()) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ thread: ThreadDetail }>(`/admin/email/threads/${thread.id}/reply`, { text: reply, close });
+      setReply('');
+      toast.success(close ? 'Reply sent and conversation closed.' : 'Reply sent.');
+      await onReplied(r.thread);
+    } catch (e) { toast.error(errorMessage(e, 'Reply failed')); }
+    finally { setBusy(false); }
   };
 
-  useEffect(() => { void load(); }, [filter]);
-
-  useEffect(() => {
-    if (!selectedId) return setSelected(null);
-    void api.get<{ item: InboundFull }>(`/admin/email/inbound/${selectedId}`).then((r) => setSelected(r.item));
-  }, [selectedId]);
-
-  async function toggleHandled(id: string, handled: boolean) {
-    await api.patch(`/admin/email/inbound/${id}`, { handled });
-    await load();
-  }
-
-  async function remove(id: string) {
-    if (!(await confirm({ title: 'Delete this message?', confirmLabel: 'Delete', danger: true }))) return;
-    await api.del(`/admin/email/inbound/${id}`);
-    setSelectedId(null);
-    await load();
-  }
-
-  async function sendReply() {
-    if (!selected || !replyHtml.trim()) return;
-    setReplyBusy(true);
-    try {
-      await api.post(`/admin/email/inbound/${selected.id}/reply`, {
-        html: replyHtml,
-        text: replyHtml.replace(/<[^>]+>/g, ''),
-      });
-      setReplyHtml('');
-      await load();
-    } catch (e: any) {
-      toast.error(errorMessage(e, 'Reply failed'));
-    } finally {
-      setReplyBusy(false);
-    }
-  }
-
+  const bounced = thread.messages.some((m) => m.kind === 'bounce');
   return (
-    <div>
-      <div className="row" style={{ gap: '.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {INBOX_FILTERS.map((f, i) => (
-          <button
-            key={f.label}
-            className={filter === i ? 'btn' : 'btn secondary'}
-            style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}
-            onClick={() => { setFilter(i); setSelectedId(null); }}
-          >
-            {f.label}
-          </button>
-        ))}
-        <form
-          onSubmit={(e) => { e.preventDefault(); void load(); }}
-          style={{ marginLeft: 'auto', display: 'flex', gap: '.5rem' }}
-        >
-          <input
-            placeholder="Search subject or sender"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 240 }}
-          />
-          <button className="btn secondary" style={{ padding: '.35rem .75rem', fontSize: '.85rem' }}>Search</button>
-        </form>
-      </div>
+    <>
+      <div className="admin-card inbox-main" data-testid="conversation">
+        <div className="inbox-head">
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{thread.subject || '(no subject)'}</h3>
+            <div className="muted" style={{ fontSize: '.85rem' }}>
+              <strong>{thread.contactName || thread.contactEmail}</strong>{thread.contactName ? ` <${thread.contactEmail}>` : ''}
+              {' · '}{thread.messages.length} message{thread.messages.length === 1 ? '' : 's'}
+              {' · '}<span className={`inbox-pill ${thread.status}`}>{thread.status}</span>
+            </div>
+          </div>
+          <div className="row" style={{ gap: '.4rem', flexWrap: 'wrap' }}>
+            {thread.status === 'open'
+              ? <button type="button" className="btn secondary sm" onClick={onClose} title="Done with this — it moves to Closed and comes back if they write again">Close</button>
+              : <button type="button" className="btn secondary sm" onClick={onReopen}>Reopen</button>}
+            <button type="button" className="btn secondary sm" onClick={onUnread}>Mark unread</button>
+            <button type="button" className="btn secondary sm" style={{ color: '#b91c1c' }} onClick={onDelete}>Delete</button>
+          </div>
+        </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 380px) 1fr', gap: '1rem' }}>
-        <div className="admin-card" style={{ margin: 0, padding: 0, maxHeight: '70vh', overflowY: 'auto' }}>
-          {!loaded ? (
-            <p className="muted" style={{ padding: '1rem' }}>Loading…</p>
-          ) : items.length === 0 ? (
-            <p className="muted" style={{ padding: '1rem' }}>No messages.</p>
-          ) : (
-            items.map((it) => (
-              <button
-                key={it.id}
-                onClick={() => setSelectedId(it.id)}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left',
-                  padding: '.75rem 1rem', border: 'none',
-                  background: selectedId === it.id ? 'var(--bg-alt)' : '#fff',
-                  borderBottom: '1px solid var(--border)',
-                  cursor: 'pointer',
-                }}
-              >
-                <div className="spread" style={{ marginBottom: '.25rem' }}>
-                  <strong style={{ fontSize: '.9rem', fontWeight: it.handled ? 400 : 700 }}>
-                    {it.fromName || it.fromEmail}
-                  </strong>
-                  {it.kind === 'bounce' && (
-                    <span style={{ background: '#fee2e2', color: '#991b1b', padding: '.1rem .4rem', borderRadius: 4, fontSize: '.7rem', fontWeight: 600 }}>
-                      {it.bounceType ?? 'bounce'}
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: '.85rem', color: 'var(--ink)', fontWeight: it.handled ? 400 : 500 }}>
-                  {it.subject || '(no subject)'}
-                </div>
-                {it.strippedText && (
-                  <div className="muted" style={{ fontSize: '.78rem', marginTop: '.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {it.strippedText.slice(0, 120)}
+        <div className="inbox-messages">
+          {thread.messages.map((m) => {
+            const ours = m.direction === 'out';
+            const full = showFull[m.id];
+            const short = m.strippedText?.trim();
+            const long = (m.textBody ?? '').trim();
+            const hasMore = !ours && ((short && long && long.length > short.length + 20) || !!m.htmlBody);
+            return (
+              <article key={m.id} className={`inbox-msg ${ours ? 'ours' : 'theirs'}${m.kind === 'bounce' ? ' bounce' : ''}`} data-direction={m.direction}>
+                <header className="inbox-msg-head">
+                  <span>
+                    <strong>{ours ? `You${m.sentBy ? ` (${m.sentBy})` : ''}` : (m.fromName || m.fromEmail)}</strong>
+                    {!ours && m.fromName ? <span className="muted"> &lt;{m.fromEmail}&gt;</span> : null}
+                    {m.kind === 'bounce' && <span className="inbox-pill bounce" style={{ marginLeft: '.4rem' }}>{m.bounceType ? `${m.bounceType} bounce` : 'bounce'}</span>}
+                  </span>
+                  <span className="muted" style={{ fontSize: '.8rem' }}>
+                    {new Date(m.receivedAt).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    {ours && m.delivery && (
+                      <span className={`inbox-pill ${/BOUNCED|FAILED/.test(m.delivery.status) ? 'bounce' : /OPENED|CLICKED/.test(m.delivery.status) ? 'good' : ''}`} style={{ marginLeft: '.4rem' }} title={m.delivery.error ?? undefined}>
+                        {m.delivery.status === 'OPENED' || m.delivery.status === 'CLICKED' ? 'opened' : m.delivery.status === 'DELIVERED' ? 'delivered' : m.delivery.status === 'SENT' ? 'sent' : m.delivery.status.toLowerCase()}
+                      </span>
+                    )}
+                  </span>
+                </header>
+                {ours || !full ? (
+                  <div className="inbox-msg-body">{ours ? (m.textBody ?? '') : (short || long || '(empty message)')}</div>
+                ) : m.htmlBody ? (
+                  <iframe title="message" srcDoc={m.htmlBody} sandbox="" className="inbox-msg-frame" />
+                ) : (
+                  <div className="inbox-msg-body">{long}</div>
+                )}
+                {hasMore && (
+                  <button type="button" className="inbox-link" onClick={() => setShowFull({ ...showFull, [m.id]: !full })}>{full ? 'Show the reply only' : 'Show the full message as sent'}</button>
+                )}
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="muted" style={{ fontSize: '.82rem', marginTop: '.4rem' }}>
+                    📎 {m.attachments.map((a) => `${a.filename} (${a.size >= 1048576 ? `${(a.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(a.size / 1024))} KB`})`).join(', ')}
+                    <span> — attachments are kept in your Mailgun account's stored messages.</span>
                   </div>
                 )}
-                <div className="muted" style={{ fontSize: '.75rem', marginTop: '.25rem' }}>
-                  {new Date(it.receivedAt).toLocaleString()}
-                </div>
-              </button>
-            ))
-          )}
+              </article>
+            );
+          })}
+          <div ref={endRef} />
         </div>
 
-        <div className="admin-card" style={{ margin: 0 }}>
-          {!selected ? (
-            <p className="muted">Select a message.</p>
-          ) : (
-            <>
-              <div className="spread" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '.5rem' }}>
-                <div>
-                  <h3 style={{ margin: 0 }}>{selected.subject || '(no subject)'}</h3>
-                  <div className="muted" style={{ fontSize: '.85rem' }}>
-                    From <strong>{selected.fromName || selected.fromEmail}</strong> &lt;{selected.fromEmail}&gt;
-                    {' · '}to {selected.toEmail}
-                    {' · '}{new Date(selected.receivedAt).toLocaleString()}
-                  </div>
-                </div>
-                <div className="row" style={{ gap: '.5rem' }}>
-                  <button
-                    className="btn secondary"
-                    onClick={() => void toggleHandled(selected.id, !selected.handled)}
-                  >
-                    {selected.handled ? 'Mark unhandled' : 'Mark handled'}
-                  </button>
-                  <button className="btn secondary" style={{ color: '#b91c1c' }} onClick={() => void remove(selected.id)}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              {selected.inReplyTo && (
-                <div className="muted" style={{ fontSize: '.75rem', marginBottom: '.75rem' }}>
-                  In reply to: <code>{selected.inReplyTo}</code>
-                  {selected.linkedSendId && <> · Linked to send: <code>{selected.linkedSendId}</code></>}
-                </div>
-              )}
-
-              {selected.attachments && selected.attachments.length > 0 && (
-                <div className="muted" style={{ fontSize: '.85rem', marginBottom: '.75rem' }}>
-                  Attachments: {selected.attachments.map((a) => a.filename).join(', ')}
-                </div>
-              )}
-
-              {selected.htmlBody ? (
-                <iframe
-                  title="message"
-                  srcDoc={selected.htmlBody}
-                  sandbox=""
-                  style={{ width: '100%', minHeight: 360, border: '1px solid var(--border)', borderRadius: 4 }}
-                />
-              ) : (
-                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, padding: '.5rem', background: 'var(--bg-alt)', borderRadius: 4 }}>
-                  {selected.strippedText ?? selected.textBody ?? '(empty body)'}
-                </pre>
-              )}
-
-              {selected.kind !== 'bounce' && (
-                <div style={{ marginTop: '1rem' }}>
-                  <h4>Reply</h4>
-                  <textarea
-                    rows={6}
-                    value={replyHtml}
-                    onChange={(e) => setReplyHtml(e.target.value)}
-                    placeholder={`Re: ${selected.subject}\n\nHi ${selected.fromName || ''},\n\n`}
-                  />
-                  <div className="row" style={{ marginTop: '.5rem' }}>
-                    <button className="btn" disabled={replyBusy || !replyHtml.trim()} onClick={() => void sendReply()}>
-                      {replyBusy ? 'Sending…' : 'Send reply'}
-                    </button>
-                    <span className="muted" style={{ fontSize: '.8rem' }}>
-                      Sent from {selected.toEmail || 'your configured From address'}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        {bounced && thread.messages.every((m) => m.kind === 'bounce' || m.direction === 'out') ? (
+          <p className="muted" style={{ fontSize: '.85rem' }}>This is a bounce notice; there is nobody to reply to. Check the address on their order and send a fresh email.</p>
+        ) : (
+          <div className="inbox-reply">
+            <label htmlFor="reply-text" style={{ marginTop: 0 }}>Reply to {thread.contactName || thread.contactEmail}</label>
+            <textarea id="reply-text" rows={6} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={`Hi ${thread.contactName?.split(' ')[0] || ''},\n\n`} data-testid="reply-text" />
+            <TemplatePicker onPick={(t) => setReply((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${t}` : t))} />
+            <div className="row" style={{ gap: '.5rem', marginTop: '.6rem', flexWrap: 'wrap' }}>
+              <button type="button" className="btn" disabled={busy || !reply.trim()} onClick={() => void send(false)} data-testid="reply-send">{busy ? 'Sending…' : 'Send reply'}</button>
+              <button type="button" className="btn secondary" disabled={busy || !reply.trim()} onClick={() => void send(true)} data-testid="reply-send-close">Send &amp; close</button>
+              <span className="muted" style={{ fontSize: '.8rem' }}>Threaded under their message; your signature from Settings → Email is added.</span>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+
+      <aside className="admin-card inbox-side" aria-label="About this contact">
+        <h4 style={{ marginTop: 0 }}>Contact</h4>
+        <div style={{ fontSize: '.9rem' }}>
+          <div><strong>{thread.contactName || '—'}</strong></div>
+          <div style={{ overflowWrap: 'anywhere' }}><a href={`mailto:${thread.contactEmail}`}>{thread.contactEmail}</a></div>
+          {thread.customer && <div style={{ marginTop: '.3rem' }}><Link to={`/admin/customers/${thread.customer.id}`}>Open customer</Link></div>}
+        </div>
+        <h4>Orders</h4>
+        {thread.orders.length === 0 ? <p className="muted" style={{ fontSize: '.85rem', marginTop: 0 }}>No orders from this address.</p> : (
+          <ul className="inbox-orders">
+            {thread.orders.map((o) => (
+              <li key={o.id}>
+                <Link to={`/admin/orders/${o.id}`}>{o.number}</Link>
+                <span className="muted"> · {new Date(o.createdAt).toLocaleDateString()} · {money(o.totalCents)}</span>
+                <div><span className="badge">{o.status}</span> {o.paymentStatus !== 'CAPTURED' && <span className="badge">{o.paymentStatus}</span>} {o.proofStatus && <span className="badge">proof: {o.proofStatus.replace(/_/g, ' ')}</span>}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <h4>Notes <span className="muted" style={{ fontWeight: 400, fontSize: '.8rem' }}>(staff only)</span></h4>
+        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the next person should know…" />
+        {notes !== (thread.notes ?? '') && <button type="button" className="btn secondary sm" style={{ marginTop: '.4rem' }} onClick={() => onSaveNotes(notes)}>Save notes</button>}
+      </aside>
+    </>
   );
 }
 

@@ -90,9 +90,9 @@ export function AddressFields({
         ) : (
           <input {...props('region', 'address-level1')} value={value.region} onChange={(e) => set({ region: e.target.value })} />
         ))}
-        {showPhone && field('phone', 'Phone (optional)', (
-          <input {...props('phone', 'tel')} type="tel" inputMode="tel" value={value.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} />
-        ), 'The carrier uses it if there is a delivery problem.')}
+        {showPhone && field('phone', 'Phone', (
+          <input {...props('phone', 'tel')} type="tel" inputMode="tel" required value={value.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} />
+        ), 'Required — the carrier uses it for delivery problems and we use it for questions about your order.')}
       </div>
     </div>
   );

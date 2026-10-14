@@ -282,9 +282,14 @@ router.post('/validate-coupon', async (req, res) => {
 });
 
 // ---- Create a PayPal order ----
+// A phone number on the shipping address is required, no exceptions: the
+// carrier needs it for delivery problems and we need it for order questions.
+const shippingAddressSchema = addressSchema.extend({
+  phone: z.string().trim().min(1, 'Enter a phone number for the shipping address.').refine((v) => v.replace(/\D/g, '').length >= 7, 'Enter a phone number with the area code.'),
+});
 const createSchema = z.object({
   email: z.string().email(),
-  shippingAddress: addressSchema,
+  shippingAddress: shippingAddressSchema,
   billingAddress: addressSchema,
   // Either an opaque shippingMethodId from the getQuote flow, or a
   // ShippingRate.id picked directly on the checkout page.

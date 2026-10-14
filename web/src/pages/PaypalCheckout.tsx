@@ -87,7 +87,7 @@ export function PaypalCheckout() {
 
   const shipErrors = validateAddress(ship);
   const shipOk = Object.keys(shipErrors).length === 0;
-  const billErrors = sameAsShip ? {} : validateAddress(bill);
+  const billErrors = sameAsShip ? {} : (({ phone: _p, ...rest }) => rest)(validateAddress(bill));
   const billOk = Object.keys(billErrors).length === 0;
   const emailOk = emailLooksValid(email);
   const zipOk = postalCodeLooksValid(ship.country, ship.postalCode);

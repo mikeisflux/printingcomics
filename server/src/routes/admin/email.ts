@@ -9,6 +9,8 @@ import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
 import { sendEmail } from '../../lib/mailgun.js';
 import { runCampaignSend } from '../../lib/email-send.js';
+import { getMailgunConfig } from '../../lib/settings.js';
+import { attachInbound, recordOutbound, snippetOf } from '../../lib/email-threads.js';
 
 const router = Router();
 
@@ -306,30 +308,51 @@ router.post('/campaigns/:id/unschedule', async (req, res) => {
   res.json({ campaign: updated });
 });
 
-// One-off transactional send
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] ?? c));
+}
+
+/** Plain text typed by staff → the HTML the customer's mail program shows. */
+function textToHtml(text: string): string {
+  return `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">${text.split('\n').map((l) => escapeHtml(l)).join('<br>')}</div>`;
+}
+
+/** The signature from Settings → Email, once, unless the text already carries it. */
+function withSignature(text: string, signature: string): string {
+  const sig = signature.trim();
+  if (!sig || text.trim().endsWith(sig)) return text;
+  return `${text.trimEnd()}\n\n${sig}`;
+}
+
+/**
+ * Send one email and keep it as a conversation: a thread with our message
+ * in it, so the inbox shows it and the customer's answer threads back.
+ */
+async function startThread(args: { to: string; name?: string | null; subject: string; text: string; html?: string; sentBy?: string | null; signature?: boolean }) {
+  const cfg = await getMailgunConfig();
+  const text = args.signature === false ? args.text : withSignature(args.text, cfg.signature);
+  const html = args.html ?? textToHtml(text);
+  const { providerRef } = await sendEmail({ to: { email: args.to, name: args.name ?? undefined }, subject: args.subject, html, text, tags: ['admin-compose'], trackClicks: false });
+  const send = await prisma.emailSend.create({ data: { toEmail: args.to, subject: args.subject, status: 'SENT', providerRef } });
+  const thread = await prisma.emailThread.create({
+    data: { subject: args.subject, contactEmail: args.to.toLowerCase(), contactName: args.name ?? null, status: 'closed', unreadCount: 0, lastDirection: 'out', lastSnippet: snippetOf(text, html) },
+  });
+  await recordOutbound({ threadId: thread.id, toEmail: args.to, toName: args.name, fromEmail: cfg.fromEmail, subject: args.subject, text, html, providerRef, sentBy: args.sentBy, linkedSendId: send.id });
+  return { thread, providerRef };
+}
+
+// One-off send — kept as a conversation in the inbox.
 const transactSchema = z.object({
   to: z.string().email(),
-  subject: z.string(),
-  html: z.string(),
-  text: z.string().optional(),
+  name: z.string().max(120).optional(),
+  subject: z.string().min(1),
+  html: z.string().optional(),
+  text: z.string().min(1),
 });
 router.post('/send', async (req, res) => {
   const data = transactSchema.parse(req.body);
-  const { providerRef } = await sendEmail({
-    to: { email: data.to },
-    subject: data.subject,
-    html: data.html,
-    text: data.text,
-  });
-  await prisma.emailSend.create({
-    data: {
-      toEmail: data.to,
-      subject: data.subject,
-      status: 'SENT',
-      providerRef,
-    },
-  });
-  res.json({ ok: true, providerRef });
+  const { thread, providerRef } = await startThread({ to: data.to, name: data.name, subject: data.subject, text: data.text, html: data.html, sentBy: req.session?.email ?? null });
+  res.json({ ok: true, providerRef, threadId: thread.id });
 });
 
 // Send log
@@ -351,6 +374,161 @@ router.get('/sends', async (req, res) => {
 // /api/webhooks/mailgun. Leave 410s so stale configs fail loud.
 router.all('/webhooks/brevo', (_req, res) => {
   res.status(410).json({ error: 'Retired; see /api/webhooks/mailgun' });
+});
+
+// -------- Inbox: conversations --------
+//
+//   GET    /threads?status=open|closed|all&bounces=1&q=   the list, newest first
+//   GET    /threads/:id                                   the conversation, read on open, with the contact's orders
+//   POST   /threads/:id/reply { text, close? }            reply (threaded, signed), optionally close
+//   POST   /threads { to, name?, subject, text }          start a conversation
+//   PATCH  /threads/:id { status?, unread?, notes? }
+//   DELETE /threads/:id
+
+const threadListSelect = {
+  id: true, subject: true, contactEmail: true, contactName: true, status: true, unreadCount: true,
+  lastMessageAt: true, lastDirection: true, lastSnippet: true, updatedAt: true,
+  _count: { select: { messages: true } },
+} as const;
+
+router.get('/threads', async (req, res) => {
+  const status = String(req.query.status ?? 'open');
+  const q = (req.query.q as string | undefined)?.trim();
+  const where: any = {};
+  if (status === 'open' || status === 'closed') where.status = status;
+  if (req.query.bounces) where.messages = { some: { kind: 'bounce' } };
+  if (q) where.OR = [
+    { subject: { contains: q, mode: 'insensitive' } },
+    { contactEmail: { contains: q, mode: 'insensitive' } },
+    { contactName: { contains: q, mode: 'insensitive' } },
+    { messages: { some: { textBody: { contains: q, mode: 'insensitive' } } } },
+  ];
+  const threads = await prisma.emailThread.findMany({ where, orderBy: { lastMessageAt: 'desc' }, take: 200, select: threadListSelect });
+  // How many orders each contact has placed, for the badge.
+  const emails = [...new Set(threads.map((t) => t.contactEmail))];
+  const orders = emails.length ? await prisma.order.groupBy({ by: ['email'], where: { email: { in: emails } }, _count: { _all: true } }) : [];
+  const bounced = threads.length ? await prisma.inboundEmail.findMany({ where: { threadId: { in: threads.map((t) => t.id) }, kind: 'bounce' }, select: { threadId: true }, distinct: ['threadId'] }) : [];
+  const bounceSet = new Set(bounced.map((b) => b.threadId));
+  const counts = await prisma.emailThread.groupBy({ by: ['status'], _count: { _all: true } });
+  res.json({
+    threads: threads.map((t) => ({ ...t, messageCount: t._count.messages, orderCount: orders.find((o) => o.email === t.contactEmail)?._count._all ?? 0, hasBounce: bounceSet.has(t.id) })),
+    counts: { open: counts.find((c) => c.status === 'open')?._count._all ?? 0, closed: counts.find((c) => c.status === 'closed')?._count._all ?? 0 },
+  });
+});
+
+async function threadDetail(id: string) {
+  const thread = await prisma.emailThread.findUnique({
+    where: { id },
+    include: { messages: { orderBy: { receivedAt: 'asc' } } },
+  });
+  if (!thread) return null;
+  const refs = thread.messages.map((m) => m.providerRef).filter((r): r is string => !!r);
+  const sends = refs.length ? await prisma.emailSend.findMany({ where: { providerRef: { in: refs } }, select: { providerRef: true, status: true, openedAt: true, errorMessage: true } }) : [];
+  const [orders, customer] = await Promise.all([
+    prisma.order.findMany({
+      where: { email: thread.contactEmail },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, number: true, status: true, paymentStatus: true, totalCents: true, createdAt: true, proofStatus: true },
+    }),
+    prisma.user.findUnique({ where: { email: thread.contactEmail }, select: { id: true, firstName: true, lastName: true } }),
+  ]);
+  return {
+    ...thread,
+    messages: thread.messages.map((m) => {
+      const send = m.providerRef ? sends.find((s) => s.providerRef === m.providerRef) : null;
+      return { ...m, rawHeaders: undefined, delivery: send ? { status: send.status, openedAt: send.openedAt, error: send.errorMessage } : null };
+    }),
+    orders,
+    customer,
+  };
+}
+
+router.get('/threads/:id', async (req, res) => {
+  const id = String(req.params.id);
+  const detail = await threadDetail(id);
+  if (!detail) throw new HttpError(404, 'Conversation not found');
+  // Opening a conversation reads it.
+  if (detail.unreadCount > 0 || detail.messages.some((m) => m.direction === 'in' && !m.readAt)) {
+    await prisma.emailThread.update({ where: { id }, data: { unreadCount: 0 } });
+    await prisma.inboundEmail.updateMany({ where: { threadId: id, direction: 'in', readAt: null }, data: { readAt: new Date(), handled: true } });
+    detail.unreadCount = 0;
+  }
+  res.json({ thread: detail });
+});
+
+const composeSchema = z.object({
+  to: z.string().email(),
+  name: z.string().max(120).optional(),
+  subject: z.string().min(1).max(300),
+  text: z.string().min(1),
+});
+router.post('/threads', async (req, res) => {
+  const data = composeSchema.parse(req.body);
+  const { thread } = await startThread({ to: data.to, name: data.name, subject: data.subject, text: data.text, sentBy: req.session?.email ?? null });
+  res.json({ thread: await threadDetail(thread.id) });
+});
+
+const threadReplySchema = z.object({
+  text: z.string().min(1),
+  close: z.boolean().optional(),
+});
+router.post('/threads/:id/reply', async (req, res) => {
+  const id = String(req.params.id);
+  const thread = await prisma.emailThread.findUnique({ where: { id }, include: { messages: { orderBy: { receivedAt: 'asc' } } } });
+  if (!thread) throw new HttpError(404, 'Conversation not found');
+  const data = threadReplySchema.parse(req.body);
+  const cfg = await getMailgunConfig();
+
+  // Thread the reply under the contact's latest message, with the whole chain in References.
+  const theirs = [...thread.messages].reverse().find((m) => m.direction === 'in' && m.messageId);
+  const chain = thread.messages.map((m) => m.messageId).filter((x): x is string => !!x).slice(-20);
+  const headers: Record<string, string> = {};
+  if (theirs?.messageId) headers['In-Reply-To'] = theirs.messageId;
+  if (chain.length) headers['References'] = chain.join(' ');
+
+  const text = withSignature(data.text, cfg.signature);
+  const html = textToHtml(text);
+  const subject = /^re:/i.test(thread.subject) ? thread.subject : `Re: ${thread.subject}`;
+  const { providerRef } = await sendEmail({
+    to: { email: thread.contactEmail, name: thread.contactName ?? undefined },
+    subject, html, text, headers, trackClicks: false,
+    tags: ['admin-reply'],
+  });
+  const send = await prisma.emailSend.create({ data: { toEmail: thread.contactEmail, subject, status: 'SENT', providerRef } });
+  await recordOutbound({
+    threadId: id, toEmail: thread.contactEmail, toName: thread.contactName, fromEmail: cfg.fromEmail, subject, text, html, providerRef,
+    sentBy: req.session?.email ?? null, inReplyTo: headers['In-Reply-To'] ?? null, references: headers['References'] ?? null, linkedSendId: send.id,
+  });
+  await prisma.inboundEmail.updateMany({ where: { threadId: id, direction: 'in' }, data: { handled: true, readAt: new Date() } });
+  await prisma.emailThread.update({ where: { id }, data: { status: data.close ? 'closed' : 'open', unreadCount: 0 } });
+  res.json({ thread: await threadDetail(id), providerRef });
+});
+
+const threadPatchSchema = z.object({
+  status: z.enum(['open', 'closed']).optional(),
+  unread: z.boolean().optional(),
+  notes: z.string().max(5000).nullable().optional(),
+});
+router.patch('/threads/:id', async (req, res) => {
+  const id = String(req.params.id);
+  const data = threadPatchSchema.parse(req.body);
+  const patch: any = {};
+  if (data.status) patch.status = data.status;
+  if (data.notes !== undefined) patch.notes = data.notes;
+  if (data.unread) {
+    patch.unreadCount = 1;
+    patch.status = 'open';
+    await prisma.inboundEmail.updateMany({ where: { threadId: id, direction: 'in' }, data: { readAt: null, handled: false } });
+  }
+  const updated = await prisma.emailThread.update({ where: { id }, data: patch }).catch(() => null);
+  if (!updated) throw new HttpError(404, 'Conversation not found');
+  res.json({ thread: await threadDetail(id) });
+});
+
+router.delete('/threads/:id', async (req, res) => {
+  await prisma.emailThread.delete({ where: { id: String(req.params.id) } }).catch(() => undefined);
+  res.json({ ok: true });
 });
 
 // -------- Inbox (stores messages Mailgun delivers to /webhooks/mailgun/inbound) --------
@@ -434,8 +612,14 @@ router.post('/inbound/:id/reply', async (req, res) => {
 
   await prisma.inboundEmail.update({
     where: { id: parent.id },
-    data: { handled: true },
+    data: { handled: true, readAt: new Date() },
   });
+  if (parent.threadId) {
+    const cfg = await getMailgunConfig();
+    await recordOutbound({ threadId: parent.threadId, toEmail: parent.fromEmail, toName: parent.fromName, fromEmail: cfg.fromEmail, subject, text: data.text ?? data.html.replace(/<[^>]+>/g, ''), html: data.html, providerRef, sentBy: req.session?.email ?? null, inReplyTo: parent.messageId, references: parent.messageId });
+  } else {
+    await attachInbound(parent.id).catch(() => undefined);
+  }
 
   res.json({ ok: true, providerRef });
 });

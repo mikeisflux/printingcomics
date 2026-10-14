@@ -164,7 +164,9 @@ export function validateAddress(a: Address): Partial<Record<AddressField, string
   const postal = postalFieldFor(a.country);
   if (!a.postalCode.trim()) errors.postalCode = `Enter a ${postal.label}.`;
   else if (!postalCodeLooksValid(a.country, a.postalCode)) errors.postalCode = a.country === 'US' ? 'Enter a 5-digit ZIP code.' : `That does not look like a ${postal.label.toLowerCase()}.`;
-  if (a.phone && a.phone.replace(/\D/g, '').length < 7) errors.phone = 'Enter a phone number with area code, or leave it blank.';
+  // Carriers need a number for delivery problems and we need one for order questions: required, always.
+  if (!a.phone || !a.phone.trim()) errors.phone = 'Enter a phone number — the carrier needs it for delivery, and we use it for questions about your order.';
+  else if (a.phone.replace(/\D/g, '').length < 7) errors.phone = 'Enter a phone number with the area code.';
   return errors;
 }
 
