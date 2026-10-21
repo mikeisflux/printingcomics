@@ -5,6 +5,10 @@ export interface SessionClaims {
   sub: string;
   role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
   email: string;
+  /** The account's session version when the cookie was issued; an older one is refused. */
+  sv?: number;
+  /** Filled in per request from the database (not stored in the cookie). */
+  permissions?: string[];
 }
 
 export function signSession(claims: SessionClaims): string {

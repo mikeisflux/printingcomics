@@ -59,6 +59,20 @@ model User {
   // never chosen a password and signs in through emailed links until they
   // do). Existing accounts get their creation time on push.
   passwordSetAt DateTime? @default(now())
+  // A disabled account cannot sign in, and its open sessions stop working.
+  active       Boolean   @default(true)
+  // Which admin areas a STAFF account may use (see server/src/lib/permissions.ts).
+  // Admins have every area; customers none.
+  permissions  String[]  @default([])
+  // Bumped to sign the account out everywhere: a session whose version is
+  // older than this is refused.
+  sessionVersion Int     @default(0)
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+  // Staff-only notes about the account (never shown to the customer).
+  notes        String?
+  // The staff member who created this account from the admin, if any.
+  createdBy    String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -77,8 +91,26 @@ model User {
   partnersCreated        Partner[]            @relation("PartnerCreator")
   applicationsReviewed   PartnerApplication[] @relation("ApplicationReviewer")
   projectsCreated        PartnerProject[]     @relation("ProjectCreator")
+  events                 UserEvent[]
 
   @@index([partnerId])
+  @@index([role, active])
+}
+
+// What happened to an account and who did it: created, signed in, role or
+// permissions changed, password set, reset link sent, disabled, deleted…
+model UserEvent {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  // The staff member who acted (null for the user's own actions, e.g. signing in).
+  actorEmail String?
+  action     String
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // Single-use password reset tokens. tokenHash is sha256(rawToken) so

@@ -9,6 +9,8 @@ export interface CurrentUser {
   lastName?: string | null;
   /** False for accounts created at checkout until the customer chooses a password. */
   hasPassword?: boolean;
+  /** Admin areas this account may use (every area for an admin). */
+  permissions?: string[];
 }
 
 interface AuthState {

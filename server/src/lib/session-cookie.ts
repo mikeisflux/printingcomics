@@ -3,8 +3,8 @@ import { config, isProd } from '../config.js';
 import { signSession } from './jwt.js';
 
 /** Sign the user in: a 30-day session cookie, same as the login form issues. */
-export function startSession(res: Response, user: { id: string; role: 'CUSTOMER' | 'STAFF' | 'ADMIN'; email: string }): void {
-  const token = signSession({ sub: user.id, role: user.role, email: user.email });
+export function startSession(res: Response, user: { id: string; role: 'CUSTOMER' | 'STAFF' | 'ADMIN'; email: string; sessionVersion?: number }): void {
+  const token = signSession({ sub: user.id, role: user.role, email: user.email, sv: user.sessionVersion ?? 0 });
   res.cookie(config.sessionCookie, token, {
     httpOnly: true,
     sameSite: 'lax',

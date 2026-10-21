@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -7,11 +7,18 @@ import { startSession } from '../lib/session-cookie.js';
 import { config } from '../config.js';
 import { HttpError } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
-import { sendEmail } from '../lib/mailgun.js';
-import { getSetting } from '../lib/settings.js';
 import { attachOrdersToUser, verifyMagicToken } from '../lib/customer-accounts.js';
+import { sendSetPasswordEmail } from '../lib/password-reset.js';
+import { effectivePermissions } from '../lib/permissions.js';
 
 const router = Router();
+
+/** Note a sign-in on the account: when, from where, and in its activity. */
+async function recordLogin(req: Request, userId: string, how: 'password' | 'link'): Promise<void> {
+  const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() || req.ip || null;
+  await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date(), lastLoginIp: ip } }).catch(() => undefined);
+  await prisma.userEvent.create({ data: { userId, action: 'login', details: { how }, ip } }).catch(() => undefined);
+}
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -20,41 +27,6 @@ const registerSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
 });
 
-
-/** Email a link that lets the owner of an existing account choose a password. */
-async function sendSetPasswordEmail(user: { id: string; email: string }, kind: 'reset' | 'claim'): Promise<void> {
-  const rawToken = randomBytes(32).toString('hex');
-  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-  await prisma.passwordReset.create({
-    data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
-  });
-  const publicUrl = (await getSetting<string>('store.publicUrl')) ?? '';
-  const resetLink = `${publicUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
-  const heading = kind === 'claim' ? 'Finish setting up your account' : 'Reset your password';
-  const intro = kind === 'claim'
-    ? 'An account for this email already exists — it was created when you ordered. Choose a password with the link below and everything you have ordered will be waiting in it.'
-    : 'Click the link below to choose a new password.';
-  const html = `
-    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:auto">
-      <h2>${heading}</h2>
-      <p>${intro} The link expires in 1 hour.</p>
-      <p><a href="${resetLink}" style="background:#C61A22;color:#fff;padding:.6rem 1rem;border-radius:6px;text-decoration:none;display:inline-block">${kind === 'claim' ? 'Choose a password' : 'Reset password'}</a></p>
-      <p style="color:#666;font-size:.85rem">If you didn't request this, ignore this email — nothing changes.</p>
-    </div>
-  `;
-  try {
-    await sendEmail({
-      to: { email: user.email },
-      subject: kind === 'claim' ? 'Finish setting up your Printing Comics account' : 'Reset your Printing Comics password',
-      html,
-      text: `${heading}: ${resetLink}\n\nThe link expires in 1 hour.`,
-      tags: ['password-reset'],
-    });
-  } catch (e: any) {
-    // eslint-disable-next-line no-console
-    console.warn('[set-password email] Mailgun send failed:', e.message);
-  }
-}
 
 router.post('/register', async (req: Request, res: Response) => {
   const data = registerSchema.parse(req.body);
@@ -94,7 +66,9 @@ router.get('/magic', async (req: Request, res: Response) => {
   if (!parsed || !user) {
     return res.redirect('/login?expired=1&redirect=' + encodeURIComponent('/account/proofs'));
   }
+  if (!user.active) return res.redirect('/login?disabled=1');
   await attachOrdersToUser(user.id, user.email);
+  await recordLogin(req, user.id, 'link');
   startSession(res, user);
   // An account that has never had a password finishes setting itself up
   // (name + password) before it sees anything; then it lands where the
@@ -114,10 +88,12 @@ router.post('/login', async (req: Request, res: Response) => {
   if (!user) throw new HttpError(401, 'Invalid credentials');
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw new HttpError(401, 'Invalid credentials');
+  if (!user.active) throw new HttpError(403, 'This account has been disabled. Contact us if you think that is a mistake.');
   await attachOrdersToUser(user.id, user.email);
+  await recordLogin(req, user.id, 'password');
 
   startSession(res, user);
-  res.json({ user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, hasPassword: user.passwordSetAt !== null } });
+  res.json({ user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, hasPassword: user.passwordSetAt !== null, permissions: effectivePermissions(user) } });
 });
 
 router.post('/logout', (_req: Request, res: Response) => {
@@ -154,8 +130,9 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   await prisma.$transaction([
     prisma.user.update({
       where: { id: reset.userId },
-      data: { passwordHash: await hashPassword(password), passwordSetAt: new Date() },
+      data: { passwordHash: await hashPassword(password), passwordSetAt: new Date(), sessionVersion: { increment: 1 } },
     }),
+    prisma.userEvent.create({ data: { userId: reset.userId, action: 'password_reset_used' } }),
     prisma.passwordReset.update({
       where: { id: reset.id },
       data: { usedAt: new Date() },
@@ -173,12 +150,13 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({
     where: { id: req.session!.sub },
     select: {
-      id: true, email: true, role: true, firstName: true, lastName: true, phone: true, passwordSetAt: true,
+      id: true, email: true, role: true, firstName: true, lastName: true, phone: true, passwordSetAt: true, permissions: true, active: true,
     },
   });
-  if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  const { passwordSetAt, ...rest } = user;
-  res.json({ user: { ...rest, hasPassword: passwordSetAt !== null } });
+  if (!user || !user.active) return res.status(401).json({ error: 'Not authenticated' });
+  const { passwordSetAt, permissions, active, ...rest } = user;
+  void active;
+  res.json({ user: { ...rest, hasPassword: passwordSetAt !== null, permissions: effectivePermissions({ role: user.role, permissions }) } });
 });
 
 export default router;

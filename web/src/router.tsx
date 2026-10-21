@@ -45,8 +45,8 @@ import { AdminProducts } from './pages/admin/Products';
 import { AdminProductEdit } from './pages/admin/ProductEdit';
 import { AdminOrders } from './pages/admin/Orders';
 import { AdminOrderDetail } from './pages/admin/OrderDetail';
-import { AdminCustomers } from './pages/admin/Customers';
-import { AdminUserDetail } from './pages/admin/UserDetail';
+import { AdminUsers } from './pages/admin/Users';
+import { AdminUserEdit } from './pages/admin/UserEdit';
 import { AdminCategories } from './pages/admin/Categories';
 import { AdminSettings } from './pages/admin/Settings';
 import { AdminSeo } from './pages/admin/Seo';
@@ -132,8 +132,10 @@ export const router = createBrowserRouter([
       { path: 'products/:id', element: <AdminProductEdit /> },
       { path: 'orders', element: <AdminOrders /> },
       { path: 'orders/:id', element: <AdminOrderDetail /> },
-      { path: 'customers', element: <AdminCustomers /> },
-      { path: 'customers/:id', element: <AdminUserDetail /> },
+      { path: 'customers', element: <AdminUsers mode="customers" /> },
+      { path: 'customers/:id', element: <AdminUserEdit /> },
+      { path: 'users', element: <AdminUsers /> },
+      { path: 'users/:id', element: <AdminUserEdit /> },
       { path: 'categories', element: <AdminCategories /> },
       { path: 'seo', element: <AdminSeo /> },
       { path: 'seo/:productId', element: <AdminSeoDetail /> },

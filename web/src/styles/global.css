@@ -571,3 +571,10 @@ nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4re
   .inbox-side, .inbox-empty { grid-column: 1; }
   .inbox-msg { max-width: 100%; }
 }
+
+/* ---- Users & access ---- */
+.perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .5rem; }
+.perm-item, .role-option { display: flex; gap: .6rem; align-items: flex-start; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; cursor: pointer; margin: 0; font-weight: 500; }
+.perm-item.on, .role-option.on { border-color: var(--brand); background: rgba(198, 26, 34, .04); }
+.perm-item input, .role-option input { margin-top: .2rem; }
+.role-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .5rem; }
