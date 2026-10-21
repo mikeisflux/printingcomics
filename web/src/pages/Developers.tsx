@@ -400,7 +400,7 @@ POST /api/v1/orders
   "email": "creator@example.com",
   "shippingAddress": { "firstName": "Jane", "lastName": "Doe",
     "line1": "123 Main St", "city": "SF", "region": "CA",
-    "postalCode": "94110", "country": "US" },
+    "postalCode": "94110", "country": "US", "phone": "415-555-0100" },
   "items": [
     {
       "productSlug": "art-print-metal-silver",
@@ -524,7 +524,8 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
     "firstName": "Jane", "lastName": "Doe",
     "line1": "123 Main St",
     "city": "San Francisco", "region": "CA",
-    "postalCode": "94110", "country": "US"
+    "postalCode": "94110", "country": "US",
+    "phone": "415-555-0100"
   },
   "items": [
     {
@@ -1149,6 +1150,7 @@ const { order, payment } = await api('/orders', {
       line1: '123 Main St',
       city: 'San Francisco', region: 'CA',
       postalCode: '94110', country: 'US',
+      phone: '415-555-0100',
     },
     items: quote.items.map(i => ({
       productSlug: i.productSlug,

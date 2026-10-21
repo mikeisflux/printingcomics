@@ -35,7 +35,9 @@ const addressSchema = z.object({
   region: z.string().min(1),
   postalCode: z.string().min(1),
   country: z.string().default('US'),
-  phone: z.string().optional(),
+  // A phone number is required on every order: the carrier needs it for
+  // delivery problems and the shop needs it for questions about the order.
+  phone: z.string().trim().min(1, 'shippingAddress.phone is required').refine((v) => v.replace(/\D/g, '').length >= 7, 'shippingAddress.phone must include the area code'),
 });
 
 const itemFileSchema = z.object({

@@ -1579,7 +1579,7 @@ function AddressDisplay({ a }: { a: any }) {
       <div>{a.line1}{a.line2 ? `, ${a.line2}` : ''}</div>
       <div>{a.city}, {a.region} {a.postalCode}</div>
       <div>{a.country}</div>
-      {a.phone && <div className="muted">{a.phone}</div>}
+      {a.phone ? <div><a href={`tel:${String(a.phone).replace(/[^+\d]/g, '')}`}>{a.phone}</a></div> : <div className="muted" style={{ fontSize: '.85rem' }}>No phone number on this order (placed before phone numbers were required).</div>}
     </div>
   );
 }

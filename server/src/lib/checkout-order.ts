@@ -145,6 +145,11 @@ export interface OrderPlacement {
 
 /** The order row (with its lines, files and payment) for a cart's totals. */
 export async function createOrderFromCart(totals: CartTotals, input: CheckoutInput, placement: OrderPlacement) {
+  // Belt and braces: the checkout routes validate this, but no order is
+  // written without a phone number on the shipping address, whatever path
+  // led here.
+  const phone = String(input.shippingAddress?.phone ?? '').replace(/\D/g, '');
+  if (phone.length < 7) throw new HttpError(400, 'A phone number is required on the shipping address.');
   // Link any customer-uploaded print files (referenced by URL in the cart-item
   // options) to their order item, so staff can open them from the order.
   // Matched by URL shape so it works for local, R2 and CDN-hosted uploads
