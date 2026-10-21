@@ -119,6 +119,7 @@ export async function recordOutbound(args: {
   inReplyTo?: string | null;
   references?: string | null;
   linkedSendId?: string | null;
+  attachments?: { filename: string; contentType: string; size: number; storageKey?: string }[];
 }) {
   const row = await prisma.inboundEmail.create({
     data: {
@@ -138,6 +139,7 @@ export async function recordOutbound(args: {
       htmlBody: args.html,
       kind: 'reply',
       linkedSendId: args.linkedSendId ?? null,
+      attachments: args.attachments && args.attachments.length ? (args.attachments as any) : undefined,
       handled: true,
       readAt: new Date(),
     },

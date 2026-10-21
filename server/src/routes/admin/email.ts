@@ -11,6 +11,36 @@ import { sendEmail } from '../../lib/mailgun.js';
 import { runCampaignSend } from '../../lib/email-send.js';
 import { getMailgunConfig } from '../../lib/settings.js';
 import { attachInbound, recordOutbound, snippetOf } from '../../lib/email-threads.js';
+import { attachmentsOf, sendEmailAttachment, storeEmailAttachment, MAX_OUTBOUND_TOTAL, type StoredAttachment } from '../../lib/email-attachments.js';
+
+// Files attached to a reply or a new email: kept in memory until stored and sent.
+const emailFiles = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_OUTBOUND_TOTAL, files: 10 } });
+
+/** Store the uploaded files and shape them for Mailgun; refuse more than the carrier takes. */
+async function takeUploads(req: { files?: unknown }): Promise<{ stored: StoredAttachment[]; outbound: { filename: string; contentBase64: string; contentType: string }[] }> {
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  const total = files.reduce((n, f) => n + f.size, 0);
+  if (total > MAX_OUTBOUND_TOTAL) throw new HttpError(400, `Attachments add up to ${(total / 1048576).toFixed(1)} MB; the most an email can carry is ${Math.round(MAX_OUTBOUND_TOTAL / 1048576)} MB.`);
+  const stored: StoredAttachment[] = [];
+  const outbound: { filename: string; contentBase64: string; contentType: string }[] = [];
+  for (const f of files) {
+    const a = await storeEmailAttachment(f.buffer, f.originalname, f.mimetype);
+    stored.push(a);
+    outbound.push({ filename: a.filename, contentBase64: f.buffer.toString('base64'), contentType: a.contentType });
+  }
+  return { stored, outbound };
+}
+
+/** Multipart fields arrive as strings; JSON bodies as themselves. */
+const flag = (v: unknown): boolean => v === true || v === 'true' || v === '1' || v === 'on';
+
+/** The upload middleware, with its limits explained in words instead of a bare 413. */
+const withFiles = (req: any, res: any, next: any) => emailFiles.array('files', 10)(req, res, (err: any) => {
+  if (!err) return next();
+  if (err?.code === 'LIMIT_FILE_SIZE') return next(new HttpError(413, `That file is bigger than an email can carry (${Math.round(MAX_OUTBOUND_TOTAL / 1048576)} MB).`));
+  if (err?.code === 'LIMIT_FILE_COUNT') return next(new HttpError(400, 'At most 10 files per email.'));
+  next(err);
+});
 
 const router = Router();
 
@@ -328,16 +358,16 @@ function withSignature(text: string, signature: string): string {
  * Send one email and keep it as a conversation: a thread with our message
  * in it, so the inbox shows it and the customer's answer threads back.
  */
-async function startThread(args: { to: string; name?: string | null; subject: string; text: string; html?: string; sentBy?: string | null; signature?: boolean }) {
+async function startThread(args: { to: string; name?: string | null; subject: string; text: string; html?: string; sentBy?: string | null; signature?: boolean; stored?: StoredAttachment[]; outbound?: { filename: string; contentBase64: string; contentType: string }[] }) {
   const cfg = await getMailgunConfig();
   const text = args.signature === false ? args.text : withSignature(args.text, cfg.signature);
   const html = args.html ?? textToHtml(text);
-  const { providerRef } = await sendEmail({ to: { email: args.to, name: args.name ?? undefined }, subject: args.subject, html, text, tags: ['admin-compose'], trackClicks: false });
+  const { providerRef } = await sendEmail({ to: { email: args.to, name: args.name ?? undefined }, subject: args.subject, html, text, tags: ['admin-compose'], trackClicks: false, attachments: args.outbound?.length ? args.outbound : undefined });
   const send = await prisma.emailSend.create({ data: { toEmail: args.to, subject: args.subject, status: 'SENT', providerRef } });
   const thread = await prisma.emailThread.create({
     data: { subject: args.subject, contactEmail: args.to.toLowerCase(), contactName: args.name ?? null, status: 'closed', unreadCount: 0, lastDirection: 'out', lastSnippet: snippetOf(text, html) },
   });
-  await recordOutbound({ threadId: thread.id, toEmail: args.to, toName: args.name, fromEmail: cfg.fromEmail, subject: args.subject, text, html, providerRef, sentBy: args.sentBy, linkedSendId: send.id });
+  await recordOutbound({ threadId: thread.id, toEmail: args.to, toName: args.name, fromEmail: cfg.fromEmail, subject: args.subject, text, html, providerRef, sentBy: args.sentBy, linkedSendId: send.id, attachments: args.stored });
   return { thread, providerRef };
 }
 
@@ -463,21 +493,34 @@ const composeSchema = z.object({
   subject: z.string().min(1).max(300),
   text: z.string().min(1),
 });
-router.post('/threads', async (req, res) => {
+// JSON, or multipart with `files` for attachments.
+router.post('/threads', withFiles, async (req, res) => {
   const data = composeSchema.parse(req.body);
-  const { thread } = await startThread({ to: data.to, name: data.name, subject: data.subject, text: data.text, sentBy: req.session?.email ?? null });
+  const { stored, outbound } = await takeUploads(req);
+  const { thread } = await startThread({ to: data.to, name: data.name || undefined, subject: data.subject, text: data.text, sentBy: req.session?.email ?? null, stored, outbound });
   res.json({ thread: await threadDetail(thread.id) });
+});
+
+/** A stored attachment of a message in this conversation, opened or downloaded by staff. */
+router.get('/threads/:id/attachments/:messageId/:index', async (req, res) => {
+  const m = await prisma.inboundEmail.findFirst({ where: { id: String(req.params.messageId), threadId: String(req.params.id) }, select: { attachments: true } });
+  const a = m ? attachmentsOf(m.attachments)[Number(req.params.index)] : undefined;
+  if (!a) throw new HttpError(404, 'Attachment not found');
+  if (!sendEmailAttachment(res, a, req.query.download === '1')) throw new HttpError(404, 'This attachment was not kept on file.');
 });
 
 const threadReplySchema = z.object({
   text: z.string().min(1),
-  close: z.boolean().optional(),
+  close: z.union([z.boolean(), z.string()]).optional(),
 });
-router.post('/threads/:id/reply', async (req, res) => {
+// JSON, or multipart with `files` for attachments.
+router.post('/threads/:id/reply', withFiles, async (req, res) => {
   const id = String(req.params.id);
   const thread = await prisma.emailThread.findUnique({ where: { id }, include: { messages: { orderBy: { receivedAt: 'asc' } } } });
   if (!thread) throw new HttpError(404, 'Conversation not found');
   const data = threadReplySchema.parse(req.body);
+  const close = flag(data.close);
+  const { stored, outbound } = await takeUploads(req);
   const cfg = await getMailgunConfig();
 
   // Thread the reply under the contact's latest message, with the whole chain in References.
@@ -494,14 +537,15 @@ router.post('/threads/:id/reply', async (req, res) => {
     to: { email: thread.contactEmail, name: thread.contactName ?? undefined },
     subject, html, text, headers, trackClicks: false,
     tags: ['admin-reply'],
+    attachments: outbound.length ? outbound : undefined,
   });
   const send = await prisma.emailSend.create({ data: { toEmail: thread.contactEmail, subject, status: 'SENT', providerRef } });
   await recordOutbound({
     threadId: id, toEmail: thread.contactEmail, toName: thread.contactName, fromEmail: cfg.fromEmail, subject, text, html, providerRef,
-    sentBy: req.session?.email ?? null, inReplyTo: headers['In-Reply-To'] ?? null, references: headers['References'] ?? null, linkedSendId: send.id,
+    sentBy: req.session?.email ?? null, inReplyTo: headers['In-Reply-To'] ?? null, references: headers['References'] ?? null, linkedSendId: send.id, attachments: stored,
   });
   await prisma.inboundEmail.updateMany({ where: { threadId: id, direction: 'in' }, data: { handled: true, readAt: new Date() } });
-  await prisma.emailThread.update({ where: { id }, data: { status: data.close ? 'closed' : 'open', unreadCount: 0 } });
+  await prisma.emailThread.update({ where: { id }, data: { status: close ? 'closed' : 'open', unreadCount: 0 } });
   res.json({ thread: await threadDetail(id), providerRef });
 });
 

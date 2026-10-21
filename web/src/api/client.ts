@@ -23,8 +23,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+/** A multipart POST (files + fields); the browser sets the content type and boundary. */
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', credentials: 'include', body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, body.error ?? 'Request failed', body.details);
+  }
+  return res.json();
+}
+
 export const api = {
   get: <T>(p: string) => request<T>(p),
+  postForm: <T>(p: string, form: FormData) => requestForm<T>(p, form),
   post: <T>(p: string, body?: unknown) =>
     request<T>(p, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(p: string, body?: unknown) =>

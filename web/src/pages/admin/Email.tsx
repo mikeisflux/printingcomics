@@ -61,7 +61,7 @@ interface ThreadRow {
 interface ThreadMessage {
   id: string; direction: 'in' | 'out'; sentBy?: string | null; fromEmail: string; fromName?: string | null; toEmail: string;
   subject: string; textBody?: string | null; strippedText?: string | null; htmlBody?: string | null;
-  attachments?: { filename: string; contentType: string; size: number }[] | null;
+  attachments?: { filename: string; contentType: string; size: number; storageKey?: string }[] | null;
   kind: string; bounceType?: string | null; receivedAt: string; readAt?: string | null;
   delivery?: { status: string; openedAt?: string | null; error?: string | null } | null;
 }
@@ -214,13 +214,23 @@ function ComposeCard({ onCancel, onSent }: { onCancel: () => void; onSent: (thre
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
   const [text, setText] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
-  const canSend = /.+@.+\..+/.test(to.trim()) && subject.trim().length > 0 && text.trim().length > 0 && !busy;
+  const tooBig = files.reduce((n, f) => n + f.size, 0) > MAX_ATTACH_BYTES;
+  const canSend = /.+@.+\..+/.test(to.trim()) && subject.trim().length > 0 && text.trim().length > 0 && !busy && !tooBig;
   const send = async () => {
     setBusy(true);
     try {
-      const r = await api.post<{ thread: ThreadDetail }>('/admin/email/threads', { to: to.trim(), name: name.trim() || undefined, subject: subject.trim(), text });
-      toast.success(`Sent to ${to.trim()}.`);
+      let r: { thread: ThreadDetail };
+      if (files.length > 0) {
+        const form = new FormData();
+        form.set('to', to.trim()); if (name.trim()) form.set('name', name.trim()); form.set('subject', subject.trim()); form.set('text', text);
+        for (const f of files) form.append('files', f, f.name);
+        r = await api.postForm<{ thread: ThreadDetail }>('/admin/email/threads', form);
+      } else {
+        r = await api.post<{ thread: ThreadDetail }>('/admin/email/threads', { to: to.trim(), name: name.trim() || undefined, subject: subject.trim(), text });
+      }
+      toast.success(`Sent to ${to.trim()}${files.length ? ` with ${files.length} attachment${files.length === 1 ? '' : 's'}` : ''}.`);
       await onSent(r.thread);
     } catch (e) { toast.error(errorMessage(e, 'Send failed')); }
     finally { setBusy(false); }
@@ -237,10 +247,45 @@ function ComposeCard({ onCancel, onSent }: { onCancel: () => void; onSent: (thre
       <input id="compose-subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
       <label htmlFor="compose-text">Message</label>
       <textarea id="compose-text" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your message…" />
-      <TemplatePicker onPick={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${t}` : t))} onSubject={(s) => { if (!subject.trim()) setSubject(s); }} />
+      <div className="row" style={{ gap: '.75rem', marginTop: '.5rem', flexWrap: 'wrap' }}>
+        <TemplatePicker onPick={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${t}` : t))} onSubject={(s) => { if (!subject.trim()) setSubject(s); }} />
+        <AttachFiles files={files} onChange={setFiles} inputId="compose-files" />
+      </div>
       <div className="row" style={{ marginTop: '.75rem' }}>
         <button type="button" className="btn" disabled={!canSend} onClick={() => void send()}>{busy ? 'Sending…' : 'Send email'}</button>
       </div>
+    </div>
+  );
+}
+
+/** The most an email can carry (Mailgun's limit is 25 MB in all). */
+const MAX_ATTACH_BYTES = 20 * 1024 * 1024;
+const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+/** Files to go with a reply or a new email: pick, see, remove. */
+function AttachFiles({ files, onChange, inputId }: { files: File[]; onChange: (next: File[]) => void; inputId: string }) {
+  const total = files.reduce((n, f) => n + f.size, 0);
+  return (
+    <div className="attach-files" data-testid="attach-files">
+      <label htmlFor={inputId} className="btn secondary sm" style={{ margin: 0, cursor: 'pointer' }}>📎 Attach files</label>
+      <input
+        id={inputId}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => { const picked = Array.from(e.target.files ?? []); if (picked.length) onChange([...files, ...picked]); e.target.value = ''; }}
+      />
+      {files.length > 0 && (
+        <ul className="attach-list">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${i}`}>
+              <span>{f.name} <span className="muted">{fmtSize(f.size)}</span></span>
+              <button type="button" className="inbox-link" onClick={() => onChange(files.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>remove</button>
+            </li>
+          ))}
+          <li className={total > MAX_ATTACH_BYTES ? 'field-error' : 'muted'} style={{ fontSize: '.8rem' }}>{fmtSize(total)} of {fmtSize(MAX_ATTACH_BYTES)}{total > MAX_ATTACH_BYTES ? ' — too much for one email' : ''}</li>
+        </ul>
+      )}
     </div>
   );
 }
@@ -276,6 +321,8 @@ function Conversation({ thread, onUpdated, onReplied, onClose, onReopen, onUnrea
 }) {
   const toast = useToast();
   const [reply, setReply] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const tooBig = files.reduce((n, f) => n + f.size, 0) > MAX_ATTACH_BYTES;
   const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState(thread.notes ?? '');
   const [showFull, setShowFull] = useState<Record<string, boolean>>({});
@@ -288,9 +335,17 @@ function Conversation({ thread, onUpdated, onReplied, onClose, onReopen, onUnrea
     if (!reply.trim()) return;
     setBusy(true);
     try {
-      const r = await api.post<{ thread: ThreadDetail }>(`/admin/email/threads/${thread.id}/reply`, { text: reply, close });
-      setReply('');
-      toast.success(close ? 'Reply sent and conversation closed.' : 'Reply sent.');
+      let r: { thread: ThreadDetail };
+      if (files.length > 0) {
+        const form = new FormData();
+        form.set('text', reply); form.set('close', close ? 'true' : 'false');
+        for (const f of files) form.append('files', f, f.name);
+        r = await api.postForm<{ thread: ThreadDetail }>(`/admin/email/threads/${thread.id}/reply`, form);
+      } else {
+        r = await api.post<{ thread: ThreadDetail }>(`/admin/email/threads/${thread.id}/reply`, { text: reply, close });
+      }
+      setReply(''); setFiles([]);
+      toast.success(close ? 'Reply sent and conversation closed.' : `Reply sent${files.length ? ` with ${files.length} attachment${files.length === 1 ? '' : 's'}` : ''}.`);
       await onReplied(r.thread);
     } catch (e) { toast.error(errorMessage(e, 'Reply failed')); }
     finally { setBusy(false); }
@@ -353,10 +408,21 @@ function Conversation({ thread, onUpdated, onReplied, onClose, onReopen, onUnrea
                   <button type="button" className="inbox-link" onClick={() => setShowFull({ ...showFull, [m.id]: !full })}>{full ? 'Show the reply only' : 'Show the full message as sent'}</button>
                 )}
                 {m.attachments && m.attachments.length > 0 && (
-                  <div className="muted" style={{ fontSize: '.82rem', marginTop: '.4rem' }}>
-                    📎 {m.attachments.map((a) => `${a.filename} (${a.size >= 1048576 ? `${(a.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(a.size / 1024))} KB`})`).join(', ')}
-                    <span> — attachments are kept in your Mailgun account's stored messages.</span>
-                  </div>
+                  <ul className="inbox-attachments" data-testid="attachments">
+                    {m.attachments.map((a, i) => (
+                      <li key={i}>
+                        {a.storageKey ? (
+                          <>
+                            <a href={`/api/admin/email/threads/${thread.id}/attachments/${m.id}/${i}`} target="_blank" rel="noreferrer">📎 {a.filename}</a>
+                            <span className="muted"> {fmtSize(a.size)} · </span>
+                            <a href={`/api/admin/email/threads/${thread.id}/attachments/${m.id}/${i}?download=1`} className="muted" style={{ fontSize: '.8rem' }}>download</a>
+                          </>
+                        ) : (
+                          <span className="muted">📎 {a.filename} {fmtSize(a.size)} — not kept on file (arrived before attachments were stored)</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </article>
             );
@@ -370,10 +436,13 @@ function Conversation({ thread, onUpdated, onReplied, onClose, onReopen, onUnrea
           <div className="inbox-reply">
             <label htmlFor="reply-text" style={{ marginTop: 0 }}>Reply to {thread.contactName || thread.contactEmail}</label>
             <textarea id="reply-text" rows={6} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={`Hi ${thread.contactName?.split(' ')[0] || ''},\n\n`} data-testid="reply-text" />
-            <TemplatePicker onPick={(t) => setReply((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${t}` : t))} />
+            <div className="row" style={{ gap: '.75rem', marginTop: '.5rem', flexWrap: 'wrap' }}>
+              <TemplatePicker onPick={(t) => setReply((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${t}` : t))} />
+              <AttachFiles files={files} onChange={setFiles} inputId="reply-files" />
+            </div>
             <div className="row" style={{ gap: '.5rem', marginTop: '.6rem', flexWrap: 'wrap' }}>
-              <button type="button" className="btn" disabled={busy || !reply.trim()} onClick={() => void send(false)} data-testid="reply-send">{busy ? 'Sending…' : 'Send reply'}</button>
-              <button type="button" className="btn secondary" disabled={busy || !reply.trim()} onClick={() => void send(true)} data-testid="reply-send-close">Send &amp; close</button>
+              <button type="button" className="btn" disabled={busy || !reply.trim() || tooBig} onClick={() => void send(false)} data-testid="reply-send">{busy ? 'Sending…' : 'Send reply'}</button>
+              <button type="button" className="btn secondary" disabled={busy || !reply.trim() || tooBig} onClick={() => void send(true)} data-testid="reply-send-close">Send &amp; close</button>
               <span className="muted" style={{ fontSize: '.8rem' }}>Threaded under their message; your signature from Settings → Email is added.</span>
             </div>
           </div>

@@ -126,6 +126,9 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
         {show('settings') && <Item to="/admin/settings">Settings</Item>}
         {show('settings') && <Item to="/admin/security">Security</Item>}
       </nav>
+      <div style={{ padding: '.5rem 1.5rem' }}>
+        <a href="/" style={{ color: '#ddd', fontSize: '.85rem' }}>← View the store</a>
+      </div>
       <div style={{ marginTop: 'auto', padding: '1rem 1.5rem', borderTop: '1px solid #333' }}>
         <div style={{ fontSize: '.8rem', color: '#aaa', overflowWrap: 'anywhere' }}>{user.email}<div style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>{user.role === 'ADMIN' ? 'Admin' : 'Staff'}</div></div>
         <button

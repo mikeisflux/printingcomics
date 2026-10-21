@@ -4,12 +4,13 @@ import multer from 'multer';
 import { prisma } from '../../db.js';
 import { getMailgunConfig } from '../../lib/settings.js';
 import { attachInbound } from '../../lib/email-threads.js';
+import { storeEmailAttachment, type StoredAttachment } from '../../lib/email-attachments.js';
 
 const router = Router();
 
-// Mailgun's inbound webhook is multipart/form-data. We don't need to keep
-// any uploaded attachments ourselves — Mailgun hosts them at signed URLs
-// we store as metadata — so use memoryStorage and toss the buffers.
+// Mailgun's inbound webhook is multipart/form-data; attached files arrive
+// in it and are kept on disk (see lib/email-attachments.ts) so staff can
+// open them from the inbox.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 // Mailgun webhook payload shape (events):
@@ -152,16 +153,18 @@ router.post('/inbound', upload.any(), async (req, res) => {
     }
   }
 
-  // Parse Mailgun's attachment metadata. Each attached file is posted as
-  // "attachment-N" with the file content — we don't store the bytes, just
-  // the filename + content-type + size so the admin sees "[PDF] proof.pdf"
-  // and can grab the full file from the Messages API if needed.
+  // Each attached file is posted as "attachment-N" with its bytes: keep
+  // them, so the inbox can open and forward them.
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
-  const attachments = files.map((x) => ({
-    filename: x.originalname,
-    contentType: x.mimetype,
-    size: x.size,
-  }));
+  const attachments: StoredAttachment[] = [];
+  for (const x of files) {
+    try {
+      attachments.push(await storeEmailAttachment(x.buffer, x.originalname, x.mimetype));
+    } catch (e: any) {
+      console.warn('[email] could not store an attachment:', e?.message ?? e);
+      attachments.push({ filename: x.originalname, contentType: x.mimetype, size: x.size });
+    }
+  }
 
   // message-headers is a JSON string of [["Name", "Value"], ...]
   let rawHeaders: Record<string, string> | null = null;
@@ -183,7 +186,7 @@ router.post('/inbound', upload.any(), async (req, res) => {
       strippedText: f['stripped-text'] ?? null,
       htmlBody: f['body-html'] ?? null,
       rawHeaders: rawHeaders ?? undefined,
-      attachments: attachments.length ? attachments : undefined,
+      attachments: attachments.length ? (attachments as any) : undefined,
       kind: isBounce ? 'bounce' : 'inbound',
       bounceType,
       linkedSendId,

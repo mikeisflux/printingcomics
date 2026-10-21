@@ -578,3 +578,8 @@ nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4re
 .perm-item.on, .role-option.on { border-color: var(--brand); background: rgba(198, 26, 34, .04); }
 .perm-item input, .role-option input { margin-top: .2rem; }
 .role-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .5rem; }
+
+.inbox-attachments { list-style: none; padding: 0; margin: .5rem 0 0; font-size: .85rem; display: flex; flex-direction: column; gap: .2rem; }
+.attach-files { display: flex; flex-direction: column; gap: .35rem; }
+.attach-list { list-style: none; padding: 0; margin: 0; font-size: .85rem; display: flex; flex-direction: column; gap: .2rem; }
+.attach-list li { display: flex; gap: .75rem; align-items: center; }
