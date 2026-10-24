@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { refundPaypalCapture, verifyOrderPayment, describeVerdict } from '../../lib/payments/paypal/index.js';
@@ -17,7 +17,8 @@ import { previewAdjustment, createAdjustment, cancelAdjustment, adjustmentPayUrl
 import { backfillOrderUploads } from '../../lib/order-files.js';
 import { missingPrintFiles } from '../../lib/print-files.js';
 import { ensureCustomerAccount, magicLink } from '../../lib/customer-accounts.js';
-import { sendAdjustmentRequestEmail } from '../../lib/order-emails.js';
+import { sendAdjustmentRequestEmail, sendPayRequestEmail } from '../../lib/order-emails.js';
+import { createManualOrder, previewManualOrder, orderPayLink, orderPayable, markOrderPaid, type Actor } from '../../lib/manual-order.js';
 import multer from 'multer';
 import { MAX_UPLOAD_BYTES } from '../../config.js';
 import { promises as fs } from 'node:fs';
@@ -84,6 +85,115 @@ router.get('/', async (req, res) => {
     },
   });
   res.json({ orders });
+});
+
+// ---- Orders placed by staff for a customer (see lib/manual-order.ts) ----
+const manualAddress = z.object({
+  firstName: z.string().max(100).default(''),
+  lastName: z.string().max(100).default(''),
+  company: z.string().max(200).nullable().optional(),
+  line1: z.string().max(200).default(''),
+  line2: z.string().max(200).nullable().optional(),
+  city: z.string().max(120).default(''),
+  region: z.string().max(100).default(''),
+  postalCode: z.string().max(20).default(''),
+  country: z.string().max(2).default('US'),
+  phone: z.string().max(40).nullable().optional(),
+});
+const manualLine = z.object({
+  productId: z.string().min(1),
+  variantId: z.string().nullable().optional(),
+  quantity: z.number().int().min(1).max(100_000),
+  // Stored exactly as the storefront stores them: every value a string.
+  options: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional()
+    .transform((o) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'string' ? v : String(v)])) : undefined)),
+  unitPriceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+});
+const manualShipping = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('quote'), optionId: z.string().nullable().optional() }),
+  z.object({ mode: z.literal('manual'), cents: z.number().int().min(0).max(100_000_000), name: z.string().max(100) }),
+]);
+const manualDiscount = z.object({
+  code: z.string().max(60).nullable().optional(),
+  cents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  label: z.string().max(100).nullable().optional(),
+}).nullable().optional();
+const manualTax = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('auto') }),
+  z.object({ mode: z.literal('manual'), cents: z.number().int().min(0).max(100_000_000) }),
+]).nullable().optional();
+const manualPayment = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('link') }),
+  z.object({ mode: z.literal('paid'), provider: z.string().max(40), reference: z.string().max(200).nullable().optional() }),
+  z.object({ mode: z.literal('comp') }),
+]);
+const manualPreviewSchema = z.object({
+  email: z.string().max(200).nullable().optional(),
+  shippingAddress: manualAddress.partial().nullable().optional(),
+  items: z.array(manualLine).min(1).max(100),
+  shipping: manualShipping,
+  discount: manualDiscount,
+  tax: manualTax,
+  ignoreStock: z.boolean().optional(),
+});
+const manualCreateSchema = manualPreviewSchema.extend({
+  email: z.string().email().max(200),
+  firstName: z.string().max(100).nullable().optional(),
+  lastName: z.string().max(100).nullable().optional(),
+  shippingAddress: manualAddress,
+  billingAddress: manualAddress.nullable().optional(),
+  payment: manualPayment,
+  notes: z.string().max(5000).nullable().optional(),
+  sendEmail: z.boolean().optional(),
+});
+
+/** Who is doing this, for the order's timeline. */
+async function actorOf(req: Request): Promise<Actor> {
+  const s = req.session;
+  if (!s?.sub) return { userId: null, email: null, name: null };
+  const u = await prisma.user.findUnique({ where: { id: s.sub }, select: { email: true, firstName: true, lastName: true } });
+  const name = u ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email : s.email ?? null;
+  return { userId: s.sub, email: u?.email ?? s.email ?? null, name };
+}
+
+// Everything the order would be — priced lines, shipping options for the
+// address, discount, tax, total — before it exists.
+router.post('/preview', async (req, res) => {
+  const data = manualPreviewSchema.parse(req.body);
+  res.json({ preview: await previewManualOrder(data) });
+});
+
+router.post('/', async (req, res) => {
+  const data = manualCreateSchema.parse(req.body);
+  const r = await createManualOrder(data, await actorOf(req));
+  res.status(201).json({
+    order: { id: r.order.id, number: r.order.number, status: r.order.status, paymentStatus: r.order.paymentStatus, totalCents: r.order.totalCents },
+    payLink: r.payLink,
+    emailed: r.emailed,
+    emailError: r.emailError,
+  });
+});
+
+// The pay link for an order waiting on its money: to copy, or to email (again).
+router.post('/:id/pay-link', async (req, res) => {
+  const { send } = z.object({ send: z.boolean().optional().default(false) }).parse(req.body ?? {});
+  const order = await prisma.order.findUnique({ where: { id: String(req.params.id) } });
+  if (!order) throw new HttpError(404, 'Order not found');
+  if (!(await orderPayable(order))) throw new HttpError(409, 'This order is not waiting for a payment.');
+  const payLink = await orderPayLink(order.id, order.number);
+  let sent = false; let error: string | null = null;
+  if (send) {
+    const r = await sendPayRequestEmail(order.id, payLink);
+    sent = r.sent; error = r.error ?? null;
+  }
+  res.json({ payLink, sent, error });
+});
+
+// The money arrived another way (cash, check, a PayPal invoice…).
+router.post('/:id/mark-paid', async (req, res) => {
+  const { provider, reference } = z.object({ provider: z.string().min(1).max(40), reference: z.string().max(200).nullable().optional() }).parse(req.body);
+  const order = await markOrderPaid(String(req.params.id), { provider, reference }, await actorOf(req));
+  res.json({ order });
 });
 
 router.get('/:id', async (req, res) => {

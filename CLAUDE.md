@@ -66,6 +66,11 @@ npm run db:studio                    # Prisma Studio
   billed `rate` per box plus the box cost (Settings → Shipping); the quote is
   stored on `Order.shippingQuote`. Carrier codes stay raw in ids and on
   `Shipment`; `lib/carriers.ts` turns them into "UPS Ground" everywhere shown.
+- Staff-placed orders (`/admin/orders/new`) go through `server/src/lib/manual-order.ts`:
+  the same pricing engine, packer and coupon rules as checkout, plus a per-line
+  price override. Payment is a pay link (the customer pays on
+  `/order/:number?t=…&pay=1`, routes in `routes/orders.ts`), "already paid"
+  with a method + reference, or a comp. `Order.source` is `"admin"` for these.
 
 ## Configurator pricing
 

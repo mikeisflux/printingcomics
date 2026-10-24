@@ -6,6 +6,7 @@ import { useCart } from '../store/cart';
 import { useAuth } from '../store/auth';
 import { StatusBadge } from './Account';
 import { ProofOrderCard, useAccountProofs } from './AccountProofs';
+import { PayOrderCard } from '../components/PayOrderCard';
 
 interface ShippingAddress {
   firstName?: string;
@@ -55,6 +56,8 @@ interface Order {
   notes?: string | null;
   payments: Payment[];
   events?: OrderEvent[];
+  /** Set up by staff and still waiting for its money: it is paid on this page. */
+  payable?: boolean;
   items: {
     id: string;
     name: string;
@@ -100,6 +103,8 @@ export function OrderConfirmation() {
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  // Bumped once a payment goes through on this page, to show the paid order.
+  const [tick, setTick] = useState(0);
   const navigate = useNavigate();
   const { load: reloadCart } = useCart();
   const { user } = useAuth();
@@ -129,7 +134,7 @@ export function OrderConfirmation() {
       .get<{ order: Order; viewer?: 'owner' | 'link' }>(`/orders/${number}${viewToken ? `?t=${encodeURIComponent(viewToken)}` : ''}`)
       .then((r) => { setOrder(r.order); setViewer(r.viewer ?? 'owner'); })
       .catch((e) => setError(e.message));
-  }, [number, viewToken]);
+  }, [number, viewToken, tick]);
 
   if (error) {
     return (
@@ -144,6 +149,7 @@ export function OrderConfirmation() {
   const currentIdx = Math.max(0, STATUS_PIPELINE.indexOf(order.status as any));
   const isCancelled = order.status === 'CANCELLED' || order.status === 'REFUNDED';
   const paid = order.paymentStatus === 'CAPTURED';
+  const payable = !!order.payable && !paid && !isCancelled;
 
   return (
     <div className="container" style={{ padding: '2rem 0', maxWidth: 880 }}>
@@ -153,9 +159,9 @@ export function OrderConfirmation() {
           width: 64, height: 64, borderRadius: '50%',
           background: paid ? '#d4f5dc' : '#fff3cd',
           fontSize: '2rem', marginBottom: '.75rem',
-        }}>{paid ? '✓' : '⏳'}</div>
+        }}>{paid ? '✓' : payable ? '💳' : '⏳'}</div>
         <h1 style={{ margin: 0 }}>
-          {paid ? 'Thank you!' : 'Order received'}
+          {paid ? 'Thank you!' : payable ? 'Your order is ready to pay' : 'Order received'}
         </h1>
         <p className="muted">
           Order <strong>{order.number}</strong> · {new Date(order.createdAt).toLocaleString()}
@@ -169,12 +175,26 @@ export function OrderConfirmation() {
             Nothing was charged{order.couponCode ? <> — code <strong>{order.couponCode}</strong> covered this order</> : null}.
           </p>
         )}
-        {!paid && !isCancelled && (
+        {payable && (
+          <p className="muted" style={{ margin: '.75rem auto 0', maxWidth: 560 }}>
+            We set this order up for you. Check it over below, then pay securely with PayPal or any card — no account needed.
+          </p>
+        )}
+        {!paid && !isCancelled && !payable && (
           <div style={{ background: '#fff3cd', border: '1px solid #f0d58c', borderRadius: 8, padding: '.75rem 1rem', margin: '1rem auto 0', maxWidth: 560, textAlign: 'left', fontSize: '.92rem' }}>
             <strong>Your payment is still processing at PayPal.</strong> Some payments (bank transfers, payments under review) take a little while to clear. We’ll email you the moment it does, and nothing goes to print until then. <strong>Please don’t pay again</strong> — if the payment doesn’t clear, we’ll let you know.
           </div>
         )}
       </div>
+
+      {payable && (
+        <PayOrderCard
+          number={order.number}
+          viewToken={viewToken}
+          totalCents={order.totalCents}
+          onPaid={() => setTick((t) => t + 1)}
+        />
+      )}
 
       <OrderProofs number={order.number} />
 

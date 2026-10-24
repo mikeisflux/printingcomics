@@ -577,7 +577,7 @@ export function orderPath(r: { orderNumber: string; viewToken?: string }): strin
 }
 
 /** One line a buyer can act on, from whatever shape the SDK or our API threw. */
-function describeError(err: unknown): string {
+export function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message || 'Payment failed. Please try again.';
   if (typeof err === 'string') return err;
@@ -585,7 +585,7 @@ function describeError(err: unknown): string {
   return typeof m === 'string' && m ? m : 'Payment failed. Please try again.';
 }
 
-function SubmitCardButton({ onError }: { onError: (message: string) => void }) {
+export function SubmitCardButton({ onError }: { onError: (message: string) => void }) {
   const { cardFieldsForm } = usePayPalCardFields();
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {

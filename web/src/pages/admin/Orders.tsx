@@ -78,6 +78,7 @@ export function AdminOrders() {
       <PageHeader
         title="Orders"
         subtitle={!loading && !error ? `${orders.length}${orders.length === 100 ? '+' : ''} shown` : undefined}
+        actions={<Link to="/admin/orders/new" className="btn" data-testid="new-order">+ New order</Link>}
       />
 
       <div className="admin-card">

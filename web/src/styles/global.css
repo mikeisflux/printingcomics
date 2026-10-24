@@ -583,3 +583,43 @@ nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4re
 .attach-files { display: flex; flex-direction: column; gap: .35rem; }
 .attach-list { list-style: none; padding: 0; margin: 0; font-size: .85rem; display: flex; flex-direction: column; gap: .2rem; }
 .attach-list li { display: flex; gap: .75rem; align-items: center; }
+
+/* ---- Admin: new order (/admin/orders/new) ---- */
+.order-new { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.5rem; align-items: start; }
+.order-new-aside { position: sticky; top: 1rem; }
+.order-new .admin-card h3 { margin-top: 0; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.on-hits { list-style: none; margin: .25rem 0 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; max-height: 340px; overflow-y: auto; }
+.on-hits li + li { border-top: 1px solid var(--border); }
+.on-hits button { display: flex; align-items: center; gap: .75rem; width: 100%; text-align: left; padding: .6rem .75rem; background: none; border: 0; cursor: pointer; font: inherit; color: inherit; }
+.on-hits button:hover, .on-hits button:focus-visible { background: var(--bg-alt); }
+.on-thumb { display: inline-block; width: 44px; height: 44px; border-radius: 6px; flex-shrink: 0; background: var(--bg-alt) center/cover no-repeat; border: 1px solid var(--border); }
+.on-picked { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-alt); margin-bottom: 1rem; }
+.on-saved { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.on-line { border-top: 1px solid var(--border); padding: 1rem 0; display: grid; gap: .75rem; }
+.on-line-head { display: flex; align-items: center; gap: .75rem; }
+.on-options { display: grid; gap: 1rem; padding: .75rem; background: var(--bg-alt); border-radius: var(--radius); }
+.on-line-nums { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 1rem; align-items: start; }
+.on-radios { display: grid; gap: .6rem; margin-bottom: 1rem; }
+.on-radios label, .on-check { display: flex; align-items: flex-start; gap: .6rem; cursor: pointer; font-weight: 400; text-transform: none; font-size: inherit; letter-spacing: normal; color: inherit; }
+.on-radios input, .on-check input { width: auto; margin: .25rem 0 0; flex-shrink: 0; }
+.on-check { margin-top: .75rem; }
+.on-rates { display: grid; gap: .5rem; }
+.on-rate { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-weight: 400; text-transform: none; font-size: inherit; letter-spacing: normal; color: inherit; }
+.on-rate.selected { border-color: var(--brand); background: #fff5f5; }
+.on-rate input { width: auto; margin: 0; }
+.on-sum-lines { list-style: none; margin: 0 0 .75rem; padding: 0 0 .75rem; border-bottom: 1px solid var(--border); font-size: .9rem; }
+.on-sum-lines li { display: flex; justify-content: space-between; gap: 1rem; padding: .2rem 0; }
+.on-sum-lines li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.order-new-aside .spread { padding: .3rem 0; }
+.on-total { border-top: 1px solid var(--border); margin-top: .5rem; padding-top: .6rem !important; font-weight: 700; font-size: 1.1rem; }
+.on-warn { margin-top: .75rem; padding: .6rem .75rem; background: #fef3c7; border: 1px solid #f0d58c; border-radius: var(--radius); font-size: .85rem; color: #92400e; }
+@media (max-width: 1000px) {
+  .order-new { grid-template-columns: 1fr; }
+  .order-new-aside { position: static; }
+  .grid-3 { grid-template-columns: 1fr; }
+  .on-line-nums { grid-template-columns: 1fr 1fr; }
+}
+
+/* The pay card on a customer's order page (orders staff set up with a pay link) */
+.pay-order { border-left: 5px solid var(--brand); }

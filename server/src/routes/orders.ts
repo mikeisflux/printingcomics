@@ -1,8 +1,10 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { verifyOrderView } from '../lib/order-view.js';
+import { orderPayable } from '../lib/manual-order.js';
+import { createPaypalApprovalForOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 import { completeMediaRequest, isPrintFileKind, orderFilesNeeded, printFileSlotsFor, removeItemPrintFile, storeItemPrintFile } from '../lib/print-files.js';
 import { customerUpload } from './proofs.js';
 import { promises as fs } from 'node:fs';
@@ -115,8 +117,50 @@ router.get('/:number', async (req, res) => {
   // artwork for a print) with the current file in each; the raw file rows
   // stay out of the customer's view.
   const items = order.items.map(({ files, ...it }) => ({ ...it, printFiles: printFileSlotsFor({ ...it, files }) }));
+  // An order staff set up with a pay link is paid on this page.
+  const payable = await orderPayable(order);
   // A link viewer sees the order, not the account's actions (reorder…).
-  res.json({ order: { ...order, items }, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
+  res.json({ order: { ...order, items, payable }, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
+});
+
+// ---- Paying for an order staff set up (the pay link's page) ----
+// Whoever holds the link (`?t=`), or the signed-in owner, may pay — and only
+// while the order is still waiting for its money.
+async function orderForPayer(req: Request) {
+  const number = String(req.params.number);
+  const sessionUser = req.session?.sub;
+  const linkedOrderId = verifyOrderView(req.query.t ?? (req.body as { t?: unknown } | undefined)?.t);
+  if (!sessionUser && !linkedOrderId) throw new HttpError(401, 'Not authenticated');
+  const order = await prisma.order.findFirst({
+    where: {
+      number,
+      OR: [
+        ...(sessionUser ? [{ userId: sessionUser }] : []),
+        ...(linkedOrderId ? [{ id: linkedOrderId }] : []),
+      ],
+    },
+  });
+  if (!order) throw new HttpError(404, 'Order not found');
+  if (!(await orderPayable(order))) throw new HttpError(409, 'This order is not waiting for a payment.');
+  return order;
+}
+
+// The PayPal SDK on the order page calls this when the customer clicks Pay.
+router.post('/:number/pay/paypal/create', async (req, res) => {
+  const order = await orderForPayer(req);
+  const r = await createPaypalApprovalForOrder({ orderId: order.id, description: `Printing Comics order ${order.number}` });
+  res.json({ paypalOrderId: r.paypalOrderId });
+});
+
+// …and this once PayPal has the customer's approval. The capture marks the
+// order paid, settles stock and the code, and sends the confirmation.
+router.post('/:number/pay/paypal/capture/:paypalOrderId', async (req, res) => {
+  const order = await orderForPayer(req);
+  const paypalOrderId = String(req.params.paypalOrderId);
+  const payment = await prisma.payment.findFirst({ where: { orderId: order.id, providerRef: paypalOrderId } });
+  if (!payment) throw new HttpError(404, 'That payment does not belong to this order.');
+  const result = await capturePaypalOrder(paypalOrderId);
+  res.json({ status: result.status, orderNumber: result.orderNumber });
 });
 
 // ---- Print files on a placed order: upload into a slot, as the owner ----

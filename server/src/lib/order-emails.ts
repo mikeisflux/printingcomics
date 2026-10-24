@@ -155,6 +155,64 @@ export async function sendOrderCancelledEmail(orderId: string, reason?: string) 
   }
 }
 
+/**
+ * "Your order is set up — here's where to pay." Sent for an order staff
+ * created with a pay link; the link opens the order page, where the customer
+ * pays with PayPal or a card without signing in.
+ */
+export async function sendPayRequestEmail(orderId: string, payUrl: string): Promise<{ sent: boolean; error?: string }> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true, user: { select: { firstName: true } } },
+  });
+  if (!order) return { sent: false, error: 'Order not found' };
+  const storeName = await resolveStoreName();
+  const first = String((order.shippingAddress as any)?.firstName || order.user?.firstName || '').trim();
+  const itemsHtml = order.items.map((i) =>
+    `<tr>
+      <td style="padding:8px;border-bottom:1px solid #eee">${escape(i.name)} × ${i.quantity}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">${formatMoney(i.totalCents)}</td>
+    </tr>`
+  ).join('');
+  const html = `
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto">
+      <h2>Your order is ready to pay</h2>
+      <p>${first ? `Hi ${escape(first)}, we` : 'We'} set up order <strong>${escape(order.number)}</strong> for you. Here is what is in it:</p>
+      <table style="width:100%;border-collapse:collapse;margin-top:1rem">${itemsHtml}</table>
+      <table style="width:100%;margin-top:1rem">
+        <tr><td>Subtotal</td><td style="text-align:right">${formatMoney(order.subtotalCents)}</td></tr>
+        ${order.discountCents > 0 ? `<tr><td>Discount${order.couponCode ? ` (${escape(order.couponCode)})` : ''}</td><td style="text-align:right">−${formatMoney(order.discountCents)}</td></tr>` : ''}
+        <tr><td>Shipping${order.shippingMethod ? ` · ${escape(order.shippingMethod)}` : ''}</td><td style="text-align:right">${order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</td></tr>
+        <tr><td>Tax</td><td style="text-align:right">${formatMoney(order.taxCents)}</td></tr>
+        <tr style="font-weight:700"><td>Total</td><td style="text-align:right">${formatMoney(order.totalCents)}</td></tr>
+      </table>
+      <p style="margin-top:1.5rem"><a href="${payUrl}" style="display:inline-block;padding:12px 22px;background:#c61a22;color:#fff;text-decoration:none;border-radius:6px;font-weight:700">Pay ${formatMoney(order.totalCents)} now</a></p>
+      <p style="color:#666;font-size:0.9rem">Pay securely with PayPal or any major card — no account needed. The link works for 30 days. Nothing ships or prints until the order is paid.</p>
+      <p style="color:#666;font-size:0.9rem">Questions, or something not right? Just reply to this email.</p>
+      <p style="margin-top:2rem;color:#666;font-size:0.9rem">${escape(storeName)}</p>
+    </div>
+  `;
+  try {
+    const { providerRef } = await sendEmail({
+      trackClicks: false,
+      to: { email: order.email },
+      subject: `Order ${order.number} is ready to pay — ${formatMoney(order.totalCents)}`,
+      html,
+      tags: [`order:${order.number}`, 'order-pay-request'],
+    });
+    await prisma.orderStatusEvent.create({
+      data: { orderId: order.id, kind: 'email', message: `Pay link emailed to ${order.email}${providerRef ? ` (${providerRef})` : ''}` },
+    });
+    return { sent: true };
+  } catch (e: any) {
+    const error: string = e?.message ?? 'The email could not be sent';
+    await prisma.orderStatusEvent.create({
+      data: { orderId: order.id, kind: 'email', message: `Failed to email the pay link to ${order.email}: ${error}` },
+    });
+    return { sent: false, error };
+  }
+}
+
 type EmailChange = { itemName: string; diff: { label: string; from: string; to: string }[] };
 
 function changesTableHtml(changes: EmailChange[]): string {

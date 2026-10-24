@@ -8,6 +8,7 @@ import { PageHeader, errorMessage, useConfirm, useToast } from '../../components
 import { FilePreviewModal } from '../../components/PdfPreview';
 import { downloadHref } from '../../lib/files';
 import { matchProofFile, type MatchItem } from '../../lib/proof-match';
+import { PAYMENT_METHODS } from './OrderNew';
 
 interface OrderEvent {
   id: string;
@@ -713,6 +714,10 @@ export function AdminOrderDetail() {
 
       <ProofingCard order={order} onChange={load} />
 
+      {order.paymentStatus !== 'CAPTURED' && order.status === 'PENDING' && (
+        <AwaitingPaymentCard order={order} onChange={load} />
+      )}
+
       <div className="admin-card">
         <h3>Fulfilment</h3>
         <div className="grid-2">
@@ -1084,6 +1089,89 @@ const rateName = (r: { carrier: string | null; service: string | null; carrierNa
  * label price it was quoted at, the boxes, any adjustment — beside what the
  * labels bought so far cost, so a gap is visible at a glance.
  */
+/**
+ * An order waiting for its money. A staff-created order has a pay link (the
+ * customer pays with PayPal or a card, no sign-in) to copy or email again;
+ * any unpaid order can be marked paid when the money came another way.
+ */
+function AwaitingPaymentCard({ order, onChange }: { order: OrderFull; onChange: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<'copy' | 'email' | 'mark' | null>(null);
+  const [marking, setMarking] = useState(false);
+  const [provider, setProvider] = useState('check');
+  const [reference, setReference] = useState('');
+  const payLinkable = order.source === 'admin' && order.totalCents > 0;
+
+  const copyLink = async () => {
+    setBusy('copy');
+    try {
+      const r = await api.post<{ payLink: string }>(`/admin/orders/${order.id}/pay-link`, { send: false });
+      try { await navigator.clipboard.writeText(r.payLink); toast.success('Pay link copied.'); } catch { window.prompt('Copy the pay link:', r.payLink); }
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not make the pay link'));
+    } finally { setBusy(null); }
+  };
+  const emailLink = async () => {
+    setBusy('email');
+    try {
+      const r = await api.post<{ sent: boolean; error: string | null }>(`/admin/orders/${order.id}/pay-link`, { send: true });
+      if (r.sent) toast.success(`Pay link emailed to ${order.email}.`);
+      else toast.error(r.error ?? 'The email could not be sent.');
+      onChange();
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not send the email'));
+    } finally { setBusy(null); }
+  };
+  const markPaid = async () => {
+    setBusy('mark');
+    try {
+      await api.post(`/admin/orders/${order.id}/mark-paid`, { provider, reference: reference.trim() || null });
+      toast.success('Order marked paid.');
+      setMarking(false);
+      onChange();
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not mark the order paid'));
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div className="admin-card" data-testid="awaiting-payment" style={{ borderLeft: '5px solid #d97706' }}>
+      <div className="spread" style={{ flexWrap: 'wrap', gap: '.75rem', alignItems: 'flex-start' }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Awaiting payment — {formatMoney(order.totalCents)}</h3>
+          <div className="muted" style={{ fontSize: '.85rem', marginTop: '.25rem' }}>
+            {payLinkable
+              ? 'The customer pays from the pay link (PayPal or any card, no sign-in). Nothing ships or prints until then.'
+              : 'Nothing ships or prints until the order is paid.'}
+          </div>
+        </div>
+        <div className="row" style={{ gap: '.5rem', flexWrap: 'wrap' }}>
+          {payLinkable && <button className="btn secondary" onClick={copyLink} disabled={!!busy} data-testid="copy-pay-link">{busy === 'copy' ? 'Copying…' : 'Copy pay link'}</button>}
+          {payLinkable && <button className="btn secondary" onClick={emailLink} disabled={!!busy}>{busy === 'email' ? 'Sending…' : 'Email pay link'}</button>}
+          <button className="btn" onClick={() => setMarking((v) => !v)} disabled={!!busy} data-testid="mark-paid">Mark as paid…</button>
+        </div>
+      </div>
+      {marking && (
+        <div className="row" style={{ marginTop: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', gap: '.75rem' }}>
+          <div>
+            <label htmlFor="mark-provider">Paid by</label>
+            <select id="mark-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+              {PAYMENT_METHODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '1 1 220px' }}>
+            <label htmlFor="mark-ref">Reference (optional)</label>
+            <input id="mark-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Check number, PayPal invoice id, last 4…" />
+          </div>
+          <button className="btn" onClick={markPaid} disabled={busy === 'mark'} data-testid="mark-paid-confirm">
+            {busy === 'mark' ? 'Saving…' : `Record ${formatMoney(order.totalCents)} received`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QuotePanel({ quote, shippingCents, shippingMethod, shipments }: { quote: ShippingQuote | null; shippingCents: number; shippingMethod: string | null; shipments: ShipmentRow[] }) {
   const bought = shipments.filter((s) => s.rateAmountCents != null);
   const labelsCents = bought.reduce((sum, s) => sum + (s.rateAmountCents ?? 0) + (s.insuranceFeeCents ?? 0), 0);
