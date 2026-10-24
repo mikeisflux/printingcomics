@@ -714,7 +714,7 @@ export function AdminOrderDetail() {
 
       <ProofingCard order={order} onChange={load} />
 
-      {order.paymentStatus !== 'CAPTURED' && order.status === 'PENDING' && (
+      {order.paymentStatus !== 'CAPTURED' && order.status !== 'CANCELLED' && order.status !== 'REFUNDED' && (
         <AwaitingPaymentCard order={order} onChange={load} />
       )}
 
