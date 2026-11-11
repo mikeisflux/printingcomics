@@ -54,6 +54,25 @@ function pageTiers(rows: PageRow[]): { pages: number; cents: number }[] {
   return rows.map((r) => ({ pages: r.pages, cents: cents(r.upgradeUSD) }));
 }
 
+// ---------------------------------------------------------------------------
+// Papers the store doesn't offer right now. They stay in cws-pricing.json and
+// their prices stay in every product's pricingConfig (so old carts, reorders
+// and partner orders still price), but the Cover Type tiles don't show them.
+// To offer one again, take it out of this list and run `npm run db:seed:cws`
+// (`npm run deploy` does that automatically when this file changes).
+//
+// What's offered: Standard Gloss (80# gloss cover) plus the specialty covers —
+// Sketch, Holo-Chrome, Metal Covers, Raised Metal, Glow-in-the-Dark Metal.
+// The interior is 80# gloss text only (see the Interior Paper option below).
+// ---------------------------------------------------------------------------
+const HIDDEN_COVER_TYPES = new Set<string>([
+  'Self Cover',          // the cover printed on the interior stock
+  'Standard Matte',      // 80lb uncoated cover — the Sketch cover is this same stock
+  'Standard Semi-Gloss', // 80lb silk cover
+  'Deluxe Gloss',        // 100lb gloss cover
+  'Premium Gloss',       // 12pt gloss card stock
+]);
+
 interface BuildArgs {
   slug: string;
   name: string;
@@ -212,7 +231,7 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
                   required: true,
                   sortOrder: 10,
                   values: {
-                    create: p.cover.map((c, i) => ({
+                    create: p.cover.filter((c) => !HIDDEN_COVER_TYPES.has(c.label)).map((c, i) => ({
                       label: c.label,
                       subLabel: c.sub,
                       priceModifierCents: cents(c.priceUSD),
@@ -319,9 +338,12 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
             required: true,
             sortOrder: 30,
             values: {
+              // Only 80# gloss text is stocked. The other two stay here,
+              // commented out, to bring back (their page prices are still in
+              // pricingConfig.pages.tiers under uncoated / semigloss).
               create: [
-                { label: 'Uncoated',    subLabel: '60# Uncoated Text', sortOrder: 0 },
-                { label: 'Semi Gloss',  subLabel: '80# Silk Text',     sortOrder: 1 },
+                // { label: 'Uncoated',    subLabel: '60# Uncoated Text', sortOrder: 0 },
+                // { label: 'Semi Gloss',  subLabel: '80# Silk Text',     sortOrder: 1 },
                 { label: 'Gloss',       subLabel: '80# Gloss Text',    sortOrder: 2 },
               ],
             },

@@ -547,6 +547,12 @@ export async function printCostRefs(): Promise<PrintCostRefs> {
       others.push({ slug: p.slug, name: p.name, kind: /^art-print-/.test(p.slug) ? 'extra' : 'unit' });
     }
   }
+  // Stocks the saved mapping still names stay editable even when the store
+  // no longer offers them as a choice: the uncoated cover every metal book
+  // is built on is one (it is not sold on its own any more).
+  const cfg = await loadPrintCosts();
+  for (const l of Object.keys(cfg.interiorStock)) interior.add(l);
+  for (const l of [...Object.keys(cfg.coverStock), cfg.metal.paperCoverType]) if (l) covers.add(l);
   const order = ['a5', 'standard', 'magazine', 'letter'];
   return {
     trims: [...trims.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).map(([key, name]) => ({ key, name })),

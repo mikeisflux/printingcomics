@@ -236,8 +236,8 @@ Content-Type: application/json
       "options": {
         "interior_pages": 32,
         "interior_color": "Full Color",
-        "interior_paper": "80lb Gloss",
-        "cover_paper": "100lb Gloss"
+        "interior_paper": "Gloss",
+        "cover_paper": "Standard Gloss"
       }
     }
   ],
@@ -534,8 +534,8 @@ Authorization: Bearer pc_live_xxxxxxxxxxxxxxxx
       "options": {
         "interior_pages": 32,
         "interior_color": "Full Color",
-        "interior_paper": "80lb Gloss",
-        "cover_paper": "100lb Gloss"
+        "interior_paper": "Gloss",
+        "cover_paper": "Standard Gloss"
       },
       "files": [
         { "uploadId": "cmf12abcde...", "purpose": "cover" },
@@ -1091,8 +1091,8 @@ const quote = await api('/pricing/quote', {
       options: {
         interior_pages: 32,
         interior_color: 'Full Color',
-        interior_paper: '80lb Gloss',
-        cover_paper: '100lb Gloss',
+        interior_paper: 'Gloss',
+        cover_paper: 'Standard Gloss',
       },
     }],
     shippingAddress: { country: 'US', region: 'CA' },

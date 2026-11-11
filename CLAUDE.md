@@ -79,6 +79,11 @@ npm run db:studio                    # Prisma Studio
 - Page / cover / embellishment prices live in `prisma/pricing/cws-pricing.json`
   (mirrors the `*_discount_log.xlsx` spreadsheets). `prisma/seed-cws.ts` compiles
   that JSON into each product's `pricingConfig`.
+- Papers the store doesn't offer stay in the JSON (and keep their prices in
+  `pricingConfig`) but are left out of the option tiles by `HIDDEN_COVER_TYPES`
+  in `seed-cws.ts`, and by the commented-out Interior Paper rows there. Today the
+  store sells 80# gloss cover ("Standard Gloss") + the specialty covers, and
+  80# gloss text ("Gloss") inside. Edit those two spots to offer a paper again.
 - After editing pricing data or `seed-cws.ts`, existing products keep their old
   `pricingConfig` until re-seeded. `npm run deploy` does this automatically —
   it hashes `seed-cws.ts` + `prisma/pricing/*.json` and re-runs `db:seed:cws`

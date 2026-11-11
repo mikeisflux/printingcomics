@@ -168,10 +168,11 @@ export function Product() {
     void api.get<{ product: ProductDetail }>(`/products/${slug}`).then((r) => {
       setProduct(r.product);
       setQty(r.product.minQuantity);
-      // pre-select first value of each non-required tile/select option
+      // pre-select first value of each non-required tile/select option — and
+      // of any option with a single choice (the one interior paper we stock)
       const init: Record<string, string> = {};
       for (const opt of r.product.options) {
-        if ((opt.type === 'TILES' || opt.type === 'SELECT') && opt.values.length > 0 && !opt.required) {
+        if ((opt.type === 'TILES' || opt.type === 'SELECT') && opt.values.length > 0 && (!opt.required || opt.values.length === 1)) {
           init[keyOf(opt)] = opt.values[0]!.label;
         }
       }
