@@ -25,6 +25,7 @@ import { settlePaidOrder } from './paid-order.js';
 import { sendOrderConfirmationEmail, sendPayRequestEmail } from './order-emails.js';
 import { orderViewToken } from './order-view.js';
 import { isTracked, availableItems } from './inventory.js';
+import { assertOfferedOptions } from './order-adjustments.js';
 
 export interface ManualAddress {
   firstName: string; lastName: string; company?: string | null; line1: string; line2?: string | null;
@@ -97,7 +98,10 @@ const PAYMENT_KEYS = new Set(PAYMENT_METHODS.map((m) => m.key));
 
 // The same product shape a cart line carries, so the packer and the stock
 // check see exactly what checkout shows them.
-const lineInclude = { stockPool: true, package: true, variants: true } as const;
+const lineInclude = {
+  stockPool: true, package: true, variants: true,
+  options: { select: { name: true, internalKey: true, type: true, required: true, values: { select: { label: true } } } },
+} as const;
 type ProductForLine = Awaited<ReturnType<typeof loadProducts>>[number];
 async function loadProducts(ids: string[]) {
   return prisma.product.findMany({ where: { id: { in: ids } }, include: lineInclude });
@@ -138,6 +142,8 @@ async function priceLines(lines: ManualLineInput[]): Promise<PricedLineFull[]> {
     const quantity = Math.max(1, Math.floor(Number(line.quantity) || 1));
     const entries = Object.entries(line.options ?? {}).filter(([, v]) => v !== '' && v != null);
     const options = entries.length ? Object.fromEntries(entries) : null;
+    // Staff pick from the same menu as the store: a retired paper cannot be sold by typing its label.
+    assertOfferedOptions(product.options, options ?? {}, undefined, product.name);
     let variant: ProductForLine['variants'][number] | undefined;
     if (line.variantId) {
       variant = product.variants.find((v) => v.id === line.variantId);

@@ -101,25 +101,37 @@ function listUnitCents(cfg: PricingConfig, quantity: number, options: OptionMap)
   return computePricing(cfg, { quantity, options: canon, siteDiscountBps: 0 }).unitCents;
 }
 
+export type OfferedOptionRow = { name: string; internalKey: string | null; type: string; required: boolean; values: { label: string }[] };
+
 /**
- * Reject a selection the storefront would never have produced: a choice-type
- * option set to a value that isn't one of its values, or a required one
- * cleared. Free-text, numbers, toggles and uploads pass through.
+ * Reject a selection the storefront would never offer: a choice-type option
+ * (tiles, dropdown, radio) set to a value that is not one of its current
+ * values, or a required one cleared. Free text, numbers, toggles and uploads
+ * pass through.
+ *
+ * This is the one gate for every way an order can be built — the cart, the
+ * partner API, staff-placed orders and order adjustments — so a paper taken
+ * off the menu (HIDDEN_COVER_TYPES in prisma/seed-cws.ts) cannot be chosen
+ * by label even though its price stays in pricingConfig for orders already
+ * placed. `onlyKeys` limits the check to the keys being changed, so an old
+ * order that still carries a retired choice can have another option edited.
  */
-function validateOptions(productOptions: ProductOptionRow[], options: OptionMap): void {
+export function assertOfferedOptions(productOptions: OfferedOptionRow[], options: OptionMap, onlyKeys?: Set<string>, subject?: string): void {
   const byKey = new Map(productOptions.map((o) => [optionKey(o), o]));
+  const prefix = subject ? `${subject}: ` : '';
   for (const [key, value] of Object.entries(options)) {
+    if (onlyKeys && !onlyKeys.has(key)) continue;
     const opt = byKey.get(key);
     if (!opt) continue; // legacy / free-form key — leave it alone
     const choice = opt.type === 'SELECT' || opt.type === 'RADIO' || opt.type === 'TILES';
     if (!choice) continue;
     const labels = opt.values.map((v) => v.label);
     if (value === '' || value === null || value === undefined) {
-      if (opt.required) throw new HttpError(400, `"${opt.name}" is required.`);
+      if (opt.required) throw new HttpError(400, `${prefix}"${opt.name}" is required.`);
       continue;
     }
     if (!labels.includes(String(value))) {
-      throw new HttpError(400, `"${display(value)}" is not one of the choices for "${opt.name}".`);
+      throw new HttpError(400, `${prefix}"${display(value)}" is not offered for "${opt.name}" — choose one of: ${labels.join(', ')}.`);
     }
   }
 }
@@ -194,7 +206,9 @@ export async function previewAdjustment(orderId: string, inputs: ItemChangeInput
 
     const before = (item.options ?? {}) as OptionMap;
     const after: OptionMap = { ...before, ...input.options };
-    validateOptions(item.product.options as ProductOptionRow[], after);
+    // Only what staff are changing has to be on today's menu; the rest of the
+    // line keeps whatever the customer bought, retired papers included.
+    assertOfferedOptions(item.product.options as ProductOptionRow[], after, new Set(Object.keys(input.options)));
 
     const labelOf = new Map(item.product.options.map((o) => [optionKey(o), o.name]));
     const diff: ItemChange['diff'] = [];

@@ -17,6 +17,7 @@ import { priceForQuantity, type VolumeTier } from '../../lib/money.js';
 import { getSetting } from '../../lib/settings.js';
 import { evaluateCoupon } from '../../lib/coupons.js';
 import { isProofRequested, HARD_COPY_PROOF_FEE_CENTS } from '../../lib/proofs.js';
+import { assertOfferedOptions } from '../../lib/order-adjustments.js';
 
 const router = Router();
 
@@ -64,7 +65,7 @@ router.post('/quote', async (req, res) => {
     }
     const product = await prisma.product.findUnique({
       where: line.productSlug ? { slug: line.productSlug } : { id: line.productId! },
-      include: { variants: true },
+      include: { variants: true, options: { select: { name: true, internalKey: true, type: true, required: true, values: { select: { label: true } } } } },
     });
     if (!product || !product.active) throw new HttpError(404, `Product not found: ${line.productSlug ?? line.productId}`);
     if (line.quantity < product.minQuantity) {
@@ -95,6 +96,9 @@ router.post('/quote', async (req, res) => {
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.modifiers)) {
       Object.assign(optionInputs, canonicalizeOptionValues(cfg, optionInputs));
     }
+    // Only what the catalog lists today can be quoted: a retired paper keeps
+    // its price for orders already placed, but cannot be chosen by label.
+    assertOfferedOptions(product.options, optionInputs, undefined, product.slug);
 
     let breakdown: any = undefined;
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {

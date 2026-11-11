@@ -225,6 +225,14 @@ await fetch('https://printingcomics.com/api/v1/orders', {
               <code>shippingRateId</code> or just the country to receive the available shipping
               options.
             </p>
+            <p>
+              Option values are the labels the catalog lists for that option, sent exactly as{' '}
+              <code>GET /catalog/products/:slug</code> returns them in{' '}
+              <code>options[].values[].label</code>. A value that is not on the menu — a paper we
+              have retired, say — is refused with <code>400</code>, and the message names the
+              current choices. The quote and <code>POST /orders</code> apply the same rule, so a
+              basket that quotes will also order.
+            </p>
             <Code>{`POST /api/v1/pricing/quote
 Content-Type: application/json
 

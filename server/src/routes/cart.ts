@@ -7,7 +7,7 @@ import { priceForQuantity, type VolumeTier } from '../lib/money.js';
 import { computePricing, type PricingConfig } from '../lib/pricing.js';
 import { getSetting } from '../lib/settings.js';
 import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, PROOF_PRODUCT_SLUG, itemTitle } from '../lib/proofs.js';
-import { optionKey } from '../lib/order-adjustments.js';
+import { optionKey, assertOfferedOptions } from '../lib/order-adjustments.js';
 import { assertInStock, isTracked, unitsAlreadyInCart } from '../lib/inventory.js';
 import { isProd } from '../config.js';
 
@@ -170,7 +170,7 @@ router.post('/items', async (req, res) => {
 
   const product = await prisma.product.findUnique({
     where: { id: data.productId },
-    include: { variants: true, stockPool: true, options: { select: { name: true, internalKey: true, type: true, required: true } } },
+    include: { variants: true, stockPool: true, options: { select: { name: true, internalKey: true, type: true, required: true, values: { select: { label: true } } } } },
   });
   if (!product || !product.active) throw new HttpError(404, 'Product not found');
   if (data.quantity < product.minQuantity) {
@@ -179,6 +179,8 @@ router.post('/items', async (req, res) => {
 
   data.options = await guardTitle(cart.id, data.options, product.options);
   guardUploads(data.options, product.options);
+  // Only what the configurator offers today (a retired paper keeps its price for old orders, not for new ones).
+  assertOfferedOptions(product.options, data.options ?? {}, undefined, product.name);
 
   let unitPriceCents = product.priceCents;
   let variantId: string | undefined = data.variantId;
@@ -238,7 +240,7 @@ const updateSchema = z.object({
 
 const editProductInclude = {
   stockPool: true,
-  options: { select: { name: true, internalKey: true, type: true, required: true } },
+  options: { select: { name: true, internalKey: true, type: true, required: true, values: { select: { label: true } } } },
 } as const;
 
 router.patch('/items/:id', async (req, res) => {
@@ -267,6 +269,7 @@ router.patch('/items/:id', async (req, res) => {
     ? await guardTitle(cart.id, data.options, product.options, item.id)
     : ((item.options as Record<string, string> | null) ?? undefined);
   if (data.options !== undefined) guardUploads(options, product.options);
+  if (data.options !== undefined) assertOfferedOptions(product.options, options ?? {}, undefined, product.name);
 
   assertInStock(product, quantity, variant, await unitsAlreadyInCart(cart.id, product, variant?.id, item.id));
 

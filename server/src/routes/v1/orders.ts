@@ -22,6 +22,7 @@ import { evaluateCoupon, redeemCouponForOrder } from '../../lib/coupons.js';
 import { HARD_COPY_PROOF_FEE_CENTS, isProofRequested, getOrCreateProofProduct, itemsRequestProof } from '../../lib/proofs.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { createPaypalApprovalForOrder } from '../../lib/payments/paypal/approval-for-order.js';
+import { assertOfferedOptions } from '../../lib/order-adjustments.js';
 
 const router = Router();
 
@@ -182,7 +183,7 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     }
     const product = await prisma.product.findUnique({
       where: line.productSlug ? { slug: line.productSlug } : { id: line.productId! },
-      include: { variants: true },
+      include: { variants: true, options: { select: { name: true, internalKey: true, type: true, required: true, values: { select: { label: true } } } } },
     });
     if (!product || !product.active) {
       throw new HttpError(404, `Product not found: ${line.productSlug ?? line.productId}`);
@@ -216,6 +217,9 @@ router.post('/', requireApiKey('orders:write'), async (req, res) => {
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.modifiers)) {
       Object.assign(optionInputs, canonicalizeOptionValues(cfg, optionInputs));
     }
+    // Only what the catalog lists today can be ordered: a retired paper keeps
+    // its price for orders already placed, but cannot be chosen by label.
+    assertOfferedOptions(product.options, optionInputs, undefined, product.slug);
     if (cfg && typeof cfg === 'object' && Array.isArray(cfg.qtyTiers)) {
       const siteDiscountBps = Number(await getSetting<number | string>('pricing.siteDiscountBps', 0)) || 0;
       unitPriceCents = computePricing(cfg, { quantity: line.quantity, options: optionInputs, siteDiscountBps }).unitCents;

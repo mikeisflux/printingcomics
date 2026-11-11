@@ -1504,6 +1504,41 @@
       ],
       "cover": [
         {
+          "label": "Self Cover",
+          "priceUSD": 0,
+          "sub": "Same as Interior Selection"
+        },
+        {
+          "label": "Standard Matte",
+          "priceUSD": 0.51,
+          "sub": "80lb Uncoated Cover"
+        },
+        {
+          "label": "Standard Semi-Gloss",
+          "priceUSD": 0.51,
+          "sub": "80lb Silk Cover"
+        },
+        {
+          "label": "Standard Gloss",
+          "priceUSD": 0.47,
+          "sub": "80lb Coated Cover"
+        },
+        {
+          "label": "Deluxe Gloss",
+          "priceUSD": 0.51,
+          "sub": "100lb Gloss Cover"
+        },
+        {
+          "label": "Premium Gloss",
+          "priceUSD": 0.6,
+          "sub": "12pt Gloss Card Stock"
+        },
+        {
+          "label": "Holo-Chrome",
+          "priceUSD": 6.67,
+          "sub": "12pt Holo-Chrome Card Stock"
+        },
+        {
           "label": "Metal Covers",
           "priceUSD": 12.22,
           "sub": "Brushed Metal Cover"
@@ -1711,11 +1746,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2357,11 +2392,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -2757,11 +2792,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -3003,11 +3038,11 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -3403,11 +3438,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -3649,11 +3684,11 @@
         "fullcolor_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -4049,11 +4084,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 232,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 234,
@@ -4295,11 +4330,11 @@
         "fullcolor_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -4495,11 +4530,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -4695,11 +4730,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -4895,11 +4930,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -4941,11 +4976,11 @@
         "fullcolor_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -5141,11 +5176,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -5341,11 +5376,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -5541,11 +5576,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -5759,11 +5794,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -6405,11 +6440,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -6805,11 +6840,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -7051,11 +7086,11 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -7451,11 +7486,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -7697,11 +7732,11 @@
         "fullcolor_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -8097,11 +8132,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 232,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 234,
@@ -8343,11 +8378,11 @@
         "fullcolor_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -8543,11 +8578,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -8743,11 +8778,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -8943,11 +8978,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -8989,11 +9024,11 @@
         "fullcolor_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -9189,11 +9224,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -9389,11 +9424,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -9589,11 +9624,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -9807,11 +9842,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -10453,11 +10488,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -10853,11 +10888,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -11099,11 +11134,11 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -11499,11 +11534,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -11745,11 +11780,11 @@
         "fullcolor_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -12145,11 +12180,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 232,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 234,
@@ -12391,11 +12426,11 @@
         "fullcolor_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -12591,11 +12626,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -12791,11 +12826,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -12991,11 +13026,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -13037,11 +13072,11 @@
         "fullcolor_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -13237,11 +13272,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -13437,11 +13472,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -13637,11 +13672,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -13740,38 +13775,28 @@
       ],
       "cover": [
         {
-          "label": "Self Cover",
-          "priceUSD": 0,
-          "sub": "Same as Interior Selection"
-        },
-        {
           "label": "Standard Matte",
           "priceUSD": 0.51,
           "sub": "80lb Uncoated Cover"
         },
         {
           "label": "Standard Semi-Gloss",
-          "priceUSD": 0.51,
+          "priceUSD": 0.15,
           "sub": "80lb Silk Cover"
         },
         {
           "label": "Standard Gloss",
-          "priceUSD": 0.47,
+          "priceUSD": 0,
           "sub": "80lb Coated Cover"
         },
         {
           "label": "Deluxe Gloss",
-          "priceUSD": 0.51,
+          "priceUSD": 0.15,
           "sub": "100lb Gloss Cover"
         },
         {
-          "label": "Premium Gloss",
-          "priceUSD": 0.6,
-          "sub": "12pt Gloss Card Stock"
-        },
-        {
           "label": "Holo-Chrome",
-          "priceUSD": 6.67,
+          "priceUSD": 5,
           "sub": "12pt Holo-Chrome Card Stock"
         },
         {
@@ -13865,11 +13890,11 @@
         "grayscale_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -14511,11 +14536,11 @@
         "grayscale_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -14911,11 +14936,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -15157,11 +15182,11 @@
         "grayscale_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -15557,11 +15582,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 232,
-            "upgradeUSD": 9.0
+            "upgradeUSD": 9
           },
           {
             "pages": 234,
@@ -15803,11 +15828,11 @@
         "fullcolor_uncoated": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -16203,11 +16228,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 232,
-            "upgradeUSD": 13.0
+            "upgradeUSD": 13
           },
           {
             "pages": 234,
@@ -16449,11 +16474,11 @@
         "fullcolor_semigloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -16649,11 +16674,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -16849,11 +16874,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -17049,11 +17074,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
@@ -17095,11 +17120,11 @@
         "fullcolor_gloss": [
           {
             "pages": 30,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 32,
-            "upgradeUSD": 0.0
+            "upgradeUSD": 0
           },
           {
             "pages": 34,
@@ -17295,11 +17320,11 @@
           },
           {
             "pages": 130,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 132,
-            "upgradeUSD": 7.0
+            "upgradeUSD": 7
           },
           {
             "pages": 134,
@@ -17495,11 +17520,11 @@
           },
           {
             "pages": 230,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 232,
-            "upgradeUSD": 14.0
+            "upgradeUSD": 14
           },
           {
             "pages": 234,
@@ -17695,11 +17720,11 @@
           },
           {
             "pages": 330,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 332,
-            "upgradeUSD": 21.0
+            "upgradeUSD": 21
           },
           {
             "pages": 334,
