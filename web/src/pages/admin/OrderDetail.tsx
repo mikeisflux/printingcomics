@@ -1153,7 +1153,7 @@ const rateName = (r: { carrier: string | null; service: string | null; carrierNa
 function FileRequestDialog({ orderId, orderEmail, item, onClose, onDone }: {
   orderId: string;
   orderEmail: string;
-  item: { id: string; name: string; options?: any; printFileKinds?: string[] };
+  item: { id: string; name: string; options?: any; printFileKinds?: string[]; files?: { purpose: string | null; media: { originalName: string } }[] };
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -1180,6 +1180,8 @@ function FileRequestDialog({ orderId, orderEmail, item, onClose, onDone }: {
 
   const toggle = (set: typeof setPicked) => (key: string) => set((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const needsTemplate = !!defs?.some((d) => why.has(d.key) && d.template);
+  // What sending this deletes: the current file in each spot asked for.
+  const doomed = [...picked].map((k) => ({ kind: k, names: (item.files ?? []).filter((f) => f.purpose === k).map((f) => f.media.originalName) }));
   const otherOnly = why.has('other') && !note.trim();
   const groups: { key: FileRequestReasonDef['group']; title: string }[] = [
     { key: 'size', title: 'Size & bleed — the email links to the template' },
@@ -1194,12 +1196,13 @@ function FileRequestDialog({ orderId, orderEmail, item, onClose, onDone }: {
     if (otherOnly) { setError('Say what is wrong in the note when the reason is "Something else".'); return; }
     setBusy(true);
     try {
-      const r = await api.post<{ emailed: boolean; emailError: string | null }>(`/admin/orders/${orderId}/items/${item.id}/file-request`, {
+      const r = await api.post<{ emailed: boolean; emailError: string | null; removed: string[] }>(`/admin/orders/${orderId}/items/${item.id}/file-request`, {
         kinds: [...picked], reasons: [...why], note: note.trim() || null, send,
       });
-      if (!send) toast.success('File request recorded. Use "Copy upload link" to send it another way.');
-      else if (r.emailed) toast.success(`Request emailed to ${orderEmail}.`);
-      else toast.error(`Request recorded, but the email failed${r.emailError ? ` (${r.emailError})` : ''}.`);
+      const gone = r.removed?.length ? ` ${r.removed.length === 1 ? 'The old file was' : 'The old files were'} deleted from the order.` : '';
+      if (!send) toast.success(`File request recorded.${gone} Use "Copy upload link" to send it another way.`);
+      else if (r.emailed) toast.success(`Request emailed to ${orderEmail}.${gone}`);
+      else toast.error(`Request recorded${gone ? ` and the old file deleted` : ''}, but the email failed${r.emailError ? ` (${r.emailError})` : ''}.`);
       onDone();
     } catch (e) {
       setError(errorMessage(e, 'Could not send the request'));
@@ -1259,6 +1262,17 @@ function FileRequestDialog({ orderId, orderEmail, item, onClose, onDone }: {
         {needsTemplate && (
           <div style={{ marginTop: '.75rem', padding: '.6rem .75rem', background: '#fffbeb', border: '1px solid #f0d58c', borderRadius: 8, fontSize: '.85rem' }}>
             The email will include a download link to the print template for this book’s size, with the trim, bleed and safe area marked.
+          </div>
+        )}
+        {doomed.length > 0 && (
+          <div data-testid="req-deletes" style={{ marginTop: '.75rem', padding: '.6rem .75rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: '.85rem', color: '#991b1b' }}>
+            {doomed.map((d) => (
+              <div key={d.kind}>
+                {d.names.length > 0
+                  ? <>Sending this <strong>deletes the current {PRINT_FILE_LABELS[d.kind as keyof typeof PRINT_FILE_LABELS]}</strong> ({d.names.join(', ')}) from the order. Only the corrected upload will be kept.</>
+                  : <>There is no {PRINT_FILE_LABELS[d.kind as keyof typeof PRINT_FILE_LABELS]} on the order yet; the customer will be asked for one.</>}
+              </div>
+            ))}
           </div>
         )}
 

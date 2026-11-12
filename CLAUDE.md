@@ -70,6 +70,11 @@ npm run db:studio                    # Prisma Studio
   `MediaRequest` per file (`orderItemId` + `kind` + `reasons`), one email with
   the reasons, what to send, and the trim-size template for size/bleed reasons;
   it closes itself when that slot gets a newer upload (`lib/print-files.ts`).
+  A print-file spot holds only its newest file: the rejected file is deleted
+  when the request goes out, a replacement deletes what it replaced, and
+  `pruneSupersededPrintFiles` (run on upload and when staff open the order)
+  tidies older orders. The item's upload option is cleared with the file so the
+  backfill cannot link it back.
 - Staff-placed orders (`/admin/orders/new`) go through `server/src/lib/manual-order.ts`:
   the same pricing engine, packer and coupon rules as checkout, plus a per-line
   price override. Payment is a pay link (the customer pays on

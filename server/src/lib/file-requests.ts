@@ -10,7 +10,7 @@
  */
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
-import { PRINT_FILE_LABELS, printFileInstructions, expectedPagesFor, printFileKindsFor, isPrintFileKind, type PrintFileKind } from './print-files.js';
+import { PRINT_FILE_LABELS, printFileInstructions, expectedPagesFor, printFileKindsFor, isPrintFileKind, rejectItemPrintFile, type PrintFileKind } from './print-files.js';
 import { itemLabel, itemTitle, proofToken } from './proofs.js';
 import { ensureCustomerAccount, magicLink } from './customer-accounts.js';
 import { storeName, baseUrl, esc, btn, wrap, trySend, type EmailResult } from './proof-emails.js';
@@ -145,7 +145,13 @@ export async function createFileRequests(args: {
       message: `Requested a new ${kinds.map((k) => PRINT_FILE_LABELS[k]).join(' and ')} for ${itemLabel(item)} — ${labels.join(', ')}${note ? ` — ${note}` : ''}`,
     },
   });
-  return { requests, item };
+  // The file that was wrong does not stay on the order: only the corrected
+  // upload will be there, so nothing old can reach production by mistake.
+  const removed: string[] = [];
+  for (const kind of kinds) {
+    removed.push(...await rejectItemPrintFile({ orderItemId: item.id, kind, why: `after a file request (${labels.join(', ')})` }));
+  }
+  return { requests, item, removed };
 }
 
 /**

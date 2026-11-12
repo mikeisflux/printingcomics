@@ -19,7 +19,7 @@ import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { proofKindsForItem, itemLabel } from './proofs.js';
 import { pageCount, popplerProblem } from './pdf-preview.js';
-import { publishUpload } from './storage.js';
+import { publishUpload, deleteStored } from './storage.js';
 import { notifyStaff } from './proof-emails.js';
 
 export type PrintFileKind = 'cover' | 'interior' | 'artwork';
@@ -229,6 +229,8 @@ export async function storeItemPrintFile(args: {
   const what = `${label} for ${itemLabel(item)}: ${args.file.originalname}${pages ? ` (${pages} pages)` : ''}`;
   await prisma.orderStatusEvent.create({ data: { orderId: item.order.id, kind: 'status', message: `Customer uploaded ${what} via ${args.via}` } });
   await notifyStaff(item.order.id, `${label} uploaded — order ${item.order.number}`, `The customer uploaded a ${what} on order ${item.order.number}.`);
+  // The new file is the spot's only file now: whatever it replaced is deleted.
+  await pruneSupersededPrintFiles(item.order.id);
   await autoFulfilMediaRequests(item.order.id);
 
   return {
@@ -237,13 +239,70 @@ export async function storeItemPrintFile(args: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// One file per spot. A spot holds its current file and nothing else: when a
+// file is rejected, replaced or removed, the old one is deleted — the row, and
+// the bytes unless another order or a proof still uses them — so no stale
+// version can reach production, and the order page lists only what is live.
+// ---------------------------------------------------------------------------
+
+type FileRow = { id: string; notes: string | null; media: { id: string; url: string; filename: string; folder: string; originalName: string } };
+
+/** Delete one file row from a line, and the stored file when nothing else points at it. */
+async function deleteFileRow(f: FileRow): Promise<string> {
+  const m = f.media;
+  await prisma.orderItemFile.delete({ where: { id: f.id } }).catch(() => undefined);
+  const [otherItems, proofs] = await Promise.all([
+    prisma.orderItemFile.count({ where: { mediaFileId: m.id } }),
+    prisma.proof.count({ where: { mediaFileId: m.id } }),
+  ]);
+  if (otherItems === 0 && proofs === 0) {
+    await deleteStored(m).catch(() => undefined);
+    await prisma.mediaFile.delete({ where: { id: m.id } }).catch(() => undefined);
+  }
+  const pages = pagesFromNotes(f.notes);
+  return `${m.originalName}${pages ? ` (${pages} pages)` : ''}`;
+}
+
+/**
+ * The upload made in the configurator is also the value of the item's upload
+ * option (cover_pdf, interior_pdf, upload), and the next backfill would link
+ * it back. Keep the option only while it names the spot's current file.
+ */
+async function syncUploadOption(item: { id: string; options: unknown }, kind: PrintFileKind, currentUrl: string | null): Promise<boolean> {
+  const optionKey = Object.entries(PRINT_FILE_KIND_BY_OPTION_KEY).find(([, k]) => k === kind)?.[0];
+  if (!optionKey) return false;
+  const options = (item.options && typeof item.options === 'object' ? item.options : {}) as Record<string, unknown>;
+  const value = typeof options[optionKey] === 'string' ? (options[optionKey] as string).trim() : '';
+  if (!value || value === currentUrl) return false;
+  const { [optionKey]: _gone, ...rest } = options;
+  await prisma.orderItem.update({ where: { id: item.id }, data: { options: rest as any } });
+  return true;
+}
+
+/**
+ * Every file ever uploaded into a spot except the newest goes, on every line
+ * of the order; legacy "removed" markers go too. Run after an upload and when
+ * staff open the order, so orders from before this rule tidy themselves.
+ */
+export async function pruneSupersededPrintFiles(orderId: string): Promise<number> {
+  const items = await prisma.orderItem.findMany({ where: { orderId }, include: { files: { include: { media: true } } } });
+  let pruned = 0;
+  for (const it of items) {
+    for (const kind of ['cover', 'interior', 'artwork'] as PrintFileKind[]) {
+      const rows = it.files.filter((f) => f.purpose === kind).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      for (const old of rows.slice(1)) { await deleteFileRow(old); pruned++; }
+      if (rows.length > 0 && await syncUploadOption(it, kind, rows[0]!.media.url)) pruned++;
+    }
+    for (const legacy of it.files.filter((f) => f.purpose === 'removed')) { await deleteFileRow(legacy); pruned++; }
+  }
+  return pruned;
+}
+
 /**
  * Trash the file in a slot — uploaded by mistake, the wrong book. The slot is
- * emptied outright: every upload it ever held is re-labelled "removed" (an
- * earlier version must not quietly become current and get printed), the rows
- * stay so staff can see what happened and the order-time link to the cart
- * upload is not re-created by the next backfill. The slot reads "missing"
- * until another file is sent.
+ * emptied outright and the file deleted; it reads "missing" until another
+ * file is sent.
  */
 export async function removeItemPrintFile(args: { orderItemId: string; fileId: string; via: string }): Promise<void> {
   const row = await prisma.orderItemFile.findFirst({
@@ -261,21 +320,39 @@ export async function removeItemPrintFile(args: { orderItemId: string; fileId: s
   }
   const kind = row.purpose;
   const label = PRINT_FILE_LABELS[kind];
-  const slotRows = await prisma.orderItemFile.findMany({
-    where: { orderItemId: args.orderItemId, purpose: kind },
-    include: { media: { select: { originalName: true } } },
-  });
-  for (const r of slotRows) {
-    const pages = pagesFromNotes(r.notes);
-    await prisma.orderItemFile.update({
-      where: { id: r.id },
-      data: { purpose: 'removed', notes: `${label} removed by customer — ${r.media.originalName}${pages ? ` (${pages} pages)` : ''}` },
-    });
-  }
-  const names = slotRows.map((r) => r.media.originalName).join(', ');
-  const what = `${label} for ${itemLabel(row.orderItem)}: ${names}`;
+  const slotRows = await prisma.orderItemFile.findMany({ where: { orderItemId: args.orderItemId, purpose: kind }, include: { media: true } });
+  const names: string[] = [];
+  for (const r of slotRows) names.push(await deleteFileRow(r));
+  await syncUploadOption(row.orderItem, kind, null);
+  const what = `${label} for ${itemLabel(row.orderItem)}: ${names.join(', ')}`;
   await prisma.orderStatusEvent.create({ data: { orderId: order.id, kind: 'status', message: `Customer removed ${what} via ${args.via}` } });
   await notifyStaff(order.id, `${label} removed — order ${order.number}`, `The customer removed the ${what} on order ${order.number}. The slot is empty until they upload another.`);
+}
+
+/**
+ * Staff asked for this file again, so the one on the order is wrong and goes
+ * — off the line, out of the item's options, and its bytes with it. Only the
+ * corrected upload will be on the line. Returns what was deleted, for the
+ * timeline and the reply.
+ */
+export async function rejectItemPrintFile(args: { orderItemId: string; kind: PrintFileKind; why: string }): Promise<string[]> {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: args.orderItemId },
+    include: { order: { select: { id: true, number: true } }, files: { where: { purpose: args.kind }, include: { media: true } } },
+  });
+  if (!item) throw new HttpError(404, 'Order line not found');
+  const gone: string[] = [];
+  for (const f of item.files) gone.push(await deleteFileRow(f));
+  const clearedOption = await syncUploadOption(item, args.kind, null);
+  if (gone.length || clearedOption) {
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId: item.order.id, kind: 'status',
+        message: `${PRINT_FILE_LABELS[args.kind]} for ${itemLabel(item)} deleted from the order ${args.why}: ${gone.join(', ') || 'the order-time upload'} — only the corrected upload will be kept`,
+      },
+    });
+  }
+  return gone;
 }
 
 /** Every slot on the order, with its current file, plus the files uploaded after `since`. */

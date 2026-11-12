@@ -21,7 +21,7 @@ import { sendAdjustmentRequestEmail, sendPayRequestEmail } from '../../lib/order
 import { createManualOrder, previewManualOrder, orderPayLink, orderPayable, markOrderPaid, type Actor } from '../../lib/manual-order.js';
 import { FILE_REQUEST_REASONS, createFileRequests, sendFileRequestEmail, presentRequest } from '../../lib/file-requests.js';
 import { baseUrl as publicBaseUrl } from '../../lib/proof-emails.js';
-import { printFileKindsFor } from '../../lib/print-files.js';
+import { printFileKindsFor, pruneSupersededPrintFiles } from '../../lib/print-files.js';
 import multer from 'multer';
 import { MAX_UPLOAD_BYTES } from '../../config.js';
 import { promises as fs } from 'node:fs';
@@ -176,7 +176,7 @@ const fileRequestSchema = z.object({
 router.post('/:id/items/:itemId/file-request', async (req, res) => {
   const data = fileRequestSchema.parse(req.body);
   const actor = await actorOf(req);
-  const { requests, item } = await createFileRequests({
+  const { requests, item, removed } = await createFileRequests({
     orderId: String(req.params.id), orderItemId: String(req.params.itemId),
     kinds: data.kinds, reasons: data.reasons, note: data.note, actorName: actor.name ?? actor.email,
   });
@@ -184,6 +184,8 @@ router.post('/:id/items/:itemId/file-request', async (req, res) => {
   const base = await publicBaseUrl();
   res.status(201).json({
     requests: requests.map((r) => presentRequest({ ...r, orderItem: item }, base)),
+    /** The files that were on the line for the requested spots — deleted now. */
+    removed,
     emailed: emailed.sent,
     emailError: 'error' in emailed ? emailed.error ?? null : null,
   });
@@ -234,6 +236,11 @@ router.get('/:id', async (req, res) => {
   // (see lib/order-files.ts). Repair on view so staff always see the files.
   await backfillOrderUploads(req.params.id).catch((e: any) =>
     console.warn('[admin-orders] upload backfill failed:', e?.message ?? e),
+  );
+  // One file per spot: anything a newer upload replaced is deleted, so the
+  // files listed are exactly the ones that would print.
+  await pruneSupersededPrintFiles(req.params.id).catch((e: any) =>
+    console.warn('[admin-orders] print-file prune failed:', e?.message ?? e),
   );
   const order = await prisma.order.findUnique({
     where: { id: req.params.id },
