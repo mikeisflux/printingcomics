@@ -714,6 +714,7 @@ model OrderItem {
   shipmentItems ShipmentItem[]
   files         OrderItemFile[]
   proofs        Proof[]
+  mediaRequests MediaRequest[]
 
   @@index([orderId])
 }
@@ -811,6 +812,16 @@ model MediaRequest {
   id          String    @id @default(cuid())
   order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId     String
+  // A request for one file of one line ("send the Cover PDF for this book
+  // again"): the line, which of its files, and why — reason keys from
+  // lib/file-requests.ts plus a free note. Older requests have none of these
+  // and cover the whole order.
+  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  orderItemId String?
+  kind        String?   // "cover" | "interior" | "artwork"
+  reasons     Json?     // ["no_bleed", "wrong_size", …]
+  note        String?
+  // What was asked, in one line — composed from the reasons for newer requests.
   message     String
   token       String    @unique
   status      String    @default("open") // "open" | "fulfilled"
@@ -818,6 +829,7 @@ model MediaRequest {
   createdAt   DateTime  @default(now())
 
   @@index([orderId])
+  @@index([orderItemId])
 }
 
 // A physical box going out for an order. Orders may require multiple

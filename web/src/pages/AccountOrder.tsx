@@ -33,7 +33,40 @@ interface OrderItem {
   printFiles: PrintFileSlot[];
 }
 
-interface MediaRequest { id: string; message: string; status: 'open' | 'fulfilled'; createdAt: string; fulfilledAt: string | null }
+interface MediaRequest {
+  id: string; message: string; status: 'open' | 'fulfilled'; createdAt: string; fulfilledAt: string | null;
+  /** Set when the request is for one file of one book; older requests cover the whole order. */
+  orderItemId?: string | null; kind?: string | null; kindLabel?: string | null; itemLabel?: string | null; itemTitle?: string | null;
+  note?: string | null;
+  reasons?: { key: string; label: string; hint: string; template: boolean }[];
+  /** The template for this book's trim size, when the problem is size or bleed. */
+  templateUrl?: string | null; templateLabel?: string | null; templatesPage?: string;
+}
+
+/** What the request says is wrong, and the template when it helps. */
+function RequestReasons({ request }: { request: MediaRequest }) {
+  return (
+    <>
+      {request.reasons && request.reasons.length > 0 ? (
+        <ul style={{ margin: '.25rem 0 .5rem', paddingLeft: '1.1rem', fontSize: '.9rem', lineHeight: 1.5 }}>
+          {request.reasons.map((r) => <li key={r.key}><strong>{r.label}.</strong>{r.hint ? ` ${r.hint}` : ''}</li>)}
+        </ul>
+      ) : (
+        <blockquote style={{ borderLeft: '3px solid var(--border)', margin: '.5rem 0', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{request.message}</blockquote>
+      )}
+      {request.note && request.reasons && request.reasons.length > 0 && (
+        <blockquote style={{ borderLeft: '3px solid var(--brand)', margin: '.5rem 0', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{request.note}</blockquote>
+      )}
+      {request.templateUrl && (
+        <div data-testid="request-template" style={{ margin: '.5rem 0', padding: '.6rem .75rem', background: '#fffbeb', border: '1px solid #f0d58c', borderRadius: 8, fontSize: '.9rem' }}>
+          <strong>Use our template.</strong> The {request.templateLabel} template has the trim, bleed and safe area marked:{' '}
+          <a href={request.templateUrl} download>download the template</a>
+          {request.templatesPage ? <> · <a href={request.templatesPage}>how to use it</a></> : null}
+        </div>
+      )}
+    </>
+  );
+}
 
 interface Order {
   id: string;
@@ -54,7 +87,12 @@ function itemTitle(it: OrderItem): string | null {
   return typeof t === 'string' && t.trim() ? t.trim() : null;
 }
 
-function SlotCard({ orderNumber, item, slot, onChange }: { orderNumber: string; item: OrderItem; slot: PrintFileSlot; onChange: (slots: PrintFileSlot[], openRequests: number) => void }) {
+function SlotCard({ orderNumber, item, slot, request, onChange }: {
+  orderNumber: string; item: OrderItem; slot: PrintFileSlot;
+  /** An open request from our team for a corrected file in this spot. */
+  request?: MediaRequest | null;
+  onChange: (slots: PrintFileSlot[], openRequests: number) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -93,17 +131,26 @@ function SlotCard({ orderNumber, item, slot, onChange }: { orderNumber: string; 
   }
 
   const has = !!slot.file;
+  // A request for this spot outranks "on file": the file we have is the one that was wrong.
+  const wanted = !!request && !justDone;
+  const tone = wanted ? { border: '#d97706', bg: '#fffbeb', color: '#92400e' } : has ? { border: '#16a34a', bg: '#f0fdf4', color: '#166534' } : { border: '#c61a22', bg: '#fff5f5', color: '#b91c1c' };
   return (
     <div
       data-testid={`slot-${slot.kind}`}
-      style={{ border: `2px solid ${has ? '#16a34a' : '#c61a22'}`, borderRadius: 'var(--radius)', padding: '.85rem 1rem', background: has ? '#f0fdf4' : '#fff5f5', display: 'flex', flexDirection: 'column', gap: '.5rem' }}
+      style={{ border: `2px solid ${tone.border}`, borderRadius: 'var(--radius)', padding: '.85rem 1rem', background: tone.bg, display: 'flex', flexDirection: 'column', gap: '.5rem' }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '.5rem', flexWrap: 'wrap' }}>
         <strong style={{ fontSize: '1.05rem' }}>{slot.label}</strong>
-        <span style={{ fontWeight: 700, fontSize: '.8rem', color: has ? '#166534' : '#b91c1c', textTransform: 'uppercase', letterSpacing: '.03em' }}>
-          {has ? (justDone ? 'Uploaded ✓' : 'On file ✓') : 'Missing'}
+        <span style={{ fontWeight: 700, fontSize: '.8rem', color: tone.color, textTransform: 'uppercase', letterSpacing: '.03em' }}>
+          {wanted ? 'New file needed' : has ? (justDone ? 'Uploaded ✓' : 'On file ✓') : 'Missing'}
         </span>
       </div>
+      {wanted && request && (
+        <div data-testid="slot-request" style={{ fontSize: '.9rem' }}>
+          <div style={{ fontWeight: 700 }}>Our team needs a corrected {slot.label}. Here is what we found:</div>
+          <RequestReasons request={request} />
+        </div>
+      )}
       <div className="muted" style={{ fontSize: '.85rem' }}>{printFileSummary(slot.kind, slot.expectedPages)}</div>
       <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '.85rem', lineHeight: 1.5 }}>
         {slot.instructions.map((line, i) => <li key={i}>{line}</li>)}
@@ -116,8 +163,8 @@ function SlotCard({ orderNumber, item, slot, onChange }: { orderNumber: string; 
         </div>
       )}
       <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <label className={has ? 'btn secondary' : 'btn'} style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>
-          {busy ? (progress ? `Uploading… ${progress}%` : 'Working…') : has ? `Replace ${slot.label}` : `Upload ${slot.label}`}
+        <label className={has && !wanted ? 'btn secondary' : 'btn'} style={{ display: 'inline-block', cursor: busy ? 'wait' : 'pointer' }}>
+          {busy ? (progress ? `Uploading… ${progress}%` : 'Working…') : wanted ? `Upload the corrected ${slot.label}` : has ? `Replace ${slot.label}` : `Upload ${slot.label}`}
           <input type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { void send(e.target.files); e.currentTarget.value = ''; }} />
         </label>
         {has && (
@@ -177,10 +224,15 @@ export function AccountOrder() {
 
       {openRequests.map((m) => (
         <div key={m.id} className="admin-card" data-testid="file-request" style={{ borderLeft: '5px solid var(--brand)', marginTop: '1rem' }}>
-          <div style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.03em', color: 'var(--brand)' }}>We need new files from you</div>
-          <blockquote style={{ borderLeft: '3px solid var(--border)', margin: '.5rem 0', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{m.message}</blockquote>
+          <div style={{ fontSize: '.75rem', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.03em', color: 'var(--brand)' }}>
+            {m.kindLabel ? `We need a new ${m.kindLabel}${m.itemTitle ? ` for “${m.itemTitle}”` : ''}` : 'We need new files from you'}
+          </div>
+          <RequestReasons request={m} />
           <p style={{ margin: '.25rem 0 .75rem', fontSize: '.9rem' }}>
-            Asked {fmtDate(m.createdAt)}. Upload the files into the spots below — each book has a <strong>Cover PDF</strong> and an <strong>Interior PDF</strong> — then press Done so our team picks them up.
+            Asked {fmtDate(m.createdAt)}.{' '}
+            {m.kindLabel
+              ? <>Upload the corrected file into the <strong>{m.kindLabel}</strong> spot marked below — the newest upload replaces the old one — then press Done so our team picks it up.</>
+              : <>Upload the files into the spots below — each book has a <strong>Cover PDF</strong> and an <strong>Interior PDF</strong> — then press Done so our team picks them up.</>}
           </p>
           <button className="btn" type="button" disabled={doneBusy === m.id} onClick={() => void markDone(m.id)}>
             {doneBusy === m.id ? 'Saving…' : 'Done — the files are uploaded'}
@@ -217,11 +269,16 @@ export function AccountOrder() {
                         orderNumber={order.number}
                         item={it}
                         slot={slot}
-                        onChange={(slots, open) => setOrder((o) => o && ({
-                          ...o,
-                          items: o.items.map((x) => (x.id === it.id ? { ...x, printFiles: slots } : x)),
-                          mediaRequests: open === 0 ? o.mediaRequests.map((m) => ({ ...m, status: 'fulfilled' as const })) : o.mediaRequests,
-                        }))}
+                        request={openRequests.find((m) => m.orderItemId === it.id && (!m.kind || m.kind === slot.kind)) ?? null}
+                        onChange={(slots, open) => {
+                          setOrder((o) => o && ({
+                            ...o,
+                            items: o.items.map((x) => (x.id === it.id ? { ...x, printFiles: slots } : x)),
+                            mediaRequests: open === 0 ? o.mediaRequests.map((m) => ({ ...m, status: 'fulfilled' as const })) : o.mediaRequests,
+                          }));
+                          // A request for this very file closes on its own once it is up; show that.
+                          void load();
+                        }}
                       />
                     ))}
                   </div>

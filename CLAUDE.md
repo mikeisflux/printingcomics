@@ -66,6 +66,10 @@ npm run db:studio                    # Prisma Studio
   billed `rate` per box plus the box cost (Settings → Shipping); the quote is
   stored on `Order.shippingQuote`. Carrier codes stay raw in ids and on
   `Shipment`; `lib/carriers.ts` turns them into "UPS Ground" everywhere shown.
+- "Request new file" on an order line (`server/src/lib/file-requests.ts`): a
+  `MediaRequest` per file (`orderItemId` + `kind` + `reasons`), one email with
+  the reasons, what to send, and the trim-size template for size/bleed reasons;
+  it closes itself when that slot gets a newer upload (`lib/print-files.ts`).
 - Staff-placed orders (`/admin/orders/new`) go through `server/src/lib/manual-order.ts`:
   the same pricing engine, packer and coupon rules as checkout, plus a per-line
   price override. Payment is a pay link (the customer pays on

@@ -19,6 +19,9 @@ import { missingPrintFiles } from '../../lib/print-files.js';
 import { ensureCustomerAccount, magicLink } from '../../lib/customer-accounts.js';
 import { sendAdjustmentRequestEmail, sendPayRequestEmail } from '../../lib/order-emails.js';
 import { createManualOrder, previewManualOrder, orderPayLink, orderPayable, markOrderPaid, type Actor } from '../../lib/manual-order.js';
+import { FILE_REQUEST_REASONS, createFileRequests, sendFileRequestEmail, presentRequest } from '../../lib/file-requests.js';
+import { baseUrl as publicBaseUrl } from '../../lib/proof-emails.js';
+import { printFileKindsFor } from '../../lib/print-files.js';
 import multer from 'multer';
 import { MAX_UPLOAD_BYTES } from '../../config.js';
 import { promises as fs } from 'node:fs';
@@ -156,6 +159,36 @@ async function actorOf(req: Request): Promise<Actor> {
   return { userId: s.sub, email: u?.email ?? s.email ?? null, name };
 }
 
+// ---- Asking the customer for a corrected print file (see lib/file-requests.ts) ----
+// The reasons staff can tick, for the order page's dialog.
+router.get('/file-request-reasons', (_req, res) => {
+  res.json({ reasons: FILE_REQUEST_REASONS });
+});
+
+const fileRequestSchema = z.object({
+  kinds: z.array(z.enum(['cover', 'interior', 'artwork'])).min(1).max(3),
+  reasons: z.array(z.string().max(40)).min(1).max(20),
+  note: z.string().max(2000).nullable().optional(),
+  send: z.boolean().optional().default(true),
+});
+
+// One request per file asked for on this line, and one email about them.
+router.post('/:id/items/:itemId/file-request', async (req, res) => {
+  const data = fileRequestSchema.parse(req.body);
+  const actor = await actorOf(req);
+  const { requests, item } = await createFileRequests({
+    orderId: String(req.params.id), orderItemId: String(req.params.itemId),
+    kinds: data.kinds, reasons: data.reasons, note: data.note, actorName: actor.name ?? actor.email,
+  });
+  const emailed = data.send ? await sendFileRequestEmail(requests.map((r) => r.id)) : { sent: false as const };
+  const base = await publicBaseUrl();
+  res.status(201).json({
+    requests: requests.map((r) => presentRequest({ ...r, orderItem: item }, base)),
+    emailed: emailed.sent,
+    emailError: 'error' in emailed ? emailed.error ?? null : null,
+  });
+});
+
 // Everything the order would be — priced lines, shipping options for the
 // address, discount, tax, total — before it exists.
 router.post('/preview', async (req, res) => {
@@ -242,18 +275,19 @@ router.get('/:id', async (req, res) => {
           orderItem: { select: { id: true, name: true, options: true } },
         },
       },
-      mediaRequests: { orderBy: { createdAt: 'desc' } },
+      mediaRequests: { orderBy: { createdAt: 'desc' }, include: { orderItem: { select: { id: true, name: true, options: true, product: { select: { slug: true, name: true } } } } } },
       adjustments: { orderBy: { createdAt: 'desc' } },
     },
   });
   if (!order) throw new HttpError(404, 'Order not found');
-  // Which print files each book line still lacks, and a link that signs the
-  // customer in to the order screen where they upload them (what "Copy
-  // upload link" hands out, and what the request email contains).
-  const items = order.items.map((it) => ({ ...it, missingPrintFiles: missingPrintFiles(it) }));
+  // Which print files each book line takes and still lacks, and a link that
+  // signs the customer in to the order screen where they upload them (what
+  // "Copy upload link" hands out, and what the request email contains).
+  const items = order.items.map((it) => ({ ...it, printFileKinds: printFileKindsFor(it), missingPrintFiles: missingPrintFiles(it) }));
   const account = await ensureCustomerAccount(order.email, { firstName: (order.shippingAddress as any)?.firstName, lastName: (order.shippingAddress as any)?.lastName });
   const uploadLink = await magicLink(account.id, `/account/orders/${encodeURIComponent(order.number)}`);
-  const mediaRequests = order.mediaRequests.map((mr) => ({ ...mr, link: uploadLink }));
+  const base = await publicBaseUrl();
+  const mediaRequests = order.mediaRequests.map((mr) => ({ ...presentRequest(mr, base), token: mr.token, link: uploadLink }));
   res.json({ order: { ...order, items, mediaRequests, uploadLink } });
 });
 

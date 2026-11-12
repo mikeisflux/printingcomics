@@ -20,7 +20,12 @@ export interface ProofOrder {
   proofs: (DecisionProof & { kind: string | null; createdAt: string })[];
   pendingProofs: number;
   awaitingUpload: boolean;
-  mediaRequests: { id: string; message: string; status: string; createdAt: string; fulfilledAt: string | null }[];
+  mediaRequests: {
+    id: string; message: string; status: string; createdAt: string; fulfilledAt: string | null;
+    kind?: string | null; kindLabel?: string | null; itemLabel?: string | null; itemTitle?: string | null; note?: string | null;
+    reasons?: { key: string; label: string; hint: string; template: boolean }[];
+    templateUrl?: string | null; templateLabel?: string | null; templatesPage?: string;
+  }[];
 }
 
 interface ProofsResponse { orders: ProofOrder[]; terms: string; pendingProofs: number; openRequests: number }
@@ -44,10 +49,26 @@ function FileRequest({ request, orderNumber }: { request: ProofOrder['mediaReque
   }
   return (
     <div className="admin-card" style={{ borderLeft: '4px solid var(--brand)' }}>
-      <h3 style={{ marginTop: 0 }}>We need updated files</h3>
-      <blockquote style={{ borderLeft: '3px solid var(--border)', margin: '0 0 .75rem', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{request.message}</blockquote>
+      <h3 style={{ marginTop: 0 }}>{request.kindLabel ? `We need a new ${request.kindLabel}${request.itemTitle ? ` for “${request.itemTitle}”` : ''}` : 'We need updated files'}</h3>
+      {request.reasons && request.reasons.length > 0 ? (
+        <ul style={{ margin: '0 0 .75rem', paddingLeft: '1.1rem', fontSize: '.9rem', lineHeight: 1.5 }}>
+          {request.reasons.map((r) => <li key={r.key}><strong>{r.label}.</strong>{r.hint ? ` ${r.hint}` : ''}</li>)}
+        </ul>
+      ) : (
+        <blockquote style={{ borderLeft: '3px solid var(--border)', margin: '0 0 .75rem', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{request.message}</blockquote>
+      )}
+      {request.note && request.reasons && request.reasons.length > 0 && (
+        <blockquote style={{ borderLeft: '3px solid var(--brand)', margin: '0 0 .75rem', padding: '.25rem 1rem', whiteSpace: 'pre-wrap' }}>{request.note}</blockquote>
+      )}
+      {request.templateUrl && (
+        <p style={{ margin: '0 0 .75rem', padding: '.6rem .75rem', background: '#fffbeb', border: '1px solid #f0d58c', borderRadius: 8, fontSize: '.9rem' }}>
+          <strong>Use our template.</strong> The {request.templateLabel} template has the trim, bleed and safe area marked: <a href={request.templateUrl} download>download the template</a>.
+        </p>
+      )}
       <p className="muted" style={{ fontSize: '.9rem', margin: '0 0 .75rem' }}>
-        Each book on the order has a <strong>Cover PDF</strong> spot (4 pages: front, inside front, inside back, back) and an <strong>Interior PDF</strong> spot (every inside page, no covers). Upload there, then press Done.
+        {request.kindLabel
+          ? <>Upload the corrected file into the <strong>{request.kindLabel}</strong> spot on the order — the newest upload replaces the old one — then press Done.</>
+          : <>Each book on the order has a <strong>Cover PDF</strong> spot (4 pages: front, inside front, inside back, back) and an <strong>Interior PDF</strong> spot (every inside page, no covers). Upload there, then press Done.</>}
       </p>
       <Link to={`/account/orders/${encodeURIComponent(orderNumber)}`} className="btn">Open the order and upload →</Link>
     </div>

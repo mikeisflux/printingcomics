@@ -152,6 +152,8 @@ import { attachOrdersToUser } from '../lib/customer-accounts.js';
 import { itemTitle, proofKindLabel, proofSlotLabel } from '../lib/proofs.js';
 import { APPROVAL_TERMS, approveProof, fulfilMediaRequest, latestProofInSlot, requestProofChanges } from '../lib/proof-decisions.js';
 import { customerUpload } from './proofs.js';
+import { presentRequest } from '../lib/file-requests.js';
+import { baseUrl as publicBaseUrl } from '../lib/proof-emails.js';
 
 async function claimOrders(userId: string) {
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
@@ -170,9 +172,10 @@ router.get('/proofs', requireAuth, async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: { media: { select: { id: true, url: true, originalName: true } }, orderItem: { select: { name: true, options: true } } },
       },
-      mediaRequests: { orderBy: { createdAt: 'desc' } },
+      mediaRequests: { orderBy: { createdAt: 'desc' }, include: { orderItem: { select: { name: true, options: true, product: { select: { slug: true, name: true } } } } } },
     },
   });
+  const base = await publicBaseUrl();
   const out = orders.map((o) => {
     // Newest version per slot is the one to act on.
     const latest = new Map<string, (typeof o.proofs)[number]>();
@@ -205,7 +208,7 @@ router.get('/proofs', requireAuth, async (req, res) => {
       pendingProofs: proofs.filter((p) => p.status === 'pending').length,
       /** A proof was asked for but staff have not uploaded one yet. */
       awaitingUpload: proofs.length === 0 && o.proofStatus === 'requested',
-      mediaRequests: o.mediaRequests.map((m) => ({ id: m.id, message: m.message, status: m.status, createdAt: m.createdAt, fulfilledAt: m.fulfilledAt })),
+      mediaRequests: o.mediaRequests.map((m) => presentRequest(m, base)),
     };
   });
   res.json({

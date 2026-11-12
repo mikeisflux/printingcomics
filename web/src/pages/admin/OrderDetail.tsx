@@ -9,6 +9,7 @@ import { FilePreviewModal } from '../../components/PdfPreview';
 import { downloadHref } from '../../lib/files';
 import { matchProofFile, type MatchItem } from '../../lib/proof-match';
 import { PAYMENT_METHODS } from './OrderNew';
+import { PRINT_FILE_LABELS } from '../../lib/print-files';
 
 interface OrderEvent {
   id: string;
@@ -65,6 +66,8 @@ interface OrderFull {
         values: { id?: string; label: string; subLabel?: string | null; imageUrl?: string | null; priceModifierCents?: number; sortOrder?: number }[];
       }[];
     };
+    /** The print files this line takes ("cover", "interior" or "artwork"); none for shelf goods. */
+    printFileKinds?: string[];
     /** Print-file slots on this line that have no file yet ("Cover PDF", …). */
     missingPrintFiles?: string[];
     files?: {
@@ -107,11 +110,21 @@ interface OrderFull {
     approvedTermsAt: string | null; decidedAt: string | null; createdAt: string;
     media: { id: string; originalName: string; url: string; size: number; mimeType: string };
   }[];
-  mediaRequests?: {
-    id: string; message: string; token: string; status: string; fulfilledAt: string | null; createdAt: string; link?: string }[];
+  mediaRequests?: FileRequestRow[];
   createdAt: string;
   updatedAt: string;
 }
+
+/** A request to the customer for a file: order-wide (older) or one file of one line, with reasons. */
+interface FileRequestRow {
+  id: string; message: string; token: string; status: string; fulfilledAt: string | null; createdAt: string; link?: string;
+  orderItemId?: string | null; kind?: string | null; kindLabel?: string | null; itemLabel?: string | null; itemTitle?: string | null;
+  note?: string | null;
+  reasons?: { key: string; label: string; hint: string; template: boolean }[];
+  templateUrl?: string | null; templateLabel?: string | null;
+}
+
+interface FileRequestReasonDef { key: string; label: string; hint: string; template: boolean; group: 'size' | 'file' | 'content' }
 
 const STATUSES = ['PENDING', 'PAID', 'IN_PRODUCTION', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
 const PAY_STATUSES = ['PENDING', 'AUTHORIZED', 'CAPTURED', 'FAILED', 'REFUNDED'];
@@ -495,14 +508,26 @@ function ProofingCard({ order, onChange }: { order: OrderFull; onChange: () => v
 
       {requests.length > 0 && (
         <div>
-          <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '.4rem' }}>Media requests</div>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '.4rem' }}>File requests</div>
           {requests.map((mr) => (
-            <div key={mr.id} style={{ borderTop: '1px solid var(--border)', padding: '.5rem 0', fontSize: '.85rem' }}>
+            <div key={mr.id} data-testid="file-request-row" style={{ borderTop: '1px solid var(--border)', padding: '.5rem 0', fontSize: '.85rem' }}>
               <div className="spread">
-                <span>{mr.status === 'fulfilled' ? '✓ fulfilled' : 'open'}</span>
+                <span style={{ color: mr.status === 'fulfilled' ? '#166534' : '#b45309', fontWeight: 600 }}>{mr.status === 'fulfilled' ? '✓ fulfilled' : 'open — waiting on the customer'}</span>
                 <span className="muted">{new Date(mr.createdAt).toLocaleString()}</span>
               </div>
-              <div style={{ marginTop: '.2rem' }}>{mr.message}</div>
+              {mr.kindLabel ? (
+                <div style={{ marginTop: '.2rem' }}>
+                  <strong>New {mr.kindLabel}</strong>{mr.itemLabel ? <> — {mr.itemLabel}</> : null}
+                  {mr.reasons && mr.reasons.length > 0 && (
+                    <ul className="muted" style={{ margin: '.2rem 0 0', paddingLeft: '1.1rem' }}>
+                      {mr.reasons.map((r) => <li key={r.key}>{r.label}{r.template ? ' · template linked' : ''}</li>)}
+                    </ul>
+                  )}
+                  {mr.note && <div className="muted" style={{ marginTop: '.2rem' }}>Note: {mr.note}</div>}
+                </div>
+              ) : (
+                <div style={{ marginTop: '.2rem' }}>{mr.message}</div>
+              )}
               <button className="btn secondary" style={{ padding: '.15rem .5rem', fontSize: '.75rem', marginTop: '.3rem' }} onClick={() => { void navigator.clipboard?.writeText(mr.link ?? `${origin}/upload/${mr.token}`); }} title="Signs the customer in and opens the order, where each book has its Cover PDF and Interior PDF upload spots">Copy upload link</button>
             </div>
           ))}
@@ -526,6 +551,7 @@ export function AdminOrderDetail() {
   const [saving, setSaving] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [fileRequestItemId, setFileRequestItemId] = useState<string | null>(null);
   const [previewMedia, setPreviewMedia] = useState<{ id?: string; url: string; originalName: string } | null>(null);
 
   const load = () => {
@@ -785,6 +811,19 @@ export function AdminOrderDetail() {
         />
       )}
 
+      {fileRequestItemId && (() => {
+        const item = order.items.find((x) => x.id === fileRequestItemId);
+        return item ? (
+          <FileRequestDialog
+            orderId={order.id}
+            orderEmail={order.email}
+            item={item}
+            onClose={() => setFileRequestItemId(null)}
+            onDone={() => { setFileRequestItemId(null); load(); }}
+          />
+        ) : null;
+      })()}
+
       {editingItemId && (() => {
         const item = order.items.find((x) => x.id === editingItemId);
         return item ? (
@@ -871,6 +910,23 @@ export function AdminOrderDetail() {
                         ✎ Edit options
                       </button>
                     )}
+                    {(i.printFileKinds?.length ?? 0) > 0 && (
+                      <button
+                        className="btn secondary"
+                        style={{ marginTop: '.5rem', marginLeft: '.4rem', padding: '.25rem .6rem', fontSize: '.8rem' }}
+                        title="Ask the customer for a corrected Cover or Interior PDF, with the reasons — the email links to the template when size or bleed is the problem"
+                        onClick={() => setFileRequestItemId(i.id)}
+                        data-testid="request-file"
+                      >
+                        ⚠ Request new file
+                      </button>
+                    )}
+                    {(order.mediaRequests ?? []).filter((m) => m.orderItemId === i.id && m.status === 'open').map((m) => (
+                      <div key={m.id} data-testid="open-file-request" style={{ marginTop: '.4rem', color: '#b45309', fontSize: '.8rem' }}>
+                        <strong>Waiting on a new {m.kindLabel ?? 'file'}</strong> (asked {new Date(m.createdAt).toLocaleDateString()})
+                        {m.reasons?.length ? <>: {m.reasons.map((r) => r.label).join(', ')}</> : null}
+                      </div>
+                    ))}
                     {i.missingPrintFiles && i.missingPrintFiles.length > 0 && (
                       <div style={{ marginTop: '.4rem', color: '#b91c1c', fontWeight: 600, fontSize: '.8rem' }}>
                         ⚠ Missing from the customer: {i.missingPrintFiles.join(' and ')}
@@ -1089,6 +1145,141 @@ const rateName = (r: { carrier: string | null; service: string | null; carrierNa
  * label price it was quoted at, the boxes, any adjustment — beside what the
  * labels bought so far cost, so a gap is visible at a glance.
  */
+/**
+ * "Send this file again": which of the line's files, why (a checklist, plus
+ * a note), and the email goes out with what to fix and — for anything to do
+ * with size or bleed — the template for the book's trim size.
+ */
+function FileRequestDialog({ orderId, orderEmail, item, onClose, onDone }: {
+  orderId: string;
+  orderEmail: string;
+  item: { id: string; name: string; options?: any; printFileKinds?: string[] };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const kinds = (item.printFileKinds ?? []).filter((k): k is keyof typeof PRINT_FILE_LABELS => k in PRINT_FILE_LABELS);
+  const [defs, setDefs] = useState<FileRequestReasonDef[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(kinds.length === 1 ? kinds : []));
+  const [why, setWhy] = useState<Set<string>>(new Set());
+  const [note, setNote] = useState('');
+  const [send, setSend] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<{ reasons: FileRequestReasonDef[] }>('/admin/orders/file-request-reasons')
+      .then((r) => setDefs(r.reasons))
+      .catch((e) => setError(errorMessage(e, 'Could not load the reasons')));
+  }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [busy, onClose]);
+
+  const toggle = (set: typeof setPicked) => (key: string) => set((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const needsTemplate = !!defs?.some((d) => why.has(d.key) && d.template);
+  const otherOnly = why.has('other') && !note.trim();
+  const groups: { key: FileRequestReasonDef['group']; title: string }[] = [
+    { key: 'size', title: 'Size & bleed — the email links to the template' },
+    { key: 'file', title: 'The file itself' },
+    { key: 'content', title: 'Pages & content' },
+  ];
+
+  const submit = async () => {
+    setError(null);
+    if (picked.size === 0) { setError('Pick which file you need.'); return; }
+    if (why.size === 0) { setError('Pick at least one reason.'); return; }
+    if (otherOnly) { setError('Say what is wrong in the note when the reason is "Something else".'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ emailed: boolean; emailError: string | null }>(`/admin/orders/${orderId}/items/${item.id}/file-request`, {
+        kinds: [...picked], reasons: [...why], note: note.trim() || null, send,
+      });
+      if (!send) toast.success('File request recorded. Use "Copy upload link" to send it another way.');
+      else if (r.emailed) toast.success(`Request emailed to ${orderEmail}.`);
+      else toast.error(`Request recorded, but the email failed${r.emailError ? ` (${r.emailError})` : ''}.`);
+      onDone();
+    } catch (e) {
+      setError(errorMessage(e, 'Could not send the request'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Request a new file"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '2rem 1rem' }}
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <div className="admin-card" data-testid="file-request-dialog" style={{ width: 'min(720px, 100%)', margin: 0, background: '#fff' }}>
+        <div className="spread" style={{ alignItems: 'flex-start' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Request a new file</h3>
+            <div className="muted" style={{ fontSize: '.85rem' }}>{typeof item.options?.title === 'string' && item.options.title ? `“${item.options.title}” · ` : ''}{item.name}</div>
+          </div>
+          <button className="btn secondary" onClick={onClose} disabled={busy}>Close</button>
+        </div>
+
+        <div style={{ marginTop: '1rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '.35rem' }}>Which file?</div>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            {kinds.map((k) => (
+              <label key={k} className="on-check" style={{ margin: 0 }}>
+                <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(setPicked)(k)} data-testid={`req-kind-${k}`} />
+                <span>{PRINT_FILE_LABELS[k]}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: '1rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '.35rem' }}>What is wrong with it?</div>
+          {!defs && !error && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
+          {defs && groups.map((g) => (
+            <div key={g.key} style={{ marginBottom: '.75rem' }}>
+              <div className="muted" style={{ fontSize: '.75rem', textTransform: 'uppercase', letterSpacing: '.03em', fontWeight: 700, margin: '.25rem 0' }}>{g.title}</div>
+              <div style={{ display: 'grid', gap: '.3rem' }}>
+                {defs.filter((d) => d.group === g.key).map((d) => (
+                  <label key={d.key} className="on-check" style={{ margin: 0 }} title={d.hint}>
+                    <input type="checkbox" checked={why.has(d.key)} onChange={() => toggle(setWhy)(d.key)} data-testid={`req-reason-${d.key}`} />
+                    <span>{d.label}{d.hint ? <span className="muted" style={{ fontSize: '.8rem' }}> — {d.hint}</span> : null}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <label htmlFor="req-note" style={{ marginTop: '.5rem' }}>Note to the customer {why.has('other') ? '(required)' : '(optional)'}</label>
+        <textarea id="req-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. The back cover is cut off on the right — about a quarter inch is missing." />
+
+        {needsTemplate && (
+          <div style={{ marginTop: '.75rem', padding: '.6rem .75rem', background: '#fffbeb', border: '1px solid #f0d58c', borderRadius: 8, fontSize: '.85rem' }}>
+            The email will include a download link to the print template for this book’s size, with the trim, bleed and safe area marked.
+          </div>
+        )}
+
+        <label className="on-check" style={{ marginTop: '.75rem' }}>
+          <input type="checkbox" checked={send} onChange={(e) => setSend(e.target.checked)} />
+          <span>Email the customer now ({orderEmail}) — the link signs them in to the upload spot</span>
+        </label>
+
+        {error && <div className="error" role="alert" style={{ marginTop: '.5rem' }}>{error}</div>}
+
+        <div className="row" style={{ marginTop: '1rem', gap: '.5rem', justifyContent: 'flex-end' }}>
+          <button className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn" onClick={() => void submit()} disabled={busy || !defs} data-testid="req-send">
+            {busy ? 'Sending…' : send ? 'Send the request' : 'Record the request'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * An order waiting for its money. A staff-created order has a pay link (the
  * customer pays with PayPal or a card, no sign-in) to copy or email again;

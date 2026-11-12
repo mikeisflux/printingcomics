@@ -4,23 +4,25 @@ import { getSetting } from './settings.js';
 import { proofSlotLabel } from './proofs.js';
 import { ensureCustomerAccount, magicLink } from './customer-accounts.js';
 
-async function storeName(): Promise<string> {
+// The pieces every customer email here is built from; lib/file-requests.ts
+// builds its email from the same ones.
+export async function storeName(): Promise<string> {
   return (await getSetting<string>('store.name')) ?? 'Printing Comics';
 }
 
-async function baseUrl(): Promise<string> {
+export async function baseUrl(): Promise<string> {
   const u = (await getSetting<string>('store.publicUrl')) || process.env.PUBLIC_URL || 'https://printingcomics.com';
   return u.replace(/\/$/, '');
 }
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] ?? c));
 }
 
-const btn = (href: string, label: string) =>
+export const btn = (href: string, label: string) =>
   `<p style="margin:1.5rem 0"><a href="${href}" style="background:#C61A22;color:#fff;padding:.75rem 1.3rem;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block">${label}</a></p>`;
 
-const wrap = (inner: string, name: string) =>
+export const wrap = (inner: string, name: string) =>
   `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto;color:#1a1a1a;line-height:1.5">${inner}<p style="margin-top:2rem;color:#666;font-size:.9rem">— ${esc(name)}</p></div>`;
 
 async function logEvent(orderId: string, message: string) {
@@ -34,7 +36,7 @@ export interface EmailResult { sent: boolean; to?: string; error?: string }
  * outcome AND reports it back so callers can surface "emailed" vs. "FAILED"
  * in the UI instead of silently appearing to have notified the customer.
  */
-async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], okMsg: string): Promise<EmailResult> {
+export async function trySend(orderId: string, args: Parameters<typeof sendEmail>[0], okMsg: string): Promise<EmailResult> {
   try {
     // Never click-track these: the proof / upload link is the entire point of
     // the email, and a bad cert on the tracking domain hard-blocks the customer.

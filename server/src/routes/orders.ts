@@ -4,6 +4,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { verifyOrderView } from '../lib/order-view.js';
 import { orderPayable } from '../lib/manual-order.js';
+import { presentRequest } from '../lib/file-requests.js';
+import { baseUrl as publicBaseUrl } from '../lib/proof-emails.js';
 import { createPaypalApprovalForOrder, capturePaypalOrder } from '../lib/payments/paypal/index.js';
 import { completeMediaRequest, isPrintFileKind, orderFilesNeeded, printFileSlotsFor, removeItemPrintFile, storeItemPrintFile } from '../lib/print-files.js';
 import { customerUpload } from './proofs.js';
@@ -93,7 +95,13 @@ router.get('/:number', async (req, res) => {
           files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } },
         },
       },
-      mediaRequests: { orderBy: { createdAt: 'desc' }, select: { id: true, message: true, status: true, createdAt: true, fulfilledAt: true } },
+      mediaRequests: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, orderItemId: true, kind: true, reasons: true, note: true, message: true, status: true, createdAt: true, fulfilledAt: true,
+          orderItem: { select: { name: true, options: true, product: { select: { slug: true, name: true } } } },
+        },
+      },
       payments: {
         orderBy: { createdAt: 'asc' },
         select: {
@@ -119,8 +127,11 @@ router.get('/:number', async (req, res) => {
   const items = order.items.map(({ files, ...it }) => ({ ...it, printFiles: printFileSlotsFor({ ...it, files }) }));
   // An order staff set up with a pay link is paid on this page.
   const payable = await orderPayable(order);
+  // File requests carry which file, why, and the template link when it helps.
+  const base = await publicBaseUrl();
+  const mediaRequests = order.mediaRequests.map((mr) => presentRequest(mr, base));
   // A link viewer sees the order, not the account's actions (reorder…).
-  res.json({ order: { ...order, items, payable }, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
+  res.json({ order: { ...order, items, mediaRequests, payable }, viewer: sessionUser && order.userId === sessionUser ? 'owner' : 'link' });
 });
 
 // ---- Paying for an order staff set up (the pay link's page) ----
