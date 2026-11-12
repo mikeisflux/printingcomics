@@ -19,6 +19,8 @@ Run `npm` commands from the repo root unless noted.
 - `comic_discount_log.xlsx`, `graphic_novel_discount_log.xlsx` — source-of-truth pricing
 - `deploy/nginx.conf`, `ecosystem.config.cjs` (pm2)
 - `siteold/` — archived old site; reference only, do not modify
+- `pod/` — a copy of the PHILBO portal (`mauramariepowers-tech/philbo-portal`, its
+  own Node/HTML app); not part of the npm workspaces or the build
 
 ## Prerequisites
 

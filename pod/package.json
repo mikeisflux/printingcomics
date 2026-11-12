@@ -1,0 +1,43 @@
+{
+  "name": "philbo-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node server.js",
+    "build:standalone": "python3 assemble.py",
+    "test:permissions": "node tests/role-permissions.test.mjs",
+    "test:returns": "node tests/returns-workflow.test.mjs",
+    "test:returns:supabase": "node tests/supabase-returns-contract.test.mjs",
+    "test:retailer-orders:supabase": "node tests/supabase-retailer-orders-contract.test.mjs",
+    "test:retailer-csv:live": "node tests/retailer-csv-live.test.mjs",
+    "test:catalog-access:supabase": "node tests/supabase-public-catalog-access.test.mjs",
+    "test:solicitation-pipeline": "node tests/solicitation-pipeline.test.mjs",
+    "test:current-catalog": "node tests/current-philviews-workflow.test.mjs",
+    "test:incentive-variants": "node tests/incentive-variants.test.mjs",
+    "test:incentive-variants:supabase": "node tests/supabase-incentive-contract.test.mjs",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "test:database": "supabase test db --local",
+    "database:preview": "supabase db push --linked --dry-run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
+    "@vitejs/plugin-react": "^4.3.1",
+    "lucide-react": "^0.395.0",
+    "pdf-lib": "1.17.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "esbuild": "^0.21.5",
+    "supabase": "^2.109.1"
+  }
+}

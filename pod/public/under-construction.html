@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Philbo Distribution — Coming Soon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&amp;family=Oswald:wght@500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{font-family:Montserrat,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f7f8f4;background:#030403}
+    body{min-width:320px;min-height:100vh}
+    main{position:relative;isolation:isolate;display:grid;min-height:100svh;place-items:center;overflow:hidden;padding:clamp(22px,5vw,64px);background:linear-gradient(180deg,rgba(0,0,0,.42),rgba(0,0,0,.96)),radial-gradient(circle at 50% 22%,rgba(198,161,91,.2),transparent 42%),url("./assets/brand/philbo-city-aerial-sideways.jpg") center/cover,#030303}
+    main:before{content:"";position:absolute;z-index:6;inset:clamp(14px,2.5vw,34px);border:1px solid rgba(198,161,91,.3);pointer-events:none}main:after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.2),rgba(0,0,0,.76) 35%,rgba(0,0,0,.76) 65%,rgba(0,0,0,.2)),repeating-linear-gradient(110deg,transparent 0 7px,rgba(198,161,91,.018) 7px 8px);pointer-events:none}
+    .art{position:absolute;z-index:-2;inset:0;overflow:hidden;pointer-events:none}.ink-page{position:absolute;width:min(33vw,520px);height:112%;right:-7%;top:-6%;object-fit:cover;opacity:.08;filter:sepia(1) saturate(.45) contrast(1.5);transform:rotate(7deg);mix-blend-mode:screen}
+    figure{position:absolute;width:clamp(221px,24.7vw,390px);aspect-ratio:2/3;margin:0;overflow:hidden;border:1px solid rgba(198,161,91,.56);background:#050505;box-shadow:0 28px 55px rgba(0,0,0,.72),0 0 35px rgba(198,161,91,.08);opacity:.78}figure:after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),inset 0 -80px 90px rgba(0,0,0,.3)}figure img{width:100%;height:100%;object-fit:cover;filter:saturate(1.04) contrast(1.03) brightness(.78)}.clootopia{left:2%;top:-4%;transform:rotate(-9deg)}.yakuza{left:6%;bottom:-12%;transform:rotate(7deg)}.heroesville{right:2%;top:-4%;transform:rotate(8deg)}.penguino{right:6%;bottom:-13%;transform:rotate(-7deg)}
+    .glow{position:absolute;z-index:-1;width:min(520px,72vw);aspect-ratio:1;border-radius:50%;background:rgba(198,161,91,.13);filter:blur(110px)}
+    .one{top:-32%;left:-18%}.two{right:-24%;bottom:-40%;opacity:.6}
+    section{position:relative;z-index:2;width:min(780px,100%);padding:clamp(28px,5vw,56px) clamp(22px,7vw,72px);text-align:center;border:1px solid rgba(198,161,91,.48);background:linear-gradient(145deg,rgba(18,15,10,.945),rgba(2,2,2,.96)),url("./assets/brand/philbo-city-aerial-sideways.jpg") center/cover;box-shadow:0 32px 90px rgba(0,0,0,.78),inset 0 1px 0 rgba(255,255,255,.045);backdrop-filter:blur(7px)}section:before{content:"";position:absolute;inset:9px;border:1px solid rgba(198,161,91,.12);pointer-events:none}
+    .rule{display:grid;grid-template-columns:minmax(32px,1fr) auto minmax(32px,1fr);gap:14px;align-items:center;color:#c6a15b;font:700 .66rem/1 Oswald,sans-serif;letter-spacing:.2em}.rule span{height:1px;background:rgba(198,161,91,.5)}
+    img{display:block;max-width:100%}.wordmark{width:clamp(260px,52vw,470px);margin:clamp(24px,4vw,34px) auto 24px;filter:drop-shadow(0 18px 28px rgba(0,0,0,.52))}
+    .kicker{color:#fff;font:700 .69rem/1.4 Oswald,sans-serif;letter-spacing:.22em}
+    h1{margin:14px 0 20px;color:#f7f8f4;font:600 clamp(2.5rem,7vw,5.2rem)/.93 Oswald,sans-serif;letter-spacing:-.025em;text-transform:uppercase}
+    .presses{margin:-4px auto 18px;color:#c6a15b;font:700 clamp(.76rem,1.5vw,.92rem)/1.4 Oswald,sans-serif;letter-spacing:.18em}
+    .copy{max-width:570px;margin:0 auto;color:#b8bdb5;font-size:clamp(.9rem,2vw,1.02rem);font-weight:600;line-height:1.75}
+    .status{display:inline-flex;align-items:center;gap:10px;margin:28px auto 22px;padding:10px 15px;color:#f0e3c6;border:1px solid rgba(198,161,91,.42);border-radius:999px;background:rgba(198,161,91,.09);font:700 .68rem/1 Oswald,sans-serif;letter-spacing:.12em;text-transform:uppercase}.status span{width:8px;height:8px;border-radius:50%;background:#c6a15b;box-shadow:0 0 0 5px rgba(198,161,91,.13),0 0 16px rgba(198,161,91,.75);animation:pulse 2.1s ease-in-out infinite}
+    a{display:block;width:fit-content;max-width:100%;margin:0 auto;color:#aeb4ab;font-size:.76rem;font-weight:700;line-height:1.5;overflow-wrap:anywhere;text-decoration-color:rgba(198,161,91,.62);text-underline-offset:4px}a:hover,a:focus-visible{color:#fff}
+    footer{margin-top:clamp(32px,5vw,52px);padding-top:20px;border-top:1px solid rgba(255,255,255,.08)}footer p{color:#6f756d;font-size:.66rem;font-weight:700;letter-spacing:.04em;line-height:1.7}footer p+p{margin-top:6px}footer a{display:inline;width:auto;margin:0;color:inherit;font-size:inherit}
+    @keyframes pulse{0%,100%{opacity:.55;transform:scale(.88)}50%{opacity:1;transform:scale(1)}}
+    @media(max-width:560px){main{padding:14px}main:before{inset:7px}section{padding:30px 19px;background:linear-gradient(145deg,rgba(18,15,10,.94),rgba(2,2,2,.96))}h1{font-size:clamp(2.15rem,12vw,3.3rem)}.copy{font-size:.85rem;line-height:1.65}.rule{gap:9px;font-size:.58rem;letter-spacing:.14em}.ink-page{display:none}figure{width:185px;opacity:.48}.clootopia{left:-50px;top:3%}.yakuza{display:none}.heroesville{right:-50px;top:3%}.penguino{right:-45px;bottom:-10%}}
+    @media(prefers-reduced-motion:reduce){.status span{animation:none}}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="art" aria-hidden="true">
+      <img class="ink-page" src="./assets/coming-soon/carl-tork-interior.jpg" alt="">
+      <figure class="clootopia"><img src="./assets/coming-soon/clootopia-preview.jpg" alt=""></figure>
+      <figure class="yakuza"><img src="./assets/coming-soon/american-yakuza.jpg" alt=""></figure>
+      <figure class="heroesville"><img src="./assets/coming-soon/tales-from-heroesville.jpg" alt=""></figure>
+      <figure class="penguino"><img src="./assets/coming-soon/penguinos-revenge.jpg" alt=""></figure>
+    </div>
+    <div class="glow one" aria-hidden="true"></div>
+    <div class="glow two" aria-hidden="true"></div>
+    <section aria-labelledby="page-title">
+      <div class="rule" aria-hidden="true"><span></span><b>PHILBO DISTRIBUTION</b><span></span></div>
+      <img class="wordmark" src="./assets/brand/philbo-3d-logo.png" alt="Philbo Distribution">
+      <p class="kicker">SYSTEM DESIGNED BY</p>
+      <h1 id="page-title">By creators.<br>For creators.</h1>
+      <p class="presses">THE PRESSES ARE WARMING UP</p>
+      <p class="copy">We’re building a better home for independent comics. Our new distribution and ordering experience will welcome retailers, publishers, and creators soon.</p>
+      <div class="status" role="status"><span aria-hidden="true"></span>Website coming soon</div>
+      <a href="mailto:philbodistribution@gmail.com">Need to reach us? philbodistribution@gmail.com</a>
+      <footer>
+        <p>© 2026 Philbo Entertainment Promotions Inc. All rights reserved. Third-party trademarks and content remain the property of their respective owners.</p>
+        <p>Built &amp; Powered by MO.io™ · A Powers Creative Solutions System</p>
+      </footer>
+    </section>
+  </main>
+</body>
+</html>

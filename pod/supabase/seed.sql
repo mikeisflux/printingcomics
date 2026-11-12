@@ -1,0 +1,3 @@
+-- Development-only seed data will be added after the initial identity and
+-- catalog migration passes its database security tests. Never place real
+-- publisher, retailer, order, payment, or production-file data in this file.

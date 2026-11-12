@@ -1,0 +1,25 @@
+# Installed dependencies and package-manager cache
+node_modules/
+.pnpm-store/
+
+# Generated build output
+dist/
+*-godaddy.zip
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Operating-system and editor files
+.DS_Store
+*.swp
+*.swo
+
+# Test and diagnostic output
+coverage/
+*.log
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
