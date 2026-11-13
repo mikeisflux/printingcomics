@@ -151,12 +151,13 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
     where: { id: req.session!.sub },
     select: {
       id: true, email: true, role: true, firstName: true, lastName: true, phone: true, passwordSetAt: true, permissions: true, active: true,
+      partnerId: true, retailerId: true, partner: { select: { name: true, status: true } }, retailer: { select: { name: true, status: true } },
     },
   });
   if (!user || !user.active) return res.status(401).json({ error: 'Not authenticated' });
-  const { passwordSetAt, permissions, active, ...rest } = user;
+  const { passwordSetAt, permissions, active, partner, retailer, ...rest } = user;
   void active;
-  res.json({ user: { ...rest, hasPassword: passwordSetAt !== null, permissions: effectivePermissions({ role: user.role, permissions }) } });
+  res.json({ user: { ...rest, hasPassword: passwordSetAt !== null, permissions: effectivePermissions({ role: user.role, permissions }), partner: partner ? { name: partner.name, status: partner.status } : null, retailer: retailer ? { name: retailer.name, status: retailer.status } : null } });
 });
 
 export default router;

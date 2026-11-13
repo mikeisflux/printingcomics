@@ -39,6 +39,7 @@ import easypostWebhookRoutes from './routes/webhooks/easypost.js';
 import adjustmentRoutes from './routes/adjustments.js';
 import previewRoutes from './routes/previews.js';
 import v1Routes from './routes/v1/index.js';
+import podRoutes from './routes/pod.js';
 import { attachAllGuestOrders } from './lib/customer-accounts.js';
 import { normalizeStoredMethodNames } from './lib/method-names.js';
 import { backfillEmailThreads } from './lib/email-threads.js';
@@ -104,6 +105,7 @@ app.use('/api/previews', previewRoutes);
 app.use('/api/webhooks/mailgun', mailgunWebhookRoutes);
 app.use('/api/webhooks/paypal', paypalWebhookRoutes);
 app.use('/api/webhooks/easypost', easypostWebhookRoutes);
+app.use('/api/pod', podRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Public, key-authenticated developer API (orders, catalog, pricing,

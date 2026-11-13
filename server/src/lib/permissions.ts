@@ -14,6 +14,8 @@ export const PERMISSIONS = [
   { key: 'marketing', label: 'Marketing', description: 'Discount codes, the site-wide sale, reviews and SEO.' },
   { key: 'partners', label: 'Partners', description: 'Partner accounts, projects and API keys.' },
   { key: 'settings', label: 'Settings', description: 'Store, payments, shipping, EasyPost, email setup, security and backups.' },
+  { key: 'pod', label: 'Print on Demand', description: 'Publisher listings, catalog cycles, retailers, production runs, purchase orders and payouts.' },
+  { key: 'preflight', label: 'Preflight', description: 'Production files for Print on Demand runs only — no prices, quantities or customer money.' },
   { key: 'users', label: 'Users & access', description: 'Create and edit accounts, roles, permissions and passwords. Admins only.' },
 ] as const;
 

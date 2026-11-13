@@ -81,6 +81,9 @@ model User {
   // log into a partner dashboard. Independent of the Role enum.
   partner   Partner? @relation("PartnerMembers", fields: [partnerId], references: [id])
   partnerId String?
+  // A comic-shop account in the Print On Demand retailer programme.
+  retailer   Retailer? @relation("RetailerMembers", fields: [retailerId], references: [id])
+  retailerId String?
 
   addresses              Address[]
   orders                 Order[]
@@ -92,8 +95,10 @@ model User {
   applicationsReviewed   PartnerApplication[] @relation("ApplicationReviewer")
   projectsCreated        PartnerProject[]     @relation("ProjectCreator")
   events                 UserEvent[]
+  listingsCreated        Listing[]            @relation("ListingCreator")
 
   @@index([partnerId])
+  @@index([retailerId])
   @@index([role, active])
 }
 
@@ -232,6 +237,7 @@ model Product {
   orderItems      OrderItem[]
   cartItems       CartItem[]
   seoAnalysis     SeoAnalysis?
+  listing         Listing?
 }
 
 model ProductCategory {
@@ -426,6 +432,16 @@ model Order {
   projectId       String?
   externalRef     String?
 
+  // Print On Demand: a retailer's wholesale order in a catalog cycle, or the
+  // internal print run a production order raised. `source` is "retailer" or
+  // "production" for these.
+  retailer        Retailer?     @relation(fields: [retailerId], references: [id])
+  retailerId      String?
+  cycle           CatalogCycle? @relation(fields: [cycleId], references: [id])
+  cycleId         String?
+  productionOrder ProductionOrder?
+  wholesale       Json?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -435,6 +451,8 @@ model Order {
   @@index([apiKeyId])
   @@index([partnerId])
   @@index([projectId])
+  @@index([retailerId])
+  @@index([cycleId])
 }
 
 // API keys for third-party integrations (crowdfunding platforms, etc.) to
@@ -505,6 +523,10 @@ model Partner {
   rateLimitPerMinute Int?
   monthlyOrderCap    Int?
 
+  // Print On Demand (publisher) terms: our commission on wholesale sales,
+  // in basis points; null = the store default (Settings → Print on Demand).
+  commissionBps Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy   User?   @relation("PartnerCreator", fields: [createdById], references: [id])
@@ -518,6 +540,10 @@ model Partner {
   applications      PartnerApplication[]
   uploads           MediaFile[]
   projects          PartnerProject[]
+  listings          Listing[]
+  purchaseOrders    PurchaseOrder[]
+  ledgerEntries     PartnerLedgerEntry[]
+  payoutStatements  PayoutStatement[]
 
   @@index([status])
   @@index([platform])
@@ -715,8 +741,14 @@ model OrderItem {
   files         OrderItemFile[]
   proofs        Proof[]
   mediaRequests MediaRequest[]
+  // Print On Demand: the catalog listing this line sells, and the wholesale
+  // snapshot (msrp, tier, discount) it was priced from.
+  listing       Listing?        @relation(fields: [listingId], references: [id])
+  listingId     String?
+  wholesale     Json?
 
   @@index([orderId])
+  @@index([listingId])
 }
 
 // Print files attached to an order line item — covers, interior PDFs, dust
@@ -1038,6 +1070,9 @@ model MediaFile {
 
   orderItemFiles OrderItemFile[]
   proofs         Proof[]
+  listingFiles   ListingFile[]
+  listingCovers  Listing[]       @relation("ListingCover")
+  retailerCerts  Retailer[]      @relation("RetailerCert")
 
   @@index([folder])
   @@index([mimeType])
@@ -1323,4 +1358,380 @@ model InboundEmail {
   @@index([fromEmail])
   @@index([inReplyTo])
   @@index([threadId, receivedAt])
+}
+
+// ===========================================================================
+// Print On Demand — publisher listings, catalog cycles, retailer wholesale,
+// production runs, purchase orders and partner payouts. Costs and margins
+// never leave /admin; the public and partner views see MSRP, wholesale and
+// commission only. Spec: docs/philbo-portal-integration.md.
+// ===========================================================================
+
+enum ListingStatus {
+  DRAFT
+  SUBMITTED
+  CHANGES_REQUESTED
+  APPROVED
+  SCHEDULED
+  LIVE
+  REJECTED
+  ARCHIVED
+}
+
+enum ListingFulfillment {
+  PRINTED_BY_US   // we print and ship; printing is charged against the payout
+  PARTNER_SHIPS   // the publisher ships from a purchase order we send them
+}
+
+enum CatalogCycleStatus {
+  DRAFT        // being set up; publishers may be let in
+  OPEN         // publishers can attach listings
+  PUBLISHED    // public + retailer ordering open until FOC
+  FOC_LOCKED   // final order cutoff passed; production + purchase orders raised
+  CLOSED       // shipped and settled
+}
+
+enum RetailerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum ProductionOrderStatus {
+  PLANNED
+  FILES_NEEDED
+  PREFLIGHT
+  APPROVED
+  IN_PRODUCTION
+  DONE
+  CANCELLED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  ACKNOWLEDGED
+  FULFILLED
+  CANCELLED
+}
+
+enum PayoutStatementStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+
+enum LedgerKind {
+  SALE           // wholesale revenue owed to the publisher
+  COMMISSION     // our cut (negative)
+  PRINTING       // what we charged to print (negative)
+  RETURN_CREDIT  // a retailer return credited back (negative)
+  PAYOUT         // a payment we made (negative)
+  ADJUSTMENT     // anything staff typed, either sign
+}
+
+/// One catalog = one set of dates: catalog (solicitation) date, final order
+/// cutoff, in-store date. Publishers pick a cycle; they never type the dates.
+model CatalogCycle {
+  id              String             @id @default(cuid())
+  slug            String             @unique
+  name            String
+  catalogDate     DateTime
+  focDate         DateTime
+  inStoreDate     DateTime
+  status          CatalogCycleStatus @default(DRAFT)
+  publisherOpen   Boolean            @default(true)
+  retailerOpen    Boolean            @default(false)
+  /// Staff reopened ordering after the FOC date passed.
+  focOverrideOpen Boolean            @default(false)
+  publishedAt     DateTime?
+  lockedAt        DateTime?
+  closedAt        DateTime?
+  /// Bumped on every publish; snapshots carry the version they were taken at.
+  version         Int                @default(0)
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  listings         Listing[]
+  items            CatalogCycleItem[]
+  orders           Order[]
+  productionOrders ProductionOrder[]
+  purchaseOrders   PurchaseOrder[]
+  ledgerEntries    PartnerLedgerEntry[]
+  payoutStatements PayoutStatement[]
+
+  @@index([status])
+  @@index([catalogDate])
+}
+
+/// A sellable book (one row per cover / SKU) a publisher partner lists with
+/// us. Approved listings become storefront Products; the cycle snapshot is
+/// what retailers order from.
+model Listing {
+  id                String             @id @default(cuid())
+  partner           Partner            @relation(fields: [partnerId], references: [id])
+  partnerId         String
+  cycle             CatalogCycle?      @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  cycleId           String?
+  product           Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId         String?            @unique
+
+  /// Our catalog id: SERIESCODE-last5(UPC), unique across every publisher.
+  catalogKey        String             @unique
+  title             String
+  seriesName        String?
+  seriesCode        String?
+  issueNumber       String?
+  coverDescription  String?            // "Main Cover", "Cover B — Virgin"
+  variantNumber     String?
+  upc               String?
+  format            String             @default("comic")   // comic | graphic_novel | magazine | other
+  seriesType        String?            // ongoing | limited | one_shot
+  frequency         String?
+  language          String             @default("English")
+  ageRating         String?
+  pageCount         Int?
+  trimWidthIn       Float?
+  trimHeightIn      Float?
+  interiorColor     String?            // color | bw
+  weightOz          Float?
+  msrpCents         Int                @default(0)
+  description       String?
+  synopsis          String?
+  writer            String?
+  artist            String?
+  coverArtist       String?
+  genres            String[]           @default([])
+  bisac             String[]           @default([])
+  /// "1:10" — a retailer incentive cover earned per N copies of the qualifier.
+  incentiveRatio    String?
+  incentiveQualifierKey String?
+  reorderable       Boolean            @default(true)
+  fulfillment       ListingFulfillment @default(PRINTED_BY_US)
+  status            ListingStatus      @default(DRAFT)
+  /// What staff asked the publisher to change (shown on the listing).
+  reviewNote        String?
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  publishedAt       DateTime?
+  rejectedAt        DateTime?
+  archivedAt        DateTime?
+  coverImage        MediaFile?         @relation("ListingCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  coverImageId      String?
+  createdBy         User?              @relation("ListingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById       String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  files            ListingFile[]
+  cycleItems       CatalogCycleItem[]
+  orderItems       OrderItem[]
+  productionOrders ProductionOrder[]
+  ledgerEntries    PartnerLedgerEntry[]
+
+  @@index([partnerId])
+  @@index([cycleId])
+  @@index([status])
+}
+
+/// A versioned file on a listing: the cover PDF, interior PDF, the web cover
+/// image, or extras. Only the newest version per kind is in play; older rows
+/// stay for the record.
+model ListingFile {
+  id           String    @id @default(cuid())
+  listing      Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId    String
+  kind         String    // cover | interior | cover_image | extra
+  media        MediaFile @relation(fields: [mediaFileId], references: [id])
+  mediaFileId  String
+  version      Int       @default(1)
+  reviewStatus String    @default("uploaded")   // uploaded | approved | rejected
+  /// The automatic checks run on upload (page count, trim, bleed, spreads).
+  preflight    Json?
+  note         String?
+  uploadedById String?
+  createdAt    DateTime  @default(now())
+
+  @@index([listingId, kind])
+  @@index([mediaFileId])
+}
+
+/// What a published cycle sold: an immutable copy of each live listing at
+/// publish time. Retailer orders and the CSV read this, not the live row.
+model CatalogCycleItem {
+  id        String       @id @default(cuid())
+  cycle     CatalogCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  cycleId   String
+  listing   Listing      @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId String
+  version   Int
+  snapshot  Json
+  createdAt DateTime     @default(now())
+
+  @@unique([cycleId, listingId, version])
+  @@index([cycleId])
+}
+
+/// A comic shop in the wholesale programme. Its people log in with ordinary
+/// User accounts that carry `retailerId`.
+model Retailer {
+  id                 String         @id @default(cuid())
+  slug               String         @unique
+  name               String
+  contactName        String?
+  contactEmail       String
+  phone              String?
+  website            String?
+  address            Json?
+  status             RetailerStatus @default(PENDING)
+  /// Force a tier (1-based index into the tier table) regardless of order size.
+  tierOverride       Int?
+  resaleCertNumber   String?
+  resaleCertState    String?
+  resaleCertExpires  DateTime?
+  resaleCert         MediaFile?     @relation("RetailerCert", fields: [resaleCertMediaId], references: [id], onDelete: SetNull)
+  resaleCertMediaId  String?
+  resaleCertStatus   String         @default("not_submitted")  // not_submitted | submitted | approved | rejected
+  taxExempt          Boolean        @default(false)
+  applicationMessage String?
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  members User[]  @relation("RetailerMembers")
+  orders  Order[]
+
+  @@index([status])
+  @@index([contactEmail])
+}
+
+/// A print run we owe for a PRINTED_BY_US listing after FOC: retailer copies
+/// plus whatever the publisher added on. Preflight sees this without prices.
+model ProductionOrder {
+  id              String                @id @default(cuid())
+  number          String                @unique
+  cycle           CatalogCycle?         @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  cycleId         String?
+  listing         Listing               @relation(fields: [listingId], references: [id])
+  listingId       String
+  /// The internal order that carries this run through production and fulfillment.
+  order           Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId         String?               @unique
+  retailerQty     Int                   @default(0)
+  partnerAddOnQty Int                   @default(0)
+  totalQty        Int                   @default(0)
+  /// What we charge the publisher per copy, and the whole run, in cents.
+  printUnitCents  Int?
+  printTotalCents Int?
+  status          ProductionOrderStatus @default(PLANNED)
+  deadline        DateTime?
+  notes           String?
+  internalNotes   String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([cycleId])
+  @@index([listingId])
+  @@index([status])
+}
+
+/// What a PARTNER_SHIPS publisher owes retailers after FOC. Lines carry
+/// quantities per listing and ship-to addresses; retailer identities are
+/// left off the publisher-facing copy.
+model PurchaseOrder {
+  id              String              @id @default(cuid())
+  number          String              @unique
+  cycle           CatalogCycle        @relation(fields: [cycleId], references: [id])
+  cycleId         String
+  partner         Partner             @relation(fields: [partnerId], references: [id])
+  partnerId       String
+  status          PurchaseOrderStatus @default(DRAFT)
+  lines           Json
+  unitsTotal      Int                 @default(0)
+  wholesaleCents  Int                 @default(0)
+  commissionCents Int                 @default(0)
+  netCents        Int                 @default(0)
+  sentAt          DateTime?
+  acknowledgedAt  DateTime?
+  fulfilledAt     DateTime?
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([partnerId])
+  @@index([cycleId])
+}
+
+/// Money owed to or by a publisher, one row per event. A statement sweeps the
+/// unassigned rows for a partner into an immutable snapshot.
+model PartnerLedgerEntry {
+  id          String           @id @default(cuid())
+  partner     Partner          @relation(fields: [partnerId], references: [id])
+  partnerId   String
+  kind        LedgerKind
+  /// Positive = owed to the partner; negative = deducted.
+  amountCents Int
+  description String
+  cycle       CatalogCycle?    @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  cycleId     String?
+  listing     Listing?         @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingId   String?
+  orderId     String?
+  statement   PayoutStatement? @relation(fields: [statementId], references: [id], onDelete: SetNull)
+  statementId String?
+  actorName   String?
+  createdAt   DateTime         @default(now())
+
+  @@index([partnerId, statementId])
+  @@index([cycleId])
+}
+
+model PayoutStatement {
+  id              String                @id @default(cuid())
+  number          String                @unique
+  partner         Partner               @relation(fields: [partnerId], references: [id])
+  partnerId       String
+  cycle           CatalogCycle?         @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  cycleId         String?
+  periodStart     DateTime
+  periodEnd       DateTime
+  status          PayoutStatementStatus @default(DRAFT)
+  lines           Json
+  grossCents      Int                   @default(0)
+  commissionCents Int                   @default(0)
+  printingCents   Int                   @default(0)
+  creditsCents    Int                   @default(0)
+  adjustmentCents Int                   @default(0)
+  netCents        Int                   @default(0)
+  issuedAt        DateTime?
+  paidAt          DateTime?
+  paymentMethod   String?
+  paymentRef      String?
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  entries PartnerLedgerEntry[]
+
+  @@index([partnerId])
+  @@index([status])
+}
+
+/// What happened in the Print On Demand section: listing reviews, cycle
+/// publishes and locks, retailer approvals, production and purchase order
+/// status changes. One table, keyed by subject.
+model PodEvent {
+  id          String   @id @default(cuid())
+  subjectType String   // listing | cycle | retailer | production | purchase_order | statement
+  subjectId   String
+  kind        String
+  message     String?
+  actorId     String?
+  actorName   String?
+  createdAt   DateTime @default(now())
+
+  @@index([subjectType, subjectId, createdAt])
 }
