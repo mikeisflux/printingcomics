@@ -20,6 +20,7 @@
 #   prisma db push          prisma/schema.prisma changed       FORCE_PUSH=1
 #   npm run build           always
 #   db:seed:cws             seed-cws.ts / pricing/*.json       FORCE_SEED=1 / SKIP_SEED=1
+#   db:seed:pod             always (idempotent: POD admin account + default POD settings)
 #   pm2 reload              always
 #   health check            always (fails the deploy if the API doesn't answer)
 #
@@ -163,6 +164,12 @@ elif [ "${FORCE_SEED:-0}" = "1" ] || [ "$(state_get seed)" != "$SEED_HASH" ]; th
 else
   echo "==> Catalog seed unchanged since last deploy — skipping"
 fi
+
+# ---- Print On Demand bootstrap: the POD admin account and default settings ----
+# Idempotent and cheap, so it runs on every deploy; an existing account is
+# left alone (see prisma/seed-pod.ts for POD_ADMIN_* overrides).
+echo "==> Print On Demand bootstrap"
+npm run db:seed:pod
 
 # ---- restart ----
 echo "==> Restarting the site (pm2)"
