@@ -628,3 +628,32 @@ nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4re
 .site-header nav > a.nav-pod, .mobile-top-link.nav-pod { position: relative; font-weight: 700; background: linear-gradient(120deg, #7c5cff, #22d3ee 60%, #b6f36a); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .site-header nav > a.nav-pod::after { content: 'NEW'; position: absolute; top: -.55rem; right: -1.6rem; font-size: .55rem; font-weight: 800; letter-spacing: .08em; padding: .1rem .3rem; border-radius: 4px; background: #7c5cff; color: #fff; -webkit-background-clip: border-box; background-clip: border-box; -webkit-text-fill-color: #fff; }
 .site-header nav > a.nav-pod:hover { filter: brightness(.9); }
+
+/* The header never scrolls sideways: a signed-in admin carries Share, search,
+   their name, Admin and Log out next to the menu, so spacing tightens first,
+   then the Share button goes, then the search box (it is also on /shop and in
+   the phone menu), then the greeting becomes the account icon and Log out
+   moves to the account page and the phone menu. */
+.site-header .header-search { width: 200px; flex: 0 0 auto; }
+@media (max-width: 1650px) and (min-width: 901px) {
+  .site-header .container { gap: .75rem; }
+  .site-header nav { gap: .9rem; }
+  .site-header .desktop-only > a, .site-header .desktop-only > button { padding: .4rem .35rem; }
+  .site-header .header-search { width: 130px; }
+}
+@media (max-width: 1400px) and (min-width: 901px) {
+  .site-header .share-menu { display: none !important; } /* beats its inline display */
+}
+@media (max-width: 1300px) and (min-width: 901px) {
+  .site-header .header-search { display: none !important; } /* beats its inline display */
+  .site-header .logo { font-size: 1.1rem; }
+  .site-header nav { gap: .7rem; }
+}
+.site-header .account-link .hi-icon { display: none; }
+@media (max-width: 1100px) and (min-width: 901px) {
+  .site-header .account-link .hi-name { display: none; }
+  .site-header .account-link .hi-icon { display: inline; }
+  .site-header .container { padding-left: .75rem; padding-right: .75rem; gap: .5rem; }
+  .site-header nav { gap: .55rem; }
+  .site-header .desktop-only > .btn.secondary { display: none; }
+}

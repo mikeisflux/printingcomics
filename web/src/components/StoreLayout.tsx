@@ -70,8 +70,8 @@ export function StoreLayout() {
               <SearchBox />
               {user ? (
                 <>
-                  <Link to="/account" title={user.email} aria-label="Account">
-                    Hi, {user.firstName ?? 'Account'}
+                  <Link to="/account" title={user.email} aria-label="Account" className="account-link">
+                    <span className="hi-name">Hi, {user.firstName ?? 'Account'}</span><span className="hi-icon" aria-hidden="true">👤</span>
                   </Link>
                   {waiting > 0 && (
                     <Link to="/account/proofs" title="Proofs and file requests waiting for you" className="waiting-pill">
@@ -224,7 +224,7 @@ function ShareMenu() {
   ];
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+    <div ref={ref} className="share-menu" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Share this site"
@@ -312,6 +312,7 @@ function SearchBox({ fullWidth = false }: { fullWidth?: boolean } = {}) {
         e.preventDefault();
         if (q.trim()) navigate(`/shop?q=${encodeURIComponent(q.trim())}`);
       }}
+      className={fullWidth ? undefined : 'header-search'}
       style={{ display: 'flex', alignItems: 'center', gap: 0, width: fullWidth ? '100%' : undefined }}
     >
       <input
@@ -322,7 +323,7 @@ function SearchBox({ fullWidth = false }: { fullWidth?: boolean } = {}) {
         style={{
           padding: fullWidth ? '.6rem .85rem' : '.4rem .75rem', fontSize: fullWidth ? '1rem' : '.85rem',
           border: '1px solid var(--border)', borderRadius: '6px 0 0 6px',
-          borderRight: 'none', width: fullWidth ? '100%' : 180, flex: fullWidth ? 1 : undefined,
+          borderRight: 'none', width: '100%', minWidth: 0, flex: 1,
         }}
       />
       <button
