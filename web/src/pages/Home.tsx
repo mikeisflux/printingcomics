@@ -92,7 +92,7 @@ export function Home() {
             { n: '1', title: 'Pick your product', body: 'Comic book, graphic novel, TPB, or hardcover.' },
             { n: '2', title: 'Set your specs', body: 'Page count, cover type, interior color, quantity.' },
             { n: '3', title: 'Upload your files', body: 'Send us print-ready PDFs. We review before printing.' },
-            { n: '4', title: 'We print + ship', body: 'Direct to you, or fulfil direct to your backers.' },
+            { n: '4', title: 'We print + ship', body: 'Direct to you, or fulfill direct to your backers.' },
           ].map((step) => (
             <div key={step.n} style={{ textAlign: 'center' }}>
               <div style={{

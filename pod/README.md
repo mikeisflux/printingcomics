@@ -5,8 +5,8 @@ This folder is a copy of `mauramariepowers-tech/philbo-portal` (main `b56459f`,
 **It is reference material only.** It is not part of the npm workspaces, is not
 built or deployed, and must not be run against real data. The full write-up —
 what it is, what we took from it and how it maps onto our stack — is in
-`docs/philbo-portal-integration.md` at the repo root. The Print On Demand
-section of Printing Comics (`/print-on-demand`, `/admin/pod`) is our own
+`docs/philbo-portal-integration.md` at the repo root. The Distribution
+section of Printing Comics (`/distribution`, `/admin/pod`) is our own
 implementation on Express + Prisma + React 19; nothing here is imported by it.
 
 What was removed from the copy (see the integration doc, section 3):

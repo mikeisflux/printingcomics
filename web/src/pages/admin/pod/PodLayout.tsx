@@ -1,5 +1,5 @@
 /**
- * /admin/pod — the Print On Demand section shell: a dark "deck" with the
+ * /admin/pod — the Distribution section shell: a dark "deck" with the
  * section tabs and live counts, then the page. Styled by styles/pod.css
  * (.pod.pod-admin) so it reads as its own product inside the admin.
  */
@@ -26,10 +26,10 @@ export function PodLayout() {
       <header className="deck">
         <div className="deck-top">
           <div>
-            <h1><Printer size={22} style={{ color: 'var(--p-cyan)' }} /> Print On Demand</h1>
+            <h1><Printer size={22} style={{ color: 'var(--p-cyan)' }} /> Distribution</h1>
             <div className="deck-sub">Publisher listings · monthly catalogs · wholesale to comic shops · production and payouts</div>
           </div>
-          <a href="/print-on-demand" target="_blank" rel="noreferrer" className="pbtn ghost sm" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.3)' }}>Public page ↗</a>
+          <a href="/distribution" target="_blank" rel="noreferrer" className="pbtn ghost sm" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.3)' }}>Public page ↗</a>
         </div>
         <GroupedNav full={full} c={c} />
       </header>
@@ -89,7 +89,7 @@ function GroupedNav({ full, c }: { full: boolean; c: Counts }) {
   const sum = (g: Group) => g.pages.reduce((s, p) => s + (p.n ?? 0), 0);
   return (
     <>
-      <nav className="tabs groups" aria-label="Print On Demand areas">
+      <nav className="tabs groups" aria-label="Distribution areas">
         {groups.map((g) => <NavLink key={g.key} to={g.pages[0]!.to} end={g.pages[0]!.end} className={active.key === g.key ? 'active' : ''}>{g.icon}{g.label}{sum(g) ? <span className="n">{sum(g)}</span> : null}</NavLink>)}
       </nav>
       {active.pages.length > 1 && (

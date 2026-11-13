@@ -1,5 +1,5 @@
 /**
- * /print-on-demand/handbook — the Printing Comics Publisher Handbook: how
+ * /distribution/handbook — the Printing Comics Publisher Handbook: how
  * the program works, what we need from a publisher, file preparation
  * (deferring to our templates and file-prep pages for the specs), the
  * catalog procedure, money, and account rules. Printable.
@@ -11,7 +11,7 @@ import { money, pct, type PublicSettings } from '../../lib/pod';
 import { useLoad } from '../../components/pod/ui';
 
 export function PublisherHandbook() {
-  useSeo({ image: '/og-print-on-demand.png', title: 'Publisher Handbook — Print On Demand — Printing Comics', description: 'How to list, submit and sell comics through the Printing Comics Print On Demand program: policies, submissions, file preparation, catalog procedure, payouts and account rules.' });
+  useSeo({ image: '/og-distribution.png', title: 'Publisher Handbook — Distribution — Printing Comics', description: 'How to list, submit and sell comics through the Printing Comics Distribution program: policies, submissions, file preparation, catalog procedure, payouts and account rules.' });
   const { data } = useLoad<{ settings: PublicSettings }>('/pod');
   const s = data?.settings;
   const top = s ? s.tiers[s.tiers.length - 1]! : null;
@@ -21,7 +21,7 @@ export function PublisherHandbook() {
       <section className="hero-dark" style={{ padding: '3rem 0 2rem' }}>
         <div className="grain" />
         <div className="container between" style={{ alignItems: 'flex-end' }}>
-          <div><div className="eyebrow rise"><Link to="/print-on-demand" style={{ textDecoration: 'none' }}>Print On Demand</Link> · Publisher handbook</div><h1 className="display-lg rise rise-1" style={{ marginTop: '.4rem' }}>The Printing Comics<br /><span className="grad-text">Publisher Handbook</span></h1><p className="lead rise rise-2" style={{ marginTop: '.75rem' }}>Everything a publisher needs to list with us, get files through preflight, sell to shops and get paid. Updated as the program changes; the version on this page is always current.</p></div>
+          <div><div className="eyebrow rise"><Link to="/distribution" style={{ textDecoration: 'none' }}>Distribution</Link> · Publisher handbook</div><h1 className="display-lg rise rise-1" style={{ marginTop: '.4rem' }}>The Printing Comics<br /><span className="grad-text">Publisher Handbook</span></h1><p className="lead rise rise-2" style={{ marginTop: '.75rem' }}>Everything a publisher needs to list with us, get files through preflight, sell to shops and get paid. Updated as the program changes; the version on this page is always current.</p></div>
           <button className="pbtn ghost rise rise-2" onClick={() => window.print()}><Download size={16} /> Print / save as PDF</button>
         </div>
       </section>
@@ -31,7 +31,7 @@ export function PublisherHandbook() {
         </nav>
 
         <H id="how" icon={<Printer size={22} style={{ color: 'var(--p-violet)' }} />}>1. How the program works</H>
-        <p>Print On Demand is Printing Comics' distribution program for independent publishers. You list a book with us; it goes into a monthly catalog; comic shops order it at wholesale; we print exactly what was ordered (or you ship it, or we ship from stock you consign to us); the books land in shops for the in-store date; you get a statement and a payout. There are no print minimums, no listing fees and no inventory to carry when we print.</p>
+        <p>Distribution is Printing Comics' program for independent publishers. You list a book with us; it goes into a monthly catalog; comic shops order it at wholesale; we print exactly what was ordered (or you ship it, or we ship from stock you consign to us); the books land in shops for the in-store date; you get a statement and a payout. There are no print minimums, no listing fees and no inventory to carry when we print.</p>
         <div className="howit" style={{ marginTop: '1rem' }}>
           <div className="hs"><b>List by the catalog date</b><span>Metadata, cover image, price, print files.</span></div>
           <div className="hs"><b>Shops order until FOC</b><span>Final order cutoff is when quantities freeze.</span></div>
@@ -41,7 +41,7 @@ export function PublisherHandbook() {
 
         <H id="account" icon={<ShieldCheck size={22} style={{ color: 'var(--p-violet)' }} />}>2. Your account</H>
         <ul>
-          <li>Apply from the <Link to="/print-on-demand/apply?as=publisher">Print On Demand page</Link>. We reply within two business days and send a portal sign-in link; you set your own password on first login.</li>
+          <li>Apply from the <Link to="/distribution/apply?as=publisher">Distribution page</Link>. We reply within two business days and send a portal sign-in link; you set your own password on first login.</li>
           <li>One publisher account can have several logins. Ask us, or an existing login can invite colleagues from Company profile.</li>
           <li>Keep your <Link to="/publisher/assets">company profile</Link> current: contact, mailing address, payout method, logo. Your logo and bio show on your public publisher page and next to your titles.</li>
           <li>Accounts on hold cannot submit; listings stay in place. Write to us to sort out any hold.</li>

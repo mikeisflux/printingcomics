@@ -28,11 +28,11 @@ export function RetailerLayout() {
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
   useEffect(() => { if (loaded && !user) navigate('/login?redirect=/retailer'); }, [loaded, user, navigate]);
   const { data, error, reload } = useLoad<Me>(loaded && user ? '/pod/retailer/me' : null);
-  useSeo({ title: 'Wholesale ordering — Print On Demand', description: 'Order the Print On Demand catalog at wholesale.' });
+  useSeo({ title: 'Wholesale ordering — Distribution', description: 'Order the Distribution catalog at wholesale.' });
   if (!loaded || !user) return <div className="pod container" style={{ padding: '3rem' }}><p className="dim">Loading…</p></div>;
   if (error) {
     const pending = /being reviewed/i.test(error);
-    return <div className="pod container" style={{ padding: '3rem 1.25rem' }}><Empty title={pending ? 'Your application is in review' : 'This account is not a retailer account'} body={error} action={<div className="row" style={{ justifyContent: 'center' }}>{!pending && <Link to="/print-on-demand/apply?as=retailer" className="pbtn hot">Open a wholesale account</Link>}<Link to="/print-on-demand/catalog" className="pbtn ghost">Browse the catalog</Link></div>} /></div>;
+    return <div className="pod container" style={{ padding: '3rem 1.25rem' }}><Empty title={pending ? 'Your application is in review' : 'This account is not a retailer account'} body={error} action={<div className="row" style={{ justifyContent: 'center' }}>{!pending && <Link to="/distribution/apply?as=retailer" className="pbtn hot">Open a wholesale account</Link>}<Link to="/distribution/catalog" className="pbtn ghost">Browse the catalog</Link></div>} /></div>;
   }
   return (
     <div className="pod">
@@ -49,7 +49,7 @@ export function RetailerLayout() {
             <NavLink to="/retailer/profile"><span className="row" style={{ gap: '.5rem' }}><Building2 size={16} /> Store information</span></NavLink>
           </nav>
           <div style={{ marginTop: '1.5rem', padding: '.5rem .85rem', fontSize: '.78rem', color: 'var(--p-text-inv-dim)' }}>
-            <Link to="/print-on-demand/catalog" style={{ color: 'inherit' }}>Public catalog →</Link><br /><Link to="/account/password" style={{ color: 'inherit' }}>Change password →</Link>
+            <Link to="/distribution/catalog" style={{ color: 'inherit' }}>Public catalog →</Link><br /><Link to="/account/password" style={{ color: 'inherit' }}>Change password →</Link>
           </div>
         </aside>
         <main className="pmain"><Outlet context={{ me: data, reload }} /></main>

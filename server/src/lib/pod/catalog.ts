@@ -96,10 +96,10 @@ export async function estimatePrintCost(l: { format: string; trimWidthIn: number
 // ---------------------------------------------------------------------------
 
 async function podCategoryId(): Promise<string> {
-  const slug = 'print-on-demand';
+  const slug = 'distribution';
   const found = await prisma.category.findUnique({ where: { slug }, select: { id: true } });
   if (found) return found.id;
-  const c = await prisma.category.create({ data: { slug, name: 'Print On Demand', description: 'Comics and graphic novels from independent publishers, printed to order.' } });
+  const c = await prisma.category.create({ data: { slug, name: 'Distribution', description: 'Comics and graphic novels from independent publishers, printed to order.' } });
   return c.id;
 }
 

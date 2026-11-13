@@ -20,7 +20,7 @@
 #   prisma db push          prisma/schema.prisma changed       FORCE_PUSH=1
 #   npm run build           always
 #   db:seed:cws             seed-cws.ts / pricing/*.json       FORCE_SEED=1 / SKIP_SEED=1
-#   db:seed:pod             always (idempotent: POD admin account + default POD settings)
+#   db:seed:pod             always (idempotent: Distribution admin account + default Distribution settings)
 #   pm2 reload              always
 #   health check            always (fails the deploy if the API doesn't answer)
 #
@@ -165,10 +165,10 @@ else
   echo "==> Catalog seed unchanged since last deploy — skipping"
 fi
 
-# ---- Print On Demand bootstrap: the POD admin account and default settings ----
+# ---- Distribution bootstrap: the Distribution admin account and default settings ----
 # Idempotent and cheap, so it runs on every deploy; an existing account is
 # left alone (see prisma/seed-pod.ts for POD_ADMIN_* overrides).
-echo "==> Print On Demand bootstrap"
+echo "==> Distribution bootstrap"
 npm run db:seed:pod
 
 # ---- restart ----

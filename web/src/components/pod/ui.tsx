@@ -1,5 +1,5 @@
 /**
- * Building blocks for every Print On Demand screen. All of them assume a
+ * Building blocks for every Distribution screen. All of them assume a
  * `.pod` ancestor (styles/pod.css).
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';

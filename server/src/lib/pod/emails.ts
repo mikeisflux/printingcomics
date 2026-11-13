@@ -1,5 +1,5 @@
 /**
- * Print On Demand mail: publishers hear about reviews and purchase orders,
+ * Distribution mail: publishers hear about reviews and purchase orders,
  * shops hear about their account and orders, staff hear about new
  * applications and submissions.
  */
@@ -50,7 +50,7 @@ export async function sendListingStatusEmail(listingId: string, to: ListingStatu
     <p style="margin-top:1.5rem">${btn(`${base}/partner/listings/${l.id}`, 'Open the listing')}</p>
     <p style="color:#666;font-size:.9rem">Catalog id ${esc(l.catalogKey)} · ${esc(l.partner.name)}</p>
   `, name);
-  return trySend({ to: { email }, subject: `${label}: ${l.title} — ${name} Print On Demand`, html, tags: ['pod-listing'] });
+  return trySend({ to: { email }, subject: `${label}: ${l.title} — ${name} Distribution`, html, tags: ['pod-listing'] });
 }
 
 /** Staff: a publisher submitted a listing for review. */
@@ -101,7 +101,7 @@ export async function sendPartnerPortalInviteEmail(partnerId: string, userId: st
   if (!p || !u) return { sent: false, error: 'Partner or account not found' };
   const name = await storeName();
   const link = await magicLink(userId, '/partner');
-  const html = wrap(`<h2 style="margin:0 0 .5rem">Your publisher portal</h2><p>You can now list <strong>${esc(p.name)}</strong> titles with ${esc(name)} Print On Demand, upload print files, and follow sales and payouts.</p><p>${btn(link, u.passwordSetAt ? 'Open the publisher portal' : 'Set your password and get started')}</p>`, name);
+  const html = wrap(`<h2 style="margin:0 0 .5rem">Your publisher portal</h2><p>You can now list <strong>${esc(p.name)}</strong> titles with ${esc(name)} Distribution, upload print files, and follow sales and payouts.</p><p>${btn(link, u.passwordSetAt ? 'Open the publisher portal' : 'Set your password and get started')}</p>`, name);
   return trySend({ to: { email: u.email }, subject: `Your ${name} publisher portal`, html, tags: ['pod-partner'] });
 }
 

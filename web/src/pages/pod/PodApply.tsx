@@ -1,5 +1,5 @@
 /**
- * /print-on-demand/apply — two doors in: publishers (a partner application
+ * /distribution/apply — two doors in: publishers (a partner application
  * staff approve into a Partner with a portal login) and comic shops (a
  * Retailer application staff approve into a wholesale account).
  */
@@ -16,13 +16,13 @@ const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','
 export function PodApply() {
   const [params, setParams] = useSearchParams();
   const as = params.get('as') === 'retailer' ? 'retailer' : 'publisher';
-  useSeo({ image: '/og-print-on-demand.png', title: as === 'retailer' ? 'Open a Wholesale Account — Print On Demand' : 'Apply as a Publisher — Print On Demand', description: 'Join the Printing Comics Print On Demand program as a publisher or a comic shop.' }, [as]);
+  useSeo({ image: '/og-distribution.png', title: as === 'retailer' ? 'Open a Wholesale Account — Distribution' : 'Apply as a Publisher — Distribution', description: 'Join the Printing Comics Distribution program as a publisher or a comic shop.' }, [as]);
   return (
     <div className="pod">
       <section className="hero-dark" style={{ padding: '3rem 0 2rem' }}>
         <div className="grain" />
         <div className="container">
-          <div className="eyebrow rise"><Link to="/print-on-demand" style={{ textDecoration: 'none' }}>Print On Demand</Link> · Apply</div>
+          <div className="eyebrow rise"><Link to="/distribution" style={{ textDecoration: 'none' }}>Distribution</Link> · Apply</div>
           <h1 className="display-lg rise rise-1" style={{ marginTop: '.4rem' }}>{as === 'retailer' ? 'Open a wholesale account' : 'List your titles with us'}</h1>
           <div className="seg rise rise-2" style={{ marginTop: '1.25rem', background: 'rgba(255,255,255,.08)', borderColor: 'rgba(255,255,255,.14)' }}>
             <button className={as === 'publisher' ? 'on' : ''} style={as === 'publisher' ? { background: '#fff', color: '#0b0d14' } : { color: '#cfd2e6' }} onClick={() => setParams({ as: 'publisher' })}><BookOpen size={14} /> I'm a publisher</button>
@@ -59,7 +59,7 @@ function PublisherForm() {
     e.preventDefault(); setBusy(true); setErr(null);
     try { await api.post('/pod/apply/publisher', f); setDone(true); } catch (x) { setErr(errText(x)); } finally { setBusy(false); }
   };
-  if (done) return <Done title="Application received" body="We read every application ourselves and reply within two business days. When you're approved you get a portal login by email, and you can start listing right away." cta={{ to: '/print-on-demand/catalog', label: 'Browse the catalog meanwhile' }} />;
+  if (done) return <Done title="Application received" body="We read every application ourselves and reply within two business days. When you're approved you get a portal login by email, and you can start listing right away." cta={{ to: '/distribution/catalog', label: 'Browse the catalog meanwhile' }} />;
   return (
     <form onSubmit={submit} className="split" style={{ gridTemplateColumns: '1.3fr .7fr' }}>
       <div className="panel rise stack" style={{ gap: '1rem' }}>
@@ -70,7 +70,7 @@ function PublisherForm() {
           <div className="field"><label>Email</label><input required type="email" value={f.contactEmail} onChange={set('contactEmail')} /></div>
           <div className="field span-2"><label>Website or social</label><input value={f.website} onChange={set('website')} placeholder="https://" /></div>
           <div className="field span-2"><label>Titles you'd list first</label><textarea rows={3} value={f.titles} onChange={set('titles')} placeholder="Series, issue numbers, formats, roughly how many a month" /></div>
-          <div className="field span-2"><label>How would you fulfil?</label>
+          <div className="field span-2"><label>How would you fulfill?</label>
             <div className="seg">
               {[['PRINTED_BY_US', 'You print & ship for me'], ['PARTNER_SHIPS', 'I ship from my own stock'], ['BOTH', 'Some of each']].map(([k, l]) => <button type="button" key={k} className={f.fulfillment === k ? 'on' : ''} onClick={() => setF((x) => ({ ...x, fulfillment: k! }))}>{l}</button>)}
             </div>
@@ -102,7 +102,7 @@ function RetailerForm() {
       setDone(true);
     } catch (x) { setErr(errText(x)); } finally { setBusy(false); }
   };
-  if (done) return <Done title="Application received" body="We check shop applications within two business days. Once you're approved you get a sign-in link by email and the current catalog opens to you at wholesale." cta={{ to: '/print-on-demand/catalog', label: 'See the catalog' }} />;
+  if (done) return <Done title="Application received" body="We check shop applications within two business days. Once you're approved you get a sign-in link by email and the current catalog opens to you at wholesale." cta={{ to: '/distribution/catalog', label: 'See the catalog' }} />;
   return (
     <form onSubmit={submit} className="split" style={{ gridTemplateColumns: '1.3fr .7fr' }}>
       <div className="panel rise stack" style={{ gap: '1rem' }}>

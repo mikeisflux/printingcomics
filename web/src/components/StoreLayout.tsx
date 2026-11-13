@@ -58,7 +58,7 @@ export function StoreLayout() {
           <nav>
             <NavItem label="Products" isOpen={productsOpen} onToggle={() => setProductsOpen(!productsOpen)} items={NAV_GROUPS.products} />
             <Link to="/crowdfunding">Crowdfunding</Link>
-            <Link to="/print-on-demand" className="nav-pod">Print On Demand</Link>
+            <Link to="/distribution" className="nav-pod">Distribution</Link>
             <NavItem label="Resources" isOpen={resourcesOpen} onToggle={() => setResourcesOpen(!resourcesOpen)} items={NAV_GROUPS.resources} />
             <NavItem label="About" isOpen={aboutOpen} onToggle={() => setAboutOpen(!aboutOpen)} items={NAV_GROUPS.about} />
             <Link to="/contact">Contact</Link>
@@ -181,8 +181,8 @@ export function StoreLayout() {
             <div>
               <h4>Other</h4>
               <ul>
-                <li><Link to="/print-on-demand">Print On Demand</Link></li>
-                <li><Link to="/print-on-demand/catalog">POD Catalog</Link></li>
+                <li><Link to="/distribution">Distribution</Link></li>
+                <li><Link to="/distribution/catalog">Distribution Catalog</Link></li>
                 <li><Link to="/about">About</Link></li>
                 <li><Link to="/contact">Contact</Link></li>
                 <li><Link to="/terms">Terms and Conditions</Link></li>
@@ -524,7 +524,7 @@ function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
 
         {group('products', 'Products')}
         <Link to="/crowdfunding" className="mobile-top-link" onClick={onClose}>Crowdfunding</Link>
-        <Link to="/print-on-demand" className="mobile-top-link nav-pod" onClick={onClose}>Print On Demand</Link>
+        <Link to="/distribution" className="mobile-top-link nav-pod" onClick={onClose}>Distribution</Link>
         {group('resources', 'Resources')}
         {group('about', 'About')}
         <Link to="/contact" className="mobile-top-link" onClick={onClose}>Contact</Link>

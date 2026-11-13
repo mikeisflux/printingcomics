@@ -11,9 +11,9 @@ export interface CurrentUser {
   hasPassword?: boolean;
   /** Admin areas this account may use (every area for an admin). */
   permissions?: string[];
-  /** Print On Demand: the publisher this account belongs to, if any. */
+  /** Distribution: the publisher this account belongs to, if any. */
   partner?: { name: string; status: string } | null;
-  /** Print On Demand: the comic shop this account belongs to, if any. */
+  /** Distribution: the comic shop this account belongs to, if any. */
   retailer?: { name: string; status: string } | null;
 }
 

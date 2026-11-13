@@ -74,7 +74,13 @@ import { RetailerLayout, RetailerDashboard, RetailerOrders } from './pages/pod/R
 import { RetailerCatalog } from './pages/pod/RetailerCatalog';
 import { RetailerProfile, RetailerDownloads, RetailerReturns, RetailerShipments } from './pages/pod/RetailerPortalMore';
 import { PublisherFiles, PublisherProfile, PublisherBarcodes, PublisherPrintOrders, PublisherResources } from './pages/pod/PublisherPortalMore';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
+
+/** The program launched at /print-on-demand; old links land on the same page under /distribution. */
+function RedirectToDistribution() {
+  const { pathname, search, hash } = useLocation();
+  return <Navigate to={`${pathname.replace(/^\/print-on-demand/, '/distribution')}${search}${hash}`} replace />;
+}
 import { PodLayout } from './pages/admin/pod/PodLayout';
 import { PodDashboard } from './pages/admin/pod/PodDashboard';
 import { PodListings, PodListingDetail } from './pages/admin/pod/PodListings';
@@ -133,14 +139,16 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'crowdfunding', element: <Crowdfunding /> },
-      // Print On Demand: the programme page, catalog, applications, and the
+      // Distribution: the program page, catalog, applications, and the
       // publisher and retailer portals (styles/pod.css, lib/pod.ts).
-      { path: 'print-on-demand', element: <PrintOnDemand /> },
-      { path: 'print-on-demand/catalog', element: <PodCatalog /> },
-      { path: 'print-on-demand/catalog/:key', element: <PodTitle /> },
-      { path: 'print-on-demand/apply', element: <PodApply /> },
-      { path: 'print-on-demand/handbook', element: <PublisherHandbook /> },
-      { path: 'print-on-demand/publishers/:slug', element: <PodPublisherPage /> },
+      { path: 'distribution', element: <PrintOnDemand /> },
+      { path: 'distribution/catalog', element: <PodCatalog /> },
+      { path: 'distribution/catalog/:key', element: <PodTitle /> },
+      { path: 'distribution/apply', element: <PodApply /> },
+      { path: 'distribution/handbook', element: <PublisherHandbook /> },
+      { path: 'distribution/publishers/:slug', element: <PodPublisherPage /> },
+      { path: 'print-on-demand', element: <RedirectToDistribution /> },
+      { path: 'print-on-demand/*', element: <RedirectToDistribution /> },
       {
         path: 'publisher',
         element: <PublisherLayout />,

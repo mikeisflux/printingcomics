@@ -33,7 +33,7 @@ router.use(requireAdmin);
 // Demand (or Preflight) lives in that section and does not get it.
 router.use('/dashboard', (req, res, next) => {
   const general = PERMISSION_KEYS.filter((k) => k !== 'pod' && k !== 'preflight');
-  if (!general.some((k) => hasPermission(req.session, k))) return res.status(403).json({ error: 'Your account is limited to Print on Demand.', permission: 'orders' });
+  if (!general.some((k) => hasPermission(req.session, k))) return res.status(403).json({ error: 'Your account is limited to Distribution.', permission: 'orders' });
   next();
 }, dashboard);
 router.use('/products', requirePermission('products'), products);

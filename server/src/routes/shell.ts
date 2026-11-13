@@ -226,10 +226,10 @@ const STATIC_META: Record<string, { title: string; description: string; image?: 
   '/about': { title: `About | ${SITE_NAME}`, description: 'Printing Comics prints comics, graphic novels and trades to order for creators, publishers and crowdfunding campaigns.' },
   '/contact': { title: `Contact | ${SITE_NAME}`, description: 'Questions about a print run, a quote or an order? Get in touch with Printing Comics.' },
   '/crowdfunding': { title: `Crowdfunding Print & Fulfillment | ${SITE_NAME}`, description: 'Print and ship your Kickstarter or crowdfunded comic with Printing Comics.' },
-  '/print-on-demand': { title: `Print On Demand for Publishers & Comic Shops | ${SITE_NAME}`, description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-print-on-demand.png' },
-  '/print-on-demand/catalog': { title: `Print On Demand Catalog | ${SITE_NAME}`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.', image: '/og-print-on-demand.png' },
-  '/print-on-demand/handbook': { title: `Publisher Handbook — Print On Demand | ${SITE_NAME}`, description: 'How to list, submit and sell comics through Printing Comics Print On Demand: policies, submissions, file preparation, catalog procedure, payouts and account rules.', image: '/og-print-on-demand.png' },
-  '/print-on-demand/apply': { title: `Apply — Print On Demand | ${SITE_NAME}`, description: 'Join the Printing Comics Print On Demand programme as a publisher or a comic shop.', image: '/og-print-on-demand.png' },
+  '/distribution': { title: `Distribution for Publishers & Comic Shops | ${SITE_NAME}`, description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-distribution.png' },
+  '/distribution/catalog': { title: `Distribution Catalog | ${SITE_NAME}`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Distribution catalog, available to comic shops at wholesale.', image: '/og-distribution.png' },
+  '/distribution/handbook': { title: `Publisher Handbook — Distribution | ${SITE_NAME}`, description: 'How to list, submit and sell comics through Printing Comics Distribution: policies, submissions, file preparation, catalog procedure, payouts and account rules.', image: '/og-distribution.png' },
+  '/distribution/apply': { title: `Apply — Distribution | ${SITE_NAME}`, description: 'Join the Printing Comics Distribution program as a publisher or a comic shop.', image: '/og-distribution.png' },
   '/resources/make-a-comic': { title: `How to Make a Comic Book | ${SITE_NAME}`, description: 'From script to print-ready files: a guide to making a comic book.' },
   '/resources/file-prep': { title: `File Prep for Comic Printing | ${SITE_NAME}`, description: 'How to set up your cover and interior PDFs for printing: bleed, trim, resolution, color.' },
   '/resources/templates': { title: `Comic Book Templates | ${SITE_NAME}`, description: 'Free print templates for standard comic, graphic novel and trading card sizes.' },
@@ -274,6 +274,12 @@ router.use((req, res, next) => {
   if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
   // Asset-looking paths are nginx's; if one reaches us the file is missing.
   if (/\.[a-z0-9]{2,5}$/i.test(req.path) && !/\.(html?)$/i.test(req.path)) return next();
+  // The program launched at /print-on-demand and the publisher portal at /partner.
+  const moved = req.path.match(/^\/(print-on-demand|partner)(\/.*)?$/);
+  if (moved) {
+    const to = (moved[1] === 'partner' ? '/publisher' : '/distribution') + (moved[2] ?? '');
+    return res.redirect(301, to + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''));
+  }
   renderShell(req, res).catch(next);
 });
 

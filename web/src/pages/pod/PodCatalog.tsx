@@ -1,5 +1,5 @@
 /**
- * /print-on-demand/catalog — the public catalog for a cycle: every live
+ * /distribution/catalog — the public catalog for a cycle: every live
  * title at cover price. Shops see their wholesale price in their portal.
  */
 import { useMemo, useState } from 'react';
@@ -29,7 +29,7 @@ export function PodCatalog() {
   const [q, setQ] = useState('');
   const [publisher, setPublisher] = useState<string>('');
   const [format, setFormat] = useState<string>('');
-  useSeo({ image: '/og-print-on-demand.png', title: `${data?.cycle ? `${data.cycle.name} — ` : ''}Print On Demand Catalog — Printing Comics`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.' }, [data?.cycle?.name]);
+  useSeo({ image: '/og-distribution.png', title: `${data?.cycle ? `${data.cycle.name} — ` : ''}Distribution Catalog — Printing Comics`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Distribution catalog, available to comic shops at wholesale.' }, [data?.cycle?.name]);
 
   const publishers = useMemo(() => Array.from(new Map((data?.listings ?? []).map((l) => [l.partner.id, l.partner])).values()).sort((a, b) => a.name.localeCompare(b.name)), [data]);
   const formats = useMemo(() => Array.from(new Set((data?.listings ?? []).map((l) => l.format))), [data]);
@@ -47,7 +47,7 @@ export function PodCatalog() {
         <div className="container">
           <div className="between" style={{ alignItems: 'flex-end' }}>
             <div>
-              <div className="eyebrow rise"><Link to="/print-on-demand" style={{ textDecoration: 'none' }}>Print On Demand</Link> · Catalog</div>
+              <div className="eyebrow rise"><Link to="/distribution" style={{ textDecoration: 'none' }}>Distribution</Link> · Catalog</div>
               <h1 className="display-lg rise rise-1" style={{ marginTop: '.4rem' }}>{data?.cycle?.name ?? 'The catalog'}</h1>
               {data?.cycle && <div className="row rise rise-2" style={{ marginTop: '.6rem' }}>{data.cycle.orderingOpen ? <Pill tone="green" live>Ordering open until {dateShort(data.cycle.focDate)}</Pill> : <Pill tone="amber">{data.cycle.statusLabel}</Pill>}<span className="dim" style={{ fontSize: '.9rem' }}>{shown.length} of {data.listings.length} titles</span></div>}
             </div>
@@ -65,7 +65,7 @@ export function PodCatalog() {
         {!user?.retailer && (
           <div className="notice info" style={{ marginBottom: '1.25rem', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="row"><Store size={18} /> Prices shown are cover price. Comic shops order at {`up to 50%`} off in the wholesale portal.</span>
-            <Link to={user ? '/print-on-demand/apply?as=retailer' : '/login?redirect=/retailer'} className="pbtn soft sm">{user ? 'Open a wholesale account' : 'Retailer sign in'} <ArrowRight size={14} /></Link>
+            <Link to={user ? '/distribution/apply?as=retailer' : '/login?redirect=/retailer'} className="pbtn soft sm">{user ? 'Open a wholesale account' : 'Retailer sign in'} <ArrowRight size={14} /></Link>
           </div>
         )}
         {user?.retailer && data?.cycle?.orderingOpen && (
@@ -93,10 +93,10 @@ export function PodCatalog() {
           </div>
         )}
         {data && data.listings.length > 0 && !q && !publisher && !format && (
-          <div style={{ marginBottom: '1.5rem' }}><div className="section-head" style={{ marginBottom: '.75rem' }}><div><div className="eyebrow">Newest releases</div><h2 className="display-md">Just added</h2></div></div><div className="marquee"><div className="marquee-track">{[...data.listings.slice(0, 12), ...data.listings.slice(0, 12)].map((l, i) => <CoverCard key={`${l.id}-${i}`} to={`/print-on-demand/catalog/${encodeURIComponent(l.catalogKey)}`} url={l.coverImageUrl} title={`${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}`} sub={l.partner.name} price={money(l.msrpCents)} />)}</div></div></div>
+          <div style={{ marginBottom: '1.5rem' }}><div className="section-head" style={{ marginBottom: '.75rem' }}><div><div className="eyebrow">Newest releases</div><h2 className="display-md">Just added</h2></div></div><div className="marquee"><div className="marquee-track">{[...data.listings.slice(0, 12), ...data.listings.slice(0, 12)].map((l, i) => <CoverCard key={`${l.id}-${i}`} to={`/distribution/catalog/${encodeURIComponent(l.catalogKey)}`} url={l.coverImageUrl} title={`${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}`} sub={l.partner.name} price={money(l.msrpCents)} />)}</div></div></div>
         )}
         {loading && !data ? <p className="dim">Loading the catalog…</p> : !data?.cycle ? (
-          <Empty title="The first catalog is being put together" body="Publishers are listing now. Come back on the catalog date, or apply to list your own titles." action={<Link to="/print-on-demand/apply?as=publisher" className="pbtn primary">Apply as a publisher</Link>} />
+          <Empty title="The first catalog is being put together" body="Publishers are listing now. Come back on the catalog date, or apply to list your own titles." action={<Link to="/distribution/apply?as=publisher" className="pbtn primary">Apply as a publisher</Link>} />
         ) : shown.length === 0 ? (
           <Empty title="No titles match" body="Try another search, publisher or format." />
         ) : (
@@ -104,7 +104,7 @@ export function PodCatalog() {
             {shown.map((l, i) => (
               <div key={l.id} className="rise" style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
                 <CoverCard
-                  to={`/print-on-demand/catalog/${encodeURIComponent(l.catalogKey)}`} url={l.coverImageUrl}
+                  to={`/distribution/catalog/${encodeURIComponent(l.catalogKey)}`} url={l.coverImageUrl}
                   title={`${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}`} sub={l.partner.name} price={money(l.msrpCents)}
                   tag={l.incentiveRatio ? <Pill tone="rose">{l.incentiveRatio} incentive</Pill> : l.coverDescription && !/^main/i.test(l.coverDescription) ? <Pill tone="violet" >{l.coverDescription}</Pill> : undefined}
                 />

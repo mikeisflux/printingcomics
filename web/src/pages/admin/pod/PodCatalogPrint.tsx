@@ -20,7 +20,7 @@ export function PodCatalogPrint() {
       <style>{`@media print { .no-print { display: none !important; } .pod .cat-item { break-inside: avoid; } .admin-side, .deck { display: none !important; } .admin-main { padding: 0 !important; } }`}</style>
       <div className="no-print between" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--p-line)' }}><b>Printable catalog · {live.length} titles</b><button className="pbtn primary sm" onClick={() => window.print()}>Print / save as PDF</button></div>
       <div style={{ padding: '2rem 1.5rem', maxWidth: 1000, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}><div className="eyebrow">Printing Comics · Print On Demand</div><h1 className="display-lg">{data.cycle.name}</h1><p className="dim">Catalog {dateShort(data.cycle.catalogDate)} · Final order cutoff {dateShort(data.cycle.focDate)} · In store {dateShort(data.cycle.inStoreDate)}</p></div>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}><div className="eyebrow">Printing Comics · Distribution</div><h1 className="display-lg">{data.cycle.name}</h1><p className="dim">Catalog {dateShort(data.cycle.catalogDate)} · Final order cutoff {dateShort(data.cycle.focDate)} · In store {dateShort(data.cycle.inStoreDate)}</p></div>
         {[...byPub.entries()].map(([pub, ls]) => (
           <section key={pub} style={{ marginBottom: '2rem' }}>
             <h2 className="display-md" style={{ borderBottom: '2px solid var(--p-text)', paddingBottom: '.3rem' }}>{pub}</h2>

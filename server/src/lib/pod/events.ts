@@ -1,5 +1,5 @@
 /**
- * The Print On Demand audit trail and document numbering.
+ * The Distribution audit trail and document numbering.
  */
 import type { Request } from 'express';
 import { prisma } from '../../db.js';

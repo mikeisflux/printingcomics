@@ -1,5 +1,5 @@
 /**
- * Barcodes for the Print On Demand catalog. We buy blocks of UPC-A / EAN-13
+ * Barcodes for the Distribution catalog. We buy blocks of UPC-A / EAN-13
  * numbers, load them here, hold some for a publisher, and put one on a
  * listing (which takes it as its UPC, so the catalog id follows). Check
  * digits are computed, never typed. `barcodeSvg` draws a scannable EAN-13 /
@@ -77,7 +77,7 @@ export async function assignBarcode(listingId: string, actor: Actor, barcodeId?:
   if (!barcode) {
     barcode = (await prisma.barcode.findFirst({ where: { status: 'RESERVED', partnerId: listing.partnerId }, orderBy: { code: 'asc' } }))
       ?? (await prisma.barcode.findFirst({ where: { status: 'AVAILABLE' }, orderBy: { code: 'asc' } }));
-    if (!barcode) throw new HttpError(409, 'No barcodes are available. Load a block under Print on Demand → Barcodes.');
+    if (!barcode) throw new HttpError(409, 'No barcodes are available. Load a block under Distribution → Barcodes.');
   }
   await prisma.barcode.update({ where: { id: barcode.id }, data: { status: 'ASSIGNED', listingId, partnerId: listing.partnerId, assignedAt: new Date() } });
   const data: { upc: string; catalogKey?: string } = { upc: barcode.code };

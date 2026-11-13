@@ -20,7 +20,7 @@ router.get('/sitemap.xml', async (_req, res) => {
   ]);
 
   const staticPaths = [
-    '/', '/shop', '/crowdfunding', '/print-on-demand', '/print-on-demand/catalog', '/print-on-demand/handbook', '/about', '/terms', '/contact', '/sample-pack',
+    '/', '/shop', '/crowdfunding', '/distribution', '/distribution/catalog', '/distribution/handbook', '/about', '/terms', '/contact', '/sample-pack',
     '/resources/make-a-comic', '/resources/file-prep', '/resources/templates', '/resources/faq',
   ];
   const urls: { loc: string; lastmod?: string; priority?: number; changefreq?: string }[] = [

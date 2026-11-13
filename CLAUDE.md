@@ -86,7 +86,7 @@ npm run db:studio                    # Prisma Studio
   `/order/:number?t=…&pay=1`, routes in `routes/orders.ts`), "already paid"
   with a method + reference, or a comp. `Order.source` is `"admin"` for these.
 
-- Print On Demand (`/print-on-demand`, `/partner`, `/retailer`, `/admin/pod`):
+- Distribution (`/distribution`, `/partner`, `/retailer`, `/admin/pod`):
   publishers (a `Partner` whose users carry `partnerId`) list books (`Listing`,
   one per cover; `catalogKey` = SERIESCODE-last5(UPC)); staff review them;
   a `CatalogCycle` publishes a snapshot (`CatalogCycleItem`) and each approved
@@ -101,9 +101,10 @@ npm run db:studio                    # Prisma Studio
   `pdfinfo` on upload (`lib/pod/preflight.ts`). Settings live in one JSON
   blob `pod.settings` (`lib/pod/settings.ts`). Admin permissions: `pod`
   (the section) and `preflight` (the price-free file desk,
-  `/admin/pod/preflight`); a STAFF account holding only those is a "POD
+  `/admin/pod/preflight`); a STAFF account holding only those is a "Distribution
   admin": the sidebar shows just that section and `/admin` redirects into
-  it. `npm run db:seed:pod` (run by every deploy) creates one
+  it. The program was launched as "Print On Demand"; `/print-on-demand/*`
+  redirects to `/distribution/*` and the admin URL stays `/admin/pod`. `npm run db:seed:pod` (run by every deploy) creates one
   (`POD_ADMIN_EMAIL`/`POD_ADMIN_PASSWORD`, default
   mauramariepowers@gmail.com / password) with `passwordSetAt: null`, so the
   first login is forced through `/account/setup`.
@@ -124,7 +125,7 @@ npm run db:studio                    # Prisma Studio
   publisher, assign to a listing; `lib/pod/barcodes.ts` also renders the
   EAN-13/UPC-A SVG at `/api/pod/barcode/:code.svg`), analytics, the
   activity log, a CSV listing importer, a printable catalog per cycle, and
-  the Publisher Handbook at `/print-on-demand/handbook` (file specs defer
+  the Publisher Handbook at `/distribution/handbook` (file specs defer
   to `/resources/templates` and `/resources/file-prep`).
 
 ## Configurator pricing

@@ -1,5 +1,5 @@
 /**
- * /api/pod — the customer-facing side of Print On Demand:
+ * /api/pod — the customer-facing side of Distribution:
  *   public:   the program page, the live catalog, the two application forms
  *   /partner: a publisher's listings, files, purchase orders and statements
  *   /retailer: a shop's catalog at wholesale, basket preview, orders, CSV
@@ -129,7 +129,7 @@ router.post('/apply/retailer', applyLimiter, async (req, res) => {
 async function requirePartner(req: Request, res: Response, next: NextFunction) {
   if (!req.session) return res.status(401).json({ error: 'Not authenticated' });
   const u = await prisma.user.findUnique({ where: { id: req.session.sub }, select: { partnerId: true, partner: { select: { status: true } } } });
-  if (!u?.partnerId) return res.status(403).json({ error: 'This account is not attached to a publisher. Apply on the Print On Demand page or ask us to add you.' });
+  if (!u?.partnerId) return res.status(403).json({ error: 'This account is not attached to a publisher. Apply on the Distribution page or ask us to add you.' });
   if (u.partner?.status !== 'ACTIVE') return res.status(403).json({ error: 'This publisher account is on hold. Write to us to sort it out.' });
   (req as Request & { partnerId: string }).partnerId = u.partnerId;
   next();
@@ -463,7 +463,7 @@ router.use('/partner', partner);
 async function requireRetailer(req: Request, res: Response, next: NextFunction) {
   if (!req.session) return res.status(401).json({ error: 'Not authenticated' });
   const u = await prisma.user.findUnique({ where: { id: req.session.sub }, select: { retailerId: true, retailer: true } });
-  if (!u?.retailerId || !u.retailer) return res.status(403).json({ error: 'This account is not a retailer account. Apply on the Print On Demand page.' });
+  if (!u?.retailerId || !u.retailer) return res.status(403).json({ error: 'This account is not a retailer account. Apply on the Distribution page.' });
   if (u.retailer.status === 'PENDING') return res.status(403).json({ error: 'Your application is being reviewed. We will email you when ordering opens.', pending: true });
   if (u.retailer.status !== 'ACTIVE') return res.status(403).json({ error: 'This retailer account is on hold. Write to us to sort it out.' });
   (req as Request & { retailer: typeof u.retailer }).retailer = u.retailer;

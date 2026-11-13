@@ -1,9 +1,9 @@
 /**
- * Print On Demand bootstrap — safe to run on every deploy.
+ * Distribution bootstrap — safe to run on every deploy.
  *
  *   npm run db:seed:pod
  *
- * Creates the POD admin account (a STAFF user holding only the `pod` and
+ * Creates the Distribution admin account (a STAFF user holding only the `pod` and
  * `preflight` areas, so /admin opens straight into the section) with a
  * starter password and `passwordSetAt: null`, which forces choosing a real
  * password on the first login. If the account already exists it is left
@@ -26,7 +26,7 @@ const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
 const DEFAULT_SETTINGS = {
   enabled: true,
-  programName: 'Print On Demand',
+  programName: 'Distribution',
   intro: 'List your comics with us, sell them to comic shops at wholesale, and let us print and ship every order. No minimums, no inventory, one monthly catalog.',
   tiers: [
     { name: 'Tier I', minCents: 0, discountBps: 4000 },
@@ -63,10 +63,10 @@ async function main() {
         role: 'STAFF',
         permissions,
         active: true,
-        notes: 'Print On Demand admin (seeded). Must set a new password on first login.',
+        notes: 'Distribution admin (seeded). Must set a new password on first login.',
       },
     });
-    console.log(`POD admin created: ${email} — starter password set; a new password is required on first login.`);
+    console.log(`Distribution admin created: ${email} — starter password set; a new password is required on first login.`);
   } else {
     const data: Record<string, unknown> = {};
     if (existing.role === 'CUSTOMER') { data.role = 'STAFF'; data.permissions = permissions; }
@@ -75,18 +75,18 @@ async function main() {
     if (reset) { data.passwordHash = await bcrypt.hash(password, 12); data.passwordSetAt = null; data.sessionVersion = { increment: 1 }; }
     if (Object.keys(data).length) {
       await prisma.user.update({ where: { id: existing.id }, data });
-      console.log(`POD admin updated: ${email} (${Object.keys(data).join(', ')})`);
+      console.log(`Distribution admin updated: ${email} (${Object.keys(data).join(', ')})`);
     } else {
-      console.log(`POD admin already in place: ${email} (${existing.role}, ${existing.permissions.join(', ') || 'no areas'})`);
+      console.log(`Distribution admin already in place: ${email} (${existing.role}, ${existing.permissions.join(', ') || 'no areas'})`);
     }
   }
 
   const settings = await prisma.setting.findUnique({ where: { key: 'pod.settings' } });
   if (!settings) {
     await prisma.setting.create({ data: { key: 'pod.settings', value: DEFAULT_SETTINGS } });
-    console.log('POD settings written (defaults). Edit them under Admin → Print on Demand → Settings.');
+    console.log('Distribution settings written (defaults). Edit them under Admin → Distribution → Settings.');
   } else {
-    console.log('POD settings already saved; left as they are.');
+    console.log('Distribution settings already saved; left as they are.');
   }
 }
 

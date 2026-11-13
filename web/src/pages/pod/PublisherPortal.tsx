@@ -1,6 +1,6 @@
 /**
  * /partner — the publisher portal: listings (write, upload, submit),
- * purchase orders to fulfil, statements and what is owed.
+ * purchase orders to fulfill, statements and what is owed.
  */
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -29,12 +29,12 @@ export function PublisherLayout() {
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
   useEffect(() => { if (loaded && !user) navigate('/login?redirect=/publisher'); }, [loaded, user, navigate]);
   const { data, error, reload } = useLoad<Me>(loaded && user ? '/pod/publisher/me' : null);
-  useSeo({ title: 'Publisher portal — Print On Demand', description: 'Manage your Print On Demand listings.' });
+  useSeo({ title: 'Publisher portal — Distribution', description: 'Manage your Distribution listings.' });
   if (!loaded || !user) return <div className="pod container" style={{ padding: '3rem' }}><p className="dim">Loading…</p></div>;
   if (error) {
     return (
       <div className="pod container" style={{ padding: '3rem 1.25rem' }}>
-        <Empty title="This account is not a publisher account" body={error} action={<div className="row" style={{ justifyContent: 'center' }}><Link to="/print-on-demand/apply?as=publisher" className="pbtn glow">Apply as a publisher</Link><Link to="/account" className="pbtn ghost">My account</Link></div>} />
+        <Empty title="This account is not a publisher account" body={error} action={<div className="row" style={{ justifyContent: 'center' }}><Link to="/distribution/apply?as=publisher" className="pbtn glow">Apply as a publisher</Link><Link to="/account" className="pbtn ghost">My account</Link></div>} />
       </div>
     );
   }
@@ -56,8 +56,8 @@ export function PublisherLayout() {
             <NavLink to="/publisher/resources"><span className="row" style={{ gap: '.5rem' }}><LifeBuoy size={16} /> Resources & support</span></NavLink>
           </nav>
           <div style={{ marginTop: '1.5rem', padding: '.5rem .85rem', fontSize: '.78rem', color: 'var(--p-text-inv-dim)' }}>
-            <Link to="/print-on-demand/catalog" style={{ color: 'inherit' }}>Public catalog →</Link><br />
-            <Link to="/print-on-demand/handbook" style={{ color: 'inherit' }}>Publisher handbook →</Link><br />
+            <Link to="/distribution/catalog" style={{ color: 'inherit' }}>Public catalog →</Link><br />
+            <Link to="/distribution/handbook" style={{ color: 'inherit' }}>Publisher handbook →</Link><br />
             <Link to="/account/password" style={{ color: 'inherit' }}>Change password →</Link>
           </div>
         </aside>

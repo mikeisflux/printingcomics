@@ -1,8 +1,8 @@
 /**
- * Print On Demand program settings — the retailer tier table, our
+ * Distribution program settings — the retailer tier table, our
  * commission on publisher sales, how retailer shipping is charged, and the
  * words on the public page. Stored as one JSON blob under `pod.settings` so
- * staff edit it as a whole (Admin → Print on Demand → Settings).
+ * staff edit it as a whole (Admin → Distribution → Settings).
  *
  * Wholesale pricing (MSRP × tier) is a separate world from the configurator
  * pricing engine (`lib/pricing.ts`): nothing here touches print prices.
@@ -19,7 +19,7 @@ export interface RetailerTier {
 }
 
 export interface PodSettings {
-  /** Shown on /print-on-demand and used for new applications. */
+  /** Shown on /distribution and used for new applications. */
   enabled: boolean;
   programName: string;
   intro: string;
@@ -51,7 +51,7 @@ export interface PodSettings {
 
 export const DEFAULT_POD_SETTINGS: PodSettings = {
   enabled: true,
-  programName: 'Print On Demand',
+  programName: 'Distribution',
   intro: 'List your comics with us, sell them to comic shops at wholesale, and let us print and ship every order. No minimums, no inventory, one monthly catalog.',
   tiers: [
     { name: 'Tier I', minCents: 0, discountBps: 4000 },

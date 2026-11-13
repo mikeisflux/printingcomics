@@ -1,7 +1,7 @@
 /**
  * /admin/pod/preflight — the production-file desk. Jobs, files, automatic
  * checks, approve/reject per file. No prices, no quantities, no money: it is
- * the one Print On Demand screen a prepress contractor can be given alone.
+ * the one Distribution screen a prepress contractor can be given alone.
  */
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';

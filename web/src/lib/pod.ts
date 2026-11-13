@@ -1,5 +1,5 @@
 /**
- * Types and small helpers shared by every Print On Demand screen: the
+ * Types and small helpers shared by every Distribution screen: the
  * public pages, the publisher and retailer portals, and /admin/pod.
  */
 export const money = (cents: number | null | undefined) => {

@@ -1,5 +1,5 @@
 /**
- * /print-on-demand — the program's front door. Publishers list books,
+ * /distribution — the program's front door. Publishers list books,
  * comic shops order them at wholesale, we print and ship each cycle.
  */
 import { Link } from 'react-router-dom';
@@ -18,7 +18,7 @@ interface Landing {
 }
 
 export function PrintOnDemand() {
-  useSeo({ title: 'Print On Demand for Publishers & Comic Shops — Printing Comics', description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-print-on-demand.png' });
+  useSeo({ title: 'Distribution for Publishers & Comic Shops — Printing Comics', description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-distribution.png' });
   const { data } = useLoad<Landing>('/pod');
   const { user } = useAuth();
   const s = data?.settings;
@@ -34,15 +34,15 @@ export function PrintOnDemand() {
         <div className="container">
           <div className="hero-grid">
             <div>
-              <div className="eyebrow rise">Print On Demand · for publishers &amp; comic shops</div>
+              <div className="eyebrow rise">Distribution · for publishers &amp; comic shops</div>
               <h1 className="display-xl rise rise-1" style={{ marginTop: '.75rem' }}>
                 Your comics,<br /><span className="grad-text">in every shop,</span><br />printed one at a time.
               </h1>
               <p className="lead rise rise-2" style={{ marginTop: '1.25rem' }}>{s?.intro ?? 'List your comics with us, sell them to comic shops at wholesale, and let us print and ship every order. No minimums, no inventory, one monthly catalog.'}</p>
               <div className="row rise rise-3" style={{ marginTop: '1.75rem', gap: '.75rem' }}>
-                <Link to={user?.partner ? '/publisher' : '/print-on-demand/apply?as=publisher'} className="pbtn glow"><BookOpen size={18} /> {user?.partner ? 'Open my publisher portal' : 'List your titles'}</Link>
-                <Link to={user?.retailer ? '/retailer' : '/print-on-demand/apply?as=retailer'} className="pbtn ghost"><Store size={18} /> {user?.retailer ? 'Order wholesale' : 'Open a wholesale account'}</Link>
-                <Link to="/print-on-demand/catalog" className="pbtn ghost" style={{ border: 0 }}>Browse the catalog <ArrowRight size={16} /></Link>
+                <Link to={user?.partner ? '/publisher' : '/distribution/apply?as=publisher'} className="pbtn glow"><BookOpen size={18} /> {user?.partner ? 'Open my publisher portal' : 'List your titles'}</Link>
+                <Link to={user?.retailer ? '/retailer' : '/distribution/apply?as=retailer'} className="pbtn ghost"><Store size={18} /> {user?.retailer ? 'Order wholesale' : 'Open a wholesale account'}</Link>
+                <Link to="/distribution/catalog" className="pbtn ghost" style={{ border: 0 }}>Browse the catalog <ArrowRight size={16} /></Link>
               </div>
               <div className="stat-strip rise rise-4">
                 <div className="st"><b className="mono">{data ? data.stats.live : '—'}</b><span>Titles live</span></div>
@@ -62,7 +62,7 @@ export function PrintOnDemand() {
                   <CycleTimeline catalogDate={cycle.catalogDate} focDate={cycle.focDate} inStoreDate={cycle.inStoreDate} compact />
                   {cycle.orderingOpen && <div style={{ marginTop: '1.25rem' }}><Countdown to={cycle.focDate} label="Final order cutoff in" /></div>}
                   <div className="row" style={{ marginTop: '1.25rem' }}>
-                    <Link to={`/print-on-demand/catalog?cycle=${cycle.slug}`} className="pbtn primary sm" style={{ background: '#fff', color: '#0b0d14' }}>See what's in it <ArrowRight size={14} /></Link>
+                    <Link to={`/distribution/catalog?cycle=${cycle.slug}`} className="pbtn primary sm" style={{ background: '#fff', color: '#0b0d14' }}>See what's in it <ArrowRight size={14} /></Link>
                   </div>
                 </>
               ) : data?.nextCycle ? (
@@ -84,7 +84,7 @@ export function PrintOnDemand() {
               <Link to={user?.partner ? '/publisher' : '/login?redirect=/publisher'} className="pbtn glow" style={{ justifyContent: 'center' }} data-testid="publisher-login"><LogIn size={16} /> {user?.partner ? 'Open publisher portal' : 'Publisher login'}</Link>
               <Link to={user?.retailer ? '/retailer' : '/login?redirect=/retailer'} className="pbtn hot" style={{ justifyContent: 'center' }} data-testid="retailer-login"><LogIn size={16} /> {user?.retailer ? 'Open wholesale ordering' : 'Retailer login'}</Link>
             </div>
-            <p className="dim" style={{ fontSize: '.8rem', textAlign: 'center', margin: '.6rem 0 0' }}>New here? <Link to="/print-on-demand/apply?as=publisher" style={{ color: '#fff' }}>Apply as a publisher</Link> · <Link to="/print-on-demand/apply?as=retailer" style={{ color: '#fff' }}>Open a wholesale account</Link></p>
+            <p className="dim" style={{ fontSize: '.8rem', textAlign: 'center', margin: '.6rem 0 0' }}>New here? <Link to="/distribution/apply?as=publisher" style={{ color: '#fff' }}>Apply as a publisher</Link> · <Link to="/distribution/apply?as=retailer" style={{ color: '#fff' }}>Open a wholesale account</Link></p>
             </div>
           </div>
         </div>
@@ -92,7 +92,7 @@ export function PrintOnDemand() {
           <div className="marquee" style={{ marginTop: '3.5rem' }} aria-hidden="true">
             <div className="marquee-track">
               {marquee.map((f, i) => (
-                <CoverCard key={`${f.listingId}-${i}`} to={`/print-on-demand/catalog/${f.catalogKey}`} url={f.coverImageUrl} title={f.title} sub={f.publisher} price={money(f.msrpCents)} />
+                <CoverCard key={`${f.listingId}-${i}`} to={`/distribution/catalog/${f.catalogKey}`} url={f.coverImageUrl} title={f.title} sub={f.publisher} price={money(f.msrpCents)} />
               ))}
             </div>
           </div>
@@ -102,7 +102,7 @@ export function PrintOnDemand() {
       {/* ----------------------------------------------------------- Two doors */}
       <section className="section container">
         <div className="two-doors">
-          <Link to={user?.partner ? '/publisher' : '/print-on-demand/apply?as=publisher'} className="door pub rise">
+          <Link to={user?.partner ? '/publisher' : '/distribution/apply?as=publisher'} className="door pub rise">
             <BookOpen className="big-ic" size={40} />
             <div className="eyebrow" style={{ color: 'var(--p-cyan)' }}>Publishers &amp; creators</div>
             <h3>List once. Sell to every shop.</h3>
@@ -115,7 +115,7 @@ export function PrintOnDemand() {
             </ul>
             <span className="pbtn glow" style={{ alignSelf: 'flex-start', marginTop: '.5rem' }}>{user?.partner ? 'Open the publisher portal' : 'Apply as a publisher'} <ArrowRight size={16} /></span>
           </Link>
-          <Link to={user?.retailer ? '/retailer' : '/print-on-demand/apply?as=retailer'} className="door shop rise rise-1">
+          <Link to={user?.retailer ? '/retailer' : '/distribution/apply?as=retailer'} className="door shop rise rise-1">
             <Store className="big-ic" size={40} />
             <div className="eyebrow" style={{ color: 'var(--p-magenta)' }}>Comic shops</div>
             <h3>Indie books at real wholesale.</h3>
@@ -174,8 +174,8 @@ export function PrintOnDemand() {
                 <h2 className="display-lg" style={{ marginTop: '.5rem' }}>You set the price.<br />We do the rest.</h2>
                 <p className="lead" style={{ marginTop: '1rem' }}>{s.publisherTerms}</p>
                 <div className="row" style={{ marginTop: '1.5rem' }}>
-                  <Link to={user?.partner ? '/publisher' : '/print-on-demand/apply?as=publisher'} className="pbtn glow"><Sparkles size={16} /> {user?.partner ? 'Open the publisher portal' : 'Apply as a publisher'}</Link>
-                  <Link to="/print-on-demand/handbook" className="pbtn ghost">Publisher handbook</Link>
+                  <Link to={user?.partner ? '/publisher' : '/distribution/apply?as=publisher'} className="pbtn glow"><Sparkles size={16} /> {user?.partner ? 'Open the publisher portal' : 'Apply as a publisher'}</Link>
+                  <Link to="/distribution/handbook" className="pbtn ghost">Publisher handbook</Link>
                   <Link to="/resources/file-prep" className="pbtn ghost">File prep guide</Link>
                 </div>
               </div>
@@ -200,11 +200,11 @@ export function PrintOnDemand() {
           <details><summary>Can a shop change its order?</summary><p>Yes, freely, until the final order cutoff. After FOC the order is final: we print to the count and the publisher is paid on it.</p></details>
           <details><summary>What file checks do you run?</summary><p>Every cover and interior PDF is checked for opening, page count, consistent page size, two-page spreads, trim size and bleed the moment it is uploaded. Fonts, color and resolution are checked by a person before press.</p></details>
           <details><summary>Do you carry inventory?</summary><p>No. Each cycle prints exactly what shops ordered plus any extra copies the publisher adds on. Publisher-shipped titles never touch our warehouse.</p></details>
-          <details><summary>I already print with Printing Comics. Is this different?</summary><p>Yes. The store prints your run for you. Print On Demand sells your book to shops for you, then prints it. Many publishers do both.</p></details>
+          <details><summary>I already print with Printing Comics. Is this different?</summary><p>Yes. The store prints your run for you. Distribution sells your book to shops for you, then prints it to the count ordered. Many publishers do both.</p></details>
         </div>
         <div className="row" style={{ marginTop: '2rem', justifyContent: 'center' }}>
-          <Link to="/print-on-demand/apply?as=publisher" className="pbtn primary">Apply as a publisher</Link>
-          <Link to="/print-on-demand/apply?as=retailer" className="pbtn hot">Open a wholesale account</Link>
+          <Link to="/distribution/apply?as=publisher" className="pbtn primary">Apply as a publisher</Link>
+          <Link to="/distribution/apply?as=retailer" className="pbtn hot">Open a wholesale account</Link>
           <Link to="/contact" className="pbtn ghost">Ask us anything</Link>
         </div>
       </section>

@@ -624,7 +624,7 @@ nav[aria-label="Related"] li a, .link-cta { display: inline-block; padding: .4re
 /* The pay card on a customer's order page (orders staff set up with a pay link) */
 .pay-order { border-left: 5px solid var(--brand); }
 
-/* The Print On Demand entry in the store menu: a small gradient flag so the new programme is found. */
+/* The Distribution entry in the store menu: a small gradient flag so the new program is found. */
 .site-header nav > a.nav-pod, .mobile-top-link.nav-pod { position: relative; font-weight: 700; background: linear-gradient(120deg, #7c5cff, #22d3ee 60%, #b6f36a); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .site-header nav > a.nav-pod::after { content: 'NEW'; position: absolute; top: -.55rem; right: -1.6rem; font-size: .55rem; font-weight: 800; letter-spacing: .08em; padding: .1rem .3rem; border-radius: 4px; background: #7c5cff; color: #fff; -webkit-background-clip: border-box; background-clip: border-box; -webkit-text-fill-color: #fff; }
 .site-header nav > a.nav-pod:hover { filter: brightness(.9); }

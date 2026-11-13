@@ -65,7 +65,7 @@ export function AdminLayout() {
   // A seeded or invited account signs in with a starter password and must
   // choose its own before it sees anything here.
   if (user.hasPassword === false) return <Navigate to={`/account/setup?next=${encodeURIComponent(pathname)}`} replace />;
-  // A POD admin has no store dashboard: the section is their home.
+  // A Distribution admin has no store dashboard: the section is their home.
   if (podOnly(user) && (pathname === '/admin' || pathname === '/admin/')) return <Navigate to="/admin/pod" replace />;
 
   return (
@@ -108,7 +108,7 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
   const pod = show('pod') || show('preflight');
   return (
     <aside className="admin-side">
-      <div className="brand">{onlyPod ? 'Print On Demand' : 'Printing Comics'}</div>
+      <div className="brand">{onlyPod ? 'Distribution' : 'Printing Comics'}</div>
       <nav>
         {!onlyPod && <Item to="/admin" end>Dashboard</Item>}
 
@@ -133,7 +133,7 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
         {show('partners') && <Item to="/admin/partners">Partners</Item>}
         {show('partners') && <Item to="/admin/api-keys">API Keys</Item>}
 
-        {pod && <div className="group">Print on Demand</div>}
+        {pod && <div className="group">Distribution</div>}
         {show('pod') && <Item to="/admin/pod" end badge={waiting.pod}>Overview</Item>}
         {show('pod') && <Item to="/admin/pod/listings">Listings</Item>}
         {show('pod') && <Item to="/admin/pod/publishers">Publishers</Item>}
@@ -151,7 +151,7 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
         {(show('pod') || show('preflight')) && <Item to="/admin/pod/preflight">Preflight</Item>}
         {show('pod') && <Item to="/admin/pod/analytics">Analytics</Item>}
         {show('pod') && <Item to="/admin/pod/activity">Activity</Item>}
-        {show('pod') && <Item to="/admin/pod/settings">POD settings</Item>}
+        {show('pod') && <Item to="/admin/pod/settings">Distribution settings</Item>}
 
         {system && <div className="group">System</div>}
         {show('users') && <Item to="/admin/users">Users &amp; access</Item>}
@@ -159,10 +159,10 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
         {show('settings') && <Item to="/admin/security">Security</Item>}
       </nav>
       <div style={{ padding: '.5rem 1.5rem' }}>
-        <a href={onlyPod ? '/print-on-demand' : '/'} style={{ color: '#ddd', fontSize: '.85rem' }}>← {onlyPod ? 'View the programme page' : 'View the store'}</a>
+        <a href={onlyPod ? '/distribution' : '/'} style={{ color: '#ddd', fontSize: '.85rem' }}>← {onlyPod ? 'View the program page' : 'View the store'}</a>
       </div>
       <div style={{ marginTop: 'auto', padding: '1rem 1.5rem', borderTop: '1px solid #333' }}>
-        <div style={{ fontSize: '.8rem', color: '#aaa', overflowWrap: 'anywhere' }}>{user.email}<div style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>{user.role === 'ADMIN' ? 'Admin' : onlyPod ? 'POD admin' : 'Staff'}</div></div>
+        <div style={{ fontSize: '.8rem', color: '#aaa', overflowWrap: 'anywhere' }}>{user.email}<div style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>{user.role === 'ADMIN' ? 'Admin' : onlyPod ? 'Distribution admin' : 'Staff'}</div></div>
         <button
           className="btn secondary sm"
           style={{ marginTop: '.5rem', width: '100%', color: '#fff', borderColor: '#fff' }}

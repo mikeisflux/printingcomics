@@ -1,5 +1,5 @@
 /**
- * /api/admin/pod — the Print On Demand section: publisher listings and their
+ * /api/admin/pod — the Distribution section: publisher listings and their
  * review, catalog cycles (publish, FOC lock, reopen, close), retailers,
  * production orders, purchase orders, payouts, and the program settings.
  * Everything here may show costs; the preflight router next door may not.
@@ -800,7 +800,7 @@ router.post('/listings/:id/nudge', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Retailer orders (the wholesale orders, inside the section so a POD admin
+// Retailer orders (the wholesale orders, inside the section so a Distribution admin
 // can work them without the store's Orders area)
 // ---------------------------------------------------------------------------
 
