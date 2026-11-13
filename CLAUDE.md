@@ -20,7 +20,8 @@ Run `npm` commands from the repo root unless noted.
 - `deploy/nginx.conf`, `ecosystem.config.cjs` (pm2)
 - `siteold/` — archived old site; reference only, do not modify
 - `pod/` — a copy of the PHILBO portal (`mauramariepowers-tech/philbo-portal`, its
-  own Node/HTML app); not part of the npm workspaces or the build
+  own Node/HTML app); not part of the npm workspaces or the build. What it is
+  and how to fold it in: `docs/philbo-portal-integration.md`
 
 ## Prerequisites
 
