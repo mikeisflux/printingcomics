@@ -13,7 +13,7 @@
 
 ## Required private setup before the switch can be enabled
 
-1. Authenticate the Supabase CLI locally and link project `sasrmqpyqvimnmfxtggb`.
+1. Authenticate the Supabase CLI locally and link project `<supabase-project-id>`.
 2. Dry-run, apply, and execute all database tests on staging.
 3. Deploy the `admin-user-access` Edge Function.
 4. Set Edge Function secrets `PHILBO_SITE_URL` and `PHILBO_ALLOWED_ORIGINS` to the real protected beta address.

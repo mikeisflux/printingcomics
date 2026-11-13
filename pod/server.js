@@ -34,7 +34,7 @@ const runtimeConfigScript = `<script>window.__PHILBO_RUNTIME_CONFIG__=${JSON.str
 
 createServer((request, response) => {
   const hostname = String(request.headers.host || '').split(':')[0].toLowerCase();
-  const holdingPageHosts = new Set(['philbopod.com', 'www.philbopod.com']);
+  const holdingPageHosts = new Set(['example.invalid']);
   const pathname = decodeURIComponent(new URL(request.url || '/', 'http://localhost').pathname);
   const relativePath = normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, '').replace(/^[/\\]+/, '');
   const holdingPageAsset = relativePath.startsWith('assets/');

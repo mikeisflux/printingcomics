@@ -1,98 +1,25 @@
-# Philbo Distribution Portal
+# PHILBO portal — reference copy
 
-Private development repository for the Philbo Distribution storefront and operations platform.
+This folder is a copy of `mauramariepowers-tech/philbo-portal` (main `b56459f`,
+2026-09-16), a distribution portal built for a competitor and handed to us.
+**It is reference material only.** It is not part of the npm workspaces, is not
+built or deployed, and must not be run against real data. The full write-up —
+what it is, what we took from it and how it maps onto our stack — is in
+`docs/philbo-portal-integration.md` at the repo root. The Print On Demand
+section of Printing Comics (`/print-on-demand`, `/admin/pod`) is our own
+implementation on Express + Prisma + React 19; nothing here is imported by it.
 
-Philbo connects independent comic publishers, approved comic retailers, public catalog discovery, wholesale ordering, print-on-demand, fulfillment, and internal operations in one role-based portal.
+What was removed from the copy (see the integration doc, section 3):
 
-## Current status
+- `src/data/*.json` and `src/data/philviews-catalogs.js` — Philbo's publisher
+  contact list and catalog rows (other people's data).
+- `public/assets/**`, `public/downloads/**`, `philbo-operations-hub.html` —
+  Philbo brand assets, catalogs, videos and prebuilt bundles.
+- `.github/workflows/supabase-database-backup.yml` and the live Supabase
+  project id / Google Drive folder ids in the config examples.
 
-This repository contains a working browser-based prototype. It demonstrates the intended workflows and business rules, but it is not yet a production multi-user system.
-
-The prototype currently stores authentication and operational records in browser `localStorage` through `src/firebase-mock.js`. Do not use it for live passwords, payments, sensitive financial records, or records that cannot be recreated from source data.
-
-The source of truth for product requirements is [PHILBO_MASTER_BRIEF.md](./PHILBO_MASTER_BRIEF.md).
-
-## Technology
-
-- React 18
-- Vite 5
-- JavaScript / JSX
-- Local prototype data layer
-- Planned production backend: Supabase PostgreSQL, Auth, Storage, and Edge Functions
-
-## Local development
-
-Requirements:
-
-- Node.js 20 or newer
-- pnpm
-- Python 3 for standalone assembly
-
-Install dependencies:
-
-```bash
-pnpm install
-```
-
-Start the local site:
-
-```bash
-pnpm dev
-```
-
-Build the source-driven standalone portal:
-
-```bash
-pnpm build:standalone
-```
-
-Run the existing permissions and workflow checks:
-
-```bash
-pnpm test:permissions
-```
-
-Start the local Supabase stack and run database tests (Docker-compatible runtime required):
-
-```bash
-pnpm supabase:start
-pnpm test:database
-```
-
-Preview pending migrations for the linked staging project without applying them:
-
-```bash
-pnpm database:preview
-```
-
-Create the Vite distribution build:
-
-```bash
-pnpm build
-```
-
-## Generated and source files
-
-The editable application source is in `src/`. The standalone build process bundles that source into `public/assets/philbo-app.bundle.js`, then assembles the self-contained `index.html` and `philbo-operations-hub.html` files.
-
-Generated files are presently retained because the self-contained portal is an intentional project deliverable. Changes should be made in `src/` and rebuilt rather than edited only in the generated bundle.
-
-## Production foundation
-
-- [Production architecture](./docs/PRODUCTION_ARCHITECTURE.md)
-- [Database blueprint](./docs/DATABASE_BLUEPRINT.md)
-- [Environment variable template](./.env.example)
-- [Backend completion and launch gate](./docs/BACKEND_COMPLETION.md)
-
-Production work will preserve the functioning prototype and replace the local data layer one workflow at a time. The first production workflow is publisher invitation, title submission, file upload, Admin review, publication, and public catalog display.
-
-Database changes live in `supabase/migrations/` and are reviewed and tested before being applied to staging. Development-only database data belongs in `supabase/seed.sql`; real customer records must never be added there.
-
-## Safety rules
-
-- Never commit passwords, private keys, service-role keys, payment secrets, or real `.env` files.
-- Never place a Supabase service-role key in browser code or in a variable beginning with `VITE_`.
-- Do not use production customer data in development or staging.
-- Test database permissions for every role before enabling a production feature.
-- Keep approval and publication as separate actions.
-- Keep Publisher Fulfilled Purchase Orders separate from Philbo POD Production Orders.
+Because the bundled data imports are gone, `src/firebase-mock.js` and
+`src/main.jsx` no longer resolve; that is intended. Useful pure logic lives in
+`src/lib/` (retailer tiers, incentive variants, CSV export/import, catalog
+workflow states, PDF preflight) and the schema reference in
+`supabase/migrations/`. Business rules: `PHILBO_MASTER_BRIEF.md`.
