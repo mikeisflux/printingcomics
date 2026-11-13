@@ -21,7 +21,9 @@ Run `npm` commands from the repo root unless noted.
 - `siteold/` — archived old site; reference only, do not modify
 - `pod/` — a copy of the PHILBO portal (`mauramariepowers-tech/philbo-portal`, its
   own Node/HTML app); not part of the npm workspaces or the build. What it is
-  and how to fold it in: `docs/philbo-portal-integration.md`
+  and how to fold it in: `docs/philbo-portal-integration.md`. **Do not run or
+  deploy the Philbo app.** Treat `pod/` as a specification plus a bag of
+  pure-logic helpers, sort out rights, and build on our own stack.
 
 ## Prerequisites
 
