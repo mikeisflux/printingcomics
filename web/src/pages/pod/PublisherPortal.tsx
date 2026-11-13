@@ -4,27 +4,31 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { BookOpen, FileText, Receipt, LayoutDashboard, Plus, Send, ArrowLeft, Sparkles, Truck, CheckCircle2, Undo2 } from 'lucide-react';
+import { BookOpen, FileText, Receipt, LayoutDashboard, Plus, Send, ArrowLeft, Sparkles, Truck, CheckCircle2, Undo2, FolderOpen, Barcode as BarcodeIcon, Printer, Building2, LifeBuoy } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../store/auth';
 import { useSeo } from '../../lib/seo';
 import { money, dateShort, dateTime, pct, LISTING_STATUS, FORMAT_LABELS, FULFILLMENT_LABELS, TRIM_PRESETS, AGE_RATINGS, GENRES, type Listing, type PublicSettings, type PodEvent } from '../../lib/pod';
-import { Avatar, Empty, Events, FileSlot, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../components/pod/ui';
-import { PURCHASE_STATUS, STATEMENT_STATUS } from '../../lib/pod';
+import { Avatar, Barcode, Bars, CoverArt, CycleTimeline, Drawer, Empty, Events, FileSlot, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../components/pod/ui';
+import { PURCHASE_STATUS, STATEMENT_STATUS, CYCLE_STATUS } from '../../lib/pod';
 
 interface Me {
   partner: { id: string; name: string; slug: string; contactEmail: string | null; website: string | null; commissionBpsPrintedByUs: number; commissionBpsPartnerShips: number };
   counts: Record<string, number>; openCycle: { id: string; name: string; catalogDate: string; focDate: string; inStoreDate: string } | null; settings: PublicSettings;
   sales: { units: number; wholesaleCents: number; owedCents: number; paidCents: number }; purchaseOrdersOpen: number;
   statements: { id: string; number: string; status: string; netCents: number; issuedAt: string | null; paidAt: string | null }[];
+  attention: { kind: string; listingId: string; title: string; text: string }[];
+  salesWeeks: { start: string; units: number; cents: number }[];
+  bestSeller: { title: string; units: number } | null;
+  schedule: { id: string; name: string; status: string; catalogDate: string; focDate: string; inStoreDate: string; publisherOpen: boolean; mine: number }[];
 }
 
-export function PartnerLayout() {
+export function PublisherLayout() {
   const { user, loaded, load } = useAuth();
   const navigate = useNavigate();
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
-  useEffect(() => { if (loaded && !user) navigate('/login?redirect=/partner'); }, [loaded, user, navigate]);
-  const { data, error, reload } = useLoad<Me>(loaded && user ? '/pod/partner/me' : null);
+  useEffect(() => { if (loaded && !user) navigate('/login?redirect=/publisher'); }, [loaded, user, navigate]);
+  const { data, error, reload } = useLoad<Me>(loaded && user ? '/pod/publisher/me' : null);
   useSeo({ title: 'Publisher portal — Print On Demand', description: 'Manage your Print On Demand listings.' });
   if (!loaded || !user) return <div className="pod container" style={{ padding: '3rem' }}><p className="dim">Loading…</p></div>;
   if (error) {
@@ -41,14 +45,20 @@ export function PartnerLayout() {
         <aside className="pside">
           <div className="who"><Avatar name={data?.partner.name ?? '…'} /><div><b>{data?.partner.name ?? '…'}</b><small>Publisher portal</small></div></div>
           <nav>
-            <NavLink to="/partner" end><span className="row" style={{ gap: '.5rem' }}><LayoutDashboard size={16} /> Overview</span></NavLink>
-            <NavLink to="/partner/listings"><span className="row" style={{ gap: '.5rem' }}><BookOpen size={16} /> Listings</span>{queue > 0 && <span className="n">{queue}</span>}</NavLink>
-            <NavLink to="/partner/purchase-orders"><span className="row" style={{ gap: '.5rem' }}><Truck size={16} /> Purchase orders</span>{(data?.purchaseOrdersOpen ?? 0) > 0 && <span className="n">{data!.purchaseOrdersOpen}</span>}</NavLink>
-            <NavLink to="/partner/statements"><span className="row" style={{ gap: '.5rem' }}><Receipt size={16} /> Sales & payouts</span></NavLink>
+            <NavLink to="/publisher" end><span className="row" style={{ gap: '.5rem' }}><LayoutDashboard size={16} /> Overview</span></NavLink>
+            <NavLink to="/publisher/listings"><span className="row" style={{ gap: '.5rem' }}><BookOpen size={16} /> Listings</span>{queue > 0 && <span className="n">{queue}</span>}</NavLink>
+            <NavLink to="/publisher/purchase-orders"><span className="row" style={{ gap: '.5rem' }}><Truck size={16} /> Purchase orders</span>{(data?.purchaseOrdersOpen ?? 0) > 0 && <span className="n">{data!.purchaseOrdersOpen}</span>}</NavLink>
+            <NavLink to="/publisher/statements"><span className="row" style={{ gap: '.5rem' }}><Receipt size={16} /> Sales & payouts</span></NavLink>
+            <NavLink to="/publisher/files"><span className="row" style={{ gap: '.5rem' }}><FolderOpen size={16} /> Files</span></NavLink>
+            <NavLink to="/publisher/print-orders"><span className="row" style={{ gap: '.5rem' }}><Printer size={16} /> Print copies</span></NavLink>
+            <NavLink to="/publisher/barcodes"><span className="row" style={{ gap: '.5rem' }}><BarcodeIcon size={16} /> Barcodes</span></NavLink>
+            <NavLink to="/publisher/assets"><span className="row" style={{ gap: '.5rem' }}><Building2 size={16} /> Company profile</span></NavLink>
+            <NavLink to="/publisher/resources"><span className="row" style={{ gap: '.5rem' }}><LifeBuoy size={16} /> Resources & support</span></NavLink>
           </nav>
           <div style={{ marginTop: '1.5rem', padding: '.5rem .85rem', fontSize: '.78rem', color: 'var(--p-text-inv-dim)' }}>
             <Link to="/print-on-demand/catalog" style={{ color: 'inherit' }}>Public catalog →</Link><br />
-            <Link to="/account" style={{ color: 'inherit' }}>My account →</Link>
+            <Link to="/print-on-demand/handbook" style={{ color: 'inherit' }}>Publisher handbook →</Link><br />
+            <Link to="/account/password" style={{ color: 'inherit' }}>Change password →</Link>
           </div>
         </aside>
         <main className="pmain"><Outlet context={{ me: data, reload }} /></main>
@@ -60,91 +70,126 @@ export function PartnerLayout() {
 import { useOutletContext } from 'react-router-dom';
 function useMe() { return useOutletContext<{ me: Me | null; reload: () => Promise<void> }>(); }
 
-export function PartnerDashboard() {
-  const { me } = useMe();
-  const { data } = useLoad<{ listings: Listing[] }>('/pod/partner/listings');
+export function PublisherDashboard() {
+  const { me, reload: reloadMe } = useMe();
+  const { data, reload } = useLoad<{ listings: Listing[] }>('/pod/publisher/listings');
+  const { show, node } = useFlash();
+  const navigate = useNavigate();
   const recent = (data?.listings ?? []).slice(0, 6);
   if (!me) return <p className="dim">Loading…</p>;
   const c = me.counts;
+  const upcomingFoc = me.schedule.filter((x) => x.mine > 0 && new Date(x.focDate).getTime() > Date.now()).length;
+  const duplicate = async (l: Listing) => {
+    const cover = window.prompt('Cover description for the variant', `Cover B`);
+    if (cover === null) return;
+    try { const r = await api.post<{ listing: Listing }>(`/pod/publisher/listings/${l.id}/duplicate`, { coverDescription: cover }); show('Variant created as a draft'); await reload(); navigate(`/publisher/listings/${r.listing.id}`); } catch (e) { show(errText(e), true); }
+  };
+  const hour = new Date().getHours();
   return (
     <>
+      {node}
       <div className="ptop">
-        <div><div className="eyebrow">Overview</div><h1>Hello, {me.partner.name}</h1><div className="sub">{me.openCycle ? <>The <b>{me.openCycle.name}</b> catalog is open for listings until {dateShort(me.openCycle.catalogDate)}. FOC {dateShort(me.openCycle.focDate)}, in store {dateShort(me.openCycle.inStoreDate)}.</> : 'No catalog is open for new listings right now; drafts can still be prepared.'}</div></div>
-        <Link to="/partner/listings/new" className="pbtn glow"><Plus size={16} /> New listing</Link>
+        <div><div className="eyebrow">Overview</div><h1>Good {hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}, {me.partner.name}</h1><div className="sub">{me.openCycle ? <>The <b>{me.openCycle.name}</b> catalog is open for listings until {dateShort(me.openCycle.catalogDate)}. FOC {dateShort(me.openCycle.focDate)}, in store {dateShort(me.openCycle.inStoreDate)}.</> : 'No catalog is open for new listings right now; drafts can still be prepared.'}</div></div>
+        <Link to="/publisher/listings/new" className="pbtn glow"><Plus size={16} /> Submit new title</Link>
       </div>
       <div className="grid cols-4" style={{ marginBottom: '1.25rem' }}>
-        <Kpi label="Live titles" value={c.LIVE ?? 0} sub={`${(c.APPROVED ?? 0) + (c.SCHEDULED ?? 0)} approved & waiting`} to="/partner/listings?status=LIVE" />
-        <Kpi label="In review" value={c.SUBMITTED ?? 0} sub={c.CHANGES_REQUESTED ? `${c.CHANGES_REQUESTED} need changes` : 'Nothing sent back'} to="/partner/listings?status=SUBMITTED" tone={c.CHANGES_REQUESTED ? 'hot' : undefined} />
-        <Kpi label="Copies sold" value={me.sales.units} sub={`${money(me.sales.wholesaleCents)} wholesale`} to="/partner/statements" />
-        <Kpi label="Owed to you" value={money(me.sales.owedCents)} sub={`${money(me.sales.paidCents)} paid out so far`} to="/partner/statements" dark />
+        <Kpi label="Live titles" value={c.LIVE ?? 0} sub={`${(c.APPROVED ?? 0) + (c.SCHEDULED ?? 0)} approved & waiting for a catalog`} to="/publisher/listings?status=LIVE" />
+        <Kpi label="Awaiting approval" value={c.SUBMITTED ?? 0} sub={c.CHANGES_REQUESTED ? `${c.CHANGES_REQUESTED} sent back for changes` : 'Pending catalog review'} to="/publisher/listings?status=SUBMITTED" tone={c.CHANGES_REQUESTED ? 'hot' : undefined} />
+        <Kpi label="Upcoming FOC dates" value={upcomingFoc} sub="catalogs with your titles still open" />
+        <Kpi label="Owed to you" value={money(me.sales.owedCents)} sub={`${me.purchaseOrdersOpen} open purchase order${me.purchaseOrdersOpen === 1 ? '' : 's'} · ${money(me.sales.paidCents)} paid out`} to="/publisher/statements" dark />
       </div>
       <div className="split">
-        <div className="panel">
-          <div className="panel-head"><h3>Recent listings</h3><Link to="/partner/listings" className="pbtn ghost xs">All listings</Link></div>
-          {recent.length === 0 ? <Empty title="No listings yet" body="Start with your first title: cover, price, page count, files." action={<Link to="/partner/listings/new" className="pbtn primary sm">New listing</Link>} /> : (
-            <table className="ptable"><tbody>
-              {recent.map((l) => (
-                <tr key={l.id} className="click" onClick={() => (window.location.href = `/partner/listings/${l.id}`)}>
-                  <td style={{ width: 50 }}><Thumb url={l.coverImage?.url} title={l.title} /></td>
-                  <td><b>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}</b><div className="dim" style={{ fontSize: '.8rem' }}>{l.cycle?.name ?? 'No catalog yet'} · {money(l.msrpCents)}</div></td>
-                  <td><StatusPill status={l.status} /></td>
-                  <td className="num">{l.unitsSold ? `${l.unitsSold} sold` : ''}</td>
-                </tr>
-              ))}
-            </tbody></table>
-          )}
+        <div className="stack">
+          <div className="panel">
+            <div className="panel-head"><h3>My titles</h3><Link to="/publisher/listings" className="pbtn ghost xs">View all titles →</Link></div>
+            {recent.length === 0 ? <Empty title="No listings yet" body="Start with your first title: cover, price, page count, files." action={<Link to="/publisher/listings/new" className="pbtn primary sm">Submit new title</Link>} /> : (
+              <div className="stack" style={{ gap: '.5rem' }}>
+                {recent.map((l) => (
+                  <div key={l.id} className="panel tight" style={{ display: 'grid', gridTemplateColumns: '44px 1fr auto', gap: '.75rem', alignItems: 'center' }}>
+                    <Thumb url={l.coverImage?.url} title={l.title} size={44} />
+                    <div><Link to={`/publisher/listings/${l.id}`} style={{ fontWeight: 700 }}>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}</Link> <StatusPill status={l.status} /><div className="dim" style={{ fontSize: '.78rem' }}>ID <span className="key">{l.catalogKey}</span>{l.coverDescription ? ` · ${l.coverDescription}` : ''}{l.cycle ? ` · FOC ${dateShort(l.cycle.focDate)} · in store ${dateShort(l.cycle.inStoreDate)}` : ' · no catalog yet'}{l.unitsSold ? ` · ${l.unitsSold} sold` : ''}</div></div>
+                    <div className="row" style={{ gap: '.4rem' }}>{l.product?.active && <a className="pbtn ghost xs" href={`/product/${l.product.slug}`} target="_blank" rel="noreferrer">Website listing</a>}<button className="pbtn ghost xs" onClick={() => void duplicate(l)}>Duplicate as variant</button></div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h3>Needs attention</h3></div>
+            {me.attention.length === 0 ? <p className="dim tight" style={{ fontSize: '.92rem' }}>✓ You're all caught up.</p> : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '.4rem' }}>
+                {me.attention.map((a, i) => <li key={i} className="notice warn" style={{ padding: '.55rem .8rem', fontSize: '.88rem', justifyContent: 'space-between', alignItems: 'center' }}><span><b>{a.title}</b> — {a.text}</span><Link to={a.kind === 'po' ? `/publisher/purchase-orders/${a.listingId}` : `/publisher/listings/${a.listingId}`} className="pbtn ghost xs">Open</Link></li>)}
+              </ul>
+            )}
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h3>Catalog &amp; release schedule</h3></div>
+            {me.schedule.length === 0 ? <p className="dim tight">No catalogs scheduled yet.</p> : (
+              <table className="ptable"><thead><tr><th>Catalog</th><th>Status</th><th>Listings due</th><th>FOC</th><th>In store</th><th className="num">Yours</th></tr></thead><tbody>
+                {me.schedule.map((x) => <tr key={x.id}><td><b>{x.name}</b></td><td><TonePill map={CYCLE_STATUS} status={x.status} /></td><td>{dateShort(x.catalogDate)}</td><td>{dateShort(x.focDate)}</td><td>{dateShort(x.inStoreDate)}</td><td className="num mono">{x.mine}</td></tr>)}
+              </tbody></table>
+            )}
+            {me.openCycle && <div style={{ marginTop: '1rem' }}><CycleTimeline catalogDate={me.openCycle.catalogDate} focDate={me.openCycle.focDate} inStoreDate={me.openCycle.inStoreDate} compact /></div>}
+          </div>
         </div>
         <div className="stack">
           <div className="panel accent">
-            <h3>Your terms</h3>
-            <dl className="spec" style={{ marginTop: '.5rem' }}>
-              <dt>Commission, we print</dt><dd>{pct(me.partner.commissionBpsPrintedByUs)}</dd>
-              <dt>Commission, you ship</dt><dd>{pct(me.partner.commissionBpsPartnerShips)}</dd>
-              <dt>Printing</dt><dd>Charged per copy against your payout</dd>
-              <dt>Payout</dt><dd>A statement per catalog cycle</dd>
-            </dl>
+            <h3>Quick actions</h3>
+            <div className="stack" style={{ gap: '.4rem', marginTop: '.5rem' }}>
+              <Link to="/publisher/listings/new" className="pbtn soft sm" style={{ justifyContent: 'flex-start' }}><Plus size={14} /> Submit new title</Link>
+              <Link to="/publisher/files" className="pbtn ghost sm" style={{ justifyContent: 'flex-start' }}><FolderOpen size={14} /> Upload title files</Link>
+              <Link to="/publisher/purchase-orders" className="pbtn ghost sm" style={{ justifyContent: 'flex-start' }}><Truck size={14} /> View purchase orders</Link>
+              <Link to="/publisher/print-orders" className="pbtn ghost sm" style={{ justifyContent: 'flex-start' }}><Printer size={14} /> Order printed copies</Link>
+              <Link to="/publisher/barcodes" className="pbtn ghost sm" style={{ justifyContent: 'flex-start' }}><BarcodeIcon size={14} /> Barcodes</Link>
+              <Link to="/publisher/assets" className="pbtn ghost sm" style={{ justifyContent: 'flex-start' }}><Building2 size={14} /> Edit company profile</Link>
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h3>Recent sales</h3><span className="dim" style={{ fontSize: '.78rem' }}>last 8 weeks</span></div>
+            <dl className="spec"><dt>Units sold</dt><dd>{me.salesWeeks.reduce((s2, w) => s2 + w.units, 0)} units</dd><dt>Wholesale</dt><dd>{money(me.salesWeeks.reduce((s2, w) => s2 + w.cents, 0))}</dd><dt>Best seller</dt><dd>{me.bestSeller ? `${me.bestSeller.title} (${me.bestSeller.units})` : 'N/A'}</dd></dl>
+            <div style={{ marginTop: '.75rem' }}><Bars values={me.salesWeeks.map((w) => w.units)} labels={me.salesWeeks.map((w) => `week of ${w.start}`)} height={70} /></div>
+            <div className="dim" style={{ fontSize: '.74rem', marginTop: '.3rem' }}>All time: {me.sales.units} units · {money(me.sales.wholesaleCents)} wholesale</div>
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h3>Your terms</h3></div>
+            <dl className="spec"><dt>Commission, we print</dt><dd>{pct(me.partner.commissionBpsPrintedByUs)}</dd><dt>Commission, you ship</dt><dd>{pct(me.partner.commissionBpsPartnerShips)}</dd><dt>Printing</dt><dd>Charged per copy against your payout</dd><dt>Payout</dt><dd>A statement per catalog cycle</dd></dl>
           </div>
           {me.statements.length > 0 && (
             <div className="panel">
-              <div className="panel-head"><h3>Latest statements</h3><Link to="/partner/statements" className="pbtn ghost xs">All</Link></div>
-              {me.statements.map((s) => <div key={s.id} className="between" style={{ padding: '.4rem 0', borderBottom: '1px dashed var(--p-line)', fontSize: '.9rem' }}><Link to={`/partner/statements/${s.id}`}><b>{s.number}</b></Link><span className="row"><TonePill map={STATEMENT_STATUS} status={s.status} /><b className="mono">{money(s.netCents)}</b></span></div>)}
+              <div className="panel-head"><h3>Latest statements</h3><Link to="/publisher/statements" className="pbtn ghost xs">All</Link></div>
+              {me.statements.map((s2) => <div key={s2.id} className="between" style={{ padding: '.4rem 0', borderBottom: '1px dashed var(--p-line)', fontSize: '.9rem' }}><Link to={`/publisher/statements/${s2.id}`}><b>{s2.number}</b></Link><span className="row"><TonePill map={STATEMENT_STATUS} status={s2.status} /><b className="mono">{money(s2.netCents)}</b></span></div>)}
             </div>
           )}
-          <div className="panel" style={{ background: 'var(--p-ink)', color: '#fff', borderColor: 'transparent' }}>
-            <Sparkles size={20} style={{ color: 'var(--p-lime)' }} />
-            <h3 style={{ marginTop: '.5rem' }}>Files that pass first time</h3>
-            <p className="tight" style={{ color: 'var(--p-text-inv-dim)', fontSize: '.88rem' }}>Export single pages with 0.125" bleed, fonts embedded, images flattened. Our checks run the moment you upload.</p>
-            <Link to="/resources/file-prep" className="pbtn ghost sm" style={{ marginTop: '.75rem', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>File prep guide</Link>
-          </div>
         </div>
       </div>
+      <span style={{ display: 'none' }}>{String(reloadMe)}</span>
     </>
   );
 }
 
-export function PartnerListings() {
+export function PublisherListings() {
   const [params, setParams] = useSearchParams();
   const status = params.get('status') ?? '';
-  const { data, loading } = useLoad<{ listings: Listing[] }>('/pod/partner/listings');
+  const { data, loading } = useLoad<{ listings: Listing[] }>('/pod/publisher/listings');
   const rows = (data?.listings ?? []).filter((l) => !status || l.status === status);
   const counts = useMemo(() => { const c: Record<string, number> = {}; for (const l of data?.listings ?? []) c[l.status] = (c[l.status] ?? 0) + 1; return c; }, [data]);
   return (
     <>
       <div className="ptop">
         <div><div className="eyebrow">Listings</div><h1>Your titles</h1><div className="sub">One listing per cover. Drafts are yours to edit; once submitted, staff review and either approve or send back notes.</div></div>
-        <Link to="/partner/listings/new" className="pbtn glow"><Plus size={16} /> New listing</Link>
+        <Link to="/publisher/listings/new" className="pbtn glow"><Plus size={16} /> New listing</Link>
       </div>
       <div className="seg" style={{ marginBottom: '1rem' }}>
         <button className={!status ? 'on' : ''} onClick={() => setParams({})}>All <span className="n">{data?.listings.length ?? 0}</span></button>
         {(Object.keys(LISTING_STATUS) as (keyof typeof LISTING_STATUS)[]).filter((k) => counts[k]).map((k) => <button key={k} className={status === k ? 'on' : ''} onClick={() => setParams({ status: k })}>{LISTING_STATUS[k].label} <span className="n">{counts[k]}</span></button>)}
       </div>
       <div className="panel flush">
-        {loading && !data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : rows.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title={status ? 'Nothing with that status' : 'No listings yet'} body="Your first listing takes about ten minutes: details, cover image, print files." action={<Link to="/partner/listings/new" className="pbtn primary sm">New listing</Link>} /></div> : (
+        {loading && !data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : rows.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title={status ? 'Nothing with that status' : 'No listings yet'} body="Your first listing takes about ten minutes: details, cover image, print files." action={<Link to="/publisher/listings/new" className="pbtn primary sm">New listing</Link>} /></div> : (
           <div className="scroll-x"><table className="ptable">
             <thead><tr><th></th><th>Title</th><th>Catalog</th><th>Cover price</th><th>Files</th><th>Status</th><th className="num">Sold</th></tr></thead>
             <tbody>
               {rows.map((l) => (
-                <tr key={l.id} className="click" onClick={() => (window.location.href = `/partner/listings/${l.id}`)}>
+                <tr key={l.id} className="click" onClick={() => (window.location.href = `/publisher/listings/${l.id}`)}>
                   <td style={{ width: 50 }}><Thumb url={l.coverImage?.url} title={l.title} /></td>
                   <td><b>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}</b><div className="dim" style={{ fontSize: '.8rem' }}>{l.coverDescription ?? FORMAT_LABELS[l.format]} · <span className="key">{l.catalogKey}</span></div></td>
                   <td>{l.cycle?.name ?? <span className="dim">—</span>}</td>
@@ -169,12 +214,12 @@ export function PartnerListings() {
 type Form = {
   title: string; seriesName: string; seriesCode: string; issueNumber: string; coverDescription: string; variantNumber: string; upc: string; format: string; seriesType: string; frequency: string;
   language: string; ageRating: string; pageCount: string; trimWidthIn: string; trimHeightIn: string; interiorColor: string; msrp: string; description: string; synopsis: string; writer: string; artist: string;
-  coverArtist: string; genres: string[]; incentiveRatio: string; incentiveQualifierKey: string; reorderable: boolean; fulfillment: string; cycleId: string;
+  coverArtist: string; genres: string[]; incentiveRatio: string; incentiveQualifierKey: string; reorderable: boolean; fulfillment: string; cycleId: string; catalogKey: string;
 };
-const blank: Form = { title: '', seriesName: '', seriesCode: '', issueNumber: '', coverDescription: 'Main Cover', variantNumber: '', upc: '', format: 'comic', seriesType: 'ongoing', frequency: '', language: 'English', ageRating: 'Teen', pageCount: '32', trimWidthIn: '6.625', trimHeightIn: '10.25', interiorColor: 'color', msrp: '4.99', description: '', synopsis: '', writer: '', artist: '', coverArtist: '', genres: [], incentiveRatio: '', incentiveQualifierKey: '', reorderable: true, fulfillment: 'PRINTED_BY_US', cycleId: '' };
+const blank: Form = { title: '', seriesName: '', seriesCode: '', issueNumber: '', coverDescription: 'Main Cover', variantNumber: '', upc: '', format: 'comic', seriesType: 'ongoing', frequency: '', language: 'English', ageRating: 'Teen', pageCount: '32', trimWidthIn: '6.625', trimHeightIn: '10.25', interiorColor: 'color', msrp: '4.99', description: '', synopsis: '', writer: '', artist: '', coverArtist: '', genres: [], incentiveRatio: '', incentiveQualifierKey: '', reorderable: true, fulfillment: 'PRINTED_BY_US', cycleId: '', catalogKey: '' };
 
 function fromListing(l: Listing): Form {
-  return { title: l.title, seriesName: l.seriesName ?? '', seriesCode: l.seriesCode ?? '', issueNumber: l.issueNumber ?? '', coverDescription: l.coverDescription ?? '', variantNumber: l.variantNumber ?? '', upc: l.upc ?? '', format: l.format, seriesType: l.seriesType ?? '', frequency: l.frequency ?? '', language: l.language, ageRating: l.ageRating ?? '', pageCount: l.pageCount ? String(l.pageCount) : '', trimWidthIn: l.trimWidthIn ? String(l.trimWidthIn) : '', trimHeightIn: l.trimHeightIn ? String(l.trimHeightIn) : '', interiorColor: l.interiorColor ?? 'color', msrp: (l.msrpCents / 100).toFixed(2), description: l.description ?? '', synopsis: l.synopsis ?? '', writer: l.writer ?? '', artist: l.artist ?? '', coverArtist: l.coverArtist ?? '', genres: l.genres, incentiveRatio: l.incentiveRatio ?? '', incentiveQualifierKey: l.incentiveQualifierKey ?? '', reorderable: l.reorderable, fulfillment: l.fulfillment, cycleId: l.cycle?.id ?? '' };
+  return { title: l.title, seriesName: l.seriesName ?? '', seriesCode: l.seriesCode ?? '', issueNumber: l.issueNumber ?? '', coverDescription: l.coverDescription ?? '', variantNumber: l.variantNumber ?? '', upc: l.upc ?? '', format: l.format, seriesType: l.seriesType ?? '', frequency: l.frequency ?? '', language: l.language, ageRating: l.ageRating ?? '', pageCount: l.pageCount ? String(l.pageCount) : '', trimWidthIn: l.trimWidthIn ? String(l.trimWidthIn) : '', trimHeightIn: l.trimHeightIn ? String(l.trimHeightIn) : '', interiorColor: l.interiorColor ?? 'color', msrp: (l.msrpCents / 100).toFixed(2), description: l.description ?? '', synopsis: l.synopsis ?? '', writer: l.writer ?? '', artist: l.artist ?? '', coverArtist: l.coverArtist ?? '', genres: l.genres, incentiveRatio: l.incentiveRatio ?? '', incentiveQualifierKey: l.incentiveQualifierKey ?? '', reorderable: l.reorderable, fulfillment: l.fulfillment, cycleId: l.cycle?.id ?? '', catalogKey: l.catalogKey };
 }
 function toBody(f: Form) {
   const n = (s: string) => (s.trim() === '' ? null : Number(s));
@@ -183,6 +228,7 @@ function toBody(f: Form) {
     format: f.format, seriesType: f.seriesType || null, frequency: f.frequency || null, language: f.language || 'English', ageRating: f.ageRating || null, pageCount: n(f.pageCount), trimWidthIn: n(f.trimWidthIn), trimHeightIn: n(f.trimHeightIn),
     interiorColor: f.interiorColor || null, msrpCents: Math.round((Number(f.msrp) || 0) * 100), description: f.description || null, synopsis: f.synopsis || null, writer: f.writer || null, artist: f.artist || null, coverArtist: f.coverArtist || null,
     genres: f.genres, incentiveRatio: f.incentiveRatio || null, incentiveQualifierKey: f.incentiveQualifierKey || null, reorderable: f.reorderable, fulfillment: f.fulfillment, cycleId: f.cycleId || null,
+    ...(f.catalogKey ? { catalogKey: f.catalogKey } : {}),
   };
 }
 
@@ -221,7 +267,7 @@ export function ListingForm({ value, onChange, cycles, settings, disabled, admin
           <div className="field"><label>Language</label><input value={value.language} onChange={set('language')} /></div>
           <div className="field span-2"><label>Fulfilment</label>
             <div className="seg">{Object.entries(FULFILLMENT_LABELS).map(([k, l]) => <button type="button" key={k} className={value.fulfillment === k ? 'on' : ''} onClick={() => onChange({ ...value, fulfillment: k })}>{l}</button>)}</div>
-            <span className="hint">{value.fulfillment === 'PRINTED_BY_US' ? `We print to the ordered count and ship; printing is charged per copy, commission ${settings ? pct(settings.commissionBpsPrintedByUs) : '5%'}.` : `You ship from stock on the purchase order we send after FOC; commission ${settings ? pct(settings.commissionBpsPartnerShips) : '10%'}.`}</span>
+            <span className="hint">{value.fulfillment === 'PRINTED_BY_US' ? `We print to the ordered count and ship; printing is charged per copy, commission ${settings ? pct(settings.commissionBpsPrintedByUs) : '5%'}.` : value.fulfillment === 'CONSIGNMENT' ? `You send us stock; we store it and ship every order from it; commission ${settings ? pct(settings.commissionBpsConsignment) : '15%'} covers receiving, storage and handling.` : `You ship from stock on the purchase order we send after FOC; commission ${settings ? pct(settings.commissionBpsPartnerShips) : '10%'}.`}</span>
           </div>
         </div>
       </div>
@@ -244,21 +290,21 @@ export function ListingForm({ value, onChange, cycles, settings, disabled, admin
           <div className="field"><label>Retailer incentive ratio <span className="dim">optional</span></label><input value={value.incentiveRatio} onChange={set('incentiveRatio')} placeholder="1:10" /><span className="hint">For incentive covers: one free per 10 copies of the qualifying cover.</span></div>
           <div className="field"><label>Qualifying catalog id <span className="dim">optional</span></label><input value={value.incentiveQualifierKey} onChange={set('incentiveQualifierKey')} placeholder="SAV-92708" /><span className="hint">Leave blank to use the main cover of the same issue.</span></div>
           <label className="switch span-2"><input type="checkbox" checked={value.reorderable} onChange={(e) => onChange({ ...value, reorderable: e.target.checked })} /> Shops may reorder after this cycle</label>
-          {admin && null}
+          {admin && <div className="field span-2"><label>Catalog id override <span className="dim">staff only</span></label><input className="mono" value={value.catalogKey} onChange={(e) => onChange({ ...value, catalogKey: e.target.value.toUpperCase() })} placeholder="SAV-92708" /><span className="hint">Blank keeps the derived id. Shops type this to order; change it only before the listing is live.</span></div>}
         </div>
       </div>
     </fieldset>
   );
 }
 
-export function PartnerListingEdit() {
+export function PublisherListingEdit() {
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const { me, reload: reloadMe } = useMe();
   const { show, node } = useFlash();
-  const { data: cyc } = useLoad<{ cycles: { id: string; name: string; catalogDate: string; focDate: string; inStoreDate: string }[] }>('/pod/partner/cycles');
-  const { data, reload } = useLoad<{ listing: Listing; events: PodEvent[]; sales: { units: number; wholesaleCents: number }; editable: boolean }>(isNew ? null : `/pod/partner/listings/${id}`, [id]);
+  const { data: cyc } = useLoad<{ cycles: { id: string; name: string; catalogDate: string; focDate: string; inStoreDate: string }[] }>('/pod/publisher/cycles');
+  const { data, reload } = useLoad<{ listing: Listing; events: PodEvent[]; sales: { units: number; wholesaleCents: number }; editable: boolean }>(isNew ? null : `/pod/publisher/listings/${id}`, [id]);
   const [form, setForm] = useState<Form>(blank);
   const [busy, setBusy] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -271,8 +317,8 @@ export function PartnerListingEdit() {
   const save = async (e?: FormEvent) => {
     e?.preventDefault(); setBusy('save');
     try {
-      if (isNew) { const r = await api.post<{ listing: Listing }>('/pod/partner/listings', toBody(form)); show('Listing created. Now add the cover image and print files.'); navigate(`/partner/listings/${r.listing.id}`, { replace: true }); }
-      else { await api.patch(`/pod/partner/listings/${id}`, toBody(form)); show('Saved'); setDirty(false); await reload(); }
+      if (isNew) { const r = await api.post<{ listing: Listing }>('/pod/publisher/listings', toBody(form)); show('Listing created. Now add the cover image and print files.'); navigate(`/publisher/listings/${r.listing.id}`, { replace: true }); }
+      else { await api.patch(`/pod/publisher/listings/${id}`, toBody(form)); show('Saved'); setDirty(false); await reload(); }
       void reloadMe();
     } catch (x) { show(errText(x), true); } finally { setBusy(null); }
   };
@@ -280,29 +326,39 @@ export function PartnerListingEdit() {
     setBusy(kind);
     try {
       const fd = new FormData(); fd.append('kind', kind); fd.append('file', file);
-      const r = await api.postForm<{ preflight: { status: string; headline: string } | null }>(`/pod/partner/listings/${id}/files`, fd);
+      const r = await api.postForm<{ preflight: { status: string; headline: string } | null }>(`/pod/publisher/listings/${id}/files`, fd);
       show(r.preflight ? r.preflight.headline : 'Uploaded', r.preflight?.status === 'changes_required');
       await reload();
     } catch (x) { show(errText(x), true); } finally { setBusy(null); }
   };
   const act = async (path: string, ok: string) => {
     setBusy(path);
-    try { await api.post(`/pod/partner/listings/${id}/${path}`); show(ok); await reload(); void reloadMe(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
+    try { await api.post(`/pod/publisher/listings/${id}/${path}`); show(ok); await reload(); void reloadMe(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
   };
 
+  const { data: allFiles, reload: reloadFiles } = useLoad<{ files: { id: string; kind: string; version: number; reviewStatus: string; createdAt: string; isCurrent: boolean; media: { url: string; originalName: string; size: number }; listing: { id: string } }[] }>(isNew ? null : '/pod/publisher/files', [id]);
+  const olderVersions = (kind: string) => (allFiles?.files ?? []).filter((f) => f.listing.id === id && f.kind === kind && !f.isCurrent).map((f) => ({ id: f.id, version: f.version, reviewStatus: f.reviewStatus, createdAt: f.createdAt, media: { url: f.media.url, name: f.media.originalName, size: f.media.size } }));
+  const fileVersionAct = async (fileId: string, what: 'restore' | 'delete') => {
+    setBusy(fileId);
+    try { if (what === 'restore') await api.post(`/pod/publisher/listings/${id}/files/${fileId}/restore`); else await api.del(`/pod/publisher/listings/${id}/files/${fileId}`); show(what === 'restore' ? 'That version is current again' : 'Deleted'); await Promise.all([reload(), reloadFiles()]); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
+  };
+  const getBarcode = async () => { setBusy('barcode'); try { await api.post(`/pod/publisher/listings/${id}/barcode`); show('Barcode assigned'); await reload(); setForm((f) => f); } catch (x) { show(errText(x), true); } finally { setBusy(null); } };
+  const [step, setStep] = useState(0);
+  const [preview, setPreview] = useState(false);
   const readyToSubmit = l && !l.missingFiles.length && l.files.cover_image && l.cycle && l.msrpCents > 0 && l.pageCount && l.trimWidthIn;
   return (
     <>
       {node}
       <div className="ptop">
         <div>
-          <Link to="/partner/listings" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Listings</Link>
+          <Link to="/publisher/listings" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Listings</Link>
           <h1>{isNew ? 'New listing' : l ? `${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}` : '…'}</h1>
           {l && <div className="row" style={{ marginTop: '.4rem' }}><StatusPill status={l.status} /><span className="key">{l.catalogKey}</span>{l.cycle && <span className="dim" style={{ fontSize: '.88rem' }}>{l.cycle.name}</span>}</div>}
         </div>
         <div className="row">
           {!isNew && l && (l.status === 'DRAFT' || l.status === 'CHANGES_REQUESTED') && <button className="pbtn glow" disabled={!readyToSubmit || busy !== null || dirty} title={dirty ? 'Save first' : !readyToSubmit ? 'Finish the details and files first' : ''} onClick={() => void act('submit', 'Sent for review. We will email you.')}><Send size={16} /> Submit for review</button>}
           {!isNew && l?.status === 'SUBMITTED' && <button className="pbtn ghost" disabled={busy !== null} onClick={() => void act('withdraw', 'Back to draft.')}><Undo2 size={16} /> Withdraw</button>}
+          {!isNew && <button className="pbtn ghost" onClick={() => setPreview(true)}>Preview website listing</button>}
           {editable && <button className="pbtn primary" disabled={busy !== null || (!isNew && !dirty)} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : isNew ? 'Create listing' : 'Save changes'}</button>}
         </div>
       </div>
@@ -312,8 +368,13 @@ export function PartnerListingEdit() {
       {l && !editable && l.status !== 'REJECTED' && <div className="notice info" style={{ marginBottom: '1rem' }}><CheckCircle2 size={18} /> This listing is {LISTING_STATUS[l.status].label.toLowerCase()}, so its details are locked. Write to us if something must change. Print files can still be replaced on approved or live titles.</div>}
       {isNew && <div className="notice info" style={{ marginBottom: '1rem' }}><Sparkles size={18} /> Create the listing first; the cover image and print files are added on the next screen.</div>}
 
+      <div className="steps" style={{ marginBottom: '1rem' }}>
+        {['The book', 'Specs & price', 'Copy & credits', 'Catalog & rules', 'Files'].map((label, i) => (
+          <button type="button" key={label} className={`st${step === i ? ' on' : ''}${i < step ? ' done' : ''}`} onClick={() => { setStep(i); document.querySelectorAll('.listing-form .panel')[i]?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><i>{i < step ? '✓' : i + 1}</i>{label}</button>
+        ))}
+      </div>
       <div className="split">
-        <form onSubmit={save}><ListingForm value={form} onChange={change} cycles={cyc?.cycles ?? []} settings={me?.settings ?? null} disabled={!editable} /></form>
+        <form onSubmit={save} className="listing-form"><ListingForm value={form} onChange={change} cycles={cyc?.cycles ?? []} settings={me?.settings ?? null} disabled={!editable} /></form>
         <aside className="stack sticky">
           {!isNew && l && (
             <>
@@ -325,17 +386,40 @@ export function PartnerListingEdit() {
                   ))}
                 </ul>
               </div>
-              <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} hint="JPG, PNG or WebP · the catalog thumbnail" onUpload={(f) => void upload('cover_image', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} />
+              <div className="panel tight">
+                <div className="between"><b>Barcode</b>{l.barcode ? <Pill tone="teal">{l.barcode.symbology}</Pill> : l.upc ? <Pill tone="slate">your own UPC</Pill> : <Pill tone="amber">none yet</Pill>}</div>
+                {l.barcode || l.upc ? <div style={{ marginTop: '.5rem' }}><Barcode code={l.barcode?.code ?? l.upc!} /><div className="row" style={{ marginTop: '.4rem', justifyContent: 'space-between' }}><span className="mono" style={{ fontSize: '.84rem' }}>{l.barcode?.code ?? l.upc}</span><a className="pbtn ghost xs" href={`/api/pod/barcode/${l.barcode?.code ?? l.upc}.svg`} download>SVG</a></div></div>
+                  : <><p className="dim tight" style={{ fontSize: '.82rem', margin: '.4rem 0 .6rem' }}>Every cover needs its own UPC. Type yours in the form, or take one of ours.</p><button className="pbtn soft sm" disabled={busy !== null} onClick={() => void getBarcode()}>Get a barcode</button></>}
+              </div>
+              <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} hint="JPG, PNG or WebP · the catalog thumbnail" onUpload={(f) => void upload('cover_image', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} versions={olderVersions('cover_image')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               {l.fulfillment === 'PRINTED_BY_US' && <>
-                <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} hint="4 pages or a wrap, with 0.125&quot; bleed" onUpload={(f) => void upload('cover', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} />
-                <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} hint={`${l.pageCount ?? '?'} single pages with bleed`} onUpload={(f) => void upload('interior', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} />
+                <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} hint="4 pages or a wrap, with 0.125&quot; bleed" onUpload={(f) => void upload('cover', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} versions={olderVersions('cover')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+                <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} hint={`${l.pageCount ?? '?'} single pages with bleed`} onUpload={(f) => void upload('interior', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} versions={olderVersions('interior')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               </>}
+              <FileSlot label="Marketing image" file={l.files.marketing} accept="image/*" busy={busy === 'marketing'} hint="A preview page or promo image shops can use" onUpload={(f) => void upload('marketing', f)} versions={olderVersions('marketing')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+              {l.fulfillment === 'CONSIGNMENT' && <div className="panel tight"><b>Consignment stock</b><div className="display-md mono" style={{ marginTop: '.3rem' }}>{l.inventory.units}</div><div className="dim" style={{ fontSize: '.8rem' }}>copies on our shelf{l.inventory.damaged ? ` · ${l.inventory.damaged} damaged` : ''}. Ship more to us and we log them in.</div></div>}
               {data && data.sales.units > 0 && <div className="panel"><h3>Sales</h3><div className="display-md mono">{data.sales.units} copies</div><div className="dim">{money(data.sales.wholesaleCents)} wholesale to date</div></div>}
               <div className="panel"><h3>History</h3><div style={{ marginTop: '.5rem' }}><Events events={data?.events ?? []} /></div></div>
             </>
           )}
         </aside>
       </div>
+      <Drawer open={preview} onClose={() => setPreview(false)} title="This is how your listing appears" width={720}>
+        <p className="dim" style={{ fontSize: '.86rem' }}>What shops and readers see on the catalog and the title page, built from what is saved now.</p>
+        <div className="split" style={{ gridTemplateColumns: '200px 1fr' }}>
+          <CoverArt url={l?.coverImage?.url} title={form.title || 'Untitled'} className="cover-hero" />
+          <div>
+            <div className="row" style={{ marginBottom: '.4rem' }}><Pill tone="violet">{FORMAT_LABELS[form.format] ?? form.format}</Pill>{form.coverDescription && <Pill tone="slate">{form.coverDescription}</Pill>}{form.incentiveRatio && <Pill tone="rose">{form.incentiveRatio} incentive</Pill>}{form.ageRating && <Pill tone="teal">{form.ageRating}</Pill>}</div>
+            <h2 className="display-md">{form.title || 'Untitled'}{form.issueNumber ? ` #${form.issueNumber}` : ''}</h2>
+            <div className="dim">by {me?.partner.name}</div>
+            <div className="display-md mono" style={{ margin: '.75rem 0' }}>{money(Math.round((Number(form.msrp) || 0) * 100))} <span className="dim" style={{ fontSize: '.9rem', fontFamily: 'var(--p-font)', fontWeight: 400 }}>cover price</span></div>
+            {form.synopsis && <p style={{ fontSize: '1rem', lineHeight: 1.55 }}>{form.synopsis}</p>}
+            {form.description && <p className="dim" style={{ whiteSpace: 'pre-wrap' }}>{form.description}</p>}
+            <dl className="spec panel tight">{form.writer && <><dt>Writer</dt><dd>{form.writer}</dd></>}{form.artist && <><dt>Artist</dt><dd>{form.artist}</dd></>}{form.coverArtist && <><dt>Cover artist</dt><dd>{form.coverArtist}</dd></>}{form.pageCount && <><dt>Pages</dt><dd>{form.pageCount}</dd></>}{form.trimWidthIn && <><dt>Trim</dt><dd>{form.trimWidthIn} × {form.trimHeightIn} in</dd></>}<dt>Interior</dt><dd>{form.interiorColor === 'bw' ? 'Black & white' : 'Full colour'}</dd>{form.genres.length > 0 && <><dt>Genres</dt><dd>{form.genres.join(', ')}</dd></>}<dt>Catalog id</dt><dd><span className="key">{l?.catalogKey}</span></dd></dl>
+          </div>
+        </div>
+        <div className="row" style={{ marginTop: '1rem' }}><button className="pbtn primary" onClick={() => setPreview(false)}>Back to editing</button>{l?.product?.active && <a className="pbtn ghost" href={`/product/${l.product.slug}`} target="_blank" rel="noreferrer">Open the live page</a>}</div>
+      </Drawer>
     </>
   );
 }
@@ -346,19 +430,19 @@ export function PartnerListingEdit() {
 
 interface PO { id: string; number: string; status: string; lines: { catalogKey: string; title: string; quantity: number; wholesaleCents: number; shipTo: { qty: number; address: Record<string, string> }[] }[]; unitsTotal: number; wholesaleCents: number; commissionCents: number; netCents: number; sentAt: string | null; acknowledgedAt: string | null; fulfilledAt: string | null; notes: string | null; cycle: { name: string; inStoreDate: string } }
 
-export function PartnerPurchaseOrders() {
-  const { data, reload } = useLoad<{ purchaseOrders: PO[] }>('/pod/partner/purchase-orders');
+export function PublisherPurchaseOrders() {
+  const { data, reload } = useLoad<{ purchaseOrders: PO[] }>('/pod/publisher/purchase-orders');
   const { id } = useParams();
   const { show, node } = useFlash();
   const [note, setNote] = useState('');
   const sel = data?.purchaseOrders.find((p) => p.id === id) ?? null;
-  const act = async (path: string, body?: unknown) => { try { await api.post(`/pod/partner/purchase-orders/${sel!.id}/${path}`, body); show('Thanks — noted.'); await reload(); } catch (x) { show(errText(x), true); } };
+  const act = async (path: string, body?: unknown) => { try { await api.post(`/pod/publisher/purchase-orders/${sel!.id}/${path}`, body); show('Thanks — noted.'); await reload(); } catch (x) { show(errText(x), true); } };
   const fmtAddr = (a: Record<string, string>) => [a.company, [a.firstName, a.lastName].filter(Boolean).join(' '), a.line1, a.line2, [a.city, a.region, a.postalCode].filter(Boolean).join(', '), a.phone].filter(Boolean).join(' · ');
   if (sel) {
     return (
       <>
         {node}
-        <div className="ptop"><div><Link to="/partner/purchase-orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Purchase orders</Link><h1>{sel.number}</h1><div className="row" style={{ marginTop: '.4rem' }}><TonePill map={PURCHASE_STATUS} status={sel.status} /><span className="dim">{sel.cycle.name} · ship for {dateShort(sel.cycle.inStoreDate)}</span></div></div>
+        <div className="ptop"><div><Link to="/publisher/purchase-orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Purchase orders</Link><h1>{sel.number}</h1><div className="row" style={{ marginTop: '.4rem' }}><TonePill map={PURCHASE_STATUS} status={sel.status} /><span className="dim">{sel.cycle.name} · ship for {dateShort(sel.cycle.inStoreDate)}</span></div></div>
           <div className="row">{sel.status === 'SENT' && <button className="pbtn soft" onClick={() => void act('acknowledge')}>Acknowledge</button>}{(sel.status === 'SENT' || sel.status === 'ACKNOWLEDGED') && <button className="pbtn glow" onClick={() => void act('shipped', { note })}><Truck size={16} /> Mark shipped</button>}</div></div>
         <div className="split">
           <div className="stack">
@@ -387,7 +471,7 @@ export function PartnerPurchaseOrders() {
       <div className="panel flush">
         {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.purchaseOrders.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No purchase orders yet" body="They appear here once a catalog with your publisher-shipped titles locks at FOC." /></div> : (
           <table className="ptable"><thead><tr><th>Number</th><th>Catalog</th><th>Ship by</th><th className="num">Copies</th><th className="num">Net to you</th><th>Status</th></tr></thead><tbody>
-            {data.purchaseOrders.map((p) => <tr key={p.id} className="click" onClick={() => (window.location.href = `/partner/purchase-orders/${p.id}`)}><td><b>{p.number}</b></td><td>{p.cycle.name}</td><td>{dateShort(p.cycle.inStoreDate)}</td><td className="num mono">{p.unitsTotal}</td><td className="num mono">{money(p.netCents)}</td><td><TonePill map={PURCHASE_STATUS} status={p.status} /></td></tr>)}
+            {data.purchaseOrders.map((p) => <tr key={p.id} className="click" onClick={() => (window.location.href = `/publisher/purchase-orders/${p.id}`)}><td><b>{p.number}</b></td><td>{p.cycle.name}</td><td>{dateShort(p.cycle.inStoreDate)}</td><td className="num mono">{p.unitsTotal}</td><td className="num mono">{money(p.netCents)}</td><td><TonePill map={PURCHASE_STATUS} status={p.status} /></td></tr>)}
           </tbody></table>
         )}
       </div>
@@ -398,14 +482,14 @@ export function PartnerPurchaseOrders() {
 interface Statement { id: string; number: string; status: string; periodStart: string; periodEnd: string; grossCents: number; commissionCents: number; printingCents: number; creditsCents: number; adjustmentCents: number; netCents: number; issuedAt: string | null; paidAt: string | null; paymentMethod: string | null; paymentRef: string | null; notes: string | null; lines: { kind: string; amountCents: number; description: string; catalogKey: string | null; title: string | null; cycle: string | null; at: string }[]; cycle: { name: string } | null }
 interface LedgerEntry { id: string; kind: string; amountCents: number; description: string; createdAt: string; listing: { catalogKey: string; title: string } | null; cycle: { name: string } | null }
 
-export function PartnerStatements() {
+export function PublisherStatements() {
   const { id } = useParams();
-  const { data } = useLoad<{ statements: Statement[]; summary: { grossCents: number; commissionCents: number; printingCents: number; netCents: number; unassignedCents: number; payoutsCents: number }; pending: LedgerEntry[] }>('/pod/partner/statements');
+  const { data } = useLoad<{ statements: Statement[]; summary: { grossCents: number; commissionCents: number; printingCents: number; netCents: number; unassignedCents: number; payoutsCents: number }; pending: LedgerEntry[] }>('/pod/publisher/statements');
   const sel = data?.statements.find((s) => s.id === id);
   if (sel) {
     return (
       <>
-        <div className="ptop"><div><Link to="/partner/statements" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Statements</Link><h1>Statement {sel.number}</h1><div className="row" style={{ marginTop: '.4rem' }}><TonePill map={STATEMENT_STATUS} status={sel.status} /><span className="dim">{dateShort(sel.periodStart)} – {dateShort(sel.periodEnd)}{sel.cycle ? ` · ${sel.cycle.name}` : ''}</span></div></div><button className="pbtn ghost" onClick={() => window.print()}>Print / save PDF</button></div>
+        <div className="ptop"><div><Link to="/publisher/statements" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Statements</Link><h1>Statement {sel.number}</h1><div className="row" style={{ marginTop: '.4rem' }}><TonePill map={STATEMENT_STATUS} status={sel.status} /><span className="dim">{dateShort(sel.periodStart)} – {dateShort(sel.periodEnd)}{sel.cycle ? ` · ${sel.cycle.name}` : ''}</span></div></div><button className="pbtn ghost" onClick={() => window.print()}>Print / save PDF</button></div>
         <div className="split">
           <div className="panel flush"><table className="ptable"><thead><tr><th>Date</th><th>Entry</th><th>Title</th><th className="num">Amount</th></tr></thead><tbody>
             {sel.lines.map((ln, i) => <tr key={i}><td className="dim" style={{ whiteSpace: 'nowrap' }}>{dateShort(ln.at)}</td><td>{ln.description}</td><td>{ln.title ? <>{ln.title} <span className="key">{ln.catalogKey}</span></> : ''}</td><td className={`num mono${ln.amountCents < 0 ? ' neg' : ''}`} style={ln.amountCents < 0 ? { color: '#c81e24' } : undefined}>{money(ln.amountCents)}</td></tr>)}
@@ -440,7 +524,7 @@ export function PartnerStatements() {
           <div className="panel-head" style={{ padding: '1rem 1rem 0' }}><h3>Statements</h3></div>
           {!data ? <p className="dim" style={{ padding: '1rem' }}>Loading…</p> : data.statements.length === 0 ? <div style={{ padding: '1rem' }}><Empty title="No statements yet" body="Your first statement comes after the first cycle your titles sell in." /></div> : (
             <table className="ptable"><thead><tr><th>Number</th><th>Period</th><th className="num">Net</th><th>Status</th></tr></thead><tbody>
-              {data.statements.map((s) => <tr key={s.id} className="click" onClick={() => (window.location.href = `/partner/statements/${s.id}`)}><td><b>{s.number}</b>{s.cycle && <div className="dim" style={{ fontSize: '.78rem' }}>{s.cycle.name}</div>}</td><td className="dim">{dateShort(s.periodStart)} – {dateShort(s.periodEnd)}</td><td className="num mono">{money(s.netCents)}</td><td><TonePill map={STATEMENT_STATUS} status={s.status} /></td></tr>)}
+              {data.statements.map((s) => <tr key={s.id} className="click" onClick={() => (window.location.href = `/publisher/statements/${s.id}`)}><td><b>{s.number}</b>{s.cycle && <div className="dim" style={{ fontSize: '.78rem' }}>{s.cycle.name}</div>}</td><td className="dim">{dateShort(s.periodStart)} – {dateShort(s.periodEnd)}</td><td className="num mono">{money(s.netCents)}</td><td><TonePill map={STATEMENT_STATUS} status={s.status} /></td></tr>)}
             </tbody></table>
           )}
         </div>

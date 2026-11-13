@@ -77,7 +77,7 @@ export function StoreLayout() {
                       {waiting} waiting
                     </Link>
                   )}
-                  {user.partner && <Link to="/partner" title={user.partner.name}>Publisher portal</Link>}
+                  {user.partner && <Link to="/publisher" title={user.partner.name}>Publisher portal</Link>}
                   {user.retailer && <Link to="/retailer" title={user.retailer.name}>Wholesale</Link>}
                   {(user.role === 'ADMIN' || user.role === 'STAFF') && (
                     <Link to="/admin">Admin</Link>
@@ -507,7 +507,7 @@ function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
               <Link to="/account/proofs" onClick={onClose} className={waiting > 0 ? 'waiting' : undefined}>
                 Proofs &amp; files{waiting > 0 ? ` · ${waiting} waiting` : ''}
               </Link>
-              {user.partner && <Link to="/partner" onClick={onClose}>Publisher portal</Link>}
+              {user.partner && <Link to="/publisher" onClick={onClose}>Publisher portal</Link>}
               {user.retailer && <Link to="/retailer" onClick={onClose}>Wholesale ordering</Link>}
               {(user.role === 'ADMIN' || user.role === 'STAFF') && <Link to="/admin" onClick={onClose}>Admin</Link>}
               <button type="button" onClick={() => { void onLogout(); }}>Log out</button>

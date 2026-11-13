@@ -47,6 +47,11 @@ function jobView(po: Job) {
   };
 }
 
+router.get('/me/activity', async (req, res) => {
+  const rows = await prisma.podEvent.findMany({ where: { actorId: req.session!.sub }, orderBy: { createdAt: 'desc' }, take: 200 });
+  res.json({ events: rows });
+});
+
 router.get('/', async (req, res) => {
   const status = String(req.query.status ?? 'open');
   const where: Prisma.ProductionOrderWhereInput = status === 'open' ? { status: { in: ['FILES_NEEDED', 'PREFLIGHT', 'APPROVED'] } } : status === 'all' ? {} : { status: status as never };
@@ -104,6 +109,23 @@ router.post('/:id/status', async (req, res) => {
   await recordPodEvent('production', po.id, 'status', `${po.status} → ${body.status}${body.note ? ` — ${body.note}` : ''}`, actorOf(req));
   const full = await prisma.productionOrder.findUnique({ where: { id: po.id }, include: jobInclude });
   res.json({ job: jobView(full!) });
+});
+
+router.post('/:id/notes', async (req, res) => {
+  const body = z.object({ text: z.string().trim().min(1).max(2000) }).parse(req.body);
+  const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!po) throw new HttpError(404, 'Job not found');
+  await recordPodEvent('production', po.id, 'note', body.text, actorOf(req));
+  res.status(201).json({ events: (await podEvents('production', po.id)).filter((e) => !/\$|cents|copies|retailer/i.test(e.message ?? '')) });
+});
+
+/** Record that someone opened a production file (who looked at what, when). */
+router.post('/:id/files/:fileId/opened', async (req, res) => {
+  const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  const f = await prisma.listingFile.findUnique({ where: { id: req.params.fileId }, select: { kind: true, version: true } });
+  if (!po || !f) throw new HttpError(404, 'Not found');
+  await recordPodEvent('production', po.id, 'file-opened', `${f.kind} v${f.version} opened`, actorOf(req));
+  res.json({ ok: true });
 });
 
 export default router;

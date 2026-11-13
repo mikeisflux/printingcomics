@@ -120,7 +120,8 @@ export async function syncListingProduct(listingId: string): Promise<string> {
     // options, no customer files. (The product page treats a product with
     // no pricingConfig and no options as flat-priced.)
     madeToOrder: false,
-    trackStock: false,
+    trackStock: l.fulfillment === 'CONSIGNMENT',
+    stock: l.fulfillment === 'CONSIGNMENT' ? Math.max(0, l.inventoryUnits) : 0,
     sku: l.catalogKey,
     minQuantity: 1,
     weightGrams: l.weightOz ? Math.round(l.weightOz * 28.35) : 120,
@@ -288,7 +289,7 @@ export async function lockCycle(cycleId: string, actor: Actor): Promise<LockSumm
     const qty = t?.qty ?? 0;
     const already = await prisma.partnerLedgerEntry.findFirst({ where: { cycleId, listingId: l.id, kind: 'SALE' }, select: { id: true } });
     if (qty > 0 && !already) {
-      const bps = l.partner.commissionBps ?? (l.fulfillment === 'PRINTED_BY_US' ? settings.commissionBpsPrintedByUs : settings.commissionBpsPartnerShips);
+      const bps = l.partner.commissionBps ?? (l.fulfillment === 'PRINTED_BY_US' ? settings.commissionBpsPrintedByUs : l.fulfillment === 'CONSIGNMENT' ? settings.commissionBpsConsignment : settings.commissionBpsPartnerShips);
       const commission = Math.round((t!.wholesaleCents * bps) / 10_000);
       await prisma.partnerLedgerEntry.createMany({ data: [
         { partnerId: l.partnerId, kind: 'SALE', amountCents: t!.wholesaleCents, description: `${l.catalogKey} ${l.title}: ${qty} × wholesale (${cycle.name})`, cycleId, listingId: l.id, actorName: actor.name },
@@ -296,7 +297,14 @@ export async function lockCycle(cycleId: string, actor: Actor): Promise<LockSumm
       ] });
       summary.ledgerEntries += 2;
     }
-    if (l.fulfillment === 'PRINTED_BY_US') {
+    if (l.fulfillment === 'CONSIGNMENT') {
+      // We ship from the publisher's consigned stock; nothing to print or send out.
+      if (qty > 0 && !already) {
+        await prisma.listing.update({ where: { id: l.id }, data: { inventoryUnits: { decrement: Math.min(qty, l.inventoryUnits) } } });
+        await recordPodEvent('listing', l.id, 'inventory', `${qty} copies pulled from consignment stock for ${cycle.name}${qty > l.inventoryUnits ? ` — SHORT by ${qty - l.inventoryUnits}` : ''}`, actor);
+        summary.units += qty;
+      }
+    } else if (l.fulfillment === 'PRINTED_BY_US') {
       const existing = await prisma.productionOrder.findFirst({ where: { cycleId, listingId: l.id } });
       if (!existing && qty > 0) {
         const cost = await estimatePrintCost(l, qty);

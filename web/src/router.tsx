@@ -69,8 +69,12 @@ import { PrintOnDemand } from './pages/pod/PrintOnDemand';
 import { PodCatalog } from './pages/pod/PodCatalog';
 import { PodTitle } from './pages/pod/PodTitle';
 import { PodApply } from './pages/pod/PodApply';
-import { PartnerLayout, PartnerDashboard, PartnerListings, PartnerListingEdit, PartnerPurchaseOrders, PartnerStatements } from './pages/pod/PartnerPortal';
-import { RetailerLayout, RetailerDashboard, RetailerCatalog, RetailerOrders } from './pages/pod/RetailerPortal';
+import { PublisherLayout, PublisherDashboard, PublisherListings, PublisherListingEdit, PublisherPurchaseOrders, PublisherStatements } from './pages/pod/PublisherPortal';
+import { RetailerLayout, RetailerDashboard, RetailerOrders } from './pages/pod/RetailerPortal';
+import { RetailerCatalog } from './pages/pod/RetailerCatalog';
+import { RetailerProfile, RetailerDownloads, RetailerReturns, RetailerShipments } from './pages/pod/RetailerPortalMore';
+import { PublisherFiles, PublisherProfile, PublisherBarcodes, PublisherPrintOrders, PublisherResources } from './pages/pod/PublisherPortalMore';
+import { Navigate } from 'react-router-dom';
 import { PodLayout } from './pages/admin/pod/PodLayout';
 import { PodDashboard } from './pages/admin/pod/PodDashboard';
 import { PodListings, PodListingDetail } from './pages/admin/pod/PodListings';
@@ -80,6 +84,12 @@ import { PodProduction, PodPurchaseOrders } from './pages/admin/pod/PodProductio
 import { PodPayouts } from './pages/admin/pod/PodPayouts';
 import { PodPreflight } from './pages/admin/pod/PodPreflight';
 import { PodSettings } from './pages/admin/pod/PodSettings';
+import { PodPublishers, PodPublisherDetail } from './pages/admin/pod/PodPublishers';
+import { PodOrders, PodFulfillment } from './pages/admin/pod/PodOrders';
+import { PodReturns, PodFiles, PodBarcodes, PodInventory, PodAnalytics, PodActivity } from './pages/admin/pod/PodMore';
+import { PodCatalogPrint } from './pages/admin/pod/PodCatalogPrint';
+import { PublisherHandbook } from './pages/pod/PublisherHandbook';
+import { PodPublisherPage } from './pages/pod/PodPublisherPage';
 
 export const router = createBrowserRouter([
   {
@@ -129,19 +139,28 @@ export const router = createBrowserRouter([
       { path: 'print-on-demand/catalog', element: <PodCatalog /> },
       { path: 'print-on-demand/catalog/:key', element: <PodTitle /> },
       { path: 'print-on-demand/apply', element: <PodApply /> },
+      { path: 'print-on-demand/handbook', element: <PublisherHandbook /> },
+      { path: 'print-on-demand/publishers/:slug', element: <PodPublisherPage /> },
       {
-        path: 'partner',
-        element: <PartnerLayout />,
+        path: 'publisher',
+        element: <PublisherLayout />,
         children: [
-          { index: true, element: <PartnerDashboard /> },
-          { path: 'listings', element: <PartnerListings /> },
-          { path: 'listings/:id', element: <PartnerListingEdit /> },
-          { path: 'purchase-orders', element: <PartnerPurchaseOrders /> },
-          { path: 'purchase-orders/:id', element: <PartnerPurchaseOrders /> },
-          { path: 'statements', element: <PartnerStatements /> },
-          { path: 'statements/:id', element: <PartnerStatements /> },
+          { index: true, element: <PublisherDashboard /> },
+          { path: 'listings', element: <PublisherListings /> },
+          { path: 'listings/:id', element: <PublisherListingEdit /> },
+          { path: 'purchase-orders', element: <PublisherPurchaseOrders /> },
+          { path: 'purchase-orders/:id', element: <PublisherPurchaseOrders /> },
+          { path: 'statements', element: <PublisherStatements /> },
+          { path: 'statements/:id', element: <PublisherStatements /> },
+          { path: 'files', element: <PublisherFiles /> },
+          { path: 'assets', element: <PublisherProfile /> },
+          { path: 'barcodes', element: <PublisherBarcodes /> },
+          { path: 'print-orders', element: <PublisherPrintOrders /> },
+          { path: 'resources', element: <PublisherResources /> },
         ],
       },
+      // The portal used to live at /partner.
+      { path: 'partner/*', element: <Navigate to="/publisher" replace /> },
       {
         path: 'retailer',
         element: <RetailerLayout />,
@@ -150,6 +169,10 @@ export const router = createBrowserRouter([
           { path: 'catalog', element: <RetailerCatalog /> },
           { path: 'orders', element: <RetailerOrders /> },
           { path: 'orders/:number', element: <RetailerOrders /> },
+          { path: 'returns', element: <RetailerReturns /> },
+          { path: 'shipments', element: <RetailerShipments /> },
+          { path: 'downloads', element: <RetailerDownloads /> },
+          { path: 'profile', element: <RetailerProfile /> },
         ],
       },
       { path: 'about', element: <About /> },
@@ -209,6 +232,17 @@ export const router = createBrowserRouter([
           { path: 'payouts', element: <PodPayouts /> },
           { path: 'preflight', element: <PodPreflight /> },
           { path: 'settings', element: <PodSettings /> },
+          { path: 'publishers', element: <PodPublishers /> },
+          { path: 'publishers/:id', element: <PodPublisherDetail /> },
+          { path: 'orders', element: <PodOrders /> },
+          { path: 'fulfillment', element: <PodFulfillment /> },
+          { path: 'inventory', element: <PodInventory /> },
+          { path: 'returns', element: <PodReturns /> },
+          { path: 'files', element: <PodFiles /> },
+          { path: 'barcodes', element: <PodBarcodes /> },
+          { path: 'analytics', element: <PodAnalytics /> },
+          { path: 'activity', element: <PodActivity /> },
+          { path: 'cycles/:id/print', element: <PodCatalogPrint /> },
         ],
       },
       { path: 'partners', element: <AdminPartners /> },

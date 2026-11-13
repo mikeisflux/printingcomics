@@ -21,6 +21,9 @@ export function PodPreflight() {
   const { data: detail, reload: reloadDetail } = useLoad<{ job: Job; events: PodEvent[] }>(openId ? `/admin/pod/preflight/${openId}` : null, [openId]);
   const { show, node } = useFlash();
   const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [mine, setMine] = useState(false);
+  const { data: myActivity } = useLoad<{ events: PodEvent[] }>(mine ? '/admin/pod/preflight/me/activity' : null, [mine]);
   const counts = data?.counts ?? {};
   const job = detail?.job ?? data?.jobs.find((j) => j.id === openId) ?? null;
   const act = async (path: string, body?: unknown) => { setBusy(path); try { await api.post(`/admin/pod/preflight/${job!.id}/${path}`, body); show('Done'); await Promise.all([reload(), reloadDetail()]); } catch (e) { show(errText(e), true); } finally { setBusy(null); } };
@@ -35,7 +38,8 @@ export function PodPreflight() {
         <Kpi label="Done" value={counts.DONE ?? 0} sub="all time" dark />
       </div>
       <div className="toolbar"><div><h2 className="display-md" style={{ margin: 0 }}><ScanLine size={22} style={{ verticalAlign: '-4px' }} /> Preflight desk</h2><div className="dim" style={{ fontSize: '.88rem' }}>Open a job, read the automatic checks, open the PDFs, approve or reject each file. Both approved → the job is cleared for press.</div></div>
-        <div className="seg"><button className={status === 'open' ? 'on' : ''} onClick={() => setParams({ status: 'open' })}>Open</button><button className={status === 'APPROVED' ? 'on' : ''} onClick={() => setParams({ status: 'APPROVED' })}>Approved</button><button className={status === 'all' ? 'on' : ''} onClick={() => setParams({ status: 'all' })}>All</button></div></div>
+        <div className="row"><div className="seg"><button className={status === 'open' ? 'on' : ''} onClick={() => setParams({ status: 'open' })}>Open</button><button className={status === 'APPROVED' ? 'on' : ''} onClick={() => setParams({ status: 'APPROVED' })}>Approved</button><button className={status === 'all' ? 'on' : ''} onClick={() => setParams({ status: 'all' })}>All</button></div><button className={`pbtn ${mine ? 'primary' : 'ghost'} sm`} onClick={() => setMine(!mine)}>My activity</button></div></div>
+      {mine && <div className="panel" style={{ marginBottom: '1rem' }}><div className="panel-head"><h3>My activity</h3></div><Events events={myActivity?.events ?? []} /></div>}
       <div className="panel flush scroll-x">
         {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.jobs.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="Nothing to check" body="Jobs arrive when a catalog locks at FOC or staff raise a run." /></div> : (
           <table className="ptable"><thead><tr><th>Job</th><th>Title</th><th>Publisher</th><th>Spec</th><th>Cover</th><th>Interior</th><th>Deadline</th><th>Status</th></tr></thead><tbody>
@@ -65,7 +69,7 @@ export function PodPreflight() {
                 <div className="between"><b>{f.kindLabel}</b>{f.missing ? <Pill tone="rose">Missing — publisher must upload</Pill> : <Pill tone={f.reviewStatus === 'approved' ? 'green' : f.reviewStatus === 'rejected' ? 'red' : 'amber'}>{f.reviewStatus} · v{f.version}</Pill>}</div>
                 {!f.missing && f.media && (
                   <>
-                    <div className="row" style={{ margin: '.5rem 0', justifyContent: 'space-between' }}><a href={f.media.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{f.media.originalName}</a><span className="dim" style={{ fontSize: '.8rem' }}>{(f.media.size / 1048576).toFixed(1)} MB · uploaded {dateShort(f.createdAt)}</span></div>
+                    <div className="row" style={{ margin: '.5rem 0', justifyContent: 'space-between' }}><a href={f.media.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }} onClick={() => void api.post(`/admin/pod/preflight/${job.id}/files/${f.id}/opened`).catch(() => undefined)}>{f.media.originalName}</a><span className="dim" style={{ fontSize: '.8rem' }}>{(f.media.size / 1048576).toFixed(1)} MB · uploaded {dateShort(f.createdAt)}</span></div>
                     {f.note && <div className="notice warn" style={{ marginBottom: '.5rem', padding: '.5rem .75rem' }}>{f.note}</div>}
                     <PreflightReport result={f.preflight ?? null} />
                     <div className="row" style={{ marginTop: '.6rem' }}>
@@ -77,6 +81,7 @@ export function PodPreflight() {
                 )}
               </div>
             ))}
+            <div className="panel" style={{ marginBottom: '1rem' }}><h3>Team note</h3><p className="dim" style={{ fontSize: '.82rem', margin: '.25rem 0 .5rem' }}>For everyone working on this file: what you checked, what to watch.</p><textarea className="inp" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /><button className="pbtn soft sm" style={{ marginTop: '.5rem' }} disabled={!note.trim() || busy !== null} onClick={() => { const text = note; setNote(''); void act('notes', { text }); }}>Add note</button></div>
             <div className="panel"><h3>History</h3><div style={{ marginTop: '.5rem' }}><Events events={detail?.events ?? []} /></div></div>
           </>
         )}

@@ -4,14 +4,14 @@
  * (.pod.pod-admin) so it reads as its own product inside the admin.
  */
 import { NavLink, Outlet, useOutletContext } from 'react-router-dom';
-import { Printer, BookOpen, Calendar, Store, Factory, FileText, HandCoins, ScanLine, Settings } from 'lucide-react';
+import { Printer, BookOpen, Calendar, Store, Factory, FileText, HandCoins, ScanLine, Settings, Users, Receipt, Truck, Boxes, RefreshCw, FolderOpen, Barcode, BarChart3, History } from 'lucide-react';
 import { useAuth } from '../../../store/auth';
 import { can } from '../../../lib/permissions';
 import { useLoad } from '../../../components/pod/ui';
 import type { Cycle, PodEvent } from '../../../lib/pod';
 
 export interface Overview {
-  counts: { toReview: number; changes: number; live: number; retailersPending: number; retailersActive: number; productionOpen: number; purchaseOrdersOpen: number; statementsDraft: number; publishers: number; owedCents: number; retailerOrders30: number; retailerSales30Cents: number };
+  counts: { toReview: number; changes: number; live: number; retailersPending: number; retailersActive: number; productionOpen: number; purchaseOrdersOpen: number; statementsDraft: number; publishers: number; owedCents: number; retailerOrders30: number; retailerSales30Cents: number; publisherApplications: number; unpaidOrders: number; toShip: number; returnsOpen: number; filesToReview: number };
   cycles: (Cycle & { listingCount: number; orderCount: number })[];
   recentEvents: PodEvent[];
 }
@@ -37,12 +37,21 @@ export function PodLayout() {
         <nav className="tabs">
           {full && <Tab to="/admin/pod" end icon={<Printer size={15} />} label="Overview" />}
           {full && <Tab to="/admin/pod/listings" icon={<BookOpen size={15} />} label="Listings" n={c?.toReview} />}
+          {full && <Tab to="/admin/pod/publishers" icon={<Users size={15} />} label="Publishers" n={c?.publisherApplications} />}
           {full && <Tab to="/admin/pod/cycles" icon={<Calendar size={15} />} label="Catalog cycles" />}
           {full && <Tab to="/admin/pod/retailers" icon={<Store size={15} />} label="Retailers" n={c?.retailersPending} />}
+          {full && <Tab to="/admin/pod/orders" icon={<Receipt size={15} />} label="Orders" n={c?.unpaidOrders} />}
+          {full && <Tab to="/admin/pod/fulfillment" icon={<Truck size={15} />} label="Fulfillment" n={c?.toShip} />}
           {full && <Tab to="/admin/pod/production" icon={<Factory size={15} />} label="Production" n={c?.productionOpen} />}
           {full && <Tab to="/admin/pod/purchase-orders" icon={<FileText size={15} />} label="Purchase orders" n={c?.purchaseOrdersOpen} />}
+          {full && <Tab to="/admin/pod/inventory" icon={<Boxes size={15} />} label="Inventory" />}
+          {full && <Tab to="/admin/pod/returns" icon={<RefreshCw size={15} />} label="Returns" n={c?.returnsOpen} />}
           {full && <Tab to="/admin/pod/payouts" icon={<HandCoins size={15} />} label="Payouts" n={c?.statementsDraft} />}
+          {full && <Tab to="/admin/pod/files" icon={<FolderOpen size={15} />} label="Files" n={c?.filesToReview} />}
+          {full && <Tab to="/admin/pod/barcodes" icon={<Barcode size={15} />} label="Barcodes" />}
           <Tab to="/admin/pod/preflight" icon={<ScanLine size={15} />} label="Preflight" />
+          {full && <Tab to="/admin/pod/analytics" icon={<BarChart3 size={15} />} label="Analytics" />}
+          {full && <Tab to="/admin/pod/activity" icon={<History size={15} />} label="Activity" />}
           {full && <Tab to="/admin/pod/settings" icon={<Settings size={15} />} label="Settings" />}
         </nav>
       </header>

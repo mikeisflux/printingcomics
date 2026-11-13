@@ -441,6 +441,7 @@ model Order {
   cycleId         String?
   productionOrder ProductionOrder?
   wholesale       Json?
+  retailerReturns RetailerReturn[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -526,6 +527,15 @@ model Partner {
   // Print On Demand (publisher) terms: our commission on wholesale sales,
   // in basis points; null = the store default (Settings → Print on Demand).
   commissionBps Int?
+  // Publisher profile for Print On Demand: shown on the catalog and the portal.
+  phone         String?
+  address       Json?
+  bio           String?
+  printerInfo   String?
+  payoutMethod  String?
+  payoutDetails String?
+  logo          MediaFile? @relation("PartnerLogo", fields: [logoId], references: [id], onDelete: SetNull)
+  logoId        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -544,6 +554,8 @@ model Partner {
   purchaseOrders    PurchaseOrder[]
   ledgerEntries     PartnerLedgerEntry[]
   payoutStatements  PayoutStatement[]
+  assets            PublisherAsset[]
+  barcodes          Barcode[]
 
   @@index([status])
   @@index([platform])
@@ -1073,6 +1085,8 @@ model MediaFile {
   listingFiles   ListingFile[]
   listingCovers  Listing[]       @relation("ListingCover")
   retailerCerts  Retailer[]      @relation("RetailerCert")
+  partnerLogos   Partner[]       @relation("PartnerLogo")
+  publisherAssets PublisherAsset[]
 
   @@index([folder])
   @@index([mimeType])
@@ -1381,6 +1395,7 @@ enum ListingStatus {
 enum ListingFulfillment {
   PRINTED_BY_US   // we print and ship; printing is charged against the payout
   PARTNER_SHIPS   // the publisher ships from a purchase order we send them
+  CONSIGNMENT     // the publisher stocks us; we ship from that inventory at the consignment rate
 }
 
 enum CatalogCycleStatus {
@@ -1452,6 +1467,9 @@ model CatalogCycle {
   /// Bumped on every publish; snapshots carry the version they were taken at.
   version         Int                @default(0)
   notes           String?
+  /// The designed catalog, for shops to download (uploaded or linked).
+  catalogPdfUrl   String?
+  catalogCoverUrl String?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -1510,6 +1528,12 @@ model Listing {
   incentiveRatio    String?
   incentiveQualifierKey String?
   reorderable       Boolean            @default(true)
+  /// Consignment stock we hold for the publisher (copies on the shelf, damaged).
+  inventoryUnits    Int                @default(0)
+  inventoryDamaged  Int                @default(0)
+  inventoryLocation String?
+  inventoryIncoming Int                @default(0)
+  inventoryReorderLevel Int            @default(0)
   fulfillment       ListingFulfillment @default(PRINTED_BY_US)
   status            ListingStatus      @default(DRAFT)
   /// What staff asked the publisher to change (shown on the listing).
@@ -1531,6 +1555,8 @@ model Listing {
   orderItems       OrderItem[]
   productionOrders ProductionOrder[]
   ledgerEntries    PartnerLedgerEntry[]
+  barcode          Barcode?
+  returnItems      RetailerReturn[]
 
   @@index([partnerId])
   @@index([cycleId])
@@ -1597,12 +1623,18 @@ model Retailer {
   resaleCertStatus   String         @default("not_submitted")  // not_submitted | submitted | approved | rejected
   taxExempt          Boolean        @default(false)
   applicationMessage String?
+  /// Store credit from approved returns, applied to the next order (cents).
+  creditCents        Int            @default(0)
+  taxId              String?
+  /// Publishers this shop follows (Partner ids): a catalog filter and a highlight.
+  followedPartnerIds String[]       @default([])
   notes              String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
   members User[]  @relation("RetailerMembers")
   orders  Order[]
+  returns RetailerReturn[]
 
   @@index([status])
   @@index([contactEmail])
@@ -1734,4 +1766,82 @@ model PodEvent {
   createdAt   DateTime @default(now())
 
   @@index([subjectType, subjectId, createdAt])
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RECEIVED
+  CREDITED
+}
+
+enum BarcodeStatus {
+  AVAILABLE
+  RESERVED   // held for one publisher
+  ASSIGNED   // on a listing
+  RETIRED
+}
+
+/// A shop's return or damage claim on a wholesale order. Approval credits the
+/// shop (store credit on the next order) and charges the publisher's ledger.
+model RetailerReturn {
+  id          String       @id @default(cuid())
+  number      String       @unique
+  retailer    Retailer     @relation(fields: [retailerId], references: [id])
+  retailerId  String
+  order       Order        @relation(fields: [orderId], references: [id])
+  orderId     String
+  listing     Listing?     @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingId   String?
+  kind        String       @default("return")   // return | damage
+  quantity    Int
+  unitCreditCents Int      @default(0)
+  creditCents Int          @default(0)
+  reason      String
+  status      ReturnStatus @default(REQUESTED)
+  reviewNote  String?
+  decidedAt   DateTime?
+  receivedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([retailerId])
+  @@index([orderId])
+  @@index([status])
+}
+
+/// A publisher's logo, marketing images, press kit and other non-print files.
+model PublisherAsset {
+  id          String    @id @default(cuid())
+  partner     Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partnerId   String
+  kind        String    @default("marketing")   // logo | marketing | press | other
+  title       String?
+  media       MediaFile @relation(fields: [mediaFileId], references: [id])
+  mediaFileId String
+  createdAt   DateTime  @default(now())
+
+  @@index([partnerId, kind])
+}
+
+/// One barcode from a block we bought. Loaded in blocks, reserved for a
+/// publisher, assigned to one listing (which takes it as its UPC).
+model Barcode {
+  id          String        @id @default(cuid())
+  code        String        @unique   // 12 digits (UPC-A) or 13 (EAN-13), with check digit
+  symbology   String        @default("UPC-A")
+  block       String?       // the batch it came in with, e.g. "GS1 block 2026-A"
+  status      BarcodeStatus @default(AVAILABLE)
+  partner     Partner?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerId   String?
+  listing     Listing?      @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingId   String?       @unique
+  notes       String?
+  assignedAt  DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([status])
+  @@index([partnerId, status])
+  @@index([block])
 }

@@ -189,9 +189,12 @@ export function PreflightReport({ result, compact }: { result: PreflightResult |
 
 // --- File slot: one kind of file on a listing -----------------------------------
 
-export function FileSlot({ label, file, accept, onUpload, busy, hint, actions, readOnly }: {
-  label: string; file: { media: { url: string; name: string; size: number }; version: number; olderVersions: number; reviewStatus: string; preflight: PreflightResult | null; note: string | null } | null;
+export function FileSlot({ label, file, accept, onUpload, busy, hint, actions, readOnly, versions, onRestore, onDelete }: {
+  label: string; file: { id?: string; media: { url: string; name: string; size: number }; version: number; olderVersions: number; reviewStatus: string; preflight: PreflightResult | null; note: string | null } | null;
   accept: string; onUpload?: (f: File) => void; busy?: boolean; hint?: ReactNode; actions?: ReactNode; readOnly?: boolean;
+  /** Older versions of this kind, newest first. */
+  versions?: { id: string; version: number; reviewStatus: string; createdAt: string; media: { url: string; name: string; size: number } }[];
+  onRestore?: (fileId: string) => void; onDelete?: (fileId: string) => void;
 }) {
   const tone = !file ? 'rose' : file.reviewStatus === 'approved' ? 'green' : file.reviewStatus === 'rejected' ? 'red' : 'amber';
   const stat = !file ? 'Missing' : file.reviewStatus === 'approved' ? 'Approved' : file.reviewStatus === 'rejected' ? 'Needs a new file' : 'Uploaded';
@@ -213,6 +216,39 @@ export function FileSlot({ label, file, accept, onUpload, busy, hint, actions, r
       )}
       {!readOnly && onUpload && <DropZone compact accept={accept} busy={busy} title={file ? `Replace ${label.toLowerCase()}` : `Upload ${label.toLowerCase()}`} hint={hint} onFile={onUpload} />}
       {actions && <div className="row" style={{ marginTop: '.6rem' }}>{actions}</div>}
+      {versions && versions.length > 0 && (
+        <details style={{ marginTop: '.6rem' }}>
+          <summary style={{ cursor: 'pointer', fontSize: '.8rem', fontWeight: 600, color: 'var(--p-text-dim)' }}>{versions.length} older version{versions.length === 1 ? '' : 's'}</summary>
+          <ul style={{ listStyle: 'none', margin: '.4rem 0 0', padding: 0, display: 'grid', gap: '.3rem' }}>
+            {versions.map((v) => (
+              <li key={v.id} className="between" style={{ fontSize: '.78rem', gap: '.5rem' }}>
+                <span><b>v{v.version}</b> · <a href={v.media.url} target="_blank" rel="noreferrer">{v.media.name}</a> · {fileSize(v.media.size)} · {v.reviewStatus} · {new Date(v.createdAt).toLocaleDateString()}</span>
+                <span className="row" style={{ gap: '.3rem' }}>
+                  {onRestore && <button className="pbtn ghost xs" onClick={() => onRestore(v.id)}>Make current</button>}
+                  {onDelete && <button className="pbtn ghost xs" onClick={() => { if (confirm(`Delete v${v.version} for good?`)) onDelete(v.id); }} aria-label="Delete version">✕</button>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** A scannable barcode image (served by the API) with the number under it. */
+export function Barcode({ code, height = 64 }: { code: string; height?: number }) {
+  return <img src={`/api/pod/barcode/${code}.svg`} alt={`Barcode ${code}`} style={{ height, maxWidth: '100%', background: '#fff', borderRadius: 6, border: '1px solid var(--p-line)', padding: 4 }} />;
+}
+
+/** A tiny bar chart with no library: values scaled to the tallest. */
+export function Bars({ values, labels, height = 120, format }: { values: number[]; labels?: string[]; height?: number; format?: (v: number) => string }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height, width: '100%' }} role="img" aria-label="Bar chart">
+      {values.map((v, i) => (
+        <div key={i} title={`${labels?.[i] ?? ''} ${format ? format(v) : v}`} style={{ flex: 1, minWidth: 2, height: `${Math.max(2, (v / max) * 100)}%`, background: v ? 'var(--p-grad)' : 'var(--p-line)', borderRadius: '3px 3px 0 0', opacity: v ? 1 : .6 }} />
+      ))}
     </div>
   );
 }

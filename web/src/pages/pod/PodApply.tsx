@@ -78,7 +78,7 @@ function PublisherForm() {
           <div className="field span-2"><label>Anything else</label><textarea rows={3} value={f.message} onChange={set('message')} /></div>
         </div>
         {err && <div className="notice bad">{err}</div>}
-        <div className="row"><button className="pbtn glow" disabled={busy}>{busy ? 'Sending…' : 'Send my application'}</button><span className="dim" style={{ fontSize: '.82rem' }}>Already approved? <Link to="/login?redirect=/partner">Sign in to the publisher portal</Link></span></div>
+        <div className="row"><button className="pbtn glow" disabled={busy}>{busy ? 'Sending…' : 'Send my application'}</button><span className="dim" style={{ fontSize: '.82rem' }}>Already approved? <Link to="/login?redirect=/publisher">Sign in to the publisher portal</Link></span></div>
       </div>
       <aside className="stack rise rise-1">
         <div className="panel accent"><h3>What happens next</h3><ol style={{ margin: '.5rem 0 0', paddingLeft: '1.1rem', color: 'var(--p-text-dim)', fontSize: '.92rem', display: 'grid', gap: '.4rem' }}><li>We review the application and reply by email.</li><li>You get a portal login and list your first titles.</li><li>Each listing is reviewed; PDFs are preflighted on upload.</li><li>Approved titles go live in the next catalog.</li></ol></div>

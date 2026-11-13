@@ -136,12 +136,21 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
         {pod && <div className="group">Print on Demand</div>}
         {show('pod') && <Item to="/admin/pod" end badge={waiting.pod}>Overview</Item>}
         {show('pod') && <Item to="/admin/pod/listings">Listings</Item>}
+        {show('pod') && <Item to="/admin/pod/publishers">Publishers</Item>}
         {show('pod') && <Item to="/admin/pod/cycles">Catalog cycles</Item>}
         {show('pod') && <Item to="/admin/pod/retailers">Retailers</Item>}
+        {show('pod') && <Item to="/admin/pod/orders">Orders</Item>}
+        {show('pod') && <Item to="/admin/pod/fulfillment">Fulfillment</Item>}
         {show('pod') && <Item to="/admin/pod/production">Production</Item>}
         {show('pod') && <Item to="/admin/pod/purchase-orders">Purchase orders</Item>}
+        {show('pod') && <Item to="/admin/pod/inventory">Inventory</Item>}
+        {show('pod') && <Item to="/admin/pod/returns">Returns</Item>}
         {show('pod') && <Item to="/admin/pod/payouts">Payouts</Item>}
+        {show('pod') && <Item to="/admin/pod/files">Files</Item>}
+        {show('pod') && <Item to="/admin/pod/barcodes">Barcodes</Item>}
         {(show('pod') || show('preflight')) && <Item to="/admin/pod/preflight">Preflight</Item>}
+        {show('pod') && <Item to="/admin/pod/analytics">Analytics</Item>}
+        {show('pod') && <Item to="/admin/pod/activity">Activity</Item>}
         {show('pod') && <Item to="/admin/pod/settings">POD settings</Item>}
 
         {system && <div className="group">System</div>}

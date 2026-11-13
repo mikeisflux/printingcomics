@@ -28,6 +28,12 @@ export interface PodSettings {
   commissionBpsPrintedByUs: number;
   /** …and when the publisher ships from a purchase order (bps). */
   commissionBpsPartnerShips: number;
+  /** …and when we ship from stock the publisher consigned to us (bps). */
+  commissionBpsConsignment: number;
+  /** Copies a shop may return or claim damaged per order, by tier (same order as `tiers`). */
+  returnAllowanceByTier: number[];
+  /** Publishers may pull a barcode from the free pool onto a listing themselves. */
+  publishersSelfAssignBarcodes: boolean;
   /** Retailer orders below this MSRP subtotal are refused (cents). */
   retailerMinOrderCents: number;
   /** How retailer orders are shipped: billed after packing (0 at order time) or a flat amount per order. */
@@ -54,6 +60,9 @@ export const DEFAULT_POD_SETTINGS: PodSettings = {
   ],
   commissionBpsPrintedByUs: 500,
   commissionBpsPartnerShips: 1000,
+  commissionBpsConsignment: 1500,
+  returnAllowanceByTier: [2, 4, 8],
+  publishersSelfAssignBarcodes: true,
   retailerMinOrderCents: 0,
   retailerShipping: { mode: 'billed_later', flatCents: 0 },
   retailerTerms: 'Orders are final at the catalog’s final order cutoff (FOC). Shipping is billed at cost when the order ships. Payment is due on invoice.',
@@ -92,6 +101,9 @@ export function normalizePodSettings(raw: unknown): PodSettings {
     tiers: tiers.length ? tiers : d.tiers,
     commissionBpsPrintedByUs: int(r.commissionBpsPrintedByUs, d.commissionBpsPrintedByUs, 0, 9999),
     commissionBpsPartnerShips: int(r.commissionBpsPartnerShips, d.commissionBpsPartnerShips, 0, 9999),
+    commissionBpsConsignment: int(r.commissionBpsConsignment, d.commissionBpsConsignment, 0, 9999),
+    returnAllowanceByTier: (Array.isArray(r.returnAllowanceByTier) ? r.returnAllowanceByTier : d.returnAllowanceByTier).map((n) => int(n, 0, 0, 10_000)),
+    publishersSelfAssignBarcodes: r.publishersSelfAssignBarcodes === undefined ? d.publishersSelfAssignBarcodes : Boolean(r.publishersSelfAssignBarcodes),
     retailerMinOrderCents: int(r.retailerMinOrderCents, d.retailerMinOrderCents),
     retailerShipping: { mode: ship.mode === 'flat' ? 'flat' : 'billed_later', flatCents: int(ship.flatCents, 0) },
     retailerTerms: String(r.retailerTerms ?? d.retailerTerms),
@@ -123,6 +135,9 @@ export function publicPodSettings(s: PodSettings) {
     // Our commission is a selling point for publishers, so it is public.
     commissionBpsPrintedByUs: s.commissionBpsPrintedByUs,
     commissionBpsPartnerShips: s.commissionBpsPartnerShips,
+    commissionBpsConsignment: s.commissionBpsConsignment,
+    returnAllowanceByTier: s.returnAllowanceByTier,
+    publishersSelfAssignBarcodes: s.publishersSelfAssignBarcodes,
     retailerMinOrderCents: s.retailerMinOrderCents,
     retailerShipping: s.retailerShipping,
     retailerTerms: s.retailerTerms,

@@ -40,7 +40,10 @@ export const STATEMENT_STATUS: Record<string, { label: string; tone: string }> =
   DRAFT: { label: 'Draft', tone: 'slate' }, ISSUED: { label: 'Issued', tone: 'amber' }, PAID: { label: 'Paid', tone: 'green' }, VOID: { label: 'Void', tone: 'rose' },
 };
 export const FORMAT_LABELS: Record<string, string> = { comic: 'Comic book', graphic_novel: 'Graphic novel', magazine: 'Magazine', zine: 'Zine', other: 'Other' };
-export const FULFILLMENT_LABELS: Record<string, string> = { PRINTED_BY_US: 'Printed & shipped by Printing Comics', PARTNER_SHIPS: 'Shipped by the publisher' };
+export const FULFILLMENT_LABELS: Record<string, string> = { PRINTED_BY_US: 'Printed & shipped by Printing Comics', PARTNER_SHIPS: 'Shipped by the publisher', CONSIGNMENT: 'Shipped by Printing Comics from the publisher\u2019s consigned stock' };
+export const RETURN_STATUS: Record<string, { label: string; tone: string }> = { REQUESTED: { label: 'Requested', tone: 'amber' }, APPROVED: { label: 'Approved', tone: 'teal' }, REJECTED: { label: 'Declined', tone: 'red' }, RECEIVED: { label: 'Received', tone: 'violet' }, CREDITED: { label: 'Credited', tone: 'green' } };
+export const BARCODE_STATUS: Record<string, { label: string; tone: string }> = { AVAILABLE: { label: 'Free', tone: 'green' }, RESERVED: { label: 'Reserved', tone: 'violet' }, ASSIGNED: { label: 'On a title', tone: 'teal' }, RETIRED: { label: 'Retired', tone: 'slate' } };
+export const ASSET_KINDS: Record<string, string> = { logo: 'Logo', marketing: 'Marketing image', press: 'Press kit', other: 'Other' };
 
 export interface ListingFileView {
   id: string; kind: string; kindLabel: string; version: number; olderVersions: number; reviewStatus: string; note: string | null;
@@ -54,17 +57,18 @@ export interface Listing {
   variantNumber: string | null; upc: string | null; format: string; seriesType: string | null; frequency: string | null; language: string; ageRating: string | null;
   pageCount: number | null; trimWidthIn: number | null; trimHeightIn: number | null; interiorColor: string | null; weightOz: number | null; msrpCents: number;
   description: string | null; synopsis: string | null; writer: string | null; artist: string | null; coverArtist: string | null; genres: string[]; bisac: string[];
-  incentiveRatio: string | null; incentiveQualifierKey: string | null; reorderable: boolean; fulfillment: 'PRINTED_BY_US' | 'PARTNER_SHIPS'; status: ListingStatus; statusLabel: string;
+  incentiveRatio: string | null; incentiveQualifierKey: string | null; reorderable: boolean; fulfillment: 'PRINTED_BY_US' | 'PARTNER_SHIPS' | 'CONSIGNMENT'; status: ListingStatus; statusLabel: string;
+  barcode: { id: string; code: string; symbology: string; block: string | null } | null; inventory: { units: number; damaged: number; location: string | null };
   reviewNote: string | null; submittedAt: string | null; approvedAt: string | null; publishedAt: string | null; createdAt: string; updatedAt: string;
-  partner: { id: string; name: string; slug: string }; cycle: { id: string; name: string; slug: string; status: string; catalogDate: string; focDate: string; inStoreDate: string } | null;
+  partner: { id: string; name: string; slug: string; logoUrl?: string | null }; cycle: { id: string; name: string; slug: string; status: string; catalogDate: string; focDate: string; inStoreDate: string } | null;
   coverImage: { id: string; url: string; thumbnailUrl: string | null; originalName: string } | null; product: { id: string; slug: string; active: boolean } | null;
-  files: { cover: ListingFileView | null; interior: ListingFileView | null; cover_image: ListingFileView | null; extra: ListingFileView | null };
+  files: { cover: ListingFileView | null; interior: ListingFileView | null; cover_image: ListingFileView | null; marketing: ListingFileView | null; extra: ListingFileView | null };
   missingFiles: string[]; allFiles?: ListingFileView[]; partnerContactEmail?: string | null; partnerCommissionBps?: number | null; unitsSold?: number;
 }
 
 export interface Cycle {
   id: string; slug: string; name: string; catalogDate: string; focDate: string; inStoreDate: string; status: string; statusLabel: string; publisherOpen: boolean; retailerOpen: boolean;
-  focOverrideOpen: boolean; publishedAt: string | null; lockedAt: string | null; closedAt: string | null; version: number; notes: string | null; orderingOpen: boolean;
+  focOverrideOpen: boolean; publishedAt: string | null; lockedAt: string | null; closedAt: string | null; version: number; notes: string | null; orderingOpen: boolean; catalogPdfUrl: string | null; catalogCoverUrl: string | null;
   listingCount: number; orderCount: number; orderedUnits: number; wholesaleCents: number; productionOrderCount: number; purchaseOrderCount: number; listingsByStatus: Record<string, number>;
 }
 
@@ -72,7 +76,7 @@ export interface PodEvent { id: string; subjectType: string; subjectId: string; 
 
 export interface PublicSettings {
   enabled: boolean; programName: string; intro: string; tiers: { name: string; minCents: number; discountBps: number }[]; retailerMinOrderCents: number;
-  commissionBpsPrintedByUs: number; commissionBpsPartnerShips: number;
+  commissionBpsPrintedByUs: number; commissionBpsPartnerShips: number; commissionBpsConsignment: number; returnAllowanceByTier: number[]; publishersSelfAssignBarcodes: boolean;
   retailerShipping: { mode: 'billed_later' | 'flat'; flatCents: number }; retailerTerms: string; publisherTerms: string; pageCountStep: number; minPageCount: number; maxPageCount: number;
 }
 

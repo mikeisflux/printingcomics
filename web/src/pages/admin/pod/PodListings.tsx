@@ -5,11 +5,11 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ArrowLeft, Check, Undo2, XCircle, Archive, Mail, RefreshCw, ExternalLink, Trash2, Send } from 'lucide-react';
+import { Search, Plus, ArrowLeft, Check, Undo2, XCircle, Archive, Mail, RefreshCw, ExternalLink, Trash2, Send, Upload, Barcode as BarcodeIcon } from 'lucide-react';
 import { api } from '../../../api/client';
 import { money, dateShort, LISTING_STATUS, FORMAT_LABELS, FULFILLMENT_LABELS, type Listing, type PodEvent, type PublicSettings, pct } from '../../../lib/pod';
-import { Avatar, CoverArt, Drawer, Empty, Events, FileSlot, Pill, StatusPill, Thumb, errText, useFlash, useLoad } from '../../../components/pod/ui';
-import { ListingForm, blankListingForm, listingFormToBody, listingToForm, type ListingFormValue } from '../../pod/PartnerPortal';
+import { Avatar, Barcode, CoverArt, Drawer, Empty, Events, FileSlot, Pill, StatusPill, Thumb, errText, useFlash, useLoad } from '../../../components/pod/ui';
+import { ListingForm, blankListingForm, listingFormToBody, listingToForm, type ListingFormValue } from '../../pod/PublisherPortal';
 import { useOverview } from './PodLayout';
 
 interface ListResp { listings: Listing[]; counts: Record<string, number>; statuses: { key: string; label: string }[] }
@@ -22,6 +22,11 @@ export function PodListings() {
   const [view, setView] = useState<'board' | 'table'>(status === 'queue' ? 'board' : 'table');
   const { data, loading, reload } = useLoad<ListResp>(`/admin/pod/listings?status=${encodeURIComponent(status === 'queue' || status === 'all' ? (status === 'all' ? '' : 'queue') : status)}${q ? `&q=${encodeURIComponent(q)}` : ''}`, [status, q]);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const { show, node } = useFlash();
+  const toggleSel = (id: string) => setSel((x) => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const approveSelected = async () => { let ok = 0; const errors: string[] = []; for (const id of sel) { try { await api.post(`/admin/pod/listings/${id}/approve`, {}); ok++; } catch (e) { errors.push(errText(e)); } } show(`${ok} approved${errors.length ? `; ${errors.length} failed: ${errors[0]}` : ''}`, errors.length > 0); setSel(new Set()); await reload(); };
   const counts = data?.counts ?? {};
   const total = Object.values(counts).reduce((s, n) => s + n, 0);
   const queueN = (counts.SUBMITTED ?? 0) + (counts.CHANGES_REQUESTED ?? 0);
@@ -43,9 +48,12 @@ export function PodListings() {
         <div className="row">
           <div className="search"><Search size={15} /><input className="inp" placeholder="Title, catalog id, UPC, publisher…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
           {status === 'queue' && <div className="seg"><button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>Board</button><button className={view === 'table' ? 'on' : ''} onClick={() => setView('table')}>Table</button></div>}
+          <button className="pbtn ghost sm" onClick={() => setImporting(true)}><Upload size={14} /> Import CSV</button>
           <button className="pbtn primary sm" onClick={() => setCreating(true)}><Plus size={14} /> New listing</button>
         </div>
       </div>
+      {node}
+      {sel.size > 0 && <div className="notice info" style={{ marginBottom: '.75rem', justifyContent: 'space-between', alignItems: 'center' }}><span>{sel.size} selected</span><span className="row"><button className="pbtn glow xs" onClick={() => void approveSelected()}><Check size={12} /> Approve selected</button><button className="pbtn ghost xs" onClick={() => setSel(new Set())}>Clear</button></span></div>}
       {loading && !data ? <p className="dim">Loading…</p> : view === 'board' && status === 'queue' ? (
         <div className="kanban" style={{ gridTemplateColumns: 'repeat(4, minmax(240px, 1fr))' }}>
           {cols.map((col) => (
@@ -66,13 +74,14 @@ export function PodListings() {
         <div className="panel flush scroll-x">
           {rows.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No listings here" /></div> : (
             <table className="ptable">
-              <thead><tr><th></th><th>Title</th><th>Publisher</th><th>Cycle</th><th>Fulfilment</th><th className="num">Cover</th><th>Files</th><th>Status</th><th>Updated</th></tr></thead>
+              <thead><tr><th><input type="checkbox" aria-label="Select all" checked={rows.length > 0 && sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((l) => l.id)) : new Set())} /></th><th></th><th>Title</th><th>Publisher</th><th>Cycle</th><th>Fulfilment</th><th className="num">Cover</th><th>Files</th><th>Status</th><th>Updated</th></tr></thead>
               <tbody>{rows.map((l) => (
                 <tr key={l.id} className="click" onClick={() => (window.location.href = `/admin/pod/listings/${l.id}`)}>
+                  <td><input type="checkbox" aria-label="Select" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} /></td>
                   <td style={{ width: 48 }}><Thumb url={l.coverImage?.url} title={l.title} /></td>
                   <td><b>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}</b><div className="dim" style={{ fontSize: '.78rem' }}>{l.coverDescription ?? FORMAT_LABELS[l.format]} · <span className="key">{l.catalogKey}</span></div></td>
                   <td>{l.partner.name}</td><td>{l.cycle?.name ?? <span className="dim">—</span>}</td>
-                  <td className="dim" style={{ fontSize: '.82rem' }}>{l.fulfillment === 'PRINTED_BY_US' ? 'We print' : 'Publisher ships'}</td>
+                  <td className="dim" style={{ fontSize: '.82rem' }}>{l.fulfillment === 'PRINTED_BY_US' ? 'We print' : l.fulfillment === 'CONSIGNMENT' ? 'Consignment' : 'Publisher ships'}</td>
                   <td className="num mono">{money(l.msrpCents)}</td>
                   <td>{l.fulfillment === 'PRINTED_BY_US' ? (l.missingFiles.length ? <Pill tone="rose">{l.missingFiles.length} missing</Pill> : [l.files.cover, l.files.interior].some((f) => f?.reviewStatus === 'rejected') ? <Pill tone="red">Rejected file</Pill> : [l.files.cover, l.files.interior].every((f) => f?.reviewStatus === 'approved') ? <Pill tone="green">Approved</Pill> : <Pill tone="amber">Uploaded</Pill>) : <Pill tone="slate">n/a</Pill>}</td>
                   <td><StatusPill status={l.status} /></td><td className="dim">{dateShort(l.updatedAt)}</td>
@@ -83,7 +92,43 @@ export function PodListings() {
         </div>
       )}
       <NewListingDrawer open={creating} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void reload(); }} />
+      <ImportDrawer open={importing} onClose={() => setImporting(false)} onDone={() => { void reload(); }} />
     </>
+  );
+}
+
+function ImportDrawer({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const { data: pubs } = useLoad<{ publishers: Publisher[] }>(open ? '/admin/pod/publishers' : null, [open]);
+  const { data: cyc } = useLoad<{ cycles: { id: string; name: string; status: string }[] }>(open ? '/admin/pod/cycles' : null, [open]);
+  const [partnerId, setPartnerId] = useState('');
+  const [cycleId, setCycleId] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<{ dryRun: boolean; publisher: string; rows: number; created: { row: number; title: string; catalogKey: string }[]; preview: { row: number; title: string; msrpCents: number; pageCount: number | null; problems: string[] }[]; problems: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async (dryRun: boolean) => {
+    if (!file || !partnerId) { setErr('Pick the publisher and a CSV'); return; }
+    setBusy(true); setErr(null);
+    try { const fd = new FormData(); fd.append('file', file); fd.append('partnerId', partnerId); if (cycleId) fd.append('cycleId', cycleId); if (dryRun) fd.append('dryRun', '1'); const r = await api.postForm<typeof result>('/admin/pod/listings/import', fd); setResult(r); if (!dryRun) onDone(); } catch (x) { setErr(errText(x)); } finally { setBusy(false); }
+  };
+  return (
+    <Drawer open={open} onClose={onClose} title="Import listings from a CSV" width={720}>
+      <p className="dim" style={{ fontSize: '.9rem' }}>The catalog export layout works as-is; any sheet with a Title column plus Series, Series Code, Issue, Cover, UPC, Format, Pages, Color, Trim (or Width/Height), MSRP, Writer, Artist, Cover Artist, Rating, Incentive, Description, Synopsis, Fulfillment is read. Rows become drafts for the publisher; nothing is approved.</p>
+      <div className="form-grid">
+        <div className="field"><label>Publisher</label><select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}><option value="">— pick —</option>{(pubs?.publishers ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <div className="field"><label>Catalog cycle <span className="dim">optional</span></label><select value={cycleId} onChange={(e) => setCycleId(e.target.value)}><option value="">— none —</option>{(cyc?.cycles ?? []).filter((c) => c.status !== 'CLOSED').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div className="field span-2"><label>CSV file</label><input type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
+      </div>
+      {err && <div className="notice bad" style={{ marginTop: '.75rem' }}>{err}</div>}
+      <div className="row" style={{ marginTop: '1rem' }}><button className="pbtn soft" disabled={busy} onClick={() => void run(true)}>Preview</button><button className="pbtn primary" disabled={busy || !result?.dryRun} onClick={() => void run(false)}>{busy ? 'Working…' : 'Import as drafts'}</button><button className="pbtn ghost" onClick={onClose}>Close</button></div>
+      {result && (
+        <div className="panel" style={{ marginTop: '1rem' }}>
+          <b>{result.dryRun ? 'Preview' : 'Imported'} · {result.rows} rows for {result.publisher}{!result.dryRun ? ` · ${result.created.length} created` : ''}</b>
+          {result.problems.length > 0 && <div className="notice warn" style={{ marginTop: '.5rem', fontSize: '.84rem' }}><div>{result.problems.slice(0, 10).map((x, i) => <div key={i}>{x}</div>)}</div></div>}
+          <table className="ptable" style={{ marginTop: '.5rem' }}><thead><tr><th>Row</th><th>Title</th><th className="num">Price</th><th className="num">Pages</th><th>Notes</th></tr></thead><tbody>{(result.dryRun ? result.preview : result.preview).slice(0, 50).map((r) => <tr key={r.row}><td className="dim">{r.row}</td><td>{r.title}</td><td className="num mono">{money(r.msrpCents)}</td><td className="num mono">{r.pageCount ?? '—'}</td><td className="dim" style={{ fontSize: '.8rem' }}>{r.problems.join(', ')}</td></tr>)}</tbody></table>
+        </div>
+      )}
+    </Drawer>
   );
 }
 
@@ -147,11 +192,14 @@ export function PodListingDetail() {
   };
   const fileAction = async (fileId: string, path: string, body?: unknown) => {
     setBusy(fileId);
-    try { if (path === 'delete') await api.del(`/admin/pod/listings/${id}/files/${fileId}`); else await api.post(`/admin/pod/listings/${id}/files/${fileId}/${path}`, body); show('Done'); await reload(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
+    try { if (path === 'delete') await api.del(`/admin/pod/listings/${id}/files/${fileId}`); else await api.post(`/admin/pod/listings/${id}/files/${fileId}/${path}`, body); show(path === 'restore' ? 'That version is current again' : 'Done'); await reload(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
   };
 
   if (!l) return <p className="dim">Loading…</p>;
   const name = `${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}`;
+  const olderVersions = (kind: string) => (l?.allFiles ?? []).filter((f) => f.kind === kind && f.id !== (l?.files as Record<string, { id: string } | null>)[kind]?.id).map((f) => ({ id: f.id, version: f.version, reviewStatus: f.reviewStatus, createdAt: f.createdAt, media: f.media }));
+  const inv = async () => { const delta = window.prompt('Stock adjustment (+/− copies on hand)', '0'); if (delta === null) return; const reason = window.prompt('Reason', 'Received from publisher') ?? ''; try { await api.post(`/admin/pod/listings/${id}/inventory`, { delta: Number(delta) || 0, reason }); show('Stock updated'); await reload(); } catch (x) { show(errText(x), true); } };
+  const barcode = async () => { setBusy('barcode'); try { await api.post(`/admin/pod/listings/${id}/barcode`, {}); show('Barcode assigned'); await reload(); } catch (x) { show(errText(x), true); } finally { setBusy(null); } };
   const fileActions = (f: Listing['files']['cover']) => f ? (
     <>
       {f.reviewStatus !== 'approved' && <button className="pbtn soft xs" disabled={busy === f.id} onClick={() => void fileAction(f.id, 'review', { status: 'approved' })}><Check size={12} /> Approve file</button>}
@@ -197,7 +245,7 @@ export function PodListingDetail() {
             <div className="panel tight"><div className="eyebrow">Our print cost (100 copies)</div><div className="display-md mono">{data.printCostPer100 ? money(data.printCostPer100.unitCents) : '—'}</div><div className="dim" style={{ fontSize: '.8rem' }}>{data.printCostPer100 ? `per copy via ${data.printCostPer100.productSlug}` : l.fulfillment === 'PARTNER_SHIPS' ? 'Publisher ships' : 'Set trim + pages to price it'}</div></div>
           </div>
           <div className="panel">
-            <div className="panel-head"><h3>Details</h3><span className="dim" style={{ fontSize: '.82rem' }}>{FULFILLMENT_LABELS[l.fulfillment]} · commission {l.partnerCommissionBps != null ? pct(l.partnerCommissionBps) : st ? pct(l.fulfillment === 'PRINTED_BY_US' ? st.settings.commissionBpsPrintedByUs : st.settings.commissionBpsPartnerShips) : ''}</span></div>
+            <div className="panel-head"><h3>Details</h3><span className="dim" style={{ fontSize: '.82rem' }}>{FULFILLMENT_LABELS[l.fulfillment]} · commission {l.partnerCommissionBps != null ? pct(l.partnerCommissionBps) : st ? pct(l.fulfillment === 'PRINTED_BY_US' ? st.settings.commissionBpsPrintedByUs : l.fulfillment === 'CONSIGNMENT' ? st.settings.commissionBpsConsignment : st.settings.commissionBpsPartnerShips) : ''}</span></div>
             <dl className="spec">
               <dt>Series</dt><dd>{l.seriesName ?? '—'} {l.seriesCode && <span className="key">{l.seriesCode}</span>}</dd>
               <dt>Cover</dt><dd>{l.coverDescription ?? '—'}{l.variantNumber ? ` (variant ${l.variantNumber})` : ''}</dd>
@@ -216,13 +264,17 @@ export function PodListingDetail() {
         </div>
         <aside className="stack">
           <CoverArt url={l.coverImage?.url} title={name} className="cover-hero" />
-          <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} onUpload={(f) => void upload('cover_image', f)} hint="Catalog + storefront image" actions={fileActions(l.files.cover_image)} />
+          <div className="panel tight"><div className="between"><b><BarcodeIcon size={14} /> Barcode</b>{l.barcode ? <Pill tone="teal">{l.barcode.symbology}{l.barcode.block ? ` · ${l.barcode.block}` : ''}</Pill> : l.upc ? <Pill tone="slate">publisher's own</Pill> : <Pill tone="amber">none</Pill>}</div>
+            {(l.barcode || l.upc) ? <div style={{ marginTop: '.5rem' }}><Barcode code={l.barcode?.code ?? l.upc!} /><div className="row" style={{ marginTop: '.4rem', justifyContent: 'space-between' }}><span className="mono" style={{ fontSize: '.84rem' }}>{l.barcode?.code ?? l.upc}</span>{l.barcode && <Link to={`/admin/pod/barcodes?q=${l.barcode.code}`} className="pbtn ghost xs">Manage</Link>}</div></div> : <button className="pbtn soft sm" style={{ marginTop: '.5rem' }} disabled={busy !== null} onClick={() => void barcode()}>Assign the next free barcode</button>}</div>
+          {(l.fulfillment === 'CONSIGNMENT' || l.inventory.units > 0) && <div className="panel tight"><div className="between"><b>Consignment stock</b><Link to="/admin/pod/inventory" className="pbtn ghost xs">Inventory</Link></div><div className="display-md mono" style={{ marginTop: '.3rem' }}>{l.inventory.units}</div><div className="dim" style={{ fontSize: '.8rem' }}>on hand · {l.inventory.damaged} damaged{l.inventory.location ? ` · ${l.inventory.location}` : ''}</div><button className="pbtn soft xs" style={{ marginTop: '.5rem' }} onClick={() => void inv()}>Adjust</button></div>}
+          <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} onUpload={(f) => void upload('cover_image', f)} hint="Catalog + storefront image" actions={fileActions(l.files.cover_image)} versions={olderVersions('cover_image')} onRestore={(fid) => void fileAction(fid, 'restore')} onDelete={(fid) => void fileAction(fid, 'delete')} />
           {l.fulfillment === 'PRINTED_BY_US' && <>
-            <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} onUpload={(f) => void upload('cover', f)} actions={fileActions(l.files.cover)} />
-            <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} onUpload={(f) => void upload('interior', f)} actions={fileActions(l.files.interior)} />
+            <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} onUpload={(f) => void upload('cover', f)} actions={fileActions(l.files.cover)} versions={olderVersions('cover')} onRestore={(fid) => void fileAction(fid, 'restore')} onDelete={(fid) => void fileAction(fid, 'delete')} />
+            <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} onUpload={(f) => void upload('interior', f)} actions={fileActions(l.files.interior)} versions={olderVersions('interior')} onRestore={(fid) => void fileAction(fid, 'restore')} onDelete={(fid) => void fileAction(fid, 'delete')} />
           </>}
+          <FileSlot label="Marketing image" file={l.files.marketing} accept="image/*" busy={busy === 'marketing'} onUpload={(f) => void upload('marketing', f)} actions={fileActions(l.files.marketing)} versions={olderVersions('marketing')} onRestore={(fid) => void fileAction(fid, 'restore')} onDelete={(fid) => void fileAction(fid, 'delete')} />
           {l.files.extra && <FileSlot label="Extra file" file={l.files.extra} accept="*/*" readOnly actions={fileActions(l.files.extra)} />}
-          {l.allFiles && l.allFiles.length > 2 && <div className="panel tight"><b style={{ fontSize: '.84rem' }}>All versions</b><ul style={{ margin: '.4rem 0 0', paddingLeft: '1rem', fontSize: '.8rem', color: 'var(--p-text-dim)' }}>{l.allFiles.map((f) => <li key={f.id}>{f.kindLabel} v{f.version} · <a href={f.media.url} target="_blank" rel="noreferrer">{f.media.name}</a> · {f.reviewStatus}</li>)}</ul></div>}
+
         </aside>
       </div>
 

@@ -35,7 +35,7 @@ export function PodTitle() {
               {l.ageRating && <Pill tone="teal" >{l.ageRating}</Pill>}
             </div>
             <h1 className="display-lg">{name}</h1>
-            <p className="dim" style={{ fontSize: '1.05rem', margin: '.4rem 0 0' }}>{l.seriesName && l.seriesName !== l.title ? `${l.seriesName} · ` : ''}by <Link to={`/print-on-demand/catalog?publisher=${l.partner.slug}`} style={{ fontWeight: 600 }}>{l.partner.name}</Link></p>
+            <p className="dim" style={{ fontSize: '1.05rem', margin: '.4rem 0 0' }}>{l.seriesName && l.seriesName !== l.title ? `${l.seriesName} · ` : ''}by <Link to={`/print-on-demand/publishers/${l.partner.slug}`} style={{ fontWeight: 600 }}>{l.partner.name}</Link></p>
             <div className="row" style={{ margin: '1.25rem 0', gap: '1rem' }}>
               <div className="display-md mono">{money(l.msrpCents)}</div><span className="dim">cover price</span>
             </div>
@@ -59,7 +59,7 @@ export function PodTitle() {
         </div>
         {data && data.more.length > 0 && (
           <section style={{ marginTop: '3rem' }}>
-            <div className="section-head"><div><div className="eyebrow">More from</div><h2 className="display-md">{l.partner.name}</h2></div></div>
+            <div className="section-head"><div><div className="eyebrow">More from</div><h2 className="display-md">{l.partner.name}</h2></div><Link to={`/print-on-demand/publishers/${l.partner.slug}`} className="pbtn ghost sm">Publisher page</Link></div>
             <div className="cover-grid">{data.more.map((m) => <CoverCard key={m.id} to={`/print-on-demand/catalog/${encodeURIComponent(m.catalogKey)}`} url={m.coverImageUrl} title={`${m.title}${m.issueNumber ? ` #${m.issueNumber}` : ''}`} sub={m.coverDescription ?? ''} price={money(m.msrpCents)} />)}</div>
           </section>
         )}

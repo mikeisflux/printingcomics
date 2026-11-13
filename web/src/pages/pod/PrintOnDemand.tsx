@@ -40,7 +40,7 @@ export function PrintOnDemand() {
               </h1>
               <p className="lead rise rise-2" style={{ marginTop: '1.25rem' }}>{s?.intro ?? 'List your comics with us, sell them to comic shops at wholesale, and let us print and ship every order. No minimums, no inventory, one monthly catalog.'}</p>
               <div className="row rise rise-3" style={{ marginTop: '1.75rem', gap: '.75rem' }}>
-                <Link to={user?.partner ? '/partner' : '/print-on-demand/apply?as=publisher'} className="pbtn glow"><BookOpen size={18} /> {user?.partner ? 'Open my publisher portal' : 'List your titles'}</Link>
+                <Link to={user?.partner ? '/publisher' : '/print-on-demand/apply?as=publisher'} className="pbtn glow"><BookOpen size={18} /> {user?.partner ? 'Open my publisher portal' : 'List your titles'}</Link>
                 <Link to={user?.retailer ? '/retailer' : '/print-on-demand/apply?as=retailer'} className="pbtn ghost"><Store size={18} /> {user?.retailer ? 'Order wholesale' : 'Open a wholesale account'}</Link>
                 <Link to="/print-on-demand/catalog" className="pbtn ghost" style={{ border: 0 }}>Browse the catalog <ArrowRight size={16} /></Link>
               </div>
@@ -95,7 +95,7 @@ export function PrintOnDemand() {
       {/* ----------------------------------------------------------- Two doors */}
       <section className="section container">
         <div className="two-doors">
-          <Link to={user?.partner ? '/partner' : '/print-on-demand/apply?as=publisher'} className="door pub rise">
+          <Link to={user?.partner ? '/publisher' : '/print-on-demand/apply?as=publisher'} className="door pub rise">
             <BookOpen className="big-ic" size={40} />
             <div className="eyebrow" style={{ color: 'var(--p-cyan)' }}>Publishers &amp; creators</div>
             <h3>List once. Sell to every shop.</h3>
@@ -167,7 +167,8 @@ export function PrintOnDemand() {
                 <h2 className="display-lg" style={{ marginTop: '.5rem' }}>You set the price.<br />We do the rest.</h2>
                 <p className="lead" style={{ marginTop: '1rem' }}>{s.publisherTerms}</p>
                 <div className="row" style={{ marginTop: '1.5rem' }}>
-                  <Link to={user?.partner ? '/partner' : '/print-on-demand/apply?as=publisher'} className="pbtn glow"><Sparkles size={16} /> {user?.partner ? 'Open the publisher portal' : 'Apply as a publisher'}</Link>
+                  <Link to={user?.partner ? '/publisher' : '/print-on-demand/apply?as=publisher'} className="pbtn glow"><Sparkles size={16} /> {user?.partner ? 'Open the publisher portal' : 'Apply as a publisher'}</Link>
+                  <Link to="/print-on-demand/handbook" className="pbtn ghost">Publisher handbook</Link>
                   <Link to="/resources/file-prep" className="pbtn ghost">File prep guide</Link>
                 </div>
               </div>

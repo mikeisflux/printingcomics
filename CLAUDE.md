@@ -103,9 +103,29 @@ npm run db:studio                    # Prisma Studio
   (the section) and `preflight` (the price-free file desk,
   `/admin/pod/preflight`); a STAFF account holding only those is a "POD
   admin": the sidebar shows just that section and `/admin` redirects into
-  it. The seed creates one (`POD_ADMIN_EMAIL`/`POD_ADMIN_PASSWORD`, default
+  it. `npm run db:seed:pod` (run by every deploy) creates one
+  (`POD_ADMIN_EMAIL`/`POD_ADMIN_PASSWORD`, default
   mauramariepowers@gmail.com / password) with `passwordSetAt: null`, so the
   first login is forced through `/account/setup`.
+  Wording: it is always "publisher", never "partner", anywhere a person can
+  see (the shared Prisma `Partner` model keeps its name because the
+  crowdfunding API uses it). The publisher portal is `/publisher`
+  (`/partner` redirects). Beyond the core loop the section also has:
+  publisher directory + applications + portal invitations
+  (`/admin/pod/publishers`), wholesale orders worked inside the section
+  (`/admin/pod/orders`, pay link / mark paid / shipping charge),
+  fulfillment with weights, tracking and a shipping CSV
+  (`/admin/pod/fulfillment`), consignment inventory (`fulfillment:
+  CONSIGNMENT`, `Listing.inventory*`, pulled at FOC lock), returns and
+  damage claims that become shop store credit (`RetailerReturn`,
+  `Retailer.creditCents`, charged to the publisher ledger), the files desk
+  with versions and bulk review (`/admin/pod/files`), barcodes
+  (`Barcode`: load blocks with computed check digits, reserve per
+  publisher, assign to a listing; `lib/pod/barcodes.ts` also renders the
+  EAN-13/UPC-A SVG at `/api/pod/barcode/:code.svg`), analytics, the
+  activity log, a CSV listing importer, a printable catalog per cycle, and
+  the Publisher Handbook at `/print-on-demand/handbook` (file specs defer
+  to `/resources/templates` and `/resources/file-prep`).
 
 ## Configurator pricing
 

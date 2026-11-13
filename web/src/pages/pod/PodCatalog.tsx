@@ -92,6 +92,9 @@ export function PodCatalog() {
             {publishers.map((p) => <button key={p.id} className={`chip${publisher === p.id ? ' on' : ''}`} onClick={() => setPublisher(publisher === p.id ? '' : p.id)} style={{ cursor: 'pointer' }}>{p.name}</button>)}
           </div>
         )}
+        {data && data.listings.length > 0 && !q && !publisher && !format && (
+          <div style={{ marginBottom: '1.5rem' }}><div className="section-head" style={{ marginBottom: '.75rem' }}><div><div className="eyebrow">Newest releases</div><h2 className="display-md">Just added</h2></div></div><div className="marquee"><div className="marquee-track">{[...data.listings.slice(0, 12), ...data.listings.slice(0, 12)].map((l, i) => <CoverCard key={`${l.id}-${i}`} to={`/print-on-demand/catalog/${encodeURIComponent(l.catalogKey)}`} url={l.coverImageUrl} title={`${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}`} sub={l.partner.name} price={money(l.msrpCents)} />)}</div></div></div>
+        )}
         {loading && !data ? <p className="dim">Loading the catalog…</p> : !data?.cycle ? (
           <Empty title="The first catalog is being put together" body="Publishers are listing now. Come back on the catalog date, or apply to list your own titles." action={<Link to="/print-on-demand/apply?as=publisher" className="pbtn primary">Apply as a publisher</Link>} />
         ) : shown.length === 0 ? (

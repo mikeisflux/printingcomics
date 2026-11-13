@@ -5,10 +5,10 @@
  */
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Plus, ArrowLeft, Rocket, Lock, Unlock, Archive, Download, Factory, FileText } from 'lucide-react';
+import { Plus, ArrowLeft, Rocket, Lock, Unlock, Archive, Download, Factory, FileText, Printer, Upload } from 'lucide-react';
 import { api } from '../../../api/client';
 import { money, dateShort, inputDate, CYCLE_STATUS, LISTING_STATUS, PRODUCTION_STATUS, PURCHASE_STATUS, type Cycle, type Listing, type PodEvent } from '../../../lib/pod';
-import { CycleTimeline, DaysLeft, Drawer, Empty, Events, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
+import { CycleTimeline, DaysLeft, Drawer, DropZone, Empty, Events, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
 import { useOverview } from './PodLayout';
 
 type CycleForm = { name: string; catalogDate: string; focDate: string; inStoreDate: string; publisherOpen: boolean; notes: string };
@@ -50,8 +50,11 @@ export function PodCycles() {
   const { reloadOverview } = useOverview();
   const creating = params.get('new') === '1';
   const cycles = data?.cycles ?? [];
-  const active = cycles.filter((c) => c.status !== 'CLOSED');
-  const closed = cycles.filter((c) => c.status === 'CLOSED');
+  const [showClosed, setShowClosed] = useState(false);
+  const [year, setYear] = useState('');
+  const years = Array.from(new Set(cycles.map((c) => c.catalogDate.slice(0, 4)))).sort().reverse();
+  const active = cycles.filter((c) => c.status !== 'CLOSED' && (!year || c.catalogDate.startsWith(year)));
+  const closed = cycles.filter((c) => c.status === 'CLOSED' && (!year || c.catalogDate.startsWith(year)));
   const Row = ({ c }: { c: Cycle }) => (
     <tr className="click" onClick={() => (window.location.href = `/admin/pod/cycles/${c.id}`)}>
       <td><b>{c.name}</b><div className="dim" style={{ fontSize: '.78rem' }}>v{c.version}{c.publishedAt ? ` · published ${dateShort(c.publishedAt)}` : ''}</div></td>
@@ -63,10 +66,10 @@ export function PodCycles() {
   );
   return (
     <>
-      <div className="toolbar"><div><h2 className="display-md" style={{ margin: 0 }}>Catalog cycles</h2><div className="dim" style={{ fontSize: '.88rem' }}>Three dates per cycle. Publishers list by the catalog date, shops order until FOC, books land in store.</div></div><button className="pbtn primary" onClick={() => setParams({ new: '1' })}><Plus size={16} /> New cycle</button></div>
+      <div className="toolbar"><div><h2 className="display-md" style={{ margin: 0 }}>Catalog cycles</h2><div className="dim" style={{ fontSize: '.88rem' }}>Three dates per cycle. Publishers list by the catalog date, shops order until FOC, books land in store.</div></div><div className="row"><select className="inp" style={{ width: 'auto' }} value={year} onChange={(e) => setYear(e.target.value)}><option value="">All years</option>{years.map((y) => <option key={y}>{y}</option>)}</select><label className="switch"><input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} /> Show closed ({closed.length})</label><button className="pbtn primary" onClick={() => setParams({ new: '1' })}><Plus size={16} /> New cycle</button></div></div>
       <div className="panel flush scroll-x" style={{ marginBottom: '1.25rem' }}>
         {cycles.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No cycles yet" body="Create the first one. Suggested: catalog on the 1st, FOC a month later, in store six weeks after that." action={<button className="pbtn primary sm" onClick={() => setParams({ new: '1' })}><Plus size={14} /> New cycle</button>} /></div> : (
-          <table className="ptable"><thead><tr><th>Cycle</th><th>Status</th><th>Catalog</th><th>FOC</th><th>In store</th><th className="num">Listings</th><th className="num">Orders</th><th className="num">Wholesale</th></tr></thead><tbody>{active.map((c) => <Row key={c.id} c={c} />)}{closed.map((c) => <Row key={c.id} c={c} />)}</tbody></table>
+          <table className="ptable"><thead><tr><th>Cycle</th><th>Status</th><th>Catalog</th><th>FOC</th><th>In store</th><th className="num">Listings</th><th className="num">Orders</th><th className="num">Wholesale</th></tr></thead><tbody>{active.map((c) => <Row key={c.id} c={c} />)}{showClosed && closed.map((c) => <Row key={c.id} c={c} />)}</tbody></table>
         )}
       </div>
       <CycleEditor open={creating} onClose={() => setParams({})} initial={blankCycle()} onSaved={() => { void reload(); void reloadOverview(); }} />
@@ -96,6 +99,7 @@ export function PodCycleDetail() {
     try { const r = await api.post<{ count?: number; version?: number; summary?: { productionOrders: number; purchaseOrders: number; ledgerEntries: number; units: number } }>(`/admin/pod/cycles/${id}/${path}`, body); show(r.summary ? `Locked: ${r.summary.productionOrders} production run(s), ${r.summary.purchaseOrders} purchase order(s), ${r.summary.units} copies` : r.count != null ? `Published v${r.version}: ${r.count} listings live` : 'Done'); await reload(); void reloadOverview(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
   };
   const patch = async (body: Record<string, unknown>) => { try { await api.patch(`/admin/pod/cycles/${id}`, body); await reload(); } catch (x) { show(errText(x), true); } };
+  const uploadCatalogFile = async (kind: 'pdf' | 'cover', f: File) => { setBusy(kind); try { const fd = new FormData(); fd.append('kind', kind); fd.append('file', f); await api.postForm(`/admin/pod/cycles/${id}/catalog-file`, fd); show('Uploaded'); await reload(); } catch (x) { show(errText(x), true); } finally { setBusy(null); } };
   if (!c) return <p className="dim">Loading…</p>;
   const eligible = (c.listingsByStatus.APPROVED ?? 0) + (c.listingsByStatus.SCHEDULED ?? 0) + (c.listingsByStatus.LIVE ?? 0);
   return (
@@ -105,6 +109,7 @@ export function PodCycleDetail() {
         <div><Link to="/admin/pod/cycles" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Cycles</Link><h2 className="display-md" style={{ margin: 0 }}>{c.name}</h2><div className="row" style={{ marginTop: '.4rem' }}><TonePill map={CYCLE_STATUS} status={c.status} />{c.orderingOpen && <Pill tone="green" live>Ordering open</Pill>}<DaysLeft to={c.focDate} /><span className="dim" style={{ fontSize: '.85rem' }}>snapshot v{c.version} · {data.snapshotCount} titles</span></div></div>
         <div className="row">
           <a href={`/api/admin/pod/cycles/${id}/catalog.csv`} className="pbtn ghost sm"><Download size={14} /> Catalog CSV</a>
+          <Link to={`/admin/pod/cycles/${id}/print`} className="pbtn ghost sm" target="_blank"><Printer size={14} /> Printable catalog</Link>
           <button className="pbtn ghost sm" onClick={() => setEditing(true)}>Edit dates</button>
           {(c.status === 'DRAFT' || c.status === 'OPEN' || c.status === 'PUBLISHED') && <button className="pbtn glow" disabled={busy !== null || !eligible} title={!eligible ? 'Approve some listings first' : ''} onClick={() => void act('publish', c.status === 'PUBLISHED' ? 'Republish? Approved listings go live and the snapshot moves to a new version.' : `Publish ${eligible} approved listing(s)? They go live and shops can order.`)}><Rocket size={16} /> {c.status === 'PUBLISHED' ? 'Republish' : 'Publish catalog'}</button>}
           {c.status === 'PUBLISHED' && <button className="pbtn hot" disabled={busy !== null} onClick={() => void act('lock', `Lock ${c.name} at FOC? Ordering closes; production runs, purchase orders and ledger entries are raised from ${c.orderCount} retailer order(s). This can be re-run safely.`)}><Lock size={16} /> Lock at FOC</button>}
@@ -121,6 +126,10 @@ export function PodCycleDetail() {
         <div className="between" style={{ marginBottom: '.75rem' }}><h3 style={{ margin: 0 }}>Timeline</h3><div className="row"><label className="switch"><input type="checkbox" checked={c.publisherOpen} onChange={(e) => void patch({ publisherOpen: e.target.checked })} /> Open to publishers</label><label className="switch"><input type="checkbox" checked={c.retailerOpen} disabled={c.status !== 'PUBLISHED'} onChange={(e) => void patch({ retailerOpen: e.target.checked })} /> Retailer ordering</label>{c.status === 'PUBLISHED' && <label className="switch"><input type="checkbox" checked={c.focOverrideOpen} onChange={(e) => void patch({ focOverrideOpen: e.target.checked })} /> Keep open past FOC</label>}</div></div>
         <CycleTimeline catalogDate={c.catalogDate} focDate={c.focDate} inStoreDate={c.inStoreDate} />
         {c.notes && <p className="dim" style={{ marginTop: '1rem', whiteSpace: 'pre-wrap', fontSize: '.9rem' }}>{c.notes}</p>}
+        <div className="grid cols-2" style={{ marginTop: '1rem' }}>
+          <div className="panel tight"><div className="between"><b><Upload size={14} /> Designed catalog (PDF)</b>{c.catalogPdfUrl ? <a href={c.catalogPdfUrl} target="_blank" rel="noreferrer" className="pbtn ghost xs">Open</a> : <Pill tone="slate">none</Pill>}</div><p className="dim" style={{ fontSize: '.8rem', margin: '.3rem 0 .5rem' }}>Shops download it from their portal. Make one from the printable catalog, or upload your own.</p><DropZone compact accept="application/pdf" busy={busy === 'pdf'} title={c.catalogPdfUrl ? 'Replace catalog PDF' : 'Upload catalog PDF'} onFile={(f) => void uploadCatalogFile('pdf', f)} /></div>
+          <div className="panel tight"><div className="between"><b>Catalog cover image</b>{c.catalogCoverUrl ? <img src={c.catalogCoverUrl} alt="" style={{ height: 40, borderRadius: 6 }} /> : <Pill tone="slate">none</Pill>}</div><p className="dim" style={{ fontSize: '.8rem', margin: '.3rem 0 .5rem' }}>Shown on the shops' Downloads page.</p><DropZone compact accept="image/*" busy={busy === 'cover'} title={c.catalogCoverUrl ? 'Replace cover' : 'Upload cover image'} onFile={(f) => void uploadCatalogFile('cover', f)} /></div>
+        </div>
       </div>
       <div className="seg" style={{ marginBottom: '1rem' }}>
         <button className={tab === 'listings' ? 'on' : ''} onClick={() => setTab('listings')}>Listings <span className="n">{data.listings.length}</span></button>

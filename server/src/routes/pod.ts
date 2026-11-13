@@ -15,7 +15,12 @@ import type { ListingStatusKey } from '../lib/pod/catalog.js';
 import { getPodSettings, publicPodSettings } from '../lib/pod/settings.js';
 import { CYCLE_STATUS_LABELS, FORMATS, LISTING_STATUS_LABELS, PARTNER_EDITABLE, currentPublisherCycle, currentRetailerCycle, cycleItems, cycleOrderingOpen, deriveCatalogKey, priceRetailerBasket, setListingStatus, uniqueCatalogKey } from '../lib/pod/catalog.js';
 import { listingInclude, loadListing, presentListing, presentPublicListing } from '../lib/pod/present.js';
-import { isFileKind, listingUpload, storeListingFile } from '../lib/pod/files.js';
+import { deleteListingFile, isFileKind, listingUpload, restoreListingFileVersion, storeListingFile, storePublisherAsset } from '../lib/pod/files.js';
+import { assignBarcode, barcodeSvg, normalizeBarcode } from '../lib/pod/barcodes.js';
+import { RETURN_REASONS, requestReturn, returnAllowance } from '../lib/pod/returns.js';
+import { estimatePrintCost } from '../lib/pod/catalog.js';
+import { numbering } from '../lib/pod/events.js';
+import { FILE_KIND_LABELS } from '../lib/pod/present.js';
 import { actorOf, podEvents, recordPodEvent, slugify } from '../lib/pod/events.js';
 import { catalogCsv, parseOrderForm } from '../lib/pod/csv.js';
 import { pickTier, wholesaleUnit } from '../lib/pod/wholesale.js';
@@ -23,6 +28,7 @@ import { ledgerSummary } from '../lib/pod/payouts.js';
 import { notifyStaffListingSubmitted, notifyStaffRetailerApplied, sendRetailerOrderEmail } from '../lib/pod/emails.js';
 import { newOrderNumber } from '../lib/checkout-order.js';
 import { clientIp } from '../middleware/botblocker.js';
+import { evaluateCoupon } from '../lib/coupons.js';
 
 const router = Router();
 const str = (max = 500) => z.string().trim().max(max);
@@ -74,6 +80,20 @@ router.get('/catalog/:key', async (req, res) => {
   if (!l) throw new HttpError(404, 'Not in the catalog');
   const siblings = await prisma.listing.findMany({ where: { partnerId: l.partnerId, status: 'LIVE', id: { not: l.id } }, include: listingInclude, take: 8, orderBy: { title: 'asc' } });
   res.json({ listing: presentPublicListing(l), cycle: l.cycle, more: siblings.map(presentPublicListing) });
+});
+
+router.get('/barcode/:code.svg', (req, res) => {
+  const { code } = normalizeBarcode(String(req.params.code));
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(barcodeSvg(code));
+});
+
+router.get('/publishers/:slug', async (req, res) => {
+  const p = await prisma.partner.findFirst({ where: { slug: String(req.params.slug), status: 'ACTIVE' }, select: { id: true, name: true, slug: true, website: true, bio: true, logo: { select: { url: true } } } });
+  if (!p) throw new HttpError(404, 'Publisher not found');
+  const rows = await prisma.listing.findMany({ where: { partnerId: p.id, status: 'LIVE' }, include: listingInclude, orderBy: [{ seriesName: 'asc' }, { issueNumber: 'asc' }] });
+  res.json({ publisher: { ...p, logoUrl: p.logo?.url ?? null }, listings: rows.map(presentPublicListing) });
 });
 
 router.post('/apply/publisher', applyLimiter, async (req, res) => {
@@ -131,7 +151,27 @@ partner.get('/me', async (req, res) => {
     prisma.payoutStatement.findMany({ where: { partnerId: pid, status: { in: ['ISSUED', 'PAID'] } }, orderBy: { createdAt: 'desc' }, take: 3, select: { id: true, number: true, status: true, netCents: true, issuedAt: true, paidAt: true } }),
   ]);
   const units = await prisma.orderItem.aggregate({ where: { listing: { partnerId: pid }, order: { status: { notIn: ['CANCELLED', 'REFUNDED'] } } }, _sum: { quantity: true, totalCents: true } });
+  const since = new Date(Date.now() - 8 * 7 * 86_400_000);
+  const recent = await prisma.orderItem.findMany({ where: { listing: { partnerId: pid }, order: { status: { notIn: ['CANCELLED', 'REFUNDED'] }, createdAt: { gte: since } } }, select: { quantity: true, totalCents: true, listingId: true, order: { select: { createdAt: true } }, listing: { select: { title: true, issueNumber: true } } } });
+  const weeks = Array.from({ length: 8 }, (_, i) => ({ start: new Date(since.getTime() + i * 7 * 86_400_000).toISOString().slice(0, 10), units: 0, cents: 0 }));
+  const perTitle = new Map<string, { title: string; units: number }>();
+  for (const it of recent) { const w = Math.min(7, Math.floor((it.order.createdAt.getTime() - since.getTime()) / (7 * 86_400_000))); weeks[w]!.units += it.quantity; weeks[w]!.cents += it.totalCents; const t = perTitle.get(it.listingId!) ?? { title: `${it.listing?.title ?? ''}${it.listing?.issueNumber ? ` #${it.listing.issueNumber}` : ''}`, units: 0 }; t.units += it.quantity; perTitle.set(it.listingId!, t); }
+  const bestSeller = [...perTitle.values()].sort((a, b) => b.units - a.units)[0] ?? null;
+  const attentionListings = await prisma.listing.findMany({ where: { partnerId: pid, status: { in: ['DRAFT', 'CHANGES_REQUESTED', 'APPROVED', 'LIVE'] } }, include: { files: { orderBy: { version: 'desc' } }, cycle: { select: { name: true, catalogDate: true, status: true } } } });
+  const attention: { kind: string; listingId: string; title: string; text: string }[] = [];
+  for (const l of attentionListings) {
+    const name = `${l.title}${l.issueNumber ? ` #${l.issueNumber}` : ''}`;
+    const newest = new Map<string, (typeof l.files)[number]>(); for (const f of l.files) if (!newest.has(f.kind)) newest.set(f.kind, f);
+    if (l.status === 'CHANGES_REQUESTED') attention.push({ kind: 'changes', listingId: l.id, title: name, text: l.reviewNote ? `Changes requested: ${l.reviewNote.slice(0, 120)}` : 'Changes requested' });
+    if (l.status === 'DRAFT') attention.push({ kind: 'draft', listingId: l.id, title: name, text: l.cycle ? `Draft — submit by ${l.cycle.catalogDate.toISOString().slice(0, 10)} for ${l.cycle.name}` : 'Draft with no catalog picked' });
+    for (const [k, f] of newest) if (f.reviewStatus === 'rejected' && (k === 'cover' || k === 'interior')) attention.push({ kind: 'file', listingId: l.id, title: name, text: `${k === 'cover' ? 'Cover' : 'Interior'} PDF needs a new file${f.note ? `: ${f.note.slice(0, 100)}` : ''}` });
+    if (l.fulfillment === 'PRINTED_BY_US' && (l.status === 'APPROVED' || l.status === 'LIVE') && (!newest.has('cover') || !newest.has('interior'))) attention.push({ kind: 'file', listingId: l.id, title: name, text: 'Print files missing' });
+  }
+  const posToAck = await prisma.purchaseOrder.findMany({ where: { partnerId: pid, status: 'SENT' }, select: { id: true, number: true, unitsTotal: true } });
+  for (const po of posToAck) attention.push({ kind: 'po', listingId: po.id, title: po.number, text: `Purchase order for ${po.unitsTotal} copies waiting for your acknowledgement` });
+  const schedule = await prisma.catalogCycle.findMany({ where: { status: { in: ['DRAFT', 'OPEN', 'PUBLISHED', 'FOC_LOCKED'] } }, orderBy: { catalogDate: 'asc' }, take: 6, select: { id: true, name: true, status: true, catalogDate: true, focDate: true, inStoreDate: true, publisherOpen: true, _count: { select: { listings: { where: { partnerId: pid } } } } } });
   res.json({
+    attention, salesWeeks: weeks, bestSeller, schedule: schedule.map((c) => ({ ...c, mine: c._count.listings })),
     partner: { ...p, commissionBpsPrintedByUs: p?.commissionBps ?? settings.commissionBpsPrintedByUs, commissionBpsPartnerShips: p?.commissionBps ?? settings.commissionBpsPartnerShips },
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
     openCycle: cycle ? { id: cycle.id, name: cycle.name, catalogDate: cycle.catalogDate, focDate: cycle.focDate, inStoreDate: cycle.inStoreDate } : null,
@@ -160,7 +200,7 @@ const partnerListingBody = z.object({
   pageCount: num.int().min(1).max(2000).nullable().optional(), trimWidthIn: num.min(1).max(30).nullable().optional(), trimHeightIn: num.min(1).max(30).nullable().optional(),
   interiorColor: z.enum(['color', 'bw']).nullable().optional(), weightOz: num.min(0).nullable().optional(), msrpCents: num.int().min(0).optional(),
   description: opt(5000), synopsis: opt(5000), writer: opt(200), artist: opt(200), coverArtist: opt(200), genres: z.array(str(40)).max(10).optional(),
-  incentiveRatio: opt(20), incentiveQualifierKey: opt(40), reorderable: z.boolean().optional(), fulfillment: z.enum(['PRINTED_BY_US', 'PARTNER_SHIPS']).optional(),
+  incentiveRatio: opt(20), incentiveQualifierKey: opt(40), reorderable: z.boolean().optional(), fulfillment: z.enum(['PRINTED_BY_US', 'PARTNER_SHIPS', 'CONSIGNMENT']).optional(),
 });
 
 async function ownListing(req: Request) {
@@ -205,6 +245,17 @@ partner.patch('/listings/:id', async (req, res) => {
   res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
 });
 
+partner.post('/listings/:id/duplicate', async (req, res) => {
+  const l = await ownListing(req);
+  const body = z.object({ coverDescription: opt(200) }).parse(req.body ?? {});
+  const { id, catalogKey, status, productId, coverImageId, submittedAt, approvedAt, publishedAt, rejectedAt, archivedAt, reviewNote, createdAt, updatedAt, partner, cycle, product, coverImage, files, barcode, ...rest } = l as typeof l & { barcode?: unknown };
+  void id; void status; void productId; void coverImageId; void submittedAt; void approvedAt; void publishedAt; void rejectedAt; void archivedAt; void reviewNote; void createdAt; void updatedAt; void partner; void cycle; void product; void coverImage; void files; void barcode;
+  const coverDescription = body.coverDescription || `Variant of ${l.coverDescription ?? 'Main Cover'}`;
+  const copy = await prisma.listing.create({ data: { ...(rest as Prisma.ListingUncheckedCreateInput), upc: null, coverDescription, variantNumber: null, catalogKey: await uniqueCatalogKey(deriveCatalogKey({ seriesCode: l.seriesCode, upc: null, title: l.title })), status: 'DRAFT', inventoryUnits: 0, inventoryDamaged: 0, createdById: req.session!.sub } });
+  await recordPodEvent('listing', copy.id, 'created', `Duplicated from ${catalogKey} as a variant`, actorOf(req));
+  res.status(201).json({ listing: presentListing((await loadListing(copy.id))!, 'partner') });
+});
+
 partner.post('/listings/:id/submit', async (req, res) => {
   const l = await ownListing(req);
   if (!PARTNER_EDITABLE.has(l.status as never)) throw new HttpError(400, 'This listing is already in review');
@@ -243,6 +294,122 @@ partner.post('/listings/:id/files', listingUpload.single('file'), async (req, re
     await prisma.productionOrder.updateMany({ where: { listingId: l.id, status: { in: ['FILES_NEEDED', 'APPROVED'] } }, data: { status: 'PREFLIGHT' } });
   }
   res.status(201).json({ file: { id: row.id, version: row.version }, preflight, listing: presentListing((await loadListing(l.id))!, 'partner') });
+});
+
+partner.get('/profile', async (req, res) => {
+  const p = await prisma.partner.findUnique({ where: { id: partnerId(req) }, select: { id: true, name: true, slug: true, contactName: true, contactEmail: true, website: true, phone: true, address: true, bio: true, printerInfo: true, payoutMethod: true, payoutDetails: true, logo: { select: { id: true, url: true } } } });
+  const assets = await prisma.publisherAsset.findMany({ where: { partnerId: partnerId(req) }, orderBy: { createdAt: 'desc' }, include: { media: { select: { id: true, url: true, originalName: true, size: true, mimeType: true } } } });
+  res.json({ profile: p, assets });
+});
+
+partner.patch('/profile', async (req, res) => {
+  const body = z.object({ contactName: opt(120), contactEmail: z.string().trim().email().nullable().optional(), website: opt(200), phone: opt(40), bio: opt(2000), printerInfo: opt(500), payoutMethod: opt(60), payoutDetails: opt(500), address: z.object({ line1: opt(200), line2: opt(200), city: opt(100), region: opt(100), postalCode: opt(20), country: opt(2) }).partial().nullable().optional() }).parse(req.body);
+  const { address, ...rest } = body;
+  await prisma.partner.update({ where: { id: partnerId(req) }, data: { ...rest, ...(address === undefined ? {} : { address: address ?? undefined }) } });
+  await recordPodEvent('listing', partnerId(req), 'publisher-edited', `Publisher updated ${Object.keys(body).join(', ')}`, actorOf(req));
+  res.json({ ok: true });
+});
+
+partner.post('/assets', listingUpload.single('file'), async (req, res) => {
+  if (!req.file) throw new HttpError(400, 'No file received');
+  const kind = ['logo', 'marketing', 'press', 'other'].includes(String(req.body?.kind)) ? String(req.body.kind) : 'marketing';
+  const asset = await storePublisherAsset({ partnerId: partnerId(req), kind, title: req.body?.title ? String(req.body.title) : null, file: req.file, actor: actorOf(req), uploaderId: req.session!.sub });
+  await recordPodEvent('listing', partnerId(req), 'asset', `${kind} uploaded: ${req.file.originalname}`, actorOf(req));
+  res.status(201).json({ asset });
+});
+
+partner.delete('/assets/:assetId', async (req, res) => {
+  const a = await prisma.publisherAsset.findUnique({ where: { id: String(req.params.assetId) }, include: { media: true, partner: { select: { logoId: true } } } });
+  if (!a || a.partnerId !== partnerId(req)) throw new HttpError(404, 'Asset not found');
+  await prisma.publisherAsset.delete({ where: { id: a.id } });
+  if (a.partner.logoId === a.mediaFileId) await prisma.partner.update({ where: { id: a.partnerId }, data: { logoId: null } });
+  const { deleteStored } = await import('../lib/storage.js');
+  await deleteStored(a.media).catch(() => undefined);
+  await prisma.mediaFile.delete({ where: { id: a.mediaFileId } }).catch(() => undefined);
+  res.json({ ok: true });
+});
+
+/** Every file across the publisher's listings, newest version first, with history. */
+partner.get('/files', async (req, res) => {
+  const rows = await prisma.listingFile.findMany({ where: { listing: { partnerId: partnerId(req) } }, orderBy: [{ createdAt: 'desc' }], include: { media: { select: { id: true, url: true, originalName: true, size: true, mimeType: true } }, listing: { select: { id: true, title: true, issueNumber: true, catalogKey: true, status: true } } } });
+  const newest = new Map<string, number>();
+  for (const f of rows) { const k = `${f.listingId}:${f.kind}`; if ((newest.get(k) ?? 0) < f.version) newest.set(k, f.version); }
+  res.json({ files: rows.map((f) => ({ ...f, kindLabel: FILE_KIND_LABELS[f.kind as keyof typeof FILE_KIND_LABELS] ?? f.kind, isCurrent: newest.get(`${f.listingId}:${f.kind}`) === f.version })) });
+});
+
+partner.post('/listings/:id/files/:fileId/restore', async (req, res) => {
+  const l = await ownListing(req);
+  if (!PARTNER_EDITABLE.has(l.status as never) && !['APPROVED', 'LIVE'].includes(l.status)) throw new HttpError(400, 'This listing is in review');
+  const f = await prisma.listingFile.findUnique({ where: { id: String(req.params.fileId) } });
+  if (!f || f.listingId !== l.id) throw new HttpError(404, 'File not found');
+  await restoreListingFileVersion(f.id, actorOf(req));
+  res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
+});
+
+partner.delete('/listings/:id/files/:fileId', async (req, res) => {
+  const l = await ownListing(req);
+  if (!PARTNER_EDITABLE.has(l.status as never)) throw new HttpError(400, 'Files on a submitted or approved listing can be replaced but not removed');
+  const f = await prisma.listingFile.findUnique({ where: { id: String(req.params.fileId) } });
+  if (!f || f.listingId !== l.id) throw new HttpError(404, 'File not found');
+  await deleteListingFile(f.id, actorOf(req));
+  res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
+});
+
+/** Pull a barcode from the publisher's reserved codes (or the free pool, when allowed) onto a listing without a UPC. */
+partner.post('/listings/:id/barcode', async (req, res) => {
+  const l = await ownListing(req);
+  if (l.upc && !l.barcode) throw new HttpError(400, 'This listing already has a UPC you typed; clear it first if you want one of ours');
+  const s = await getPodSettings();
+  const reserved = await prisma.barcode.findFirst({ where: { status: 'RESERVED', partnerId: l.partnerId } });
+  if (!reserved && !s.publishersSelfAssignBarcodes) throw new HttpError(403, 'No barcodes are reserved for you. Ask us to allocate some.');
+  await assignBarcode(l.id, actorOf(req));
+  res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
+});
+
+partner.get('/barcodes', async (req, res) => {
+  const rows = await prisma.barcode.findMany({ where: { partnerId: partnerId(req) }, orderBy: [{ status: 'asc' }, { code: 'asc' }], include: { listing: { select: { id: true, title: true, issueNumber: true } } } });
+  const s = await getPodSettings();
+  const free = s.publishersSelfAssignBarcodes ? await prisma.barcode.count({ where: { status: 'AVAILABLE' } }) : 0;
+  res.json({ barcodes: rows, poolAvailable: free, selfAssign: s.publishersSelfAssignBarcodes });
+});
+
+/** Order copies of your own book: a print run charged against the payout. */
+partner.get('/print-orders', async (req, res) => {
+  const rows = await prisma.productionOrder.findMany({ where: { listing: { partnerId: partnerId(req) }, partnerAddOnQty: { gt: 0 } }, orderBy: { createdAt: 'desc' }, include: { listing: { select: { id: true, title: true, issueNumber: true, catalogKey: true } }, cycle: { select: { name: true } } } });
+  res.json({ printOrders: rows.map((r) => ({ id: r.id, number: r.number, status: r.status, quantity: r.partnerAddOnQty, retailerQty: r.retailerQty, unitCents: r.printUnitCents, totalCents: r.printUnitCents ? r.printUnitCents * r.partnerAddOnQty : null, deadline: r.deadline, notes: r.notes, createdAt: r.createdAt, listing: r.listing, cycle: r.cycle })) });
+});
+
+partner.post('/print-orders/quote', async (req, res) => {
+  const body = z.object({ listingId: str(40), quantity: num.int().min(1).max(10_000) }).parse(req.body);
+  const l = await prisma.listing.findFirst({ where: { id: body.listingId, partnerId: partnerId(req) } });
+  if (!l) throw new HttpError(404, 'Listing not found');
+  const cost = await estimatePrintCost(l, body.quantity);
+  if (!cost) throw new HttpError(400, 'Set the trim size and page count first so we can price it');
+  res.json({ quantity: body.quantity, unitCents: cost.unitCents, totalCents: cost.totalCents });
+});
+
+partner.post('/print-orders', async (req, res) => {
+  const body = z.object({ listingId: str(40), quantity: num.int().min(1).max(10_000), notes: opt(1000) }).parse(req.body);
+  const l = await prisma.listing.findFirst({ where: { id: body.listingId, partnerId: partnerId(req) } });
+  if (!l) throw new HttpError(404, 'Listing not found');
+  if (l.fulfillment !== 'PRINTED_BY_US' && l.fulfillment !== 'CONSIGNMENT') throw new HttpError(400, 'Only titles we print can be ordered this way');
+  if (!['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)) throw new HttpError(400, 'The listing must be approved before copies can be printed');
+  const cost = await estimatePrintCost(l, body.quantity);
+  if (!cost) throw new HttpError(400, 'Set the trim size and page count first so we can price it');
+  // Add on to an open run for this title when there is one; otherwise raise a run of its own.
+  const open = await prisma.productionOrder.findFirst({ where: { listingId: l.id, status: { in: ['PLANNED', 'FILES_NEEDED', 'PREFLIGHT', 'APPROVED'] } }, orderBy: { createdAt: 'desc' } });
+  let po;
+  if (open) {
+    const total = open.totalQty + body.quantity;
+    const all = await estimatePrintCost(l, total);
+    po = await prisma.productionOrder.update({ where: { id: open.id }, data: { partnerAddOnQty: open.partnerAddOnQty + body.quantity, totalQty: total, printUnitCents: all?.unitCents ?? open.printUnitCents, printTotalCents: all?.totalCents ?? open.printTotalCents, notes: body.notes ? `${open.notes ? `${open.notes}\n` : ''}Publisher: ${body.notes}` : open.notes } });
+    await recordPodEvent('production', po.id, 'add-on', `Publisher added ${body.quantity} copies (now ${total})`, actorOf(req));
+  } else {
+    po = await prisma.productionOrder.create({ data: { number: await numbering.production(), listingId: l.id, cycleId: l.cycleId, retailerQty: 0, partnerAddOnQty: body.quantity, totalQty: body.quantity, printUnitCents: cost.unitCents, printTotalCents: cost.totalCents, status: 'PLANNED', notes: body.notes ? `Publisher: ${body.notes}` : 'Publisher print order', deadline: null } });
+    await recordPodEvent('production', po.id, 'created', `Publisher ordered ${body.quantity} copies`, actorOf(req));
+  }
+  await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -cost.totalCents, description: `${l.catalogKey}: ${body.quantity} publisher copies (${po.number})`, cycleId: l.cycleId, listingId: l.id, actorName: actorOf(req).name } });
+  res.status(201).json({ printOrder: { id: po.id, number: po.number, quantity: body.quantity, unitCents: cost.unitCents, totalCents: cost.totalCents, addedToRun: Boolean(open) } });
 });
 
 partner.get('/purchase-orders', async (req, res) => {
@@ -286,6 +453,7 @@ partner.get('/statements/:id', async (req, res) => {
   res.json({ statement: s });
 });
 
+router.use('/publisher', partner);
 router.use('/partner', partner);
 
 // ---------------------------------------------------------------------------
@@ -313,8 +481,13 @@ retailer.get('/me', async (req, res) => {
   const cycle = await currentRetailerCycle();
   const spend = await prisma.order.aggregate({ where: { retailerId: r.id, status: { notIn: ['CANCELLED', 'REFUNDED'] } }, _sum: { subtotalCents: true }, _count: { _all: true } });
   const open = cycle ? await prisma.order.findFirst({ where: { retailerId: r.id, cycleId: cycle.id, status: { notIn: ['CANCELLED', 'REFUNDED'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, number: true, subtotalCents: true, wholesale: true, items: { select: { listingId: true, quantity: true } } } }) : null;
+  const openCycles = (await prisma.catalogCycle.findMany({ where: { status: 'PUBLISHED' }, orderBy: { focDate: 'asc' } })).filter((c) => cycleOrderingOpen(c));
+  const fromFollowed = r.followedPartnerIds.length ? await prisma.listing.findMany({ where: { partnerId: { in: r.followedPartnerIds }, status: 'LIVE' }, orderBy: { publishedAt: 'desc' }, take: 8, include: listingInclude }) : [];
+  const recentOrders = await prisma.order.findMany({ where: { retailerId: r.id }, orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, createdAt: true, cycle: { select: { name: true } } } });
   res.json({
-    retailer: { id: r.id, name: r.name, contactName: r.contactName, contactEmail: r.contactEmail, phone: r.phone, address: r.address, tierOverride: r.tierOverride, resaleCertStatus: r.resaleCertStatus, taxExempt: r.taxExempt },
+    fromFollowed: fromFollowed.map(presentPublicListing), recentOrders,
+    openCycles: openCycles.map((c) => ({ id: c.id, slug: c.slug, name: c.name, catalogDate: c.catalogDate, focDate: c.focDate, inStoreDate: c.inStoreDate })),
+    retailer: { id: r.id, name: r.name, contactName: r.contactName, contactEmail: r.contactEmail, phone: r.phone, website: r.website, address: r.address, tierOverride: r.tierOverride, resaleCertStatus: r.resaleCertStatus, resaleCertNumber: r.resaleCertNumber, resaleCertState: r.resaleCertState, resaleCertExpires: r.resaleCertExpires, taxExempt: r.taxExempt, creditCents: r.creditCents, taxId: r.taxId, followedPartnerIds: r.followedPartnerIds },
     settings: publicPodSettings(s),
     cycle: cycle ? { id: cycle.id, slug: cycle.slug, name: cycle.name, catalogDate: cycle.catalogDate, focDate: cycle.focDate, inStoreDate: cycle.inStoreDate, orderingOpen: cycleOrderingOpen(cycle) } : null,
     totals: { orders: spend._count._all, wholesaleCents: spend._sum.subtotalCents ?? 0 },
@@ -331,10 +504,13 @@ retailer.get('/catalog', async (req, res) => {
   if (!cycle) return res.json({ cycle: null, listings: [], tiers: s.tiers });
   const items = await cycleItems(cycle.id);
   const base = pickTier(s.tiers, 0, r.tierOverride);
+  const openOrder = await prisma.order.findFirst({ where: { retailerId: r.id, cycleId: cycle.id, source: 'retailer', status: { notIn: ['CANCELLED', 'REFUNDED'] }, paymentStatus: 'PENDING' }, orderBy: { createdAt: 'desc' }, select: { id: true, number: true, subtotalCents: true, wholesale: true, items: { select: { listingId: true, quantity: true } } } });
+  const logos = await prisma.partner.findMany({ where: { id: { in: Array.from(new Set(items.map((i) => i.partner.id))) } }, select: { id: true, logo: { select: { url: true } }, bio: true, website: true } });
+  const logoOf = new Map(logos.map((p) => [p.id, p]));
   res.json({
     cycle: { id: cycle.id, slug: cycle.slug, name: cycle.name, catalogDate: cycle.catalogDate, focDate: cycle.focDate, inStoreDate: cycle.inStoreDate, orderingOpen: cycleOrderingOpen(cycle), status: cycle.status },
-    tiers: s.tiers, forcedTier: r.tierOverride,
-    listings: items.map((i) => ({ ...i, baseWholesaleCents: wholesaleUnit(i.msrpCents, base.tier.discountBps) })),
+    tiers: s.tiers, forcedTier: r.tierOverride, followedPartnerIds: r.followedPartnerIds, openOrder,
+    listings: items.map((i) => ({ ...i, baseWholesaleCents: wholesaleUnit(i.msrpCents, base.tier.discountBps), followed: r.followedPartnerIds.includes(i.partner.id), publisherLogoUrl: logoOf.get(i.partner.id)?.logo?.url ?? null, publisherWebsite: logoOf.get(i.partner.id)?.website ?? null })),
   });
 });
 
@@ -356,7 +532,7 @@ retailer.get('/catalog.csv', async (req, res) => {
   res.send(csv);
 });
 
-const basketBody = z.object({ cycleId: str(40).optional(), quantities: z.record(z.string(), z.coerce.number().int().min(0).max(100_000)) });
+const basketBody = z.object({ cycleId: str(40).optional(), quantities: z.record(z.string(), z.coerce.number().int().min(0).max(100_000)), couponCode: opt(40) });
 
 retailer.post('/basket/preview', async (req, res) => {
   const r = retailerOf(req);
@@ -364,7 +540,8 @@ retailer.post('/basket/preview', async (req, res) => {
   const cycle = body.cycleId ? await prisma.catalogCycle.findUnique({ where: { id: body.cycleId } }) : await currentRetailerCycle();
   if (!cycle) throw new HttpError(400, 'No catalog is open for ordering');
   const { pricing } = await priceRetailerBasket(cycle.id, body.quantities, r);
-  res.json({ pricing, cycleId: cycle.id, orderingOpen: cycleOrderingOpen(cycle) });
+  const coupon = body.couponCode ? await evaluateCoupon(body.couponCode, pricing.subtotalCents) : null;
+  res.json({ pricing, cycleId: cycle.id, orderingOpen: cycleOrderingOpen(cycle), coupon: coupon ? { ok: coupon.ok, discountCents: coupon.discountCents, reason: coupon.ok ? null : coupon.reason } : null });
 });
 
 /** Turn an uploaded order form into quantities (catalog id or UPC → listing). */
@@ -407,12 +584,16 @@ retailer.post('/orders', async (req, res) => {
   const addr = (r.address ?? {}) as Record<string, string>;
   const shippingAddress = { firstName: user?.firstName ?? r.contactName?.split(' ')[0] ?? '', lastName: user?.lastName ?? r.contactName?.split(' ').slice(1).join(' ') ?? '', company: r.name, line1: addr.line1 ?? '', line2: addr.line2 ?? '', city: addr.city ?? '', region: addr.region ?? '', postalCode: addr.postalCode ?? '', country: addr.country ?? 'US', phone: r.phone ?? '' };
   const shippingCents = s.retailerShipping.mode === 'flat' ? s.retailerShipping.flatCents : 0;
-  const wholesale = { tierName: pricing.tier.tier.name, tierIndex: pricing.tier.index + 1, discountBps: pricing.tier.tier.discountBps, msrpSubtotalCents: pricing.msrpSubtotalCents, savingsCents: pricing.savingsCents, poNumber: body.poNumber ?? null, forced: pricing.tier.forced };
+  const coupon = body.couponCode ? await evaluateCoupon(body.couponCode, pricing.subtotalCents) : null;
+  if (coupon && !coupon.ok) throw new HttpError(400, coupon.reason ?? 'That code is not valid');
+  const couponCents = coupon?.ok ? coupon.discountCents : 0;
+  const creditApplied = Math.min(r.creditCents, Math.max(0, pricing.subtotalCents - couponCents));
+  const wholesale = { tierName: pricing.tier.tier.name, tierIndex: pricing.tier.index + 1, discountBps: pricing.tier.tier.discountBps, msrpSubtotalCents: pricing.msrpSubtotalCents, savingsCents: pricing.savingsCents, poNumber: body.poNumber ?? null, forced: pricing.tier.forced, creditApplied, couponCode: coupon?.ok ? coupon.coupon?.code ?? null : null, couponCents };
   const existing = await prisma.order.findFirst({ where: { retailerId: r.id, cycleId: cycle.id, source: 'retailer', status: { notIn: ['CANCELLED', 'REFUNDED'] }, paymentStatus: 'PENDING' } });
   const lineItems: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] = pricing.lines.map((l) => { const snap = byId.get(l.listingId)!; return { productId: productOf.get(l.listingId)!, listingId: l.listingId, name: `${snap.title}${snap.issueNumber ? ` #${snap.issueNumber}` : ''}${snap.coverDescription && !/^main/i.test(snap.coverDescription) ? ` (${snap.coverDescription})` : ''}`, options: { catalogKey: snap.catalogKey, publisher: snap.partner.name }, quantity: l.quantity, unitPriceCents: l.unitCents, totalCents: l.totalCents, wholesale: { msrpCents: l.msrpCents, discountBps: l.discountBps, tierName: pricing.tier.tier.name, incentive: l.incentive ?? null } as unknown as Prisma.InputJsonValue }; });
   const data: Omit<Prisma.OrderUncheckedCreateInput, 'number'> = {
     email: user?.email ?? r.contactEmail, userId: req.session!.sub, status: 'PENDING' as const, paymentStatus: 'PENDING' as const,
-    subtotalCents: pricing.subtotalCents, shippingCents, taxCents: 0, discountCents: 0, totalCents: pricing.subtotalCents + shippingCents,
+    subtotalCents: pricing.subtotalCents, shippingCents, taxCents: 0, discountCents: creditApplied + couponCents, couponCode: coupon?.ok ? coupon.coupon?.code ?? null : null, totalCents: pricing.subtotalCents - creditApplied - couponCents + shippingCents,
     shippingAddress, billingAddress: shippingAddress, shippingMethod: s.retailerShipping.mode === 'flat' ? 'Flat wholesale shipping' : 'Billed at cost when shipped',
     notes: body.notes ?? null, source: 'retailer', retailerId: r.id, cycleId: cycle.id,
     wholesale: wholesale as unknown as Prisma.InputJsonValue,
@@ -420,17 +601,97 @@ retailer.post('/orders', async (req, res) => {
   };
   let order;
   if (existing) {
+    const prev = ((existing.wholesale ?? {}) as { creditApplied?: number }).creditApplied ?? 0;
+    if (prev) await prisma.retailer.update({ where: { id: r.id }, data: { creditCents: { increment: prev } } });
     await prisma.orderItem.deleteMany({ where: { orderId: existing.id } });
     order = await prisma.order.update({ where: { id: existing.id }, data: { ...data, events: { create: { kind: 'note', message: `Order replaced by the retailer before FOC: ${pricing.lines.length} lines, ${pricing.lines.reduce((s2, l) => s2 + l.quantity, 0)} copies`, actorName: user?.email } } } });
   } else {
     order = await prisma.order.create({ data: { ...data, number: newOrderNumber(), events: { create: { kind: 'status', toStatus: 'PENDING', message: `Wholesale order placed in ${cycle.name} at ${pricing.tier.tier.name}`, actorName: user?.email } } } });
   }
+  if (creditApplied) await prisma.retailer.update({ where: { id: r.id }, data: { creditCents: { decrement: creditApplied } } });
   const mail = await sendRetailerOrderEmail(order.id);
-  res.status(existing ? 200 : 201).json({ order: { id: order.id, number: order.number, subtotalCents: order.subtotalCents, totalCents: order.totalCents }, replaced: Boolean(existing), mail });
+  res.status(existing ? 200 : 201).json({ order: { id: order.id, number: order.number, subtotalCents: order.subtotalCents, totalCents: order.totalCents, creditApplied }, replaced: Boolean(existing), mail });
+});
+
+retailer.patch('/profile', async (req, res) => {
+  const r = retailerOf(req);
+  const body = z.object({ name: str(160).optional(), contactName: opt(120), phone: opt(40), website: opt(200), taxId: opt(40), address: z.object({ line1: opt(200), line2: opt(200), city: opt(100), region: opt(100), postalCode: opt(20), country: opt(2) }).partial().nullable().optional(), resaleCertNumber: opt(80), resaleCertState: opt(40), resaleCertExpires: z.coerce.date().nullable().optional() }).parse(req.body);
+  const { address, ...rest } = body;
+  const certChanged = body.resaleCertNumber !== undefined && body.resaleCertNumber !== r.resaleCertNumber;
+  await prisma.retailer.update({ where: { id: r.id }, data: { ...rest, ...(address === undefined ? {} : { address: address ?? undefined }), ...(certChanged ? { resaleCertStatus: body.resaleCertNumber ? 'submitted' : 'not_submitted', taxExempt: false } : {}) } });
+  await recordPodEvent('retailer', r.id, 'profile', `Shop updated ${Object.keys(body).join(', ')}`, actorOf(req));
+  res.json({ ok: true });
+});
+
+retailer.post('/follow', async (req, res) => {
+  const r = retailerOf(req);
+  const body = z.object({ partnerId: str(40), follow: z.boolean() }).parse(req.body);
+  const next = body.follow ? Array.from(new Set([...r.followedPartnerIds, body.partnerId])) : r.followedPartnerIds.filter((x) => x !== body.partnerId);
+  await prisma.retailer.update({ where: { id: r.id }, data: { followedPartnerIds: next } });
+  res.json({ followedPartnerIds: next });
+});
+
+retailer.post('/resale-certificate', listingUpload.single('file'), async (req, res) => {
+  const r = retailerOf(req);
+  if (!req.file) throw new HttpError(400, 'No file received');
+  const { publishUpload } = await import('../lib/storage.js');
+  const stored = await publishUpload({ subdir: 'pod', filename: req.file.filename, localPath: req.file.path, contentType: req.file.mimetype, originalName: req.file.originalname });
+  const media = await prisma.mediaFile.create({ data: { filename: req.file.filename, originalName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, url: stored.url, folder: '/pod/certificates', tags: ['pod-cert', `retailer:${r.id}`], uploaderId: req.session!.sub } });
+  await prisma.retailer.update({ where: { id: r.id }, data: { resaleCertMediaId: media.id, resaleCertStatus: 'submitted', ...(req.body?.number ? { resaleCertNumber: String(req.body.number) } : {}), ...(req.body?.state ? { resaleCertState: String(req.body.state) } : {}) } });
+  await recordPodEvent('retailer', r.id, 'certificate', `Resale certificate uploaded: ${req.file.originalname}`, actorOf(req));
+  res.status(201).json({ ok: true, url: stored.url });
+});
+
+/** Catalog downloads: the designed PDF and the order sheet for every published cycle. */
+retailer.get('/downloads', async (req, res) => {
+  const r = retailerOf(req);
+  const cycles = await prisma.catalogCycle.findMany({ where: { publishedAt: { not: null } }, orderBy: { catalogDate: 'desc' }, take: 24, include: { _count: { select: { items: true } } } });
+  const mine = await prisma.order.findMany({ where: { retailerId: r.id, status: { notIn: ['CANCELLED'] } }, select: { cycleId: true, number: true } });
+  res.json({ cycles: cycles.map((c) => ({ id: c.id, slug: c.slug, name: c.name, status: c.status, catalogDate: c.catalogDate, focDate: c.focDate, inStoreDate: c.inStoreDate, orderingOpen: cycleOrderingOpen(c), catalogPdfUrl: c.catalogPdfUrl, catalogCoverUrl: c.catalogCoverUrl, titleCount: c._count.items, csvUrl: `/api/pod/retailer/catalog/${c.id}.csv`, myOrder: mine.find((m) => m.cycleId === c.id)?.number ?? null })) });
+});
+
+retailer.get('/catalog/:cycleId.csv', async (req, res) => {
+  const r = retailerOf(req);
+  const s = await getPodSettings();
+  const cycle = await prisma.catalogCycle.findUnique({ where: { id: String(req.params.cycleId) } });
+  if (!cycle || !cycle.publishedAt) throw new HttpError(404, 'Catalog not found');
+  const items = await cycleItems(cycle.id);
+  const tier = pickTier(s.tiers, 0, r.tierOverride);
+  const d = (x: Date) => x.toISOString().slice(0, 10);
+  const csv = catalogCsv(items.map((i) => ({ catalogKey: i.catalogKey, upc: i.upc, title: i.title, seriesName: i.seriesName, issueNumber: i.issueNumber, coverDescription: i.coverDescription, publisher: i.partner.name, format: i.format, pageCount: i.pageCount, interiorColor: i.interiorColor, trim: i.trimWidthIn && i.trimHeightIn ? `${i.trimWidthIn} x ${i.trimHeightIn}` : '', msrpCents: i.msrpCents, writer: i.writer, artist: i.artist, coverArtist: i.coverArtist, ageRating: i.ageRating, incentiveRatio: i.incentiveRatio, description: i.synopsis ?? i.description, catalogDate: d(cycle.catalogDate), focDate: d(cycle.focDate), inStoreDate: d(cycle.inStoreDate) })), { discountBps: tier.tier.discountBps, tierName: tier.tier.name });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${cycle.slug}-order-form.csv"`);
+  res.send(csv);
+});
+
+/** Returns & damages: what can still be claimed, and the claims so far. */
+retailer.get('/returns', async (req, res) => {
+  const r = retailerOf(req);
+  const orders = await prisma.order.findMany({ where: { retailerId: r.id, status: { notIn: ['CANCELLED', 'REFUNDED', 'PENDING'] } }, orderBy: { createdAt: 'desc' }, take: 24, select: { id: true, number: true, status: true, createdAt: true, wholesale: true, cycle: { select: { name: true, status: true } }, items: { select: { id: true, name: true, quantity: true, unitPriceCents: true, listingId: true } } } });
+  const claims = await prisma.retailerReturn.findMany({ where: { retailerId: r.id }, orderBy: { createdAt: 'desc' }, include: { order: { select: { number: true } }, listing: { select: { title: true, catalogKey: true } } } });
+  const claimed = new Map<string, number>();
+  for (const c of claims) if (c.status !== 'REJECTED') claimed.set(`${c.orderId}:${c.listingId}`, (claimed.get(`${c.orderId}:${c.listingId}`) ?? 0) + c.quantity);
+  const eligible: unknown[] = [];
+  for (const o of orders) {
+    const a = await returnAllowance(r.id, o.id);
+    eligible.push({ ...o, allowance: a, items: o.items.map((it) => ({ ...it, claimed: claimed.get(`${o.id}:${it.listingId}`) ?? 0, remaining: it.quantity - (claimed.get(`${o.id}:${it.listingId}`) ?? 0) })) });
+  }
+  res.json({ orders: eligible, claims, reasons: RETURN_REASONS, creditCents: r.creditCents });
+});
+
+retailer.post('/returns', async (req, res) => {
+  const body = z.object({ orderId: str(40), orderItemId: str(40), quantity: num.int().min(1), kind: z.enum(['return', 'damage']), reason: str(1000) }).parse(req.body);
+  const r = await requestReturn({ retailerId: retailerOf(req).id, ...body }, actorOf(req));
+  res.status(201).json({ return: r });
+});
+
+retailer.get('/shipments', async (req, res) => {
+  const rows = await prisma.shipment.findMany({ where: { order: { retailerId: retailerOf(req).id } }, orderBy: { createdAt: 'desc' }, take: 100, include: { order: { select: { id: true, number: true, cycle: { select: { name: true } } } }, items: { select: { quantity: true, orderItem: { select: { name: true } } } } } });
+  res.json({ shipments: rows.map((s2) => ({ id: s2.id, carrier: s2.carrier, service: s2.service, trackingCode: s2.trackingCode, status: s2.status, createdAt: s2.createdAt, weightOz: s2.weightOz, order: s2.order, units: s2.items.reduce((a, i) => a + i.quantity, 0), lines: s2.items.map((i) => `${i.quantity} × ${i.orderItem.name}`) })) });
 });
 
 retailer.get('/orders', async (req, res) => {
-  const rows = await prisma.order.findMany({ where: { retailerId: retailerOf(req).id }, orderBy: { createdAt: 'desc' }, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, shippingCents: true, totalCents: true, createdAt: true, wholesale: true, cycle: { select: { id: true, name: true, focDate: true, inStoreDate: true, status: true } }, _count: { select: { items: true } }, shipments: { select: { trackingCode: true, carrier: true, createdAt: true } } } });
+  const rows = await prisma.order.findMany({ where: { retailerId: retailerOf(req).id }, orderBy: { createdAt: 'desc' }, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, shippingCents: true, totalCents: true, createdAt: true, wholesale: true, cycle: { select: { id: true, name: true, focDate: true, inStoreDate: true, status: true } }, _count: { select: { items: true } }, shipments: { select: { trackingCode: true, carrier: true, createdAt: true } }, retailerReturns: { select: { id: true, number: true, status: true, quantity: true } } } });
   res.json({ orders: rows });
 });
 
@@ -446,6 +707,8 @@ retailer.post('/orders/:number/cancel', async (req, res) => {
   if (!o) throw new HttpError(404, 'Order not found');
   if (!o.cycle || !cycleOrderingOpen(o.cycle) || o.paymentStatus !== 'PENDING') throw new HttpError(400, 'This order is past FOC and cannot be cancelled online. Write to us.');
   await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: 'Cancelled by the retailer before FOC', actorName: req.session!.email } } } });
+  const prev = ((o.wholesale ?? {}) as { creditApplied?: number }).creditApplied ?? 0;
+  if (prev) await prisma.retailer.update({ where: { id: retailerOf(req).id }, data: { creditCents: { increment: prev } } });
   res.json({ ok: true });
 });
 
