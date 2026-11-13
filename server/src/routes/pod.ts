@@ -126,10 +126,45 @@ router.post('/apply/retailer', applyLimiter, async (req, res) => {
 // Partner (publisher) portal
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Staff view: an admin, or staff holding the Distribution area, can open either
+// portal as any publisher or shop by naming it in a header (the SPA stores the
+// pick). Everything they do there is recorded under their own name.
+// ---------------------------------------------------------------------------
+
+export function isPodStaff(req: Request): boolean {
+  const s = req.session;
+  return !!s && (s.role === 'ADMIN' || (s.role === 'STAFF' && (s.permissions ?? []).includes('pod')));
+}
+const viewAsId = (req: Request, kind: 'partner' | 'retailer') => (isPodStaff(req) ? (String(req.header(`x-view-as-${kind}`) ?? '').trim() || String(req.query.viewAs ?? '').trim() || null) : null);
+
+router.get('/staff/view-as', requireAuth, async (req, res) => {
+  if (!isPodStaff(req)) throw new HttpError(403, 'Staff only');
+  const [publishers, retailers] = await Promise.all([
+    prisma.partner.findMany({ where: { status: { not: 'ARCHIVED' } }, orderBy: { name: 'asc' }, select: { id: true, name: true, status: true, _count: { select: { listings: true } } } }),
+    prisma.retailer.findMany({ where: { status: { not: 'ARCHIVED' } }, orderBy: { name: 'asc' }, select: { id: true, name: true, status: true, address: true, _count: { select: { orders: true } } } }),
+  ]);
+  res.json({
+    publishers: publishers.map((p) => ({ id: p.id, name: p.name, status: p.status, listings: p._count.listings })),
+    retailers: retailers.map((r) => { const a = (r.address ?? {}) as { city?: string; state?: string }; return { id: r.id, name: r.name, status: r.status, place: [a.city, a.state].filter(Boolean).join(', '), orders: r._count.orders }; }),
+  });
+});
+
 async function requirePartner(req: Request, res: Response, next: NextFunction) {
   if (!req.session) return res.status(401).json({ error: 'Not authenticated' });
+  const asId = viewAsId(req, 'partner');
+  if (asId) {
+    const p = await prisma.partner.findUnique({ where: { id: asId }, select: { id: true, status: true } });
+    if (!p || p.status === 'ARCHIVED') return res.status(404).json({ error: 'That publisher is not available to view.', staff: true });
+    (req as Request & { partnerId: string; viewingAs: boolean }).partnerId = p.id;
+    (req as Request & { viewingAs: boolean }).viewingAs = true;
+    return next();
+  }
   const u = await prisma.user.findUnique({ where: { id: req.session.sub }, select: { partnerId: true, partner: { select: { status: true } } } });
-  if (!u?.partnerId) return res.status(403).json({ error: 'This account is not attached to a publisher. Apply on the Distribution page or ask us to add you.' });
+  if (!u?.partnerId) {
+    if (isPodStaff(req)) return res.status(403).json({ error: 'Pick a publisher to view the portal as.', staff: true });
+    return res.status(403).json({ error: 'This account is not attached to a publisher. Apply on the Distribution page or ask us to add you.' });
+  }
   if (u.partner?.status !== 'ACTIVE') return res.status(403).json({ error: 'This publisher account is on hold. Write to us to sort it out.' });
   (req as Request & { partnerId: string }).partnerId = u.partnerId;
   next();
@@ -171,6 +206,7 @@ partner.get('/me', async (req, res) => {
   for (const po of posToAck) attention.push({ kind: 'po', listingId: po.id, title: po.number, text: `Purchase order for ${po.unitsTotal} copies waiting for your acknowledgement` });
   const schedule = await prisma.catalogCycle.findMany({ where: { status: { in: ['DRAFT', 'OPEN', 'PUBLISHED', 'FOC_LOCKED'] } }, orderBy: { catalogDate: 'asc' }, take: 6, select: { id: true, name: true, status: true, catalogDate: true, focDate: true, inStoreDate: true, publisherOpen: true, _count: { select: { listings: { where: { partnerId: pid } } } } } });
   res.json({
+    viewingAs: Boolean((req as Request & { viewingAs?: boolean }).viewingAs),
     attention, salesWeeks: weeks, bestSeller, schedule: schedule.map((c) => ({ ...c, mine: c._count.listings })),
     partner: { ...p, commissionBpsPrintedByUs: p?.commissionBps ?? settings.commissionBpsPrintedByUs, commissionBpsPartnerShips: p?.commissionBps ?? settings.commissionBpsPartnerShips },
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
@@ -462,8 +498,19 @@ router.use('/partner', partner);
 
 async function requireRetailer(req: Request, res: Response, next: NextFunction) {
   if (!req.session) return res.status(401).json({ error: 'Not authenticated' });
+  const asId = viewAsId(req, 'retailer');
+  if (asId) {
+    const r = await prisma.retailer.findUnique({ where: { id: asId } });
+    if (!r || r.status === 'ARCHIVED') return res.status(404).json({ error: 'That shop is not available to view.', staff: true });
+    (req as Request & { retailer: typeof r; viewingAs: boolean }).retailer = r;
+    (req as Request & { viewingAs: boolean }).viewingAs = true;
+    return next();
+  }
   const u = await prisma.user.findUnique({ where: { id: req.session.sub }, select: { retailerId: true, retailer: true } });
-  if (!u?.retailerId || !u.retailer) return res.status(403).json({ error: 'This account is not a retailer account. Apply on the Distribution page.' });
+  if (!u?.retailerId || !u.retailer) {
+    if (isPodStaff(req)) return res.status(403).json({ error: 'Pick a shop to view the portal as.', staff: true });
+    return res.status(403).json({ error: 'This account is not a retailer account. Apply on the Distribution page.' });
+  }
   if (u.retailer.status === 'PENDING') return res.status(403).json({ error: 'Your application is being reviewed. We will email you when ordering opens.', pending: true });
   if (u.retailer.status !== 'ACTIVE') return res.status(403).json({ error: 'This retailer account is on hold. Write to us to sort it out.' });
   (req as Request & { retailer: typeof u.retailer }).retailer = u.retailer;
@@ -485,6 +532,7 @@ retailer.get('/me', async (req, res) => {
   const fromFollowed = r.followedPartnerIds.length ? await prisma.listing.findMany({ where: { partnerId: { in: r.followedPartnerIds }, status: 'LIVE' }, orderBy: { publishedAt: 'desc' }, take: 8, include: listingInclude }) : [];
   const recentOrders = await prisma.order.findMany({ where: { retailerId: r.id }, orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, createdAt: true, cycle: { select: { name: true } } } });
   res.json({
+    viewingAs: Boolean((req as Request & { viewingAs?: boolean }).viewingAs),
     fromFollowed: fromFollowed.map(presentPublicListing), recentOrders,
     openCycles: openCycles.map((c) => ({ id: c.id, slug: c.slug, name: c.name, catalogDate: c.catalogDate, focDate: c.focDate, inStoreDate: c.inStoreDate })),
     retailer: { id: r.id, name: r.name, contactName: r.contactName, contactEmail: r.contactEmail, phone: r.phone, website: r.website, address: r.address, tierOverride: r.tierOverride, resaleCertStatus: r.resaleCertStatus, resaleCertNumber: r.resaleCertNumber, resaleCertState: r.resaleCertState, resaleCertExpires: r.resaleCertExpires, taxExempt: r.taxExempt, creditCents: r.creditCents, taxId: r.taxId, followedPartnerIds: r.followedPartnerIds },

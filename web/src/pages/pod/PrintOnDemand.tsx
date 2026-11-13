@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, BookOpen, Store, Sparkles, Printer, Truck, HandCoins, FileCheck, Calendar, ShieldCheck, LogIn } from 'lucide-react';
 import { useSeo } from '../../lib/seo';
 import { useAuth } from '../../store/auth';
+import { isPodStaff } from '../../lib/view-as';
 import { money, pct, type PublicSettings } from '../../lib/pod';
 import { CoverCard, Countdown, CycleTimeline, Pill, TierLadder, useLoad } from '../../components/pod/ui';
 
@@ -21,6 +22,7 @@ export function PrintOnDemand() {
   useSeo({ title: 'Distribution for Publishers & Comic Shops — Printing Comics', description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-distribution.png' });
   const { data } = useLoad<Landing>('/pod');
   const { user } = useAuth();
+  const staff = isPodStaff(user);
   const s = data?.settings;
   const cycle = data?.cycle;
   const featured = data?.featured ?? [];
@@ -81,8 +83,8 @@ export function PrintOnDemand() {
               )}
             </div>
             <div className="grid cols-2" style={{ marginTop: '1rem', gap: '.75rem' }}>
-              <Link to={user?.partner ? '/publisher' : '/login?redirect=/publisher'} className="pbtn glow" style={{ justifyContent: 'center' }} data-testid="publisher-login"><LogIn size={16} /> {user?.partner ? 'Open publisher portal' : 'Publisher login'}</Link>
-              <Link to={user?.retailer ? '/retailer' : '/login?redirect=/retailer'} className="pbtn hot" style={{ justifyContent: 'center' }} data-testid="retailer-login"><LogIn size={16} /> {user?.retailer ? 'Open wholesale ordering' : 'Retailer login'}</Link>
+              <Link to={user?.partner || staff ? '/publisher' : '/login?redirect=/publisher'} className="pbtn glow" style={{ justifyContent: 'center' }} data-testid="publisher-login"><LogIn size={16} /> {user?.partner ? 'Open publisher portal' : staff ? 'View the publisher portal' : 'Publisher login'}</Link>
+              <Link to={user?.retailer || staff ? '/retailer' : '/login?redirect=/retailer'} className="pbtn hot" style={{ justifyContent: 'center' }} data-testid="retailer-login"><LogIn size={16} /> {user?.retailer ? 'Open wholesale ordering' : staff ? 'View the retailer portal' : 'Retailer login'}</Link>
             </div>
             <p className="dim" style={{ fontSize: '.8rem', textAlign: 'center', margin: '.6rem 0 0' }}>New here? <Link to="/distribution/apply?as=publisher" style={{ color: '#fff' }}>Apply as a publisher</Link> · <Link to="/distribution/apply?as=retailer" style={{ color: '#fff' }}>Open a wholesale account</Link></p>
             </div>

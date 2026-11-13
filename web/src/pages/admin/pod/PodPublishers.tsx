@@ -4,8 +4,9 @@
  * ledger, assets and barcodes; plus publisher applications to approve.
  */
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ArrowLeft, UserPlus, Trash2, Check, Ban, Undo2, Archive, Mail, Copy, Upload } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Search, Plus, ArrowLeft, UserPlus, Trash2, Check, Ban, Undo2, Archive, Mail, Copy, Upload, Eye } from 'lucide-react';
+import { setViewAs } from '../../../lib/view-as';
 import { api } from '../../../api/client';
 import { statusWord, money, dateShort, pct, type Listing, type PodEvent, ASSET_KINDS, BARCODE_STATUS } from '../../../lib/pod';
 import { Avatar, Drawer, DropZone, Empty, Events, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
@@ -106,6 +107,7 @@ export function PodPublishers() {
 interface Detail { publisher: Publisher; listings: Listing[]; ledger: { grossCents: number; commissionCents: number; printingCents: number; unassignedCents: number; payoutsCents: number }; assets: { id: string; kind: string; title: string | null; createdAt: string; media: { id: string; url: string; originalName: string; size: number; mimeType: string } }[]; barcodes: Record<string, number>; events: PodEvent[] }
 
 export function PodPublisherDetail() {
+  const navigate = useNavigate();
   const { id = '' } = useParams();
   const { data, reload } = useLoad<Detail>(`/admin/pod/publishers/${id}`, [id]);
   const { reloadOverview } = useOverview();
@@ -133,6 +135,7 @@ export function PodPublisherDetail() {
           {p.status !== 'ACTIVE' && <button className="pbtn soft" disabled={busy !== null} onClick={() => void act('restore')}><Undo2 size={16} /> Reactivate</button>}
           {p.status !== 'ARCHIVED' && <button className="pbtn ghost" disabled={busy !== null} onClick={() => void act('archive', {}, 'Archive this publisher?')}><Archive size={16} /> Archive</button>}
           <Link to={`/admin/pod/payouts?partner=${p.id}`} className="pbtn ghost">Payouts</Link>
+          {p.status !== 'ARCHIVED' && <button className="pbtn soft" data-testid="view-as-publisher" title="Open the publisher portal as this publisher" onClick={() => { setViewAs('partner', { id: p.id, name: p.name }); navigate('/publisher'); }}><Eye size={16} /> View their portal</button>}
           <button className="pbtn primary" onClick={() => setEditing(true)}>Edit</button>
         </div>
       </div>

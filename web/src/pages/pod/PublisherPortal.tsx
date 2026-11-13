@@ -7,6 +7,8 @@ import { Link, NavLink, Outlet, useNavigate, useParams, useSearchParams } from '
 import { BookOpen, FileText, Receipt, LayoutDashboard, Plus, Send, ArrowLeft, Sparkles, Truck, CheckCircle2, Undo2, FolderOpen, Barcode as BarcodeIcon, Printer, Building2, LifeBuoy } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../store/auth';
+import { getViewAs, isPodStaff, onViewAsChange } from '../../lib/view-as';
+import { ViewAsBanner, ViewAsPicker } from '../../components/pod/view-as';
 import { useSeo } from '../../lib/seo';
 import { money, dateShort, dateTime, pct, LISTING_STATUS, FORMAT_LABELS, FULFILLMENT_LABELS, TRIM_PRESETS, AGE_RATINGS, GENRES, type Listing, type PublicSettings, type PodEvent } from '../../lib/pod';
 import { Avatar, Barcode, Bars, CoverArt, CycleTimeline, Drawer, Empty, Events, FileSlot, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../components/pod/ui';
@@ -17,6 +19,7 @@ interface Me {
   counts: Record<string, number>; openCycle: { id: string; name: string; catalogDate: string; focDate: string; inStoreDate: string } | null; settings: PublicSettings;
   sales: { units: number; wholesaleCents: number; owedCents: number; paidCents: number }; purchaseOrdersOpen: number;
   statements: { id: string; number: string; status: string; netCents: number; issuedAt: string | null; paidAt: string | null }[];
+  viewingAs?: boolean;
   attention: { kind: string; listingId: string; title: string; text: string }[];
   salesWeeks: { start: string; units: number; cents: number }[];
   bestSeller: { title: string; units: number } | null;
@@ -28,9 +31,15 @@ export function PublisherLayout() {
   const navigate = useNavigate();
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
   useEffect(() => { if (loaded && !user) navigate('/login?redirect=/publisher'); }, [loaded, user, navigate]);
-  const { data, error, reload } = useLoad<Me>(loaded && user ? '/pod/publisher/me' : null);
+  // Staff who are not publishers themselves step in as one (lib/view-as).
+  const staff = isPodStaff(user) && !user?.partner;
+  const [viewAs, setViewAsState] = useState(() => getViewAs('partner'));
+  useEffect(() => onViewAsChange(() => setViewAsState(getViewAs('partner'))), []);
+  const needPick = staff && !viewAs;
+  const { data, error, reload } = useLoad<Me>(loaded && user && !needPick ? '/pod/publisher/me' : null, [viewAs?.id]);
   useSeo({ title: 'Publisher portal — Distribution', description: 'Manage your Distribution listings.' });
   if (!loaded || !user) return <div className="pod container" style={{ padding: '3rem' }}><p className="dim">Loading…</p></div>;
+  if (needPick || (error && staff)) return <ViewAsPicker kind="partner" notice={error} />;
   if (error) {
     return (
       <div className="pod container" style={{ padding: '3rem 1.25rem' }}>
@@ -43,7 +52,7 @@ export function PublisherLayout() {
     <div className="pod">
       <div className="portal">
         <aside className="pside">
-          <div className="who"><Avatar name={data?.partner.name ?? '…'} /><div><b>{data?.partner.name ?? '…'}</b><small>Publisher portal</small></div></div>
+          <div className="who"><Avatar name={data?.partner.name ?? '…'} /><div><b>{data?.partner.name ?? '…'}</b><small>{data?.viewingAs ? 'Staff view' : 'Publisher portal'}</small></div></div>
           <nav>
             <NavLink to="/publisher" end><span className="row" style={{ gap: '.5rem' }}><LayoutDashboard size={16} /> Overview</span></NavLink>
             <NavLink to="/publisher/listings"><span className="row" style={{ gap: '.5rem' }}><BookOpen size={16} /> Listings</span>{queue > 0 && <span className="n">{queue}</span>}</NavLink>
@@ -61,7 +70,7 @@ export function PublisherLayout() {
             <Link to="/account/password" style={{ color: 'inherit' }}>Change password →</Link>
           </div>
         </aside>
-        <main className="pmain"><Outlet context={{ me: data, reload }} /></main>
+        <main className="pmain">{data?.viewingAs && viewAs && <ViewAsBanner kind="partner" name={data.partner.name} />}<Outlet key={viewAs?.id ?? 'own'} context={{ me: data, reload }} /></main>
       </div>
     </div>
   );

@@ -7,6 +7,8 @@ import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams, useSea
 import { LayoutDashboard, ShoppingCart, Receipt, ArrowLeft, Store, RefreshCw, FolderDown, Building2, Truck } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../store/auth';
+import { getViewAs, isPodStaff, onViewAsChange } from '../../lib/view-as';
+import { ViewAsBanner, ViewAsPicker } from '../../components/pod/view-as';
 import { useSeo } from '../../lib/seo';
 import { statusWord, money, dateShort, FORMAT_LABELS, type PublicSettings } from '../../lib/pod';
 import { priceBasket } from '../../lib/wholesale';
@@ -17,6 +19,7 @@ interface Me {
   openCycles: { id: string; slug: string; name: string; catalogDate: string; focDate: string; inStoreDate: string }[];
   fromFollowed: { id: string; catalogKey: string; title: string; issueNumber: string | null; msrpCents: number; coverImageUrl: string | null; partner: { name: string } }[];
   recentOrders: { id: string; number: string; status: string; paymentStatus: string; subtotalCents: number; createdAt: string; cycle: { name: string } | null }[];
+  viewingAs?: boolean;
   settings: PublicSettings; cycle: { id: string; slug: string; name: string; catalogDate: string; focDate: string; inStoreDate: string; orderingOpen: boolean } | null;
   totals: { orders: number; wholesaleCents: number }; openOrder: { id: string; number: string; subtotalCents: number; wholesale: { tierName: string }; items: { listingId: string; quantity: number }[] } | null;
 }
@@ -27,9 +30,15 @@ export function RetailerLayout() {
   const navigate = useNavigate();
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
   useEffect(() => { if (loaded && !user) navigate('/login?redirect=/retailer'); }, [loaded, user, navigate]);
-  const { data, error, reload } = useLoad<Me>(loaded && user ? '/pod/retailer/me' : null);
+  // Staff who are not a shop themselves step in as one (lib/view-as).
+  const staff = isPodStaff(user) && !user?.retailer;
+  const [viewAs, setViewAsState] = useState(() => getViewAs('retailer'));
+  useEffect(() => onViewAsChange(() => setViewAsState(getViewAs('retailer'))), []);
+  const needPick = staff && !viewAs;
+  const { data, error, reload } = useLoad<Me>(loaded && user && !needPick ? '/pod/retailer/me' : null, [viewAs?.id]);
   useSeo({ title: 'Wholesale ordering — Distribution', description: 'Order the Distribution catalog at wholesale.' });
   if (!loaded || !user) return <div className="pod container" style={{ padding: '3rem' }}><p className="dim">Loading…</p></div>;
+  if (needPick || (error && staff)) return <ViewAsPicker kind="retailer" notice={error} />;
   if (error) {
     const pending = /being reviewed/i.test(error);
     return <div className="pod container" style={{ padding: '3rem 1.25rem' }}><Empty title={pending ? 'Your application is in review' : 'This account is not a retailer account'} body={error} action={<div className="row" style={{ justifyContent: 'center' }}>{!pending && <Link to="/distribution/apply?as=retailer" className="pbtn hot">Open a wholesale account</Link>}<Link to="/distribution/catalog" className="pbtn ghost">Browse the catalog</Link></div>} /></div>;
@@ -38,7 +47,7 @@ export function RetailerLayout() {
     <div className="pod">
       <div className="portal">
         <aside className="pside">
-          <div className="who"><Avatar name={data?.retailer.name ?? '…'} /><div><b>{data?.retailer.name ?? '…'}</b><small>Wholesale</small></div></div>
+          <div className="who"><Avatar name={data?.retailer.name ?? '…'} /><div><b>{data?.retailer.name ?? '…'}</b><small>{data?.viewingAs ? 'Staff view' : 'Wholesale'}</small></div></div>
           <nav>
             <NavLink to="/retailer" end><span className="row" style={{ gap: '.5rem' }}><LayoutDashboard size={16} /> Overview</span></NavLink>
             <NavLink to="/retailer/catalog"><span className="row" style={{ gap: '.5rem' }}><ShoppingCart size={16} /> Order the catalog</span>{data?.cycle?.orderingOpen && <span className="n" style={{ background: 'var(--p-green)' }}>open</span>}</NavLink>
@@ -52,7 +61,7 @@ export function RetailerLayout() {
             <Link to="/distribution/catalog" style={{ color: 'inherit' }}>Public catalog →</Link><br /><Link to="/account/password" style={{ color: 'inherit' }}>Change password →</Link>
           </div>
         </aside>
-        <main className="pmain"><Outlet context={{ me: data, reload }} /></main>
+        <main className="pmain">{data?.viewingAs && viewAs && <ViewAsBanner kind="retailer" name={data.retailer.name} />}<Outlet key={viewAs?.id ?? 'own'} context={{ me: data, reload }} /></main>
       </div>
     </div>
   );

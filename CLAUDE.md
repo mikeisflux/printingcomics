@@ -108,6 +108,12 @@ npm run db:studio                    # Prisma Studio
   (`POD_ADMIN_EMAIL`/`POD_ADMIN_PASSWORD`, default
   mauramariepowers@gmail.com / password) with `passwordSetAt: null`, so the
   first login is forced through `/account/setup`.
+  Staff view: an ADMIN, or STAFF holding `pod`, opens `/publisher` or
+  `/retailer` and picks who to view as (`web/src/lib/view-as.ts` keeps the
+  pick in localStorage and the API client sends it as `X-View-As-Partner` /
+  `X-View-As-Retailer`; plain download links append `?viewAs=`); the
+  server honors it only for such staff (`isPodStaff` in `routes/pod.ts`) and
+  events stay under the staff member's own name.
   Wording: it is always "publisher", never "partner", anywhere a person can
   see (the shared Prisma `Partner` model keeps its name because the
   crowdfunding API uses it). The publisher portal is `/publisher`

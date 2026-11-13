@@ -3,8 +3,9 @@
  * active shops, tiers, resale certificates, people; /:id for one shop.
  */
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ArrowLeft, Check, Ban, Undo2, Archive, UserPlus, Trash2 } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Search, Plus, ArrowLeft, Check, Ban, Undo2, Archive, UserPlus, Trash2, Eye } from 'lucide-react';
+import { setViewAs } from '../../../lib/view-as';
 import { api } from '../../../api/client';
 import { statusWord, money, dateShort, RETAILER_STATUS, type PodEvent, type PublicSettings } from '../../../lib/pod';
 import { Avatar, Drawer, Empty, Events, Kpi, Pill, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
@@ -95,6 +96,7 @@ export function PodRetailers() {
 }
 
 export function PodRetailerDetail() {
+  const navigate = useNavigate();
   const { id = '' } = useParams();
   const { data, reload } = useLoad<{ retailer: Retailer; orders: { id: string; number: string; status: string; paymentStatus: string; subtotalCents: number; totalCents: number; createdAt: string; cycle: { name: string } | null; wholesale: { tierName: string } | null; _count: { items: number } }[]; events: PodEvent[] }>(`/admin/pod/retailers/${id}`, [id]);
   const { data: st } = useLoad<{ settings: PublicSettings }>('/admin/pod/settings');
@@ -121,6 +123,7 @@ export function PodRetailerDetail() {
           {r.status === 'ACTIVE' && <button className="pbtn ghost" disabled={busy !== null} onClick={() => void act('suspend', {}, 'Suspend ordering for this shop?')}><Ban size={16} /> Suspend</button>}
           {(r.status === 'SUSPENDED' || r.status === 'ARCHIVED') && <button className="pbtn soft" disabled={busy !== null} onClick={() => void act('restore')}><Undo2 size={16} /> Restore</button>}
           {r.status !== 'ARCHIVED' && r.status !== 'PENDING' && <button className="pbtn ghost" disabled={busy !== null} onClick={() => void act('archive', {}, 'Archive this shop?')}><Archive size={16} /> Archive</button>}
+          {r.status !== 'ARCHIVED' && <button className="pbtn soft" data-testid="view-as-retailer" title="Open wholesale ordering as this shop" onClick={() => { setViewAs('retailer', { id: r.id, name: r.name }); navigate('/retailer'); }}><Eye size={16} /> View their portal</button>}
           <button className="pbtn primary" onClick={() => setEditing(true)}>Edit</button>
         </div>
       </div>

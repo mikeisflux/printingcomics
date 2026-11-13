@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { Download, FileText, RefreshCw, ShieldCheck, Upload } from 'lucide-react';
 import { api } from '../../api/client';
+import { withViewAs } from '../../lib/view-as';
 import { money, dateShort, RETURN_STATUS, CYCLE_STATUS, type PublicSettings } from '../../lib/pod';
 import { DropZone, Empty, Kpi, Pill, TonePill, errText, useFlash, useLoad } from '../../components/pod/ui';
 
@@ -92,7 +93,7 @@ export function RetailerDownloads() {
               <div className="dim" style={{ fontSize: '.8rem' }}>{c.titleCount} titles · FOC {dateShort(c.focDate)} · in store {dateShort(c.inStoreDate)}{c.myOrder ? ` · your order ${c.myOrder}` : ''}</div>
               <div className="row">
                 {c.catalogPdfUrl && <a className="pbtn primary sm" href={c.catalogPdfUrl} target="_blank" rel="noreferrer"><FileText size={14} /> Catalog PDF</a>}
-                <a className="pbtn soft sm" href={`/api${c.csvUrl}`}><Download size={14} /> Order sheet</a>
+                <a className="pbtn soft sm" href={withViewAs(`/api${c.csvUrl}`, 'retailer')}><Download size={14} /> Order sheet</a>
                 {c.orderingOpen && <Link to="/retailer/catalog" className="pbtn ghost sm">Order online</Link>}
               </div>
             </div>

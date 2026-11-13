@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/auth';
+import { isPodStaff } from '../lib/view-as';
 import { useCart } from '../store/cart';
 import { useProofCounts } from '../pages/Account';
 
@@ -507,8 +508,8 @@ function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
               <Link to="/account/proofs" onClick={onClose} className={waiting > 0 ? 'waiting' : undefined}>
                 Proofs &amp; files{waiting > 0 ? ` · ${waiting} waiting` : ''}
               </Link>
-              {user.partner && <Link to="/publisher" onClick={onClose}>Publisher portal</Link>}
-              {user.retailer && <Link to="/retailer" onClick={onClose}>Wholesale ordering</Link>}
+              {(user.partner || isPodStaff(user)) && <Link to="/publisher" onClick={onClose}>Publisher portal</Link>}
+              {(user.retailer || isPodStaff(user)) && <Link to="/retailer" onClick={onClose}>Wholesale ordering</Link>}
               {(user.role === 'ADMIN' || user.role === 'STAFF') && <Link to="/admin" onClick={onClose}>Admin</Link>}
               <button type="button" onClick={() => { void onLogout(); }}>Log out</button>
             </div>
