@@ -86,6 +86,27 @@ npm run db:studio                    # Prisma Studio
   `/order/:number?t=…&pay=1`, routes in `routes/orders.ts`), "already paid"
   with a method + reference, or a comp. `Order.source` is `"admin"` for these.
 
+- Print On Demand (`/print-on-demand`, `/partner`, `/retailer`, `/admin/pod`):
+  publishers (a `Partner` whose users carry `partnerId`) list books (`Listing`,
+  one per cover; `catalogKey` = SERIESCODE-last5(UPC)); staff review them;
+  a `CatalogCycle` publishes a snapshot (`CatalogCycleItem`) and each approved
+  listing becomes a flat-priced storefront `Product` (slug `pod-<key>`, no
+  options, no customer files); comic shops (`Retailer`, users carry
+  `retailerId`) order at MSRP × tier (`lib/pod/wholesale.ts`, mirrored in
+  `web/src/lib/wholesale.ts` — keep in step, and keep it apart from the
+  configurator engine); locking the cycle at FOC raises `ProductionOrder`s
+  (we print; print charge from `estimatePrintCost` via our own products),
+  `PurchaseOrder`s (publisher ships) and `PartnerLedgerEntry` rows;
+  `PayoutStatement`s sweep the ledger. Print PDFs are preflighted with
+  `pdfinfo` on upload (`lib/pod/preflight.ts`). Settings live in one JSON
+  blob `pod.settings` (`lib/pod/settings.ts`). Admin permissions: `pod`
+  (the section) and `preflight` (the price-free file desk,
+  `/admin/pod/preflight`); a STAFF account holding only those is a "POD
+  admin": the sidebar shows just that section and `/admin` redirects into
+  it. The seed creates one (`POD_ADMIN_EMAIL`/`POD_ADMIN_PASSWORD`, default
+  mauramariepowers@gmail.com / password) with `passwordSetAt: null`, so the
+  first login is forced through `/account/setup`.
+
 ## Configurator pricing
 
 - `server/src/lib/pricing.ts` is the authoritative pricing engine;

@@ -7,7 +7,7 @@
  */
 import { prisma } from '../../db.js';
 import { HttpError } from '../../middleware/error.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { computePricing, type PricingConfig } from '../pricing.js';
 import { getPodSettings, type PodSettings } from './settings.js';
 import { priceWholesale, type WholesaleTitle } from './wholesale.js';
@@ -116,14 +116,18 @@ export async function syncListingProduct(listingId: string): Promise<string> {
     description: descr || null,
     priceCents: l.msrpCents,
     active: l.status === 'LIVE',
-    madeToOrder: l.fulfillment === 'PRINTED_BY_US',
+    // A catalog book is bought like a stock item: a flat cover price, no
+    // options, no customer files. (The product page treats a product with
+    // no pricingConfig and no options as flat-priced.)
+    madeToOrder: false,
     trackStock: false,
+    sku: l.catalogKey,
     minQuantity: 1,
     weightGrams: l.weightOz ? Math.round(l.weightOz * 28.35) : 120,
     unitLengthIn: l.trimWidthIn ?? null,
     unitWidthIn: l.trimHeightIn ?? null,
     unitHeightIn: l.pageCount ? Math.max(0.05, l.pageCount * 0.004) : 0.1,
-    pricingConfig: { kind: 'pod', listingId: l.id, catalogKey: l.catalogKey } as Prisma.InputJsonValue,
+    pricingConfig: Prisma.DbNull,
     seoTitle: `${name} — ${l.partner.name}`,
     seoDescription: (l.synopsis || l.description || `${name} by ${l.partner.name}, printed to order.`).slice(0, 160),
   };

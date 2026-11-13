@@ -58,6 +58,7 @@ export function StoreLayout() {
           <nav>
             <NavItem label="Products" isOpen={productsOpen} onToggle={() => setProductsOpen(!productsOpen)} items={NAV_GROUPS.products} />
             <Link to="/crowdfunding">Crowdfunding</Link>
+            <Link to="/print-on-demand" className="nav-pod">Print On Demand</Link>
             <NavItem label="Resources" isOpen={resourcesOpen} onToggle={() => setResourcesOpen(!resourcesOpen)} items={NAV_GROUPS.resources} />
             <NavItem label="About" isOpen={aboutOpen} onToggle={() => setAboutOpen(!aboutOpen)} items={NAV_GROUPS.about} />
             <Link to="/contact">Contact</Link>
@@ -76,6 +77,8 @@ export function StoreLayout() {
                       {waiting} waiting
                     </Link>
                   )}
+                  {user.partner && <Link to="/partner" title={user.partner.name}>Publisher portal</Link>}
+                  {user.retailer && <Link to="/retailer" title={user.retailer.name}>Wholesale</Link>}
                   {(user.role === 'ADMIN' || user.role === 'STAFF') && (
                     <Link to="/admin">Admin</Link>
                   )}
@@ -178,6 +181,8 @@ export function StoreLayout() {
             <div>
               <h4>Other</h4>
               <ul>
+                <li><Link to="/print-on-demand">Print On Demand</Link></li>
+                <li><Link to="/print-on-demand/catalog">POD Catalog</Link></li>
                 <li><Link to="/about">About</Link></li>
                 <li><Link to="/contact">Contact</Link></li>
                 <li><Link to="/terms">Terms and Conditions</Link></li>
@@ -465,7 +470,7 @@ const NAV_GROUPS = {
 function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
   /** Where the sheet starts: just under the header, so its ✕ stays reachable. */
   top: number;
-  user: { email: string; firstName?: string | null; role: string } | null;
+  user: { email: string; firstName?: string | null; role: string; partner?: { name: string } | null; retailer?: { name: string } | null } | null;
   waiting: number;
   itemCount: number;
   onClose: () => void;
@@ -502,6 +507,8 @@ function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
               <Link to="/account/proofs" onClick={onClose} className={waiting > 0 ? 'waiting' : undefined}>
                 Proofs &amp; files{waiting > 0 ? ` · ${waiting} waiting` : ''}
               </Link>
+              {user.partner && <Link to="/partner" onClick={onClose}>Publisher portal</Link>}
+              {user.retailer && <Link to="/retailer" onClick={onClose}>Wholesale ordering</Link>}
               {(user.role === 'ADMIN' || user.role === 'STAFF') && <Link to="/admin" onClick={onClose}>Admin</Link>}
               <button type="button" onClick={() => { void onLogout(); }}>Log out</button>
             </div>
@@ -517,6 +524,7 @@ function MobileMenu({ top, user, waiting, itemCount, onClose, onLogout }: {
 
         {group('products', 'Products')}
         <Link to="/crowdfunding" className="mobile-top-link" onClick={onClose}>Crowdfunding</Link>
+        <Link to="/print-on-demand" className="mobile-top-link nav-pod" onClick={onClose}>Print On Demand</Link>
         {group('resources', 'Resources')}
         {group('about', 'About')}
         <Link to="/contact" className="mobile-top-link" onClick={onClose}>Contact</Link>

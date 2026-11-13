@@ -218,7 +218,7 @@ async function categoryPageHtml(base: string, slug: string): Promise<{ head: Pag
 }
 
 // Pages that are never for search engines.
-const NOINDEX = /^\/(admin|account|cart|checkout|order|login|register|forgot-password|reset-password|proof|upload|pay)(\/|$)/;
+const NOINDEX = /^\/(admin|account|cart|checkout|order|login|register|forgot-password|reset-password|proof|upload|pay|partner|retailer)(\/|$)/;
 
 const STATIC_META: Record<string, { title: string; description: string }> = {
   '/': { title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION },
@@ -226,6 +226,9 @@ const STATIC_META: Record<string, { title: string; description: string }> = {
   '/about': { title: `About | ${SITE_NAME}`, description: 'Printing Comics prints comics, graphic novels and trades to order for creators, publishers and crowdfunding campaigns.' },
   '/contact': { title: `Contact | ${SITE_NAME}`, description: 'Questions about a print run, a quote or an order? Get in touch with Printing Comics.' },
   '/crowdfunding': { title: `Crowdfunding Print & Fulfillment | ${SITE_NAME}`, description: 'Print and ship your Kickstarter or crowdfunded comic with Printing Comics.' },
+  '/print-on-demand': { title: `Print On Demand for Publishers & Comic Shops | ${SITE_NAME}`, description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.' },
+  '/print-on-demand/catalog': { title: `Print On Demand Catalog | ${SITE_NAME}`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.' },
+  '/print-on-demand/apply': { title: `Apply — Print On Demand | ${SITE_NAME}`, description: 'Join the Printing Comics Print On Demand programme as a publisher or a comic shop.' },
   '/resources/make-a-comic': { title: `How to Make a Comic Book | ${SITE_NAME}`, description: 'From script to print-ready files: a guide to making a comic book.' },
   '/resources/file-prep': { title: `File Prep for Comic Printing | ${SITE_NAME}`, description: 'How to set up your cover and interior PDFs for printing: bleed, trim, resolution, color.' },
   '/resources/templates': { title: `Comic Book Templates | ${SITE_NAME}`, description: 'Free print templates for standard comic, graphic novel and trading card sizes.' },

@@ -65,6 +65,22 @@ import { AdminSiteDiscounts } from './pages/admin/SiteDiscounts';
 import { AdminCoupons } from './pages/admin/Coupons';
 import { AdminReviews } from './pages/admin/Reviews';
 
+import { PrintOnDemand } from './pages/pod/PrintOnDemand';
+import { PodCatalog } from './pages/pod/PodCatalog';
+import { PodTitle } from './pages/pod/PodTitle';
+import { PodApply } from './pages/pod/PodApply';
+import { PartnerLayout, PartnerDashboard, PartnerListings, PartnerListingEdit, PartnerPurchaseOrders, PartnerStatements } from './pages/pod/PartnerPortal';
+import { RetailerLayout, RetailerDashboard, RetailerCatalog, RetailerOrders } from './pages/pod/RetailerPortal';
+import { PodLayout } from './pages/admin/pod/PodLayout';
+import { PodDashboard } from './pages/admin/pod/PodDashboard';
+import { PodListings, PodListingDetail } from './pages/admin/pod/PodListings';
+import { PodCycles, PodCycleDetail } from './pages/admin/pod/PodCycles';
+import { PodRetailers, PodRetailerDetail } from './pages/admin/pod/PodRetailers';
+import { PodProduction, PodPurchaseOrders } from './pages/admin/pod/PodProduction';
+import { PodPayouts } from './pages/admin/pod/PodPayouts';
+import { PodPreflight } from './pages/admin/pod/PodPreflight';
+import { PodSettings } from './pages/admin/pod/PodSettings';
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -107,6 +123,35 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'crowdfunding', element: <Crowdfunding /> },
+      // Print On Demand: the programme page, catalog, applications, and the
+      // publisher and retailer portals (styles/pod.css, lib/pod.ts).
+      { path: 'print-on-demand', element: <PrintOnDemand /> },
+      { path: 'print-on-demand/catalog', element: <PodCatalog /> },
+      { path: 'print-on-demand/catalog/:key', element: <PodTitle /> },
+      { path: 'print-on-demand/apply', element: <PodApply /> },
+      {
+        path: 'partner',
+        element: <PartnerLayout />,
+        children: [
+          { index: true, element: <PartnerDashboard /> },
+          { path: 'listings', element: <PartnerListings /> },
+          { path: 'listings/:id', element: <PartnerListingEdit /> },
+          { path: 'purchase-orders', element: <PartnerPurchaseOrders /> },
+          { path: 'purchase-orders/:id', element: <PartnerPurchaseOrders /> },
+          { path: 'statements', element: <PartnerStatements /> },
+          { path: 'statements/:id', element: <PartnerStatements /> },
+        ],
+      },
+      {
+        path: 'retailer',
+        element: <RetailerLayout />,
+        children: [
+          { index: true, element: <RetailerDashboard /> },
+          { path: 'catalog', element: <RetailerCatalog /> },
+          { path: 'orders', element: <RetailerOrders /> },
+          { path: 'orders/:number', element: <RetailerOrders /> },
+        ],
+      },
       { path: 'about', element: <About /> },
       { path: 'terms', element: <Terms /> },
       { path: 'contact', element: <Contact /> },
@@ -148,6 +193,24 @@ export const router = createBrowserRouter([
       { path: 'fulfillment', element: <AdminFulfillment /> },
       { path: 'security', element: <AdminSecurity /> },
       { path: 'api-keys', element: <AdminApiKeys /> },
+      {
+        path: 'pod',
+        element: <PodLayout />,
+        children: [
+          { index: true, element: <PodDashboard /> },
+          { path: 'listings', element: <PodListings /> },
+          { path: 'listings/:id', element: <PodListingDetail /> },
+          { path: 'cycles', element: <PodCycles /> },
+          { path: 'cycles/:id', element: <PodCycleDetail /> },
+          { path: 'retailers', element: <PodRetailers /> },
+          { path: 'retailers/:id', element: <PodRetailerDetail /> },
+          { path: 'production', element: <PodProduction /> },
+          { path: 'purchase-orders', element: <PodPurchaseOrders /> },
+          { path: 'payouts', element: <PodPayouts /> },
+          { path: 'preflight', element: <PodPreflight /> },
+          { path: 'settings', element: <PodSettings /> },
+        ],
+      },
       { path: 'partners', element: <AdminPartners /> },
       { path: 'partners/:id', element: <AdminPartnerDetail /> },
       { path: 'settings', element: <AdminSettings /> },

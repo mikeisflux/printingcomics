@@ -11,6 +11,8 @@ export const PERMISSIONS = [
   { key: 'marketing', label: 'Marketing', description: 'Discount codes, the site-wide sale, reviews and SEO.' },
   { key: 'partners', label: 'Partners', description: 'Partner accounts, projects and API keys.' },
   { key: 'settings', label: 'Settings', description: 'Store, payments, shipping, EasyPost, email setup, security and backups.' },
+  { key: 'pod', label: 'Print on Demand', description: 'Publisher listings, catalog cycles, retailers, production runs, purchase orders and payouts.' },
+  { key: 'preflight', label: 'Preflight', description: 'Production files for Print on Demand runs only — no prices, quantities or customer money.' },
   { key: 'users', label: 'Users & access', description: 'Create and edit accounts, roles, permissions and passwords. Admins only.' },
 ] as const;
 
@@ -37,5 +39,28 @@ export function permissionForPath(path: string): PermissionKey | null {
   if (p.startsWith('coupons') || p.startsWith('sitediscounts') || p.startsWith('reviews') || p.startsWith('seo')) return 'marketing';
   if (p.startsWith('partners') || p.startsWith('api-keys')) return 'partners';
   if (p.startsWith('settings') || p.startsWith('security')) return 'settings';
+  if (p.startsWith('pod/preflight')) return 'preflight';
+  if (p.startsWith('pod')) return 'pod';
   return null;
+}
+
+/** The areas that make up the rest of the admin (everything but Print on Demand). */
+export const GENERAL_KEYS: PermissionKey[] = PERMISSIONS.map((p) => p.key).filter((k) => k !== 'pod' && k !== 'preflight');
+
+/** A staff account whose only areas are Print on Demand and/or Preflight: it lives in /admin/pod and sees nothing else. */
+export function podOnly(user: { role: string; permissions?: string[] } | null | undefined): boolean {
+  if (!user || user.role !== 'STAFF') return false;
+  const p = user.permissions ?? [];
+  return p.length > 0 && p.every((k) => k === 'pod' || k === 'preflight');
+}
+
+/** May this account open this admin path? Preflight is also open to Print on Demand holders. */
+export function canPath(user: { role: string; permissions?: string[] } | null | undefined, path: string): boolean {
+  const needed = permissionForPath(path);
+  if (!needed) {
+    // The store dashboard is for general staff; a POD-only account is sent into its section.
+    return !podOnly(user);
+  }
+  if (needed === 'preflight') return can(user, 'preflight') || can(user, 'pod');
+  return can(user, needed);
 }

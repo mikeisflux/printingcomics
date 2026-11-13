@@ -24,6 +24,34 @@ async function main() {
   });
   console.log(`Admin user ready: ${adminEmail} (password set from ADMIN_PASSWORD env var)`);
 
+  // The Print On Demand admin: a staff account that holds only the POD and
+  // Preflight areas, so /admin opens straight into the section and nothing
+  // else of the admin shows. It signs in with a starter password and
+  // `passwordSetAt: null` forces choosing a real one on first login.
+  const podAdminEmail = (process.env.POD_ADMIN_EMAIL ?? 'mauramariepowers@gmail.com').toLowerCase();
+  const podAdminPassword = process.env.POD_ADMIN_PASSWORD ?? 'password';
+  const existingPodAdmin = await prisma.user.findUnique({ where: { email: podAdminEmail } });
+  if (!existingPodAdmin) {
+    await prisma.user.create({
+      data: {
+        email: podAdminEmail,
+        passwordHash: await bcrypt.hash(podAdminPassword, 12),
+        passwordSetAt: null,
+        firstName: 'Maura',
+        lastName: 'Powers',
+        role: 'STAFF',
+        permissions: ['pod', 'preflight'],
+        notes: 'Print On Demand admin (seeded). Must set a new password on first login.',
+      },
+    });
+    console.log(`POD admin ready: ${podAdminEmail} (starter password; reset required on first login)`);
+  } else if (existingPodAdmin.role === 'CUSTOMER') {
+    await prisma.user.update({ where: { id: existingPodAdmin.id }, data: { role: 'STAFF', permissions: ['pod', 'preflight'] } });
+    console.log(`POD admin promoted: ${podAdminEmail}`);
+  } else {
+    console.log(`POD admin already exists: ${podAdminEmail}`);
+  }
+
   const categories = [
     { slug: 'comic-books', name: 'Comic Books', description: 'Single-issue comics, soft cover, saddle-stitched.' },
     { slug: 'graphic-novels', name: 'Graphic Novels', description: 'Perfect-bound graphic novels and one-shots.' },

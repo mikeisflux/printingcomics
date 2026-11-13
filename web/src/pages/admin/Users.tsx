@@ -288,8 +288,14 @@ export function PermissionPicker({ value, onChange, disabled }: { value: string[
     <div className="perm-picker" data-testid="permission-picker">
       <div className="spread" style={{ marginBottom: '.4rem' }}>
         <label style={{ margin: 0 }}>Admin areas</label>
-        <button type="button" className="btn secondary sm" disabled={disabled} onClick={() => onChange(all ? [] : [...STAFF_GRANTABLE])}>{all ? 'Clear all' : 'Select all'}</button>
+        <span className="row" style={{ gap: '.4rem' }}>
+          <button type="button" className="btn secondary sm" disabled={disabled} title="Print on Demand + Preflight only: the account lives in /admin/pod and sees nothing else of the admin" onClick={() => onChange(['pod', 'preflight'])} data-testid="preset-pod-admin">POD admin</button>
+          <button type="button" className="btn secondary sm" disabled={disabled} onClick={() => onChange(all ? [] : [...STAFF_GRANTABLE])}>{all ? 'Clear all' : 'Select all'}</button>
+        </span>
       </div>
+      {value.length > 0 && value.every((k) => k === 'pod' || k === 'preflight') && (
+        <p className="muted" style={{ fontSize: '.82rem', margin: '0 0 .5rem' }}>POD admin: this account opens straight into Print on Demand and the rest of the admin is hidden from it.</p>
+      )}
       <div className="perm-grid">
         {PERMISSIONS.filter((p) => p.key !== 'users').map((p) => (
           <label key={p.key} className={`perm-item${value.includes(p.key) ? ' on' : ''}`}>

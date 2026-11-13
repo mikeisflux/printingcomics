@@ -120,6 +120,9 @@ export function publicPodSettings(s: PodSettings) {
     programName: s.programName,
     intro: s.intro,
     tiers: s.tiers,
+    // Our commission is a selling point for publishers, so it is public.
+    commissionBpsPrintedByUs: s.commissionBpsPrintedByUs,
+    commissionBpsPartnerShips: s.commissionBpsPartnerShips,
     retailerMinOrderCents: s.retailerMinOrderCents,
     retailerShipping: s.retailerShipping,
     retailerTerms: s.retailerTerms,

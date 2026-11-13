@@ -1,30 +1,33 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, type CurrentUser } from '../store/auth';
 import { api } from '../api/client';
 import { DialogProvider, ToastProvider } from './admin/ui';
-import { PERMISSIONS, can, permissionForPath } from '../lib/permissions';
+import { GENERAL_KEYS, PERMISSIONS, can, canPath, permissionForPath, podOnly } from '../lib/permissions';
 
 /** Counts that mean "someone is waiting on you", shown as badges in the nav. */
-interface Waiting { orders: number; inbox: number; reviews: number }
+interface Waiting { orders: number; inbox: number; reviews: number; pod: number }
 
-function useWaiting(): Waiting {
-  const [w, setW] = useState<Waiting>({ orders: 0, inbox: 0, reviews: 0 });
+function useWaiting(user: CurrentUser): Waiting {
+  const [w, setW] = useState<Waiting>({ orders: 0, inbox: 0, reviews: 0, pod: 0 });
+  const general = GENERAL_KEYS.some((k) => can(user, k));
+  const pod = can(user, 'pod');
   useEffect(() => {
     let alive = true;
     const tick = async () => {
       try {
-        const [d, r] = await Promise.all([
-          api.get<{ counts: { awaitingFulfillment: number; unreadInbox: number } }>('/admin/dashboard'),
-          api.get<{ counts: Record<string, number> }>('/admin/reviews?status=pending').catch(() => ({ counts: {} as Record<string, number> })),
+        const [d, r, p] = await Promise.all([
+          general ? api.get<{ counts: { awaitingFulfillment: number; unreadInbox: number } }>('/admin/dashboard').catch(() => null) : null,
+          general && can(user, 'marketing') ? api.get<{ counts: Record<string, number> }>('/admin/reviews?status=pending').catch(() => ({ counts: {} as Record<string, number> })) : null,
+          pod ? api.get<{ counts: { toReview: number; retailersPending: number } }>('/admin/pod/overview').catch(() => null) : null,
         ]);
-        if (alive) setW({ orders: d.counts.awaitingFulfillment, inbox: d.counts.unreadInbox, reviews: r.counts.pending ?? 0 });
+        if (alive) setW({ orders: d?.counts.awaitingFulfillment ?? 0, inbox: d?.counts.unreadInbox ?? 0, reviews: r?.counts.pending ?? 0, pod: (p?.counts.toReview ?? 0) + (p?.counts.retailersPending ?? 0) });
       } catch { /* badges are a convenience; never block the admin on them */ }
     };
     void tick();
     const t = window.setInterval(tick, 60_000);
     return () => { alive = false; window.clearInterval(t); };
-  }, []);
+  }, [general, pod, user]);
   return w;
 }
 
@@ -40,6 +43,7 @@ function Item({ to, end, badge, children }: { to: string; end?: boolean; badge?:
 export function AdminLayout() {
   const { user, loaded, load, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   useEffect(() => {
     if (!loaded) void load();
@@ -58,6 +62,12 @@ export function AdminLayout() {
     return <div style={{ padding: 40 }}>Loading…</div>;
   }
 
+  // A seeded or invited account signs in with a starter password and must
+  // choose its own before it sees anything here.
+  if (user.hasPassword === false) return <Navigate to={`/account/setup?next=${encodeURIComponent(pathname)}`} replace />;
+  // A POD admin has no store dashboard: the section is their home.
+  if (podOnly(user) && (pathname === '/admin' || pathname === '/admin/')) return <Navigate to="/admin/pod" replace />;
+
   return (
     <ToastProvider>
       <DialogProvider>
@@ -75,8 +85,8 @@ export function AdminLayout() {
 /** A staff account only sees the areas it was granted; the rest say so instead of erroring. */
 function AreaGuard({ user, children }: { user: CurrentUser; children: ReactNode }) {
   const { pathname } = useLocation();
-  const needed = permissionForPath(pathname);
-  if (!needed || can(user, needed)) return <>{children}</>;
+  if (canPath(user, pathname)) return <>{children}</>;
+  const needed = permissionForPath(pathname) ?? 'orders';
   const label = PERMISSIONS.find((p) => p.key === needed)?.label ?? needed;
   return (
     <div className="admin-card" style={{ maxWidth: 560 }} data-testid="no-access">
@@ -87,18 +97,20 @@ function AreaGuard({ user, children }: { user: CurrentUser; children: ReactNode 
 }
 
 function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
-  const waiting = useWaiting();
+  const waiting = useWaiting(user);
   const show = (key: Parameters<typeof can>[1]) => can(user, key);
+  const onlyPod = podOnly(user);
   const sales = show('orders') || show('fulfillment') || show('customers') || show('marketing');
   const catalog = show('products') || show('marketing');
   const marketing = show('email') || show('marketing');
   const partners = show('partners');
   const system = show('settings') || show('users');
+  const pod = show('pod') || show('preflight');
   return (
     <aside className="admin-side">
-      <div className="brand">Printing Comics</div>
+      <div className="brand">{onlyPod ? 'Print On Demand' : 'Printing Comics'}</div>
       <nav>
-        <Item to="/admin" end>Dashboard</Item>
+        {!onlyPod && <Item to="/admin" end>Dashboard</Item>}
 
         {sales && <div className="group">Sales</div>}
         {show('orders') && <Item to="/admin/orders" badge={waiting.orders}>Orders</Item>}
@@ -121,16 +133,27 @@ function Sidebar({ user, onLogout }: { user: CurrentUser; onLogout: () => void }
         {show('partners') && <Item to="/admin/partners">Partners</Item>}
         {show('partners') && <Item to="/admin/api-keys">API Keys</Item>}
 
+        {pod && <div className="group">Print on Demand</div>}
+        {show('pod') && <Item to="/admin/pod" end badge={waiting.pod}>Overview</Item>}
+        {show('pod') && <Item to="/admin/pod/listings">Listings</Item>}
+        {show('pod') && <Item to="/admin/pod/cycles">Catalog cycles</Item>}
+        {show('pod') && <Item to="/admin/pod/retailers">Retailers</Item>}
+        {show('pod') && <Item to="/admin/pod/production">Production</Item>}
+        {show('pod') && <Item to="/admin/pod/purchase-orders">Purchase orders</Item>}
+        {show('pod') && <Item to="/admin/pod/payouts">Payouts</Item>}
+        {(show('pod') || show('preflight')) && <Item to="/admin/pod/preflight">Preflight</Item>}
+        {show('pod') && <Item to="/admin/pod/settings">POD settings</Item>}
+
         {system && <div className="group">System</div>}
         {show('users') && <Item to="/admin/users">Users &amp; access</Item>}
         {show('settings') && <Item to="/admin/settings">Settings</Item>}
         {show('settings') && <Item to="/admin/security">Security</Item>}
       </nav>
       <div style={{ padding: '.5rem 1.5rem' }}>
-        <a href="/" style={{ color: '#ddd', fontSize: '.85rem' }}>← View the store</a>
+        <a href={onlyPod ? '/print-on-demand' : '/'} style={{ color: '#ddd', fontSize: '.85rem' }}>← {onlyPod ? 'View the programme page' : 'View the store'}</a>
       </div>
       <div style={{ marginTop: 'auto', padding: '1rem 1.5rem', borderTop: '1px solid #333' }}>
-        <div style={{ fontSize: '.8rem', color: '#aaa', overflowWrap: 'anywhere' }}>{user.email}<div style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>{user.role === 'ADMIN' ? 'Admin' : 'Staff'}</div></div>
+        <div style={{ fontSize: '.8rem', color: '#aaa', overflowWrap: 'anywhere' }}>{user.email}<div style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.05em' }}>{user.role === 'ADMIN' ? 'Admin' : onlyPod ? 'POD admin' : 'Staff'}</div></div>
         <button
           className="btn secondary sm"
           style={{ marginTop: '.5rem', width: '100%', color: '#fff', borderColor: '#fff' }}
