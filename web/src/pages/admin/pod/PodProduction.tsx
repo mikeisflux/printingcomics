@@ -53,7 +53,7 @@ export function PodProduction() {
               return (
                 <tr key={p.id} className="click" onClick={() => setParams({ status, open: p.id })}>
                   <td><b>{p.number}</b></td><td style={{ width: 44 }}><Thumb url={p.listing.coverImage?.url} title={p.listing.title} size={32} /></td>
-                  <td>{p.listing.title}{p.listing.issueNumber ? ` #${p.listing.issueNumber}` : ''}<div className="dim" style={{ fontSize: '.76rem' }}><span className="key">{p.listing.catalogKey}</span> · {p.listing.pageCount}pp · {p.listing.trimWidthIn}×{p.listing.trimHeightIn} · {p.listing.interiorColor === 'bw' ? 'B&W' : 'colour'}</div></td>
+                  <td>{p.listing.title}{p.listing.issueNumber ? ` #${p.listing.issueNumber}` : ''}<div className="dim" style={{ fontSize: '.76rem' }}><span className="key">{p.listing.catalogKey}</span> · {p.listing.pageCount}pp · {p.listing.trimWidthIn}×{p.listing.trimHeightIn} · {p.listing.interiorColor === 'bw' ? 'B&W' : 'color'}</div></td>
                   <td>{p.listing.partner.name}</td><td>{p.cycle?.name ?? '—'}</td>
                   <td className="num mono">{p.totalQty}<span className="dim"> ({p.retailerQty}+{p.partnerAddOnQty})</span></td>
                   <td className="num mono">{p.printTotalCents != null ? money(p.printTotalCents) : '—'}</td>

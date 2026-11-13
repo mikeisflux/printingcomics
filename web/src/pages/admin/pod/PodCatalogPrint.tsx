@@ -29,7 +29,7 @@ export function PodCatalogPrint() {
                 <CoverArt url={l.coverImage?.url} title={l.title} />
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.3rem' }}>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}{l.coverDescription && !/^main/i.test(l.coverDescription) ? ` — ${l.coverDescription}` : ''}</h3>
-                  <div className="dim" style={{ fontSize: '.86rem', margin: '.2rem 0 .5rem' }}>{[FORMAT_LABELS[l.format], l.pageCount ? `${l.pageCount} pages` : null, l.trimWidthIn ? `${l.trimWidthIn} × ${l.trimHeightIn} in` : null, l.interiorColor === 'bw' ? 'B&W' : 'colour', l.ageRating].filter(Boolean).join(' · ')}</div>
+                  <div className="dim" style={{ fontSize: '.86rem', margin: '.2rem 0 .5rem' }}>{[FORMAT_LABELS[l.format], l.pageCount ? `${l.pageCount} pages` : null, l.trimWidthIn ? `${l.trimWidthIn} × ${l.trimHeightIn} in` : null, l.interiorColor === 'bw' ? 'B&W' : 'color', l.ageRating].filter(Boolean).join(' · ')}</div>
                   {l.synopsis && <p style={{ margin: '0 0 .5rem', fontSize: '.95rem' }}>{l.synopsis}</p>}
                   <div className="dim" style={{ fontSize: '.84rem' }}>{[l.writer && `W: ${l.writer}`, l.artist && `A: ${l.artist}`, l.coverArtist && `CA: ${l.coverArtist}`].filter(Boolean).join(' · ')}</div>
                   <div className="row" style={{ marginTop: '.6rem', justifyContent: 'space-between' }}><span><b style={{ fontSize: '1.2rem' }}>{money(l.msrpCents)}</b> <span className="key">{l.catalogKey}</span>{l.incentiveRatio && <> · incentive {l.incentiveRatio}</>}</span>{(l.barcode?.code ?? l.upc) && <Barcode code={l.barcode?.code ?? l.upc!} height={44} />}</div>

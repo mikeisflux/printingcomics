@@ -2,7 +2,7 @@
  * Automatic checks on a listing's print PDFs, run with poppler's `pdfinfo`
  * when the file lands: it opens, page count (and divisible by 4 for an
  * interior), every page the same size, no two-page spreads, the page size
- * is the trim or the trim plus 0.125" bleed. Fonts, colour and resolution
+ * is the trim or the trim plus 0.125" bleed. Fonts, color and resolution
  * stay with a human — the result says so.
  *
  * Reasons use the same keys as the order "Request new file" list
@@ -144,6 +144,6 @@ export async function preflightPdf(pdfPath: string, spec: PreflightSpec): Promis
       checks.push({ id: 'trim', label: 'Trim size', status: 'warning', detail: 'The listing has no trim size yet, so page dimensions were not checked.' });
     }
   }
-  checks.push({ id: 'manual', label: 'Prepress review', status: 'manual', detail: 'A person confirms embedded fonts, colour setup, image resolution, flattening and that art reaches the bleed.' });
+  checks.push({ id: 'manual', label: 'Prepress review', status: 'manual', detail: 'A person confirms embedded fonts, color setup, image resolution, flattening and that art reaches the bleed.' });
   return done(pages.pageCount, sizes);
 }

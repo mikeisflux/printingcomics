@@ -1,5 +1,5 @@
 /**
- * Print On Demand programme settings — the retailer tier table, our
+ * Print On Demand program settings — the retailer tier table, our
  * commission on publisher sales, how retailer shipping is charged, and the
  * words on the public page. Stored as one JSON blob under `pod.settings` so
  * staff edit it as a whole (Admin → Print on Demand → Settings).

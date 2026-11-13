@@ -74,7 +74,7 @@ export function PodListings() {
         <div className="panel flush scroll-x">
           {rows.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No listings here" /></div> : (
             <table className="ptable">
-              <thead><tr><th><input type="checkbox" aria-label="Select all" checked={rows.length > 0 && sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((l) => l.id)) : new Set())} /></th><th></th><th>Title</th><th>Publisher</th><th>Cycle</th><th>Fulfilment</th><th className="num">Cover</th><th>Files</th><th>Status</th><th>Updated</th></tr></thead>
+              <thead><tr><th><input type="checkbox" aria-label="Select all" checked={rows.length > 0 && sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((l) => l.id)) : new Set())} /></th><th></th><th>Title</th><th>Publisher</th><th>Cycle</th><th>Fulfillment</th><th className="num">Cover</th><th>Files</th><th>Status</th><th>Updated</th></tr></thead>
               <tbody>{rows.map((l) => (
                 <tr key={l.id} className="click" onClick={() => (window.location.href = `/admin/pod/listings/${l.id}`)}>
                   <td><input type="checkbox" aria-label="Select" checked={sel.has(l.id)} onChange={() => toggleSel(l.id)} /></td>
@@ -251,7 +251,7 @@ export function PodListingDetail() {
               <dt>Cover</dt><dd>{l.coverDescription ?? '—'}{l.variantNumber ? ` (variant ${l.variantNumber})` : ''}</dd>
               <dt>UPC</dt><dd>{l.upc ?? '—'}</dd>
               <dt>Format</dt><dd>{FORMAT_LABELS[l.format]} · {l.seriesType ?? ''} {l.frequency ? `· ${l.frequency}` : ''}</dd>
-              <dt>Specs</dt><dd>{l.pageCount ?? '?'} pages · {l.trimWidthIn ?? '?'} × {l.trimHeightIn ?? '?'} in · {l.interiorColor === 'bw' ? 'B&W' : 'colour'}{l.weightOz ? ` · ${l.weightOz} oz` : ''}</dd>
+              <dt>Specs</dt><dd>{l.pageCount ?? '?'} pages · {l.trimWidthIn ?? '?'} × {l.trimHeightIn ?? '?'} in · {l.interiorColor === 'bw' ? 'B&W' : 'color'}{l.weightOz ? ` · ${l.weightOz} oz` : ''}</dd>
               <dt>Credits</dt><dd>{[l.writer && `W: ${l.writer}`, l.artist && `A: ${l.artist}`, l.coverArtist && `CA: ${l.coverArtist}`].filter(Boolean).join(' · ') || '—'}</dd>
               <dt>Rating / genres</dt><dd>{l.ageRating ?? '—'}{l.genres.length ? ` · ${l.genres.join(', ')}` : ''}</dd>
               <dt>Incentive</dt><dd>{l.incentiveRatio ? `${l.incentiveRatio}${l.incentiveQualifierKey ? ` of ${l.incentiveQualifierKey}` : ' of the main cover'}` : '—'} · {l.reorderable ? 'reorderable' : 'no reorders'}</dd>

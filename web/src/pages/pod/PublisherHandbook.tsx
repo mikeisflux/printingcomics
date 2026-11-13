@@ -1,6 +1,6 @@
 /**
  * /print-on-demand/handbook — the Printing Comics Publisher Handbook: how
- * the programme works, what we need from a publisher, file preparation
+ * the program works, what we need from a publisher, file preparation
  * (deferring to our templates and file-prep pages for the specs), the
  * catalog procedure, money, and account rules. Printable.
  */
@@ -11,7 +11,7 @@ import { money, pct, type PublicSettings } from '../../lib/pod';
 import { useLoad } from '../../components/pod/ui';
 
 export function PublisherHandbook() {
-  useSeo({ title: 'Publisher Handbook — Print On Demand — Printing Comics', description: 'How to list, submit and sell comics through the Printing Comics Print On Demand programme: policies, submissions, file preparation, catalog procedure, payouts and account rules.' });
+  useSeo({ image: '/og-print-on-demand.png', title: 'Publisher Handbook — Print On Demand — Printing Comics', description: 'How to list, submit and sell comics through the Printing Comics Print On Demand program: policies, submissions, file preparation, catalog procedure, payouts and account rules.' });
   const { data } = useLoad<{ settings: PublicSettings }>('/pod');
   const s = data?.settings;
   const top = s ? s.tiers[s.tiers.length - 1]! : null;
@@ -21,17 +21,17 @@ export function PublisherHandbook() {
       <section className="hero-dark" style={{ padding: '3rem 0 2rem' }}>
         <div className="grain" />
         <div className="container between" style={{ alignItems: 'flex-end' }}>
-          <div><div className="eyebrow rise"><Link to="/print-on-demand" style={{ textDecoration: 'none' }}>Print On Demand</Link> · Publisher handbook</div><h1 className="display-lg rise rise-1" style={{ marginTop: '.4rem' }}>The Printing Comics<br /><span className="grad-text">Publisher Handbook</span></h1><p className="lead rise rise-2" style={{ marginTop: '.75rem' }}>Everything a publisher needs to list with us, get files through preflight, sell to shops and get paid. Updated as the programme changes; the version on this page is always current.</p></div>
+          <div><div className="eyebrow rise"><Link to="/print-on-demand" style={{ textDecoration: 'none' }}>Print On Demand</Link> · Publisher handbook</div><h1 className="display-lg rise rise-1" style={{ marginTop: '.4rem' }}>The Printing Comics<br /><span className="grad-text">Publisher Handbook</span></h1><p className="lead rise rise-2" style={{ marginTop: '.75rem' }}>Everything a publisher needs to list with us, get files through preflight, sell to shops and get paid. Updated as the program changes; the version on this page is always current.</p></div>
           <button className="pbtn ghost rise rise-2" onClick={() => window.print()}><Download size={16} /> Print / save as PDF</button>
         </div>
       </section>
       <div className="container" style={{ padding: '1.5rem 1.25rem 4rem', maxWidth: 960 }}>
         <nav className="panel tight" style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '1rem' }}>
-          {[['how', '1. How it works'], ['account', '2. Your account'], ['listing', '3. Listing a title'], ['files', '4. Files & preflight'], ['barcodes', '5. Barcodes & catalog ids'], ['catalog', '6. The catalog cycle'], ['fulfilment', '7. Fulfilment options'], ['money', '8. Money & payouts'], ['returns', '9. Returns & damages'], ['rules', '10. Rules']].map(([id, l]) => <a key={id} href={`#${id}`} className="chip" style={{ textDecoration: 'none' }}>{l}</a>)}
+          {[['how', '1. How it works'], ['account', '2. Your account'], ['listing', '3. Listing a title'], ['files', '4. Files & preflight'], ['barcodes', '5. Barcodes & catalog ids'], ['catalog', '6. The catalog cycle'], ['fulfillment', '7. Fulfillment options'], ['money', '8. Money & payouts'], ['returns', '9. Returns & damages'], ['rules', '10. Rules']].map(([id, l]) => <a key={id} href={`#${id}`} className="chip" style={{ textDecoration: 'none' }}>{l}</a>)}
         </nav>
 
-        <H id="how" icon={<Printer size={22} style={{ color: 'var(--p-violet)' }} />}>1. How the programme works</H>
-        <p>Print On Demand is Printing Comics' distribution programme for independent publishers. You list a book with us; it goes into a monthly catalog; comic shops order it at wholesale; we print exactly what was ordered (or you ship it, or we ship from stock you consign to us); the books land in shops for the in-store date; you get a statement and a payout. There are no print minimums, no listing fees and no inventory to carry when we print.</p>
+        <H id="how" icon={<Printer size={22} style={{ color: 'var(--p-violet)' }} />}>1. How the program works</H>
+        <p>Print On Demand is Printing Comics' distribution program for independent publishers. You list a book with us; it goes into a monthly catalog; comic shops order it at wholesale; we print exactly what was ordered (or you ship it, or we ship from stock you consign to us); the books land in shops for the in-store date; you get a statement and a payout. There are no print minimums, no listing fees and no inventory to carry when we print.</p>
         <div className="howit" style={{ marginTop: '1rem' }}>
           <div className="hs"><b>List by the catalog date</b><span>Metadata, cover image, price, print files.</span></div>
           <div className="hs"><b>Shops order until FOC</b><span>Final order cutoff is when quantities freeze.</span></div>
@@ -51,7 +51,7 @@ export function PublisherHandbook() {
         <p>One listing per sellable cover. A variant cover is its own listing (use <em>Duplicate as variant</em> on the dashboard). Each listing needs:</p>
         <ul>
           <li><b>The book:</b> title, series, issue number, cover description, format, series code (3–6 letters), UPC.</li>
-          <li><b>Specs &amp; price:</b> cover price (shops buy at a discount off it), page count (a multiple of {s?.pageCountStep ?? 4}, {s?.minPageCount ?? 8}–{s?.maxPageCount ?? 200}), trim size, colour or black &amp; white, fulfilment method.</li>
+          <li><b>Specs &amp; price:</b> cover price (shops buy at a discount off it), page count (a multiple of {s?.pageCountStep ?? 4}, {s?.minPageCount ?? 8}–{s?.maxPageCount ?? 200}), trim size, color or black &amp; white, fulfillment method.</li>
           <li><b>Copy &amp; credits:</b> synopsis (shown to shops and readers), description, writer, artist, cover artist, genres, rating.</li>
           <li><b>Catalog &amp; rules:</b> which catalog cycle, incentive ratio for retailer-incentive covers, whether shops may reorder.</li>
           <li><b>Files:</b> a cover image for the catalog, and for titles we print a cover PDF and an interior PDF.</li>
@@ -61,7 +61,7 @@ export function PublisherHandbook() {
         <H id="files" icon={<FileCheck size={22} style={{ color: 'var(--p-violet)' }} />}>4. Files &amp; preflight</H>
         <p>Build files on our templates and follow our file-prep guide; both are the same ones every Printing Comics customer uses:</p>
         <div className="row" style={{ margin: '.5rem 0 1rem' }}><Link to="/resources/templates" className="pbtn primary sm">Print templates</Link><Link to="/resources/file-prep" className="pbtn soft sm">File prep guide</Link></div>
-        <p>The moment a PDF lands we check that it opens, is not password-protected, has the right page count (interiors a multiple of {s?.pageCountStep ?? 4}; covers four pages or a wrap), uses one page size throughout, has no two-page spreads, matches the listed trim, and carries 0.125" bleed. Failures are listed on the file with what to fix. A person then confirms fonts, colour, resolution and flattening before press. Every upload is a new version; older versions stay and can be restored from <Link to="/publisher/files">Files</Link>.</p>
+        <p>The moment a PDF lands we check that it opens, is not password-protected, has the right page count (interiors a multiple of {s?.pageCountStep ?? 4}; covers four pages or a wrap), uses one page size throughout, has no two-page spreads, matches the listed trim, and carries 0.125" bleed. Failures are listed on the file with what to fix. A person then confirms fonts, color, resolution and flattening before press. Every upload is a new version; older versions stay and can be restored from <Link to="/publisher/files">Files</Link>.</p>
 
         <H id="barcodes" icon={<BarcodeIcon size={22} style={{ color: 'var(--p-violet)' }} />}>5. Barcodes &amp; catalog ids</H>
         <p>Every cover needs its own UPC. Use your own, or take one of ours from the listing page ("Get a barcode"): we hold blocks and can reserve a batch for you. The scannable image is downloadable from the listing and from <Link to="/publisher/barcodes">Barcodes</Link>. Your catalog id is your series code plus the last five digits of the UPC (for example <span className="key">SAV-92708</span>); it is what shops type to order and it is fixed once the listing is live.</p>
@@ -74,7 +74,7 @@ export function PublisherHandbook() {
         </ul>
         <p>You pick the cycle on the listing; the dates come with it. Shops may change their order freely until FOC, so quantities you see before then are live, not final.</p>
 
-        <H id="fulfilment" icon={<Truck size={22} style={{ color: 'var(--p-violet)' }} />}>7. Fulfilment options</H>
+        <H id="fulfillment" icon={<Truck size={22} style={{ color: 'var(--p-violet)' }} />}>7. Fulfillment options</H>
         <ul>
           <li><b>Printed &amp; shipped by Printing Comics</b> — commission {s ? pct(s.commissionBpsPrintedByUs) : '5%'}; printing charged per copy at our public price.</li>
           <li><b>Shipped by the publisher</b> — commission {s ? pct(s.commissionBpsPartnerShips) : '10%'}; after FOC you get a purchase order with ship-to addresses; acknowledge it and mark it shipped in the portal.</li>

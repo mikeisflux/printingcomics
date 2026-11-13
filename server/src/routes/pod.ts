@@ -1,6 +1,6 @@
 /**
  * /api/pod — the customer-facing side of Print On Demand:
- *   public:   the programme page, the live catalog, the two application forms
+ *   public:   the program page, the live catalog, the two application forms
  *   /partner: a publisher's listings, files, purchase orders and statements
  *   /retailer: a shop's catalog at wholesale, basket preview, orders, CSV
  */
@@ -705,8 +705,8 @@ retailer.get('/orders/:number', async (req, res) => {
 retailer.post('/orders/:number/cancel', async (req, res) => {
   const o = await prisma.order.findFirst({ where: { number: req.params.number, retailerId: retailerOf(req).id }, include: { cycle: true } });
   if (!o) throw new HttpError(404, 'Order not found');
-  if (!o.cycle || !cycleOrderingOpen(o.cycle) || o.paymentStatus !== 'PENDING') throw new HttpError(400, 'This order is past FOC and cannot be cancelled online. Write to us.');
-  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: 'Cancelled by the retailer before FOC', actorName: req.session!.email } } } });
+  if (!o.cycle || !cycleOrderingOpen(o.cycle) || o.paymentStatus !== 'PENDING') throw new HttpError(400, 'This order is past FOC and cannot be canceled online. Write to us.');
+  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: 'Canceled by the retailer before FOC', actorName: req.session!.email } } } });
   const prev = ((o.wholesale ?? {}) as { creditApplied?: number }).creditApplied ?? 0;
   if (prev) await prisma.retailer.update({ where: { id: retailerOf(req).id }, data: { creditCents: { increment: prev } } });
   res.json({ ok: true });

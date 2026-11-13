@@ -50,7 +50,7 @@ export function PodPreflight() {
                   <td><b>{j.number}</b>{problems(j) > 0 && <FileWarning size={14} style={{ color: '#c81e24', marginLeft: '.4rem', verticalAlign: '-2px' }} />}</td>
                   <td>{j.listing.title}{j.listing.issueNumber ? ` #${j.listing.issueNumber}` : ''}<div className="dim" style={{ fontSize: '.76rem' }}><span className="key">{j.listing.catalogKey}</span>{j.listing.coverDescription ? ` · ${j.listing.coverDescription}` : ''}</div></td>
                   <td>{j.listing.publisher}</td>
-                  <td className="dim" style={{ fontSize: '.84rem' }}>{j.listing.pageCount}pp · {j.listing.trimWidthIn}×{j.listing.trimHeightIn}" · {j.listing.interiorColor === 'bw' ? 'B&W' : 'colour'}</td>
+                  <td className="dim" style={{ fontSize: '.84rem' }}>{j.listing.pageCount}pp · {j.listing.trimWidthIn}×{j.listing.trimHeightIn}" · {j.listing.interiorColor === 'bw' ? 'B&W' : 'color'}</td>
                   <td>{cell(j.files.find((f) => f.kind === 'cover'))}</td><td>{cell(j.files.find((f) => f.kind === 'interior'))}</td>
                   <td>{dateShort(j.deadline)} <DaysLeft to={j.deadline} /></td><td><TonePill map={PRODUCTION_STATUS} status={j.status} /></td>
                 </tr>
@@ -63,7 +63,7 @@ export function PodPreflight() {
         {job && (
           <>
             <div className="row" style={{ marginBottom: '1rem' }}><TonePill map={PRODUCTION_STATUS} status={job.status} /><span className="dim">{job.listing.title}{job.listing.issueNumber ? ` #${job.listing.issueNumber}` : ''} · {job.listing.publisher}{job.cycle ? ` · ${job.cycle.name}` : ''}{job.deadline ? ` · due ${dateShort(job.deadline)}` : ''}</span></div>
-            <dl className="spec panel tight" style={{ marginBottom: '1rem' }}><dt>Trim</dt><dd>{job.listing.trimWidthIn} × {job.listing.trimHeightIn} in (+0.125" bleed each side)</dd><dt>Pages</dt><dd>{job.listing.pageCount} interior</dd><dt>Interior</dt><dd>{job.listing.interiorColor === 'bw' ? 'Black & white' : 'Full colour'}</dd><dt>Format</dt><dd>{job.listing.format}</dd>{job.notes && <><dt>Notes</dt><dd>{job.notes}</dd></>}</dl>
+            <dl className="spec panel tight" style={{ marginBottom: '1rem' }}><dt>Trim</dt><dd>{job.listing.trimWidthIn} × {job.listing.trimHeightIn} in (+0.125" bleed each side)</dd><dt>Pages</dt><dd>{job.listing.pageCount} interior</dd><dt>Interior</dt><dd>{job.listing.interiorColor === 'bw' ? 'Black & white' : 'Full color'}</dd><dt>Format</dt><dd>{job.listing.format}</dd>{job.notes && <><dt>Notes</dt><dd>{job.notes}</dd></>}</dl>
             {job.files.map((f) => (
               <div key={f.kind} className="panel tight" style={{ marginBottom: '.75rem' }}>
                 <div className="between"><b>{f.kindLabel}</b>{f.missing ? <Pill tone="rose">Missing — publisher must upload</Pill> : <Pill tone={f.reviewStatus === 'approved' ? 'green' : f.reviewStatus === 'rejected' ? 'red' : 'amber'}>{f.reviewStatus} · v{f.version}</Pill>}</div>

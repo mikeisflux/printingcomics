@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Search, Plus, ArrowLeft, UserPlus, Trash2, Check, Ban, Undo2, Archive, Mail, Copy, Upload } from 'lucide-react';
 import { api } from '../../../api/client';
-import { money, dateShort, pct, type Listing, type PodEvent, ASSET_KINDS, BARCODE_STATUS } from '../../../lib/pod';
+import { statusWord, money, dateShort, pct, type Listing, type PodEvent, ASSET_KINDS, BARCODE_STATUS } from '../../../lib/pod';
 import { Avatar, Drawer, DropZone, Empty, Events, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
 import { useOverview } from './PodLayout';
 
@@ -39,7 +39,7 @@ function PublisherEditor({ open, onClose, initial, id, onSaved }: { open: boolea
         <div className="field span-2"><input value={f.line2} onChange={set('line2')} placeholder="Suite (optional)" aria-label="Line 2" /></div>
         <div className="field"><label>City</label><input value={f.city} onChange={set('city')} /></div>
         <div className="field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.6rem' }}><div className="field"><label>State</label><input value={f.region} onChange={set('region')} /></div><div className="field"><label>ZIP</label><input value={f.postalCode} onChange={set('postalCode')} /></div></div>
-        <div className="field"><label>Commission % <span className="dim">blank = programme default</span></label><input type="number" step="0.5" min={0} max={99} value={f.commissionBps} onChange={set('commissionBps')} /></div>
+        <div className="field"><label>Commission % <span className="dim">blank = program default</span></label><input type="number" step="0.5" min={0} max={99} value={f.commissionBps} onChange={set('commissionBps')} /></div>
         <div className="field"><label>Outside printer</label><input value={f.printerInfo} onChange={set('printerInfo')} /></div>
         <div className="field"><label>Payout method</label><select value={f.payoutMethod} onChange={set('payoutMethod')}><option value="">—</option><option value="bank">Bank transfer (ACH)</option><option value="paypal">PayPal</option><option value="check">Check</option><option value="zelle">Zelle</option><option value="other">Other</option></select></div>
         <div className="field"><label>Payout details</label><input value={f.payoutDetails} onChange={set('payoutDetails')} /></div>
@@ -93,7 +93,7 @@ export function PodPublishers() {
         <div className="panel flush">
           {!apps ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : apps.applications.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No publisher applications" body="They come from the public Print On Demand page." /></div> : (
             <table className="ptable"><thead><tr><th>Imprint</th><th>Contact</th><th>Message</th><th>Applied</th><th>Status</th><th></th></tr></thead><tbody>
-              {apps.applications.map((a) => <tr key={a.id}><td><b>{a.name}</b>{a.website && <div className="dim" style={{ fontSize: '.76rem' }}>{a.website}</div>}{a.partner && <div style={{ fontSize: '.76rem' }}><Link to={`/admin/pod/publishers/${a.partner.id}`}>→ {a.partner.name}</Link></div>}</td><td>{a.contactName}<div className="dim" style={{ fontSize: '.76rem' }}>{a.contactEmail}</div></td><td style={{ fontSize: '.84rem', whiteSpace: 'pre-wrap', maxWidth: 360 }}>{a.message}{a.reviewNotes && <div className="dim">Note: {a.reviewNotes}</div>}</td><td className="dim">{dateShort(a.createdAt)}</td><td><Pill tone={a.status === 'PENDING' ? 'amber' : a.status === 'APPROVED' ? 'green' : 'slate'}>{a.status.toLowerCase()}</Pill></td><td>{a.status === 'PENDING' && <span className="row"><button className="pbtn glow xs" disabled={busy === a.id} onClick={() => void decide(a, true)}><Check size={12} /> Approve &amp; invite</button><button className="pbtn danger xs" disabled={busy === a.id} onClick={() => void decide(a, false)}><Ban size={12} /> Decline</button></span>}</td></tr>)}
+              {apps.applications.map((a) => <tr key={a.id}><td><b>{a.name}</b>{a.website && <div className="dim" style={{ fontSize: '.76rem' }}>{a.website}</div>}{a.partner && <div style={{ fontSize: '.76rem' }}><Link to={`/admin/pod/publishers/${a.partner.id}`}>→ {a.partner.name}</Link></div>}</td><td>{a.contactName}<div className="dim" style={{ fontSize: '.76rem' }}>{a.contactEmail}</div></td><td style={{ fontSize: '.84rem', whiteSpace: 'pre-wrap', maxWidth: 360 }}>{a.message}{a.reviewNotes && <div className="dim">Note: {a.reviewNotes}</div>}</td><td className="dim">{dateShort(a.createdAt)}</td><td><Pill tone={a.status === 'PENDING' ? 'amber' : a.status === 'APPROVED' ? 'green' : 'slate'}>{statusWord(a.status)}</Pill></td><td>{a.status === 'PENDING' && <span className="row"><button className="pbtn glow xs" disabled={busy === a.id} onClick={() => void decide(a, true)}><Check size={12} /> Approve &amp; invite</button><button className="pbtn danger xs" disabled={busy === a.id} onClick={() => void decide(a, false)}><Ban size={12} /> Decline</button></span>}</td></tr>)}
             </tbody></table>
           )}
         </div>

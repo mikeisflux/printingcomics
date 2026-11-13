@@ -1,9 +1,9 @@
 /**
- * /print-on-demand — the programme's front door. Publishers list books,
+ * /print-on-demand — the program's front door. Publishers list books,
  * comic shops order them at wholesale, we print and ship each cycle.
  */
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, Store, Sparkles, Printer, Truck, HandCoins, FileCheck, Calendar, ShieldCheck } from 'lucide-react';
+import { ArrowRight, BookOpen, Store, Sparkles, Printer, Truck, HandCoins, FileCheck, Calendar, ShieldCheck, LogIn } from 'lucide-react';
 import { useSeo } from '../../lib/seo';
 import { useAuth } from '../../store/auth';
 import { money, pct, type PublicSettings } from '../../lib/pod';
@@ -18,7 +18,7 @@ interface Landing {
 }
 
 export function PrintOnDemand() {
-  useSeo({ title: 'Print On Demand for Publishers & Comic Shops — Printing Comics', description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.' });
+  useSeo({ title: 'Print On Demand for Publishers & Comic Shops — Printing Comics', description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-print-on-demand.png' });
   const { data } = useLoad<Landing>('/pod');
   const { user } = useAuth();
   const s = data?.settings;
@@ -51,7 +51,8 @@ export function PrintOnDemand() {
                 {s && <div className="st"><b className="mono">{pct(s.tiers[s.tiers.length - 1]?.discountBps ?? 5000)}</b><span>Top wholesale discount</span></div>}
               </div>
             </div>
-            <div className="glass rise rise-2" style={{ padding: '1.5rem' }}>
+            <div className="rise rise-2">
+            <div className="glass" style={{ padding: '1.5rem' }}>
               {cycle ? (
                 <>
                   <div className="between" style={{ marginBottom: '.5rem' }}>
@@ -79,6 +80,12 @@ export function PrintOnDemand() {
                 </>
               )}
             </div>
+            <div className="grid cols-2" style={{ marginTop: '1rem', gap: '.75rem' }}>
+              <Link to={user?.partner ? '/publisher' : '/login?redirect=/publisher'} className="pbtn glow" style={{ justifyContent: 'center' }} data-testid="publisher-login"><LogIn size={16} /> {user?.partner ? 'Open publisher portal' : 'Publisher login'}</Link>
+              <Link to={user?.retailer ? '/retailer' : '/login?redirect=/retailer'} className="pbtn hot" style={{ justifyContent: 'center' }} data-testid="retailer-login"><LogIn size={16} /> {user?.retailer ? 'Open wholesale ordering' : 'Retailer login'}</Link>
+            </div>
+            <p className="dim" style={{ fontSize: '.8rem', textAlign: 'center', margin: '.6rem 0 0' }}>New here? <Link to="/print-on-demand/apply?as=publisher" style={{ color: '#fff' }}>Apply as a publisher</Link> · <Link to="/print-on-demand/apply?as=retailer" style={{ color: '#fff' }}>Open a wholesale account</Link></p>
+            </div>
           </div>
         </div>
         {marquee.length > 0 && (
@@ -101,7 +108,7 @@ export function PrintOnDemand() {
             <h3>List once. Sell to every shop.</h3>
             <p>Set your cover price, upload the print files, pick a catalog. We take wholesale orders from comic shops, print to the exact count, ship, and pay you out each cycle.</p>
             <ul>
-              <li>No print minimums, no inventory, no fulfilment</li>
+              <li>No print minimums, no inventory, no fulfillment</li>
               <li>Keep {s ? `${(100 - s.commissionBpsPrintedByUs / 100).toFixed(0)}%` : '95%'} of wholesale when we print &amp; ship{s ? `, ${(100 - s.commissionBpsPartnerShips / 100).toFixed(0)}% when you ship` : ''}</li>
               <li>Automatic preflight on every PDF before it reaches the press</li>
               <li>A statement every cycle: units, wholesale, printing, your payout</li>
@@ -191,7 +198,7 @@ export function PrintOnDemand() {
           <details><summary>What does it cost a publisher to list?</summary><p>Nothing up front. We earn a commission on wholesale sales, and when we print your title the printing is charged per copy against your payout at our public price. If nothing sells, you owe nothing.</p></details>
           <details><summary>Who sets the cover price?</summary><p>You do. Shops buy at a discount off that cover price, by tier. Your payout is the wholesale total less our commission and any printing.</p></details>
           <details><summary>Can a shop change its order?</summary><p>Yes, freely, until the final order cutoff. After FOC the order is final: we print to the count and the publisher is paid on it.</p></details>
-          <details><summary>What file checks do you run?</summary><p>Every cover and interior PDF is checked for opening, page count, consistent page size, two-page spreads, trim size and bleed the moment it is uploaded. Fonts, colour and resolution are checked by a person before press.</p></details>
+          <details><summary>What file checks do you run?</summary><p>Every cover and interior PDF is checked for opening, page count, consistent page size, two-page spreads, trim size and bleed the moment it is uploaded. Fonts, color and resolution are checked by a person before press.</p></details>
           <details><summary>Do you carry inventory?</summary><p>No. Each cycle prints exactly what shops ordered plus any extra copies the publisher adds on. Publisher-shipped titles never touch our warehouse.</p></details>
           <details><summary>I already print with Printing Comics. Is this different?</summary><p>Yes. The store prints your run for you. Print On Demand sells your book to shops for you, then prints it. Many publishers do both.</p></details>
         </div>

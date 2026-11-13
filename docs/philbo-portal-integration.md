@@ -28,7 +28,7 @@ Five portals, one React app (`pod/src/App.jsx` picks a portal by role):
 | **Admin** (`AdminPortal.jsx`, 3.3k lines) | `moos` (owner) / `admin` | Review and approve solicited titles, run catalog cycles, lock FOC, import catalog CSVs, manage publishers/retailers/applications, generate Purchase Orders and Production Orders, payout statements, returns, audit log, attention queue |
 | **Publisher** (`PublisherPortal.jsx`, 2.4k) | `publisher` | Five-step title solicitation form (metadata, cover art, print files, dates, pricing), title history, sales/payout view, request extra copies |
 | **Retailer** (`RetailerPortal.jsx`, 1.6k) | `retailer` | Browse the current cycle at tiered wholesale pricing, cart/order with FOC rules, incentive-variant eligibility, CSV catalog export + order-form upload, returns, standing orders, publisher follows |
-| **POD** (`PodPortal.jsx`, 366) | `pod` (mapped to publisher UI) | Direct print ordering: comic book by page count, B&W/colour, public vs crowdfunding price table, 5% off for carrying the Philbo POD logo, resale-certificate upload |
+| **POD** (`PodPortal.jsx`, 366) | `pod` (mapped to publisher UI) | Direct print ordering: comic book by page count, B&W/color, public vs crowdfunding price table, 5% off for carrying the Philbo POD logo, resale-certificate upload |
 | **Preflight** (`PreflightPortal.jsx`) | `preflight` | Production-file review queue with a deliberately price-free job record (`production_jobs`) |
 | Public | anonymous | `/catalog` product grid + product detail, publisher/retailer/POD application forms, home page |
 
@@ -39,7 +39,7 @@ Business rules that matter (from `pod/PHILBO_MASTER_BRIEF.md`):
 - One catalog cycle = catalog date + FOC date + in-store date; publishers pick a cycle, never type dates. FOC lock freezes quantities; Admin can reopen.
 - PHILBO ID = `SERIESCODE-last5UPC`, unique, one title record per cover/SKU.
 - Incentive variants: "1:10" ratio parsed from the cover description; eligibility computed from qualifying title quantities (`incentive-variants.js`).
-- POD page-count pricing table, $2.10–$4.65 per copy depending on page count, colour and public/crowdfunding schedule (`PodPortal.jsx`).
+- POD page-count pricing table, $2.10–$4.65 per copy depending on page count, color and public/crowdfunding schedule (`PodPortal.jsx`).
 - Official documents: Purchase Order (to publisher, retailer identities hidden), Production Order (to Philbo POD), Payout Statement (immutable snapshot).
 
 ## 2. State of the code — be clear-eyed
@@ -69,11 +69,11 @@ Judged against what Printing Comics already has (configurator pricing, cart/chec
 
 | Piece | Why | Where it lives in `pod/` |
 |---|---|---|
-| **Retailer wholesale programme** — tiers, FOC cycles, incentive variants, CSV catalog + order-form upload, standing orders | This is a whole business line we do not have: selling small-press books to comic shops at 40–50% off MSRP. The ordering rules are well thought through and encoded. | `lib/retailer-order.js`, `lib/retailer-csv.js`, `lib/csv-order.js`, `lib/incentive-variants.js`, `lib/catalog-workflow.js`, `RetailerPortal.jsx`, SQL `sales_orders`, `standing_order_lines`, `validate_sales_order_*` |
+| **Retailer wholesale program** — tiers, FOC cycles, incentive variants, CSV catalog + order-form upload, standing orders | This is a whole business line we do not have: selling small-press books to comic shops at 40–50% off MSRP. The ordering rules are well thought through and encoded. | `lib/retailer-order.js`, `lib/retailer-csv.js`, `lib/csv-order.js`, `lib/incentive-variants.js`, `lib/catalog-workflow.js`, `RetailerPortal.jsx`, SQL `sales_orders`, `standing_order_lines`, `validate_sales_order_*` |
 | **Publisher solicitation + catalog cycle** — title record per SKU, PHILBO-ID-style key, review states Draft → Submitted → Changes Requested → Approved → Scheduled → Live → Archived, cycle publication snapshot | Gives creators/publishers a self-serve way to list books with us and lets us run a monthly "catalog" that feeds the storefront and the retailer side. | `PublisherPortal.jsx` form, `catalog-workflow.js`, `title-validation.js`, SQL `titles`, `catalog_cycles`, `catalog_publication_items`, `publish_catalog_cycle()` |
 | **Production job / preflight split** — a job record the preflight person sees with files, deadline and status but no prices, quantities or customer financials | Matches how we already keep costs behind /admin. A price-free "production job" view would let a prepress contractor work orders without seeing margins. | SQL `production_jobs`, `production_job_private`, `production_job_events`, `PreflightPortal.jsx` |
 | **Client-side PDF preflight** — trim/bleed/spread/page-count checks with `pdf-lib` before upload | Catches the exact reasons we send "Request new file" emails for (wrong size, no bleed, spreads, mixed sizes, page count) *before* the file reaches us. Pure function, 200 lines, no Philbo coupling. | `lib/pdf-preflight.js` |
-| **Payout statements + publisher sales ledger** — immutable statement lines, commission %, printing charges netted | Needed the moment we sell books on behalf of someone else (consignment, retailer programme, crowdfunding fulfilment). | SQL `calculate_publisher_payout`, blueprint in `docs/DATABASE_BLUEPRINT.md` |
+| **Payout statements + publisher sales ledger** — immutable statement lines, commission %, printing charges netted | Needed the moment we sell books on behalf of someone else (consignment, retailer program, crowdfunding fulfillment). | SQL `calculate_publisher_payout`, blueprint in `docs/DATABASE_BLUEPRINT.md` |
 | **Returns & credits ledger** — retailer return request → review → credit entry, never a mutable balance | Good pattern; reusable for our own store credit if we ever add it. | SQL `return_requests`, `account_credits`, `review_return_request` |
 | **Attention queue** — one list of "things an admin must look at" summarised per section | Our admin dashboard has counts; this is a nicer generalisation. | `lib/attention-center.js` |
 | **Design docs** | The brief, blueprint and architecture docs are a decent spec of a distributor, written by someone who understood the domain. Reuse as a spec, not as code. | `PHILBO_MASTER_BRIEF.md`, `docs/*.md` |
@@ -147,7 +147,7 @@ Judged against what Printing Comics already has (configurator pricing, cart/chec
 ## 6. Things to borrow even if we never build the distributor
 
 - **Preflight checks in the browser** (§5.6).
-- **Crowdfunding vs public price schedule.** Philbo charged crowdfunding fulfilment more per copy. We already distinguish partner (crowdfunding) orders via the v1 API; worth a look at whether `Partner`-scoped pricing adjustments make sense, in `pricing.ts` only.
+- **Crowdfunding vs public price schedule.** Philbo charged crowdfunding fulfillment more per copy. We already distinguish partner (crowdfunding) orders via the v1 API; worth a look at whether `Partner`-scoped pricing adjustments make sense, in `pricing.ts` only.
 - **"Attention" queue on the admin dashboard**: one list across proofs waiting, file requests open, unpaid staff orders, partner applications, reviews pending.
 - **Price-free production view** for a prepress contractor (§5.4).
 - **Logo discount**: 5% off for carrying our logo/ad — we already have the `printing_comics_ad` option; theirs is the same idea.
@@ -178,7 +178,7 @@ Judged against what Printing Comics already has (configurator pricing, cart/chec
 **Phase 4 — Partner money**
 - `PartnerLedgerEntry`, `PayoutStatement`; statements in the partner portal and admin; returns and credits.
 
-Each phase is independently shippable; Phases 1 and 2 are the ones that pay off even if the retailer programme never happens.
+Each phase is independently shippable; Phases 1 and 2 are the ones that pay off even if the retailer program never happens.
 
 ## 8. Risks
 
@@ -190,4 +190,4 @@ Each phase is independently shippable; Phases 1 and 2 are the ones that pay off 
 
 ## 9. Recommendation
 
-Do not run or deploy the PHILBO app; it is not finished and it is the wrong stack. Treat `pod/` as a **specification plus a bag of pure-logic helpers**: clean it (Phase 0), sort out rights, ship the preflight checks and the preflight view (Phase 1) inside Printing Comics now, and build the partner listing/catalog portal (Phase 2) on our own stack. Decide on the retailer wholesale programme (Phases 3–4) as a business question first; the code is the easy part.
+Do not run or deploy the PHILBO app; it is not finished and it is the wrong stack. Treat `pod/` as a **specification plus a bag of pure-logic helpers**: clean it (Phase 0), sort out rights, ship the preflight checks and the preflight view (Phase 1) inside Printing Comics now, and build the partner listing/catalog portal (Phase 2) on our own stack. Decide on the retailer wholesale program (Phases 3–4) as a business question first; the code is the easy part.

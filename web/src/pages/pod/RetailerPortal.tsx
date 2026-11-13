@@ -8,7 +8,7 @@ import { LayoutDashboard, ShoppingCart, Receipt, ArrowLeft, Store, RefreshCw, Fo
 import { api } from '../../api/client';
 import { useAuth } from '../../store/auth';
 import { useSeo } from '../../lib/seo';
-import { money, dateShort, FORMAT_LABELS, type PublicSettings } from '../../lib/pod';
+import { statusWord, money, dateShort, FORMAT_LABELS, type PublicSettings } from '../../lib/pod';
 import { priceBasket } from '../../lib/wholesale';
 import { Avatar, Countdown, CoverCard, CycleTimeline, Empty, Kpi, Pill, TierLadder, errText, useFlash, useLoad } from '../../components/pod/ui';
 
@@ -107,8 +107,8 @@ export function RetailerOrders() {
     return (
       <>
         {node}
-        <div className="ptop"><div><Link to="/retailer/orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Orders</Link><h1>{o?.number ?? '…'}</h1>{o && <div className="row" style={{ marginTop: '.4rem' }}><Pill tone={tone(o.status)}>{o.status.replace('_', ' ').toLowerCase()}</Pill>{o.cycle && <span className="dim">{o.cycle.name} · in store {dateShort(o.cycle.inStoreDate)}</span>}{o.wholesale && <Pill tone="violet">{o.wholesale.tierName}</Pill>}</div>}</div>
-          {one?.editable && <div className="row"><Link to="/retailer/catalog" className="pbtn soft">Edit the order</Link><button className="pbtn danger" onClick={async () => { if (!confirm('Cancel this order?')) return; try { await api.post(`/pod/retailer/orders/${number}/cancel`); show('Order cancelled'); await reload(); } catch (x) { show(errText(x), true); } }}>Cancel</button></div>}</div>
+        <div className="ptop"><div><Link to="/retailer/orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Orders</Link><h1>{o?.number ?? '…'}</h1>{o && <div className="row" style={{ marginTop: '.4rem' }}><Pill tone={tone(o.status)}>{statusWord(o.status)}</Pill>{o.cycle && <span className="dim">{o.cycle.name} · in store {dateShort(o.cycle.inStoreDate)}</span>}{o.wholesale && <Pill tone="violet">{o.wholesale.tierName}</Pill>}</div>}</div>
+          {one?.editable && <div className="row"><Link to="/retailer/catalog" className="pbtn soft">Edit the order</Link><button className="pbtn danger" onClick={async () => { if (!confirm('Cancel this order?')) return; try { await api.post(`/pod/retailer/orders/${number}/cancel`); show('Order canceled'); await reload(); } catch (x) { show(errText(x), true); } }}>Cancel</button></div>}</div>
         {o && (
           <div className="split">
             <div className="panel flush"><table className="ptable"><thead><tr><th>Title</th><th className="num">Cover</th><th className="num">Wholesale</th><th className="num">Qty</th><th className="num">Total</th></tr></thead><tbody>
@@ -130,7 +130,7 @@ export function RetailerOrders() {
       <div className="panel flush">
         {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.orders.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No orders yet" body="Open the catalog and rack some indie books." action={<Link to="/retailer/catalog" className="pbtn primary sm">Order the catalog</Link>} /></div> : (
           <table className="ptable"><thead><tr><th>Order</th><th>Catalog</th><th>Tier</th><th className="num">Titles</th><th className="num">Wholesale</th><th>Status</th><th>Placed</th></tr></thead><tbody>
-            {data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/retailer/orders/${o.number}`)}><td><b>{o.number}</b></td><td>{o.cycle?.name ?? '—'}</td><td>{o.wholesale?.tierName ?? '—'}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={tone(o.status)}>{o.status.replace('_', ' ').toLowerCase()}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}
+            {data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/retailer/orders/${o.number}`)}><td><b>{o.number}</b></td><td>{o.cycle?.name ?? '—'}</td><td>{o.wholesale?.tierName ?? '—'}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={tone(o.status)}>{statusWord(o.status)}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}
           </tbody></table>
         )}
       </div>

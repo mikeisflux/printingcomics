@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Plus, ArrowLeft, Rocket, Lock, Unlock, Archive, Download, Factory, FileText, Printer, Upload } from 'lucide-react';
 import { api } from '../../../api/client';
-import { money, dateShort, inputDate, CYCLE_STATUS, LISTING_STATUS, PRODUCTION_STATUS, PURCHASE_STATUS, type Cycle, type Listing, type PodEvent } from '../../../lib/pod';
+import { statusWord, money, dateShort, inputDate, CYCLE_STATUS, LISTING_STATUS, PRODUCTION_STATUS, PURCHASE_STATUS, type Cycle, type Listing, type PodEvent } from '../../../lib/pod';
 import { CycleTimeline, DaysLeft, Drawer, DropZone, Empty, Events, Kpi, Pill, StatusPill, Thumb, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
 import { useOverview } from './PodLayout';
 
@@ -146,7 +146,7 @@ export function PodCycleDetail() {
           ))}
           {tab === 'orders' && (data.orders.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No retailer orders yet" /></div> : (
             <table className="ptable"><thead><tr><th>Order</th><th>Shop</th><th>Tier</th><th className="num">Lines</th><th className="num">Wholesale</th><th>Status</th><th>Placed</th></tr></thead><tbody>
-              {data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/admin/orders/${o.id}`)}><td><b>{o.number}</b></td><td>{o.retailer?.name ?? '—'}</td><td>{o.wholesale?.tierName}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={o.status === 'CANCELLED' ? 'slate' : o.paymentStatus === 'CAPTURED' ? 'green' : 'amber'}>{o.status.toLowerCase()} · {o.paymentStatus.toLowerCase()}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}
+              {data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/admin/orders/${o.id}`)}><td><b>{o.number}</b></td><td>{o.retailer?.name ?? '—'}</td><td>{o.wholesale?.tierName}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={o.status === 'CANCELLED' ? 'slate' : o.paymentStatus === 'CAPTURED' ? 'green' : 'amber'}>{statusWord(o.status)} · {statusWord(o.paymentStatus)}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}
             </tbody></table>
           ))}
           {tab === 'production' && (data.production.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No production runs" body={c.status === 'PUBLISHED' ? 'Raised when the cycle locks at FOC.' : undefined} /></div> : (

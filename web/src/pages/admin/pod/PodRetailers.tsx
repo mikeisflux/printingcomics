@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Search, Plus, ArrowLeft, Check, Ban, Undo2, Archive, UserPlus, Trash2 } from 'lucide-react';
 import { api } from '../../../api/client';
-import { money, dateShort, RETAILER_STATUS, type PodEvent, type PublicSettings } from '../../../lib/pod';
+import { statusWord, money, dateShort, RETAILER_STATUS, type PodEvent, type PublicSettings } from '../../../lib/pod';
 import { Avatar, Drawer, Empty, Events, Kpi, Pill, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
 import { useOverview } from './PodLayout';
 
@@ -133,7 +133,7 @@ export function PodRetailerDetail() {
       </div>
       <div className="split">
         <div className="stack">
-          <div className="panel flush"><div className="panel-head" style={{ padding: '1rem 1rem 0' }}><h3>Orders</h3></div>{data.orders.length === 0 ? <p className="dim" style={{ padding: '0 1rem 1rem' }}>No orders yet.</p> : <table className="ptable"><thead><tr><th>Order</th><th>Catalog</th><th>Tier</th><th className="num">Lines</th><th className="num">Wholesale</th><th>Status</th><th>Placed</th></tr></thead><tbody>{data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/admin/orders/${o.id}`)}><td><b>{o.number}</b></td><td>{o.cycle?.name}</td><td>{o.wholesale?.tierName}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={o.status === 'CANCELLED' ? 'slate' : o.paymentStatus === 'CAPTURED' ? 'green' : 'amber'}>{o.status.toLowerCase()} · {o.paymentStatus.toLowerCase()}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}</tbody></table>}</div>
+          <div className="panel flush"><div className="panel-head" style={{ padding: '1rem 1rem 0' }}><h3>Orders</h3></div>{data.orders.length === 0 ? <p className="dim" style={{ padding: '0 1rem 1rem' }}>No orders yet.</p> : <table className="ptable"><thead><tr><th>Order</th><th>Catalog</th><th>Tier</th><th className="num">Lines</th><th className="num">Wholesale</th><th>Status</th><th>Placed</th></tr></thead><tbody>{data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/admin/orders/${o.id}`)}><td><b>{o.number}</b></td><td>{o.cycle?.name}</td><td>{o.wholesale?.tierName}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={o.status === 'CANCELLED' ? 'slate' : o.paymentStatus === 'CAPTURED' ? 'green' : 'amber'}>{statusWord(o.status)} · {statusWord(o.paymentStatus)}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}</tbody></table>}</div>
           <div className="panel"><div className="panel-head"><h3>History</h3></div><Events events={data.events} /></div>
         </div>
         <aside className="stack">

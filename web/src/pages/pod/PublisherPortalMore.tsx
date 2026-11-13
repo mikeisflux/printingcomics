@@ -225,7 +225,7 @@ export function PublisherResources() {
   const s = me?.settings;
   return (
     <>
-      <div className="ptop"><div><div className="eyebrow">Resources</div><h1>Getting your books right</h1><div className="sub">Templates, file prep, the rules of the programme, and how to reach us.</div></div></div>
+      <div className="ptop"><div><div className="eyebrow">Resources</div><h1>Getting your books right</h1><div className="sub">Templates, file prep, the rules of the program, and how to reach us.</div></div></div>
       <div className="panel accent" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}><div><div className="eyebrow">Official guide</div><h3 style={{ margin: '.2rem 0' }}>Printing Comics Publisher Handbook</h3><p className="dim tight" style={{ fontSize: '.9rem' }}>Distribution policies, title submission, file preparation, catalog procedure, money, and account rules. Always the current version.</p></div><div className="row"><Link to="/print-on-demand/handbook" className="pbtn primary sm">View handbook</Link><Link to="/print-on-demand/handbook" className="pbtn ghost sm" target="_blank">Print / PDF</Link></div></div>
       <div className="grid cols-3">
         <a className="panel" href="/resources/templates" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><FileText size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Print templates</h3><p className="dim tight" style={{ fontSize: '.9rem' }}>Trim, bleed and safe-area templates for every size we print.</p></a>

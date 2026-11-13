@@ -220,16 +220,16 @@ async function categoryPageHtml(base: string, slug: string): Promise<{ head: Pag
 // Pages that are never for search engines.
 const NOINDEX = /^\/(admin|account|cart|checkout|order|login|register|forgot-password|reset-password|proof|upload|pay|partner|publisher|retailer)(\/|$)/;
 
-const STATIC_META: Record<string, { title: string; description: string }> = {
+const STATIC_META: Record<string, { title: string; description: string; image?: string }> = {
   '/': { title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION },
   '/shop': { title: `Shop — Comics, Graphic Novels, Prints & Shipping Supplies | ${SITE_NAME}`, description: 'Custom comic book and graphic novel printing, art prints, trading cards, comic book mailers and Comic Armor shipping sleeves.' },
   '/about': { title: `About | ${SITE_NAME}`, description: 'Printing Comics prints comics, graphic novels and trades to order for creators, publishers and crowdfunding campaigns.' },
   '/contact': { title: `Contact | ${SITE_NAME}`, description: 'Questions about a print run, a quote or an order? Get in touch with Printing Comics.' },
   '/crowdfunding': { title: `Crowdfunding Print & Fulfillment | ${SITE_NAME}`, description: 'Print and ship your Kickstarter or crowdfunded comic with Printing Comics.' },
-  '/print-on-demand': { title: `Print On Demand for Publishers & Comic Shops | ${SITE_NAME}`, description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.' },
-  '/print-on-demand/catalog': { title: `Print On Demand Catalog | ${SITE_NAME}`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.' },
-  '/print-on-demand/handbook': { title: `Publisher Handbook — Print On Demand | ${SITE_NAME}`, description: 'How to list, submit and sell comics through Printing Comics Print On Demand: policies, submissions, file preparation, catalog procedure, payouts and account rules.' },
-  '/print-on-demand/apply': { title: `Apply — Print On Demand | ${SITE_NAME}`, description: 'Join the Printing Comics Print On Demand programme as a publisher or a comic shop.' },
+  '/print-on-demand': { title: `Print On Demand for Publishers & Comic Shops | ${SITE_NAME}`, description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-print-on-demand.png' },
+  '/print-on-demand/catalog': { title: `Print On Demand Catalog | ${SITE_NAME}`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.', image: '/og-print-on-demand.png' },
+  '/print-on-demand/handbook': { title: `Publisher Handbook — Print On Demand | ${SITE_NAME}`, description: 'How to list, submit and sell comics through Printing Comics Print On Demand: policies, submissions, file preparation, catalog procedure, payouts and account rules.', image: '/og-print-on-demand.png' },
+  '/print-on-demand/apply': { title: `Apply — Print On Demand | ${SITE_NAME}`, description: 'Join the Printing Comics Print On Demand programme as a publisher or a comic shop.', image: '/og-print-on-demand.png' },
   '/resources/make-a-comic': { title: `How to Make a Comic Book | ${SITE_NAME}`, description: 'From script to print-ready files: a guide to making a comic book.' },
   '/resources/file-prep': { title: `File Prep for Comic Printing | ${SITE_NAME}`, description: 'How to set up your cover and interior PDFs for printing: bleed, trim, resolution, color.' },
   '/resources/templates': { title: `Comic Book Templates | ${SITE_NAME}`, description: 'Free print templates for standard comic, graphic novel and trading card sizes.' },
@@ -262,7 +262,7 @@ export async function renderShell(req: Request, res: Response): Promise<void> {
     head = page.head; body = page.body; status = page.status;
   } else {
     const meta = STATIC_META[urlPath] ?? { title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION };
-    head = { title: meta.title, description: meta.description, canonical: base + urlPath, noindex: NOINDEX.test(urlPath), jsonLd: urlPath === '/' ? organizationJsonLd(base) : [] };
+    head = { title: meta.title, description: meta.description, canonical: base + urlPath, noindex: NOINDEX.test(urlPath), image: meta.image ?? null, jsonLd: urlPath === '/' ? organizationJsonLd(base) : [] };
   }
 
   res.status(status).type('html').send(render(shell, base, head, body));

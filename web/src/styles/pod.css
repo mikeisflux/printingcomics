@@ -386,6 +386,7 @@
 /* --- Admin section shell ------------------------------------------------- */
 .pod.pod-admin { margin: -1.5rem; padding: 0; min-height: calc(100vh - 0px); background: var(--p-paper); }
 .pod.pod-admin .deck { position: relative; padding: 1.4rem 1.75rem 0; color: var(--p-text-inv); background: var(--p-ink); overflow: hidden; }
+.pod.pod-admin .deck .subtabs { margin: 0 -1.75rem; position: relative; }
 .pod.pod-admin .deck::before { content: ''; position: absolute; inset: -40% -10% auto; height: 180%; background: radial-gradient(40% 60% at 15% 40%, rgba(124,92,255,.55), transparent 70%), radial-gradient(35% 50% at 70% 20%, rgba(34,211,238,.35), transparent 70%), radial-gradient(30% 50% at 95% 80%, rgba(255,77,141,.35), transparent 70%); filter: blur(40px); pointer-events: none; animation: pod-mesh 24s ease-in-out infinite; }
 .pod.pod-admin .deck > * { position: relative; }
 .pod.pod-admin .deck .deck-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
@@ -396,6 +397,14 @@
 .pod.pod-admin .tabs a { display: inline-flex; align-items: center; gap: .45rem; padding: .7rem .95rem; color: var(--p-text-inv-dim); font-weight: 600; font-size: .88rem; text-decoration: none; border-bottom: 3px solid transparent; white-space: nowrap; transition: color .18s ease, border-color .18s ease; }
 .pod.pod-admin .tabs a:hover { color: #fff; }
 .pod.pod-admin .tabs a.active { color: #fff; border-image: var(--p-grad) 1; border-bottom: 3px solid; }
+.pod.pod-admin .tabs.groups { gap: .4rem; flex-wrap: wrap; overflow: visible; }
+@media (max-width: 1200px) { .pod.pod-admin .tabs.groups a { font-size: .86rem; padding: .65rem .8rem; } }
+.pod.pod-admin .tabs.groups a { font-size: .92rem; padding: .75rem 1.05rem; }
+.pod.pod-admin .subtabs { display: flex; gap: .35rem; flex-wrap: wrap; padding: .6rem 1.75rem; background: rgba(255,255,255,.92); border-bottom: 1px solid var(--p-line); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 5; }
+.pod.pod-admin .subtabs a { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .8rem; border-radius: 999px; font-size: .84rem; font-weight: 600; color: var(--p-text-dim); text-decoration: none; border: 1px solid transparent; transition: all .15s ease; }
+.pod.pod-admin .subtabs a:hover { color: var(--p-text); background: var(--p-paper); }
+.pod.pod-admin .subtabs a.active { color: #fff; background: var(--p-text); box-shadow: 0 6px 14px -8px rgba(0,0,0,.5); }
+.pod.pod-admin .subtabs a .n { font-size: .66rem; font-weight: 800; padding: .05rem .4rem; border-radius: 999px; background: var(--p-magenta); color: #fff; }
 .pod.pod-admin .tabs a .n { font-size: .68rem; font-weight: 800; padding: .08rem .45rem; border-radius: 999px; background: var(--p-magenta); color: #fff; }
 .pod.pod-admin .body { padding: 1.5rem 1.75rem 3rem; }
 .pod.pod-admin .body > * { animation: pod-rise .35s cubic-bezier(.2,.7,.2,1) both; }

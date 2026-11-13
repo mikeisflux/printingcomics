@@ -31,7 +31,7 @@ export async function returnAllowance(retailerId: string, orderId: string) {
 export async function requestReturn(args: { retailerId: string; orderId: string; orderItemId: string; quantity: number; kind: 'return' | 'damage'; reason: string }, actor: Actor) {
   const item = await prisma.orderItem.findFirst({ where: { id: args.orderItemId, orderId: args.orderId, order: { retailerId: args.retailerId } }, include: { order: { select: { paymentStatus: true, status: true } }, listing: { select: { id: true, partnerId: true, title: true } } } });
   if (!item || !item.listing) throw new HttpError(404, 'That line is not on one of your orders');
-  if (item.order.status === 'CANCELLED') throw new HttpError(400, 'That order was cancelled');
+  if (item.order.status === 'CANCELLED') throw new HttpError(400, 'That order was canceled');
   if (!Number.isInteger(args.quantity) || args.quantity < 1 || args.quantity > item.quantity) throw new HttpError(400, `Enter between 1 and ${item.quantity} copies`);
   const already = await prisma.retailerReturn.aggregate({ where: { orderId: args.orderId, listingId: item.listing.id, status: { not: 'REJECTED' } }, _sum: { quantity: true } });
   if ((already._sum.quantity ?? 0) + args.quantity > item.quantity) throw new HttpError(400, `Only ${item.quantity - (already._sum.quantity ?? 0)} copies of this title can still be claimed`);

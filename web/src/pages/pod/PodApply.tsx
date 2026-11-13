@@ -16,7 +16,7 @@ const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','
 export function PodApply() {
   const [params, setParams] = useSearchParams();
   const as = params.get('as') === 'retailer' ? 'retailer' : 'publisher';
-  useSeo({ title: as === 'retailer' ? 'Open a Wholesale Account — Print On Demand' : 'Apply as a Publisher — Print On Demand', description: 'Join the Printing Comics Print On Demand programme as a publisher or a comic shop.' }, [as]);
+  useSeo({ image: '/og-print-on-demand.png', title: as === 'retailer' ? 'Open a Wholesale Account — Print On Demand' : 'Apply as a Publisher — Print On Demand', description: 'Join the Printing Comics Print On Demand program as a publisher or a comic shop.' }, [as]);
   return (
     <div className="pod">
       <section className="hero-dark" style={{ padding: '3rem 0 2rem' }}>

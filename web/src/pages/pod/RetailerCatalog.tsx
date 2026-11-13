@@ -222,13 +222,13 @@ export function RetailerCatalog() {
                   <dt>Format</dt><dd>{FORMAT_LABELS[t.format] ?? t.format}</dd>
                   {t.ageRating && <><dt>Rating</dt><dd>{t.ageRating}</dd></>}
                   <dt>Size</dt><dd>{t.trimWidthIn && t.trimHeightIn ? `${t.trimWidthIn} × ${t.trimHeightIn} in` : '—'}</dd>
-                  <dt>Pages</dt><dd>{t.pageCount ?? '—'} · {t.interiorColor === 'bw' ? 'black & white' : 'colour'}</dd>
+                  <dt>Pages</dt><dd>{t.pageCount ?? '—'} · {t.interiorColor === 'bw' ? 'black & white' : 'color'}</dd>
                   {t.writer && <><dt>Writer</dt><dd>{t.writer}</dd></>}{t.artist && <><dt>Artist</dt><dd>{t.artist}</dd></>}{t.coverArtist && <><dt>Cover artist</dt><dd>{t.coverArtist}</dd></>}
                   <dt>FOC</dt><dd>{dateShort(c?.focDate)}</dd><dt>In store</dt><dd>{dateShort(c?.inStoreDate)}</dd>
                   <dt>Catalog id</dt><dd><span className="key">{t.catalogKey}</span></dd>
                   {t.upc && <><dt>UPC</dt><dd className="mono">{t.upc}</dd></>}
                   {t.incentiveRatio && <><dt>Incentive</dt><dd>{t.incentiveRatio} per qualifying copies</dd></>}
-                  <dt>Fulfilment</dt><dd>{t.fulfillment === 'PARTNER_SHIPS' ? 'Ships from the publisher' : 'Ships from Printing Comics'} · {t.reorderable ? 'reorderable' : 'no reorders'}</dd>
+                  <dt>Fulfillment</dt><dd>{t.fulfillment === 'PARTNER_SHIPS' ? 'Ships from the publisher' : 'Ships from Printing Comics'} · {t.reorderable ? 'reorderable' : 'no reorders'}</dd>
                 </dl>
                 <div className="panel accent tight"><div className="row" style={{ justifyContent: 'space-between' }}><label className="lbl" style={{ margin: 0 }}>Quantity</label><input className="inp qty mono" type="number" min={0} value={n || ''} placeholder="0" onChange={(e) => setQ1(t.listingId, Number(e.target.value))} disabled={!c?.orderingOpen} /><b className="mono">{n ? money(unit * n) : ''}</b>{!c?.orderingOpen && <Pill tone="amber">FOC locked</Pill>}</div></div>
               </div>

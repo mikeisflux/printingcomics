@@ -8,7 +8,7 @@
  * starter password and `passwordSetAt: null`, which forces choosing a real
  * password on the first login. If the account already exists it is left
  * alone, except that a plain customer account under that email is promoted.
- * Also writes the default programme settings when none are saved yet.
+ * Also writes the default program settings when none are saved yet.
  *
  *   POD_ADMIN_EMAIL     default mauramariepowers@gmail.com
  *   POD_ADMIN_PASSWORD  default "password" (only used when creating)

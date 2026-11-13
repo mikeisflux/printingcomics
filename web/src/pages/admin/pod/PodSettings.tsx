@@ -1,5 +1,5 @@
 /**
- * /admin/pod/settings — the programme's rules: tiers, commissions, retailer
+ * /admin/pod/settings — the program's rules: tiers, commissions, retailer
  * shipping and minimum, page-count rules, the words on the public page.
  */
 import { useEffect, useState } from 'react';
@@ -27,7 +27,7 @@ export function PodSettings() {
   return (
     <>
       {node}
-      <div className="toolbar"><div><h2 className="display-md" style={{ margin: 0 }}>Programme settings</h2><div className="dim" style={{ fontSize: '.88rem' }}>Tiers and commissions apply to new orders and new FOC locks; nothing already locked changes.</div></div><button className="pbtn primary" disabled={busy} onClick={() => void save()}><Save size={16} /> {busy ? 'Saving…' : 'Save settings'}</button></div>
+      <div className="toolbar"><div><h2 className="display-md" style={{ margin: 0 }}>Program settings</h2><div className="dim" style={{ fontSize: '.88rem' }}>Tiers and commissions apply to new orders and new FOC locks; nothing already locked changes.</div></div><button className="pbtn primary" disabled={busy} onClick={() => void save()}><Save size={16} /> {busy ? 'Saving…' : 'Save settings'}</button></div>
       <div className="split">
         <div className="stack">
           <div className="panel">
@@ -52,12 +52,12 @@ export function PodSettings() {
             <div className="panel"><h3>Page counts</h3><p className="dim" style={{ fontSize: '.84rem', marginTop: 0 }}>What a listing's interior may be; preflight checks the PDF against it.</p>
               <div className="form-grid"><div className="field"><label>Multiple of</label><input className="inp mono" type="number" min={1} value={s.pageCountStep} onChange={(e) => set('pageCountStep', Number(e.target.value))} /></div><div className="field"><label>Minimum</label><input className="inp mono" type="number" min={1} value={s.minPageCount} onChange={(e) => set('minPageCount', Number(e.target.value))} /></div><div className="field"><label>Maximum</label><input className="inp mono" type="number" min={1} value={s.maxPageCount} onChange={(e) => set('maxPageCount', Number(e.target.value))} /></div></div></div>
             <div className="panel"><h3>Notifications</h3><div className="field"><label>Staff email for applications &amp; submissions</label><input className="inp" type="email" value={s.notifyEmail} onChange={(e) => set('notifyEmail', e.target.value)} placeholder="blank = the store email" /></div>
-              <label className="switch" style={{ marginTop: '1rem' }}><input type="checkbox" checked={s.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Programme open (public page shows applications)</label></div>
+              <label className="switch" style={{ marginTop: '1rem' }}><input type="checkbox" checked={s.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Program open (public page shows applications)</label></div>
           </div>
         </div>
         <div className="stack">
           <div className="panel accent"><h3>Words on the public page</h3>
-            <div className="field"><label>Programme name</label><input className="inp" value={s.programName} onChange={(e) => set('programName', e.target.value)} /></div>
+            <div className="field"><label>Program name</label><input className="inp" value={s.programName} onChange={(e) => set('programName', e.target.value)} /></div>
             <div className="field" style={{ marginTop: '.75rem' }}><label>Intro</label><textarea className="inp" rows={4} value={s.intro} onChange={(e) => set('intro', e.target.value)} /></div>
             <div className="field" style={{ marginTop: '.75rem' }}><label>Retailer terms</label><textarea className="inp" rows={4} value={s.retailerTerms} onChange={(e) => set('retailerTerms', e.target.value)} /><span className="hint">Shown on the page, in the ordering portal and on order emails.</span></div>
             <div className="field" style={{ marginTop: '.75rem' }}><label>Publisher terms</label><textarea className="inp" rows={4} value={s.publisherTerms} onChange={(e) => set('publisherTerms', e.target.value)} /></div>

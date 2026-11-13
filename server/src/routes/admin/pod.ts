@@ -1,7 +1,7 @@
 /**
  * /api/admin/pod — the Print On Demand section: publisher listings and their
  * review, catalog cycles (publish, FOC lock, reopen, close), retailers,
- * production orders, purchase orders, payouts, and the programme settings.
+ * production orders, purchase orders, payouts, and the program settings.
  * Everything here may show costs; the preflight router next door may not.
  */
 import { Router } from 'express';
@@ -865,7 +865,7 @@ router.post('/orders/:id/cancel', async (req, res) => {
   const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true, status: true, paymentStatus: true } });
   if (!o) throw new HttpError(404, 'Order not found');
   if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'Refund a paid order from the store Orders area');
-  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: body.reason ?? 'Cancelled by staff', actorName: actorOf(req).name } } } });
+  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: body.reason ?? 'Canceled by staff', actorName: actorOf(req).name } } } });
   res.json({ order: await prisma.order.findUnique({ where: { id: o.id }, select: podOrderSelect }) });
 });
 

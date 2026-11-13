@@ -29,7 +29,7 @@ export function PodCatalog() {
   const [q, setQ] = useState('');
   const [publisher, setPublisher] = useState<string>('');
   const [format, setFormat] = useState<string>('');
-  useSeo({ title: `${data?.cycle ? `${data.cycle.name} — ` : ''}Print On Demand Catalog — Printing Comics`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.' }, [data?.cycle?.name]);
+  useSeo({ image: '/og-print-on-demand.png', title: `${data?.cycle ? `${data.cycle.name} — ` : ''}Print On Demand Catalog — Printing Comics`, description: 'Independent comics and graphic novels from publishers in the Printing Comics Print On Demand catalog, available to comic shops at wholesale.' }, [data?.cycle?.name]);
 
   const publishers = useMemo(() => Array.from(new Map((data?.listings ?? []).map((l) => [l.partner.id, l.partner])).values()).sort((a, b) => a.name.localeCompare(b.name)), [data]);
   const formats = useMemo(() => Array.from(new Set((data?.listings ?? []).map((l) => l.format))), [data]);

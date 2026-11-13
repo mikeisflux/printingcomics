@@ -50,7 +50,7 @@ export function PodTitle() {
               {l.coverArtist && <><dt>Cover artist</dt><dd>{l.coverArtist}</dd></>}
               {l.pageCount && <><dt>Pages</dt><dd>{l.pageCount}</dd></>}
               {l.trimWidthIn && l.trimHeightIn && <><dt>Trim</dt><dd>{l.trimWidthIn} × {l.trimHeightIn} in</dd></>}
-              {l.interiorColor && <><dt>Interior</dt><dd>{l.interiorColor === 'bw' ? 'Black & white' : 'Full colour'}</dd></>}
+              {l.interiorColor && <><dt>Interior</dt><dd>{l.interiorColor === 'bw' ? 'Black & white' : 'Full color'}</dd></>}
               {l.genres.length > 0 && <><dt>Genres</dt><dd>{l.genres.join(', ')}</dd></>}
               <dt>Catalog id</dt><dd><span className="key">{l.catalogKey}</span></dd>
               {data?.cycle && <><dt>Catalog</dt><dd>{data.cycle.name} · FOC {dateShort(data.cycle.focDate)} · in store {dateShort(data.cycle.inStoreDate)}</dd></>}

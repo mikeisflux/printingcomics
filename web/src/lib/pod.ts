@@ -31,10 +31,10 @@ export const RETAILER_STATUS: Record<string, { label: string; tone: string }> = 
   PENDING: { label: 'Applied', tone: 'amber' }, ACTIVE: { label: 'Active', tone: 'green' }, SUSPENDED: { label: 'Suspended', tone: 'rose' }, ARCHIVED: { label: 'Archived', tone: 'slate' },
 };
 export const PRODUCTION_STATUS: Record<string, { label: string; tone: string }> = {
-  PLANNED: { label: 'Planned', tone: 'slate' }, FILES_NEEDED: { label: 'Files needed', tone: 'rose' }, PREFLIGHT: { label: 'In preflight', tone: 'amber' }, APPROVED: { label: 'Approved for press', tone: 'teal' }, IN_PRODUCTION: { label: 'On press', tone: 'violet' }, DONE: { label: 'Done', tone: 'green' }, CANCELLED: { label: 'Cancelled', tone: 'slate' },
+  PLANNED: { label: 'Planned', tone: 'slate' }, FILES_NEEDED: { label: 'Files needed', tone: 'rose' }, PREFLIGHT: { label: 'In preflight', tone: 'amber' }, APPROVED: { label: 'Approved for press', tone: 'teal' }, IN_PRODUCTION: { label: 'On press', tone: 'violet' }, DONE: { label: 'Done', tone: 'green' }, CANCELLED: { label: 'Canceled', tone: 'slate' },
 };
 export const PURCHASE_STATUS: Record<string, { label: string; tone: string }> = {
-  DRAFT: { label: 'Draft', tone: 'slate' }, SENT: { label: 'Sent', tone: 'amber' }, ACKNOWLEDGED: { label: 'Acknowledged', tone: 'teal' }, FULFILLED: { label: 'Shipped', tone: 'green' }, CANCELLED: { label: 'Cancelled', tone: 'slate' },
+  DRAFT: { label: 'Draft', tone: 'slate' }, SENT: { label: 'Sent', tone: 'amber' }, ACKNOWLEDGED: { label: 'Acknowledged', tone: 'teal' }, FULFILLED: { label: 'Shipped', tone: 'green' }, CANCELLED: { label: 'Canceled', tone: 'slate' },
 };
 export const STATEMENT_STATUS: Record<string, { label: string; tone: string }> = {
   DRAFT: { label: 'Draft', tone: 'slate' }, ISSUED: { label: 'Issued', tone: 'amber' }, PAID: { label: 'Paid', tone: 'green' }, VOID: { label: 'Void', tone: 'rose' },
@@ -100,9 +100,13 @@ export function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 }
 
-/** A stable hue per name so publishers and shops keep their colour everywhere. */
+/** A stable hue per name so publishers and shops keep their color everywhere. */
 export function hueOf(s: string) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
   return h;
 }
+
+/** An order or payment status as a word on screen (American spelling). */
+export const STATUS_WORDS: Record<string, string> = { PENDING: 'pending', PAID: 'paid', IN_PRODUCTION: 'in production', SHIPPED: 'shipped', DELIVERED: 'delivered', CANCELLED: 'canceled', REFUNDED: 'refunded', AUTHORIZED: 'authorized', CAPTURED: 'paid', FAILED: 'failed' };
+export const statusWord = (s: string) => STATUS_WORDS[s] ?? s.toLowerCase().replace(/_/g, ' ');
