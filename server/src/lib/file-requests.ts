@@ -12,6 +12,7 @@ import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { PRINT_FILE_LABELS, printFileInstructions, expectedPagesFor, printFileKindsFor, isPrintFileKind, rejectItemPrintFile, type PrintFileKind } from './print-files.js';
 import { itemLabel, itemTitle, proofToken } from './proofs.js';
+import { trimSpecFor } from './print-specs.js';
 import { ensureCustomerAccount, magicLink } from './customer-accounts.js';
 import { storeName, baseUrl, esc, btn, wrap, trySend, type EmailResult } from './proof-emails.js';
 
@@ -190,7 +191,7 @@ export async function renderFileRequestEmail(requestIds: string[]): Promise<{ to
       </ul>
       ${r.note ? `<blockquote style="border-left:3px solid #C61A22;margin:.5rem 0 .75rem;padding:.25rem 1rem;color:#333">${esc(r.note)}</blockquote>` : ''}
       <p style="margin:.25rem 0"><strong>What to send:</strong></p>
-      <ul style="padding-left:1.1rem;margin:.25rem 0;color:#333">${printFileInstructions(kind, expected).map((l) => `<li style="margin:.25rem 0">${esc(l)}</li>`).join('')}</ul>`;
+      <ul style="padding-left:1.1rem;margin:.25rem 0;color:#333">${printFileInstructions(kind, expected, trimSpecFor(item)).map((l) => `<li style="margin:.25rem 0">${esc(l)}</li>`).join('')}</ul>`;
   }).join('');
 
   const templateBox = template

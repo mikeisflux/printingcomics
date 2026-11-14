@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { PRINT_FILE_KIND_BY_OPTION_KEY, PRINT_FILE_LABELS, formatFileSize, printFileInstructions, printFileSummary, uploadWithProgress } from '../lib/print-files';
+import { PRINT_FILE_KIND_BY_OPTION_KEY, PRINT_FILE_LABELS, UploadError, formatFileSize, printFileInstructions, printFileSummary, trimSpecFor, uploadWithProgress } from '../lib/print-files';
 
 interface UploadOpt {
   id: string;
@@ -10,7 +10,7 @@ interface UploadOpt {
   longDescription?: string | null;
 }
 
-interface Uploaded { url: string; filename: string; size?: number; pages?: number | null }
+interface Uploaded { url: string; filename: string; size?: number; pages?: number | null; pageSize?: string | null }
 
 /**
  * The configurator's upload control. A print-file slot (the Cover PDF, the
@@ -21,11 +21,15 @@ interface Uploaded { url: string; filename: string; size?: number; pages?: numbe
  * The option's value is the uploaded file's URL (several, one per line, for
  * the older control) — that is what the cart and the order carry.
  */
-export function UploadOption({ opt, value, onChange, productId, expectedPages, label }: {
+export function UploadOption({ opt, value, onChange, productId, product, printSize, expectedPages, label }: {
   opt: UploadOpt;
   value: string | number | boolean | undefined;
   onChange: (v: string) => void;
   productId?: string;
+  /** The product, so the slot can say (and the server can check) the page size its files must be. */
+  product?: { slug?: string | null; name?: string | null; pricingConfig?: unknown } | null;
+  /** An art print's chosen size (the print_size option), which sets its page size. */
+  printSize?: string | null;
   /** For the Interior PDF: the page count picked, which the file must match. */
   expectedPages?: number | null;
   /** Rendered above the control when the caller has its own heading. */
@@ -33,8 +37,9 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
 }) {
   const key = opt.internalKey ?? opt.id;
   const kind = PRINT_FILE_KIND_BY_OPTION_KEY[key] ?? null;
+  const spec = trimSpecFor(product, printSize);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<{ message: string; templateUrl?: string | null; templateLabel?: string | null } | null>(null);
   const [progress, setProgress] = useState(0);
   const [known, setKnown] = useState<Record<string, Uploaded>>({});
   const urls = typeof value === 'string' && value ? value.split('\n').map((s) => s.trim()).filter(Boolean) : [];
@@ -50,6 +55,7 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
       if (kind) {
         fd.append('kind', kind);
         if (kind === 'interior' && expectedPages) fd.append('expectedPages', String(expectedPages));
+        if (printSize) fd.append('print_size', printSize);
       }
       const body = await uploadWithProgress<{ files?: Uploaded[]; url?: string; filename?: string; pages?: number | null }>('/api/uploads/customer', fd, setProgress);
       const uploaded: Uploaded[] = Array.isArray(body.files) ? body.files : body.url ? [{ url: body.url, filename: body.filename ?? body.url, pages: body.pages ?? null }] : [];
@@ -57,7 +63,8 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
       setKnown((m) => { const next = { ...m }; for (const u of uploaded) next[u.url] = u; return next; });
       onChange(single ? uploaded[0]!.url : [...urls, ...uploaded.map((u) => u.url)].join('\n'));
     } catch (e: any) {
-      setErr(e?.message ?? 'Upload failed. Please try again.');
+      const d = e instanceof UploadError ? e.details : null;
+      setErr({ message: e?.message ?? 'Upload failed. Please try again.', templateUrl: d?.templateUrl ?? null, templateLabel: d?.templateLabel ?? null });
     } finally {
       setBusy(false);
     }
@@ -81,7 +88,7 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
           </div>
         )}
         <ul style={{ margin: '.5rem 0 .75rem', paddingLeft: '1.1rem', fontSize: '.85rem', lineHeight: 1.5 }}>
-          {printFileInstructions(kind, expectedPages ?? null).map((line, i) => <li key={i}>{line}</li>)}
+          {printFileInstructions(kind, expectedPages ?? null, spec).map((line, i) => <li key={i}>{line}</li>)}
         </ul>
         {current ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', flexWrap: 'wrap', fontSize: '.9rem' }}>
@@ -90,6 +97,7 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
               {info?.filename ?? 'Uploaded PDF'}
             </a>
             {info?.pages ? <span className="muted">{info.pages} page{info.pages === 1 ? '' : 's'}</span> : null}
+            {info?.pageSize ? <span className="muted" title="Every page measured at upload">· {info.pageSize} ✓</span> : null}
             {info?.size ? <span className="muted">· {formatFileSize(info.size)}</span> : null}
             <label className="btn secondary" style={{ padding: '.2rem .6rem', fontSize: '.8rem', cursor: busy ? 'wait' : 'pointer' }}>
               {busy ? `Uploading… ${progress}%` : 'Replace'}
@@ -112,7 +120,18 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
             <input type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { void send(e.target.files, true); e.currentTarget.value = ''; }} />
           </label>
         )}
-        {err && <div className="error" style={{ marginTop: '.5rem' }}>{err}</div>}
+        {err && (
+          <div className="error" style={{ marginTop: '.5rem' }} data-testid="print-file-error">
+            {err.message}
+            {err.templateUrl && (
+              <div style={{ marginTop: '.4rem' }}>
+                <a href={err.templateUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 700 }}>Download the {err.templateLabel ?? 'template'}</a>
+                {' · '}
+                <a href="/resources/templates" target="_blank" rel="noreferrer">How to use it</a>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -147,7 +166,7 @@ export function UploadOption({ opt, value, onChange, productId, expectedPages, l
         </ul>
       )}
       {opt.longDescription && <p className="muted" style={{ fontSize: '.8rem', margin: '.4rem 0 0' }}>{opt.longDescription}</p>}
-      {err && <div className="error" style={{ marginTop: '.5rem' }}>{err}</div>}
+      {err && <div className="error" style={{ marginTop: '.5rem' }}>{err.message}</div>}
     </div>
   );
 }

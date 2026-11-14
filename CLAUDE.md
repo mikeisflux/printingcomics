@@ -80,6 +80,15 @@ npm run db:studio                    # Prisma Studio
   `pruneSupersededPrintFiles` (run on upload and when staff open the order)
   tidies older orders. The item's upload option is cleared with the file so the
   backfill cannot link it back.
+- Every customer print PDF is measured on upload (`server/src/lib/print-specs.ts`,
+  called from `checkPrintPdf` in `lib/print-files.ts` for both the cart upload
+  and account re-uploads): each page must be the product's trim plus 0.125"
+  bleed on every side (Standard Comic 6.875 × 10.5 in), upright and not a
+  spread; books carry the trim in the product slug, art prints in the chosen
+  `print_size`. A miss is a 400 whose `details` name the measured size, the
+  expected size and the template; the account path also writes "Upload
+  refused" to the order timeline. `web/src/lib/print-files.ts` mirrors the
+  table so the slot can say the exact size up front — keep the two in step.
 - Staff-placed orders (`/admin/orders/new`) go through `server/src/lib/manual-order.ts`:
   the same pricing engine, packer and coupon rules as checkout, plus a per-line
   price override. Payment is a pay link (the customer pays on

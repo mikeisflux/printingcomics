@@ -197,7 +197,7 @@ router.post('/:number/items/:itemId/files', requireAuth, customerUpload.single('
   const result = await storeItemPrintFile({ orderItemId: item.id, kind, file, uploaderId: req.session!.sub, via: 'account' });
   const refreshed = await prisma.orderItem.findUniqueOrThrow({
     where: { id: item.id },
-    include: { product: { select: { slug: true, pricingConfig: true, madeToOrder: true } }, files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } } },
+    include: { product: { select: { slug: true, name: true, pricingConfig: true, madeToOrder: true } }, files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } } },
   });
   const open = await prisma.mediaRequest.count({ where: { order: { number: String(req.params.number) }, status: 'open' } });
   res.json({ ok: true, file: result.file, printFiles: printFileSlotsFor(refreshed), openRequests: open });
@@ -213,7 +213,7 @@ router.delete('/:number/items/:itemId/files/:fileId', requireAuth, async (req, r
   await removeItemPrintFile({ orderItemId: item.id, fileId: String(req.params.fileId), via: 'account' });
   const refreshed = await prisma.orderItem.findUniqueOrThrow({
     where: { id: item.id },
-    include: { product: { select: { slug: true, pricingConfig: true, madeToOrder: true } }, files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } } },
+    include: { product: { select: { slug: true, name: true, pricingConfig: true, madeToOrder: true } }, files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } } },
   });
   const open = await prisma.mediaRequest.count({ where: { order: { number: String(req.params.number) }, status: 'open' } });
   res.json({ ok: true, printFiles: printFileSlotsFor(refreshed), openRequests: open });

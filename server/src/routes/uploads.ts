@@ -8,6 +8,7 @@ import { prisma } from '../db.js';
 import { publishUpload } from '../lib/storage.js';
 import { HttpError } from '../middleware/error.js';
 import { checkPrintPdf, isPrintFileKind, PRINT_FILE_KIND_BY_OPTION_KEY } from '../lib/print-files.js';
+import { inches, trimSpecFor } from '../lib/print-specs.js';
 
 const router = Router();
 
@@ -51,20 +52,28 @@ router.post('/customer', upload.any(), async (req, res) => {
   const expectedRaw = Number(req.body?.expectedPages);
   const expectedPages = kind === 'cover' ? 4 : kind === 'interior' && Number.isFinite(expectedRaw) && expectedRaw > 0 ? expectedRaw : null;
   const pagesByPath = new Map<string, number | null>();
+  const sizeByPath = new Map<string, string>();
   if (kind) {
     if (files.length !== 1) {
       await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => undefined)));
       throw new HttpError(400, 'Upload one PDF here.');
     }
+    // The page size the product's template calls for: books by their slug,
+    // art prints by the size picked in the configurator (sent as print_size).
+    const product = productId ? await prisma.product.findUnique({ where: { id: productId }, select: { slug: true, name: true, pricingConfig: true } }) : null;
+    const printSize = typeof req.body?.print_size === 'string' ? req.body.print_size : undefined;
+    const spec = product ? trimSpecFor({ product, options: printSize ? { print_size: printSize } : {} }) : null;
     try {
-      pagesByPath.set(files[0]!.path, (await checkPrintPdf(files[0]!, kind, expectedPages, 'cart')).pages);
+      const checked = await checkPrintPdf(files[0]!, kind, expectedPages, 'cart', spec);
+      pagesByPath.set(files[0]!.path, checked.pages);
+      if (checked.sizeIn) sizeByPath.set(files[0]!.path, inches(checked.sizeIn));
     } catch (e) {
       await fs.unlink(files[0]!.path).catch(() => undefined);
       throw e;
     }
   }
 
-  const created: Array<{ id: string; url: string; filename: string; size: number; mimeType: string; pages: number | null }> = [];
+  const created: Array<{ id: string; url: string; filename: string; size: number; mimeType: string; pages: number | null; pageSize: string | null }> = [];
   for (const f of files) {
     const stored = await publishUpload({
       subdir: CUSTOMER_SUBDIR,
@@ -81,7 +90,7 @@ router.post('/customer', upload.any(), async (req, res) => {
         size: f.size,
         url: stored.url,
         folder: '/customer-uploads',
-        tags: ['customer-upload', ...(productId ? [`product:${productId}`] : []), ...(optionKey ? [`option:${optionKey}`] : []), ...(kind ? [`kind:${kind}`] : []), ...(pagesByPath.get(f.path) ? [`pages:${pagesByPath.get(f.path)}`] : [])],
+        tags: ['customer-upload', ...(productId ? [`product:${productId}`] : []), ...(optionKey ? [`option:${optionKey}`] : []), ...(kind ? [`kind:${kind}`] : []), ...(pagesByPath.get(f.path) ? [`pages:${pagesByPath.get(f.path)}`] : []), ...(sizeByPath.get(f.path) ? [`size:${sizeByPath.get(f.path)}`] : [])],
         uploaderId: req.session?.sub,
       },
     });
@@ -92,6 +101,7 @@ router.post('/customer', upload.any(), async (req, res) => {
       size: f.size,
       mimeType: f.mimetype,
       pages: pagesByPath.get(f.path) ?? null,
+      pageSize: sizeByPath.get(f.path) ?? null,
     });
   }
 

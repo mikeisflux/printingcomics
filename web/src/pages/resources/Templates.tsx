@@ -117,20 +117,27 @@ export function Templates() {
       <Section id="choose" title="Choosing the right size">
         <p>Not sure which format fits your project? Here's how creators usually pick.</p>
         <SpecTable
-          headers={['Format', 'Trim size', 'Best for']}
+          headers={['Format', 'Trim size', 'Page size with bleed', 'Best for']}
           rows={[
-            ['A5', '5.8 × 8.3 in', 'Digests, manga-style volumes, zines'],
-            ['Standard Comic', '6.625 × 10.25 in', 'Traditional single issues and floppies'],
-            ['Magazine', '8 × 10.5 in', 'Prestige formats, anthologies, art-forward books'],
-            ['US Letter', '8.5 × 11 in', 'Full-size collections, sketchbooks, art books'],
-            ['Art Print', '11 × 17 in', 'Posters, pin-ups and tabloid prints'],
-            ['Trading Card', '2.5 × 3.5 in', 'Collector cards — two pages, front and back'],
+            ['A5', '5.8 × 8.3 in', '6.05 × 8.55 in', 'Digests, manga-style volumes, zines'],
+            ['Standard Comic', '6.625 × 10.25 in', '6.875 × 10.5 in', 'Traditional single issues and floppies'],
+            ['Magazine', '8 × 10.5 in', '8.25 × 10.75 in', 'Prestige formats, anthologies, art-forward books'],
+            ['US Letter', '8.5 × 11 in', '8.75 × 11.25 in', 'Full-size collections, sketchbooks, art books'],
+            ['Art Print', '11 × 17 in', '11.25 × 17.25 in', 'Posters, pin-ups and tabloid prints'],
+            ['Trading Card', '2.5 × 3.5 in', '2.75 × 3.75 in', 'Collector cards — two pages, front and back'],
           ]}
         />
         <p className="muted" style={{ fontSize: '.9rem' }}>
           Interior page counts must be a multiple of 4 for saddle-stitch and a multiple of 2 for perfect (glue) binding.
           See <Link to="/resources/file-prep">File Prep</Link> for the full binding rules.
         </p>
+        <Callout kind="info" title="Every upload is measured against this table">
+          When you upload a Cover PDF, an Interior PDF or print artwork, we read every page the moment it lands. Each
+          page must be exactly the <strong>page size with bleed</strong> for the size you ordered — the trim plus
+          0.125&Prime; on every side. A file at the bare trim size, a spread, a page turned sideways, pages of mixed
+          sizes, or a page padded out with crop marks is refused on the spot, and the message tells you the size we
+          measured, the size we need and which template to use. Build on the template and it clears first time.
+        </Callout>
       </Section>
 
       <Section id="best-practices" title="Template best practices">

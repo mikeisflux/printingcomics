@@ -325,7 +325,7 @@ export function Product() {
         {/* Title input (non-sectioned) */}
         {nonSectionOpts.map((opt) => (
           <div key={opt.id} style={{ marginTop: '1rem' }}>
-            <OptionControl opt={opt} value={selections[keyOf(opt)]} onChange={(v) => setSel(keyOf(opt), v)} productId={product.id} expectedPages={keyOf(opt) === 'interior_pdf' ? (Number(selections['interior_pages']) || null) : null} />
+            <OptionControl opt={opt} value={selections[keyOf(opt)]} onChange={(v) => setSel(keyOf(opt), v)} productId={product.id} expectedPages={keyOf(opt) === 'interior_pdf' ? (Number(selections['interior_pages']) || null) : null} product={product} printSize={typeof selections['print_size'] === 'string' ? selections['print_size'] : null} />
           </div>
         ))}
 
@@ -371,6 +371,7 @@ export function Product() {
                           value={selections[keyOf(opt)]}
                           onChange={(v) => setSel(keyOf(opt), v)}
                           productId={product.id} expectedPages={keyOf(opt) === 'interior_pdf' ? (Number(selections['interior_pages']) || null) : null}
+                          product={product} printSize={typeof selections['print_size'] === 'string' ? selections['print_size'] : null}
                         />
                       </div>
                     ))}
@@ -519,7 +520,7 @@ export function Product() {
 /* ------------------------------------------------------------------ */
 
 function OptionControl({
-  opt, value, onChange, productId, expectedPages,
+  opt, value, onChange, productId, expectedPages, product, printSize,
 }: {
   opt: ProductOption;
   value: string | number | boolean | undefined;
@@ -527,6 +528,8 @@ function OptionControl({
   productId?: string;
   /** For the Interior PDF: the page count picked, which the file must match. */
   expectedPages?: number | null;
+  product?: { slug?: string | null; name?: string | null; pricingConfig?: unknown } | null;
+  printSize?: string | null;
 }) {
   const label = (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: '.75rem', marginBottom: '.5rem', flexWrap: 'wrap' }}>
@@ -610,7 +613,7 @@ function OptionControl({
         </div>
       );
     case 'UPLOAD':
-      return <UploadOption opt={opt} value={value} onChange={onChange} productId={productId} expectedPages={expectedPages} />;
+      return <UploadOption opt={opt} value={value} onChange={onChange} productId={productId} expectedPages={expectedPages} product={product} printSize={printSize} />;
     case 'CONFIRM':
       return (
         <div>

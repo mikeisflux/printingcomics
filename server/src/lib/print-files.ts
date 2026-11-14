@@ -10,15 +10,19 @@
  *              order's page count. No covers.
  * A print (art print, trading card) needs ONE: artwork.
  *
- * Uploads are checked with poppler (page count) before they are accepted, so
- * a 22-page interior for a 24-page book, or a cover with the interior pasted
- * in, is refused with a message that says exactly what to fix.
+ * Uploads are checked with poppler before they are accepted — the page count,
+ * and every page's size against the product's template (lib/print-specs.ts:
+ * trim plus 0.125" bleed on every side) — so a 22-page interior for a
+ * 24-page book, a cover with the interior pasted in, or a Standard Comic
+ * file exported at Letter size is refused with a message that says exactly
+ * what to fix.
  */
 import { promises as fs } from 'node:fs';
 import { prisma } from '../db.js';
 import { HttpError } from '../middleware/error.js';
 import { proofKindsForItem, itemLabel } from './proofs.js';
 import { pageCount, popplerProblem } from './pdf-preview.js';
+import { BLEED_IN, describeSizeRefusal, inches, inspectPrintPdf, pageSizeFor, trimSpecFor, type TrimSpec } from './print-specs.js';
 import { publishUpload, deleteStored } from './storage.js';
 import { notifyStaff } from './proof-emails.js';
 
@@ -41,24 +45,32 @@ export function isPrintFileKind(v: unknown): v is PrintFileKind {
   return v === 'cover' || v === 'interior' || v === 'artwork';
 }
 
+/** "6.875 × 10.5 in (the Standard Comic trim of 6.625 × 10.25 in plus 0.125″ bleed on every side)" */
+export function pageSizeSentence(spec: TrimSpec): string {
+  return `${inches(pageSizeFor(spec))} — the ${spec.label} trim of ${inches({ w: spec.trimW, h: spec.trimH })} plus ${BLEED_IN}″ bleed on every side`;
+}
+
 /** What the customer is told next to each upload spot. */
-export function printFileInstructions(kind: PrintFileKind, expectedPages: number | null): string[] {
+export function printFileInstructions(kind: PrintFileKind, expectedPages: number | null, spec?: TrimSpec | null): string[] {
+  const size = spec ? `Every page ${pageSizeSentence(spec)}. A file at any other size is refused on upload.` : null;
   switch (kind) {
     case 'cover':
       return [
         'One PDF with exactly 4 pages, in this order: 1 front cover · 2 inside front cover · 3 inside back cover · 4 back cover.',
         'No interior pages in this file. If nothing prints on a page (an inside cover, say), leave it blank — it still counts as a page.',
-        'Trim size of the book plus 0.125″ bleed on every side, CMYK, fonts embedded or outlined.',
+        size ?? 'Trim size of the book plus 0.125″ bleed on every side.',
+        'Single upright pages, CMYK, fonts embedded or outlined.',
       ];
     case 'interior':
       return [
         `One PDF with ${expectedPages ? `all ${expectedPages}` : 'every'} interior page${expectedPages === 1 ? '' : 's'} in reading order — every page between the inside front cover and the inside back cover.`,
         'Do not include the front cover, inside covers or back cover. They go in the Cover PDF.',
-        'Single pages, not spreads. Trim size plus 0.125″ bleed, CMYK, fonts embedded or outlined.',
+        size ?? 'Trim size plus 0.125″ bleed on every side.',
+        'Single pages, not spreads. CMYK, fonts embedded or outlined.',
       ];
     case 'artwork':
       return [
-        'One print-ready PDF at the ordered size, with 0.125″ bleed on every side.',
+        size ? `One print-ready PDF. ${size}` : 'One print-ready PDF at the ordered size, with 0.125″ bleed on every side.',
         'CMYK, 300 DPI, flattened, fonts embedded or outlined.',
       ];
   }
@@ -98,19 +110,43 @@ export async function checkPrintPdf(
   kind: PrintFileKind,
   expectedPages: number | null,
   where: 'cart' | 'order',
-): Promise<{ pages: number | null }> {
+  spec: TrimSpec | null = null,
+): Promise<{ pages: number | null; sizeIn: { w: number; h: number } | null }> {
   const label = PRINT_FILE_LABELS[kind];
   const name = file.originalname;
   const isPdf = file.mimetype === 'application/pdf' || /\.pdf$/i.test(name);
   if (!isPdf) {
     throw new HttpError(400, `The ${label} must be a PDF — “${name}” is ${describeType(file)}. Export it as a PDF (PDF/X-1a or PDF/X-4 is ideal) and upload that.`);
   }
-  if (await popplerProblem()) return { pages: null };
+  if (await popplerProblem()) return { pages: null, sizeIn: null };
   let pages: number;
   try {
     pages = await pageCount(file.path);
   } catch {
     throw new HttpError(400, `We could not open “${name}” as a PDF. Re-export it from your design app (PDF/X-1a or PDF/X-4 is ideal) and try again.`);
+  }
+  // Every page measured against the template size for this product.
+  let sizeIn: { w: number; h: number } | null = null;
+  if (spec) {
+    let inspection: Awaited<ReturnType<typeof inspectPrintPdf>>;
+    try {
+      inspection = await inspectPrintPdf(file.path, kind, spec);
+    } catch {
+      throw new HttpError(400, `We could not read the pages of “${name}”. Re-export it from your design app (PDF/X-1a or PDF/X-4 is ideal) and try again.`);
+    }
+    sizeIn = inspection.sizeIn;
+    if (inspection.problems.length) {
+      throw new HttpError(400, describeSizeRefusal({ fileLabel: label, fileName: name, spec, inspection }), {
+        code: 'page_size',
+        reasons: inspection.problems.map((p) => p.reason),
+        expected: inspection.expected,
+        measured: inspection.sizeIn,
+        trim: { label: spec.label, w: spec.trimW, h: spec.trimH, bleedIn: BLEED_IN },
+        templateUrl: spec.template?.path ?? null,
+        templateLabel: spec.template?.label ?? null,
+        templatesPage: '/resources/templates',
+      });
+    }
   }
   if (kind === 'cover' && pages !== 4) {
     throw new HttpError(400, `The ${label} must have exactly 4 pages — front cover, inside front cover, inside back cover, back cover — and “${name}” has ${pages}. ${pages > 4 ? 'Interior pages belong in the Interior PDF.' : 'Add a blank page for any cover side that prints nothing.'}`);
@@ -122,7 +158,18 @@ export async function checkPrintPdf(
     const alt = where === 'cart' ? 'or change the page count above' : 'or contact us to change the page count on this order';
     throw new HttpError(400, `The ${label} must have ${expectedPages} pages to match the ${expectedPages} interior pages ordered, and “${name}” has ${pages}. ${fix}, ${alt}.`);
   }
-  return { pages };
+  return { pages, sizeIn };
+}
+
+/** "24 pages · 6.875 × 10.5 in" — what the file row remembers about the file. */
+export function fileNotes(pages: number | null, sizeIn: { w: number; h: number } | null): string | null {
+  const parts = [pages ? `${pages} page${pages === 1 ? '' : 's'}` : null, sizeIn ? inches(sizeIn) : null].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+function sizeFromNotes(notes: string | null): string | null {
+  const m = notes?.match(/(\d+(?:\.\d+)?) × (\d+(?:\.\d+)?) in/);
+  return m ? `${m[1]} × ${m[2]} in` : null;
 }
 
 export interface PrintFileSlot {
@@ -130,15 +177,17 @@ export interface PrintFileSlot {
   label: string;
   expectedPages: number | null;
   instructions: string[];
+  /** The page size this slot's file must be, when the product tells us. */
+  pageSize: { label: string; w: number; h: number; trimW: number; trimH: number; templateUrl: string | null } | null;
   /** The current file in this slot (the newest upload), if any. */
-  file: { id: string; mediaFileId: string; name: string; size: number; url: string; pages: number | null; uploadedAt: Date } | null;
+  file: { id: string; mediaFileId: string; name: string; size: number; url: string; pages: number | null; pageSize: string | null; uploadedAt: Date } | null;
   /** Earlier uploads into this slot, newest first. */
   previous: number;
 }
 
 type SlotItem = {
   options?: unknown;
-  product?: { slug?: string | null; pricingConfig?: unknown; madeToOrder?: boolean | null } | null;
+  product?: { slug?: string | null; name?: string | null; pricingConfig?: unknown; madeToOrder?: boolean | null } | null;
   files?: Array<{ id: string; purpose: string | null; notes: string | null; createdAt: Date; media: { id: string; originalName: string; size: number; url: string } }>;
 };
 
@@ -149,6 +198,8 @@ function pagesFromNotes(notes: string | null): number | null {
 
 /** The slots a line has, each with its current file. */
 export function printFileSlotsFor(item: SlotItem): PrintFileSlot[] {
+  const spec = trimSpecFor(item);
+  const size = spec ? pageSizeFor(spec) : null;
   return printFileKindsFor(item).map((kind) => {
     const expectedPages = expectedPagesFor(kind, item);
     const mine = (item.files ?? []).filter((f) => f.purpose === kind).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -157,8 +208,9 @@ export function printFileSlotsFor(item: SlotItem): PrintFileSlot[] {
       kind,
       label: PRINT_FILE_LABELS[kind],
       expectedPages,
-      instructions: printFileInstructions(kind, expectedPages),
-      file: cur ? { id: cur.id, mediaFileId: cur.media.id, name: cur.media.originalName, size: cur.media.size, url: cur.media.url, pages: pagesFromNotes(cur.notes), uploadedAt: cur.createdAt } : null,
+      instructions: printFileInstructions(kind, expectedPages, spec),
+      pageSize: spec && size ? { label: spec.label, w: size.w, h: size.h, trimW: spec.trimW, trimH: spec.trimH, templateUrl: spec.template?.path ?? null } : null,
+      file: cur ? { id: cur.id, mediaFileId: cur.media.id, name: cur.media.originalName, size: cur.media.size, url: cur.media.url, pages: pagesFromNotes(cur.notes), pageSize: sizeFromNotes(cur.notes), uploadedAt: cur.createdAt } : null,
       previous: Math.max(0, mine.length - 1),
     };
   });
@@ -188,7 +240,7 @@ export async function storeItemPrintFile(args: {
     where: { id: args.orderItemId },
     include: {
       order: { select: { id: true, number: true, status: true } },
-      product: { select: { slug: true, pricingConfig: true, madeToOrder: true } },
+      product: { select: { slug: true, name: true, pricingConfig: true, madeToOrder: true } },
     },
   });
   if (!item) throw new HttpError(404, 'Order line not found');
@@ -204,10 +256,15 @@ export async function storeItemPrintFile(args: {
 
   const expectedPages = expectedPagesFor(args.kind, item);
   let pages: number | null;
+  let sizeIn: { w: number; h: number } | null;
   try {
-    ({ pages } = await checkPrintPdf(args.file, args.kind, expectedPages, 'order'));
+    ({ pages, sizeIn } = await checkPrintPdf(args.file, args.kind, expectedPages, 'order', trimSpecFor(item)));
   } catch (e) {
     await fs.unlink(args.file.path).catch(() => undefined);
+    // The refusal is part of the order's story: staff see what was tried and why it bounced.
+    if (e instanceof HttpError && e.status === 400) {
+      await prisma.orderStatusEvent.create({ data: { orderId: item.order.id, kind: 'status', message: `Upload refused — ${PRINT_FILE_LABELS[args.kind]} for ${itemLabel(item)} (${args.file.originalname}) via ${args.via}: ${e.message}` } }).catch(() => undefined);
+    }
     throw e;
   }
 
@@ -219,14 +276,14 @@ export async function storeItemPrintFile(args: {
     data: {
       filename: args.file.filename, originalName: args.file.originalname, mimeType: args.file.mimetype, size: args.file.size,
       url: stored.url, folder: '/customer-uploads', uploaderId: args.uploaderId ?? undefined,
-      tags: ['customer-upload', `order:${item.order.number}`, `kind:${args.kind}`, ...(pages ? [`pages:${pages}`] : [])],
+      tags: ['customer-upload', `order:${item.order.number}`, `kind:${args.kind}`, ...(pages ? [`pages:${pages}`] : []), ...(sizeIn ? [`size:${inches(sizeIn)}`] : [])],
     },
   });
   const row = await prisma.orderItemFile.create({
-    data: { orderItemId: item.id, mediaFileId: media.id, purpose: args.kind, notes: pages ? `${pages} pages` : null },
+    data: { orderItemId: item.id, mediaFileId: media.id, purpose: args.kind, notes: fileNotes(pages, sizeIn) },
   });
   const label = PRINT_FILE_LABELS[args.kind];
-  const what = `${label} for ${itemLabel(item)}: ${args.file.originalname}${pages ? ` (${pages} pages)` : ''}`;
+  const what = `${label} for ${itemLabel(item)}: ${args.file.originalname}${pages ? ` (${pages} pages${sizeIn ? `, ${inches(sizeIn)}` : ''})` : ''}`;
   await prisma.orderStatusEvent.create({ data: { orderId: item.order.id, kind: 'status', message: `Customer uploaded ${what} via ${args.via}` } });
   await notifyStaff(item.order.id, `${label} uploaded — order ${item.order.number}`, `The customer uploaded a ${what} on order ${item.order.number}.`);
   // The new file is the spot's only file now: whatever it replaced is deleted.
@@ -234,7 +291,7 @@ export async function storeItemPrintFile(args: {
   await autoFulfilMediaRequests(item.order.id);
 
   return {
-    file: { id: row.id, mediaFileId: media.id, name: media.originalName, size: media.size, url: media.url, pages, uploadedAt: row.createdAt },
+    file: { id: row.id, mediaFileId: media.id, name: media.originalName, size: media.size, url: media.url, pages, pageSize: sizeIn ? inches(sizeIn) : null, uploadedAt: row.createdAt },
     pages,
   };
 }
@@ -360,7 +417,7 @@ async function orderSlots(orderId: string) {
   const items = await prisma.orderItem.findMany({
     where: { orderId },
     include: {
-      product: { select: { slug: true, pricingConfig: true, madeToOrder: true } },
+      product: { select: { slug: true, name: true, pricingConfig: true, madeToOrder: true } },
       files: { include: { media: { select: { id: true, originalName: true, size: true, url: true } } } },
     },
   });

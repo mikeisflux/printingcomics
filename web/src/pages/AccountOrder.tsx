@@ -18,7 +18,8 @@ export interface PrintFileSlot {
   label: string;
   expectedPages: number | null;
   instructions: string[];
-  file: { id: string; name: string; size: number; url: string; pages: number | null; uploadedAt: string } | null;
+  pageSize: { label: string; w: number; h: number; trimW: number; trimH: number; templateUrl: string | null } | null;
+  file: { id: string; name: string; size: number; url: string; pages: number | null; pageSize: string | null; uploadedAt: string } | null;
   previous: number;
 }
 
@@ -158,7 +159,7 @@ function SlotCard({ orderNumber, item, slot, request, onChange }: {
       {slot.file && (
         <div style={{ fontSize: '.9rem' }}>
           <a href={slot.file.url} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{slot.file.name}</a>
-          <span className="muted"> · {slot.file.pages ? `${slot.file.pages} page${slot.file.pages === 1 ? '' : 's'} · ` : ''}{formatFileSize(slot.file.size)} · {fmtDate(slot.file.uploadedAt)}</span>
+          <span className="muted"> · {slot.file.pages ? `${slot.file.pages} page${slot.file.pages === 1 ? '' : 's'} · ` : ''}{slot.file.pageSize ? `${slot.file.pageSize} ✓ · ` : ''}{formatFileSize(slot.file.size)} · {fmtDate(slot.file.uploadedAt)}</span>
           {slot.previous > 0 && <span className="muted"> · replaces {slot.previous} earlier upload{slot.previous === 1 ? '' : 's'}</span>}
         </div>
       )}

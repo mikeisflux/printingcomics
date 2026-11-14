@@ -743,6 +743,8 @@ export function CategoryConfigure() {
                         : undefined
                     }
                   expectedPages={keyOf(opt) === 'interior_pdf' ? (Number(selections['interior_pages']) || null) : null}
+                      product={product}
+                      printSize={typeof selections['print_size'] === 'string' ? selections['print_size'] : null}
                     />
                 </div>
               ))}
@@ -785,7 +787,7 @@ function ConfigSection({ title, subtitle, defaultOpen, children }: { title: stri
   );
 }
 
-function OptionField({ opt, value, onChange, deltas, productId, expectedPages }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string | number | boolean) => void; deltas?: Map<string, number>; productId?: string; expectedPages?: number | null }) {
+function OptionField({ opt, value, onChange, deltas, productId, expectedPages, product, printSize }: { opt: ProductOption; value: string | number | boolean | undefined; onChange: (v: string | number | boolean) => void; deltas?: Map<string, number>; productId?: string; expectedPages?: number | null; product?: { slug?: string | null; name?: string | null; pricingConfig?: unknown } | null; printSize?: string | null }) {
   // Price shown next to a value: the list-price delta vs. the cheapest choice.
   const priceTag = (valueLabel: string): string => {
     const d = deltas?.get(valueLabel) ?? 0;
@@ -918,7 +920,7 @@ function OptionField({ opt, value, onChange, deltas, productId, expectedPages }:
         </label>
       );
     case 'UPLOAD':
-      return <UploadOption opt={opt} value={value} onChange={onChange} productId={productId} expectedPages={expectedPages} />;
+      return <UploadOption opt={opt} value={value} onChange={onChange} productId={productId} expectedPages={expectedPages} product={product} printSize={printSize} />;
     default:
       return null;
   }
