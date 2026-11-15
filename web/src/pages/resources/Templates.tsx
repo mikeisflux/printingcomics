@@ -104,7 +104,7 @@ export function Templates() {
             { title: 'Run backgrounds and edge art out to the bleed', body: <>Anything that should reach the edge of the printed page must extend to the red bleed line, not stop at the trim.</> },
             { title: 'Keep the important stuff in the safe area', body: <>Dialogue, captions, titles, page numbers and key faces belong inside the blue safe line so trimming can never clip them.</> },
             { title: 'Hide or delete the guide layer before export', body: <>The guides are for you, not the press. Turn that layer off (or delete it) so it never prints.</> },
-            { title: 'Export to our file spec', body: <>Flatten, convert to CMYK, and export a print-ready PDF. Full details on the <Link to="/resources/file-prep">File Prep</Link> page.</> },
+            { title: 'Export to our file spec', body: <>Flatten, keep it in RGB (no CMYK conversion), and export a print-ready PDF. Full details on the <Link to="/resources/file-prep">File Prep</Link> page.</> },
           ]}
         />
         <Callout kind="warn" title="Don't move or resize the page">

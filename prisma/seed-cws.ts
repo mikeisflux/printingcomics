@@ -426,7 +426,7 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
             required: true,
             sortOrder: 42,
             helpText: 'One PDF, exactly 4 pages: front cover, inside front cover, inside back cover, back cover.',
-            longDescription: 'One PDF with exactly 4 pages, in this order: front cover, inside front cover, inside back cover, back cover. No interior pages. Trim size plus 0.125″ bleed on every side, CMYK, fonts embedded or outlined.',
+            longDescription: 'One PDF with exactly 4 pages, in this order: front cover, inside front cover, inside back cover, back cover. No interior pages. Trim size plus 0.125″ bleed on every side, RGB (sRGB) — not CMYK — fonts embedded or outlined.',
           },
           {
             name: 'Interior PDF',
@@ -436,7 +436,7 @@ async function buildProduct(args: BuildArgs, size: SizeData, categoryId: string)
             required: true,
             sortOrder: 43,
             helpText: 'One PDF with every interior page in reading order — no covers. The page count must match the one ordered.',
-            longDescription: 'One PDF with every interior page in reading order — every page between the inside front cover and the inside back cover, as many pages as ordered. Do not include the front cover, inside covers or back cover; they go in the Cover PDF. Single pages, not spreads. Trim size plus 0.125″ bleed, CMYK, fonts embedded or outlined.',
+            longDescription: 'One PDF with every interior page in reading order — every page between the inside front cover and the inside back cover, as many pages as ordered. Do not include the front cover, inside covers or back cover; they go in the Cover PDF. Single pages, not spreads. Trim size plus 0.125″ bleed, RGB (sRGB) — not CMYK — fonts embedded or outlined.',
           },
           {
             name: 'File Prep Checklist Confirmation',
@@ -663,8 +663,8 @@ async function buildSubstrateProduct(def: SubstrateDef, categoryId: string) {
         { name: 'PDF proof before printing', internalKey: 'pdf_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 38, helpText: 'Free — we email a PDF proof to approve before anything prints.' },
         { name: 'Hard-copy proof before printing', internalKey: 'hard_copy_proof', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 39, helpText: 'A single printed proof shipped to you first. Adds the price of one print plus a $19.95 proof & shipping fee.' },
         { name: 'Is this a reorder?', internalKey: 'is_reorder', section: 'Finalize Setup', type: 'TOGGLE' as const, required: false, sortOrder: 41 },
-        { name: 'Print-ready PDF', internalKey: 'upload', section: 'Finalize Setup', type: 'UPLOAD' as const, required: true, sortOrder: 42, helpText: 'One print-ready PDF at the ordered size with 0.125″ bleed on every side.', longDescription: 'One print-ready PDF at the ordered size, with 0.125″ bleed on every side. CMYK, 300 DPI, flattened, fonts embedded or outlined.' },
-        { name: 'File Prep Checklist Confirmation', internalKey: 'file_prep_ok', section: 'Finalize Setup', type: 'CONFIRM' as const, required: true, sortOrder: 43, longDescription: 'I confirm my art matches the selected print size at 300 DPI with 0.125" bleed, CMYK, flattened and print-ready. Files are reviewed in prepress; I will be contacted if corrections are needed.' },
+        { name: 'Print-ready PDF', internalKey: 'upload', section: 'Finalize Setup', type: 'UPLOAD' as const, required: true, sortOrder: 42, helpText: 'One print-ready PDF at the ordered size with 0.125″ bleed on every side.', longDescription: 'One print-ready PDF at the ordered size, with 0.125″ bleed on every side. RGB (sRGB) — not CMYK — 300 ppi, flattened, fonts embedded or outlined.' },
+        { name: 'File Prep Checklist Confirmation', internalKey: 'file_prep_ok', section: 'Finalize Setup', type: 'CONFIRM' as const, required: true, sortOrder: 43, longDescription: 'I confirm my art matches the selected print size at 300 ppi with 0.125" bleed, in RGB (not CMYK), flattened and print-ready. Files are reviewed in prepress; I will be contacted if corrections are needed.' },
       ],
     },
   };

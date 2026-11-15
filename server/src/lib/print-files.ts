@@ -61,19 +61,19 @@ export function printFileInstructions(kind: PrintFileKind, expectedPages: number
         'One PDF with exactly 4 pages, in this order: 1 front cover · 2 inside front cover · 3 inside back cover · 4 back cover.',
         'No interior pages in this file. If nothing prints on a page (an inside cover, say), leave it blank — it still counts as a page.',
         size ?? 'Trim size of the book plus 0.125″ bleed on every side.',
-        'Single upright pages, CMYK, fonts embedded or outlined.',
+        'Single upright pages, RGB (sRGB) — not CMYK — fonts embedded or outlined.',
       ];
     case 'interior':
       return [
         `One PDF with ${expectedPages ? `all ${expectedPages}` : 'every'} interior page${expectedPages === 1 ? '' : 's'} in reading order — every page between the inside front cover and the inside back cover.`,
         'Do not include the front cover, inside covers or back cover. They go in the Cover PDF.',
         size ?? 'Trim size plus 0.125″ bleed on every side.',
-        'Single pages, not spreads. CMYK, fonts embedded or outlined.',
+        'Single pages, not spreads. RGB (sRGB) — not CMYK — fonts embedded or outlined.',
       ];
     case 'artwork':
       return [
         size ? `One print-ready PDF. ${size}` : 'One print-ready PDF at the ordered size, with 0.125″ bleed on every side.',
-        'CMYK, 300 DPI, flattened, fonts embedded or outlined.',
+        'RGB (sRGB) — not CMYK — 300 ppi, flattened, fonts embedded or outlined.',
       ];
   }
 }
@@ -118,14 +118,14 @@ export async function checkPrintPdf(
   const name = file.originalname;
   const isPdf = file.mimetype === 'application/pdf' || /\.pdf$/i.test(name);
   if (!isPdf) {
-    throw new HttpError(400, `The ${label} must be a PDF — “${name}” is ${describeType(file)}. Export it as a PDF (PDF/X-1a or PDF/X-4 is ideal) and upload that.`);
+    throw new HttpError(400, `The ${label} must be a PDF — “${name}” is ${describeType(file)}. Export it as a PDF (a flattened PDF/X-3 export in RGB is ideal) and upload that.`);
   }
   if (await popplerProblem()) return { pages: null, sizeIn: null };
   let pages: number;
   try {
     pages = await pageCount(file.path);
   } catch {
-    throw new HttpError(400, `We could not open “${name}” as a PDF. Re-export it from your design app (PDF/X-1a or PDF/X-4 is ideal) and try again.`);
+    throw new HttpError(400, `We could not open “${name}” as a PDF. Re-export it from your design app (a flattened PDF/X-3 export in RGB is ideal) and try again.`);
   }
   // Every page measured against the template size for this product.
   let sizeIn: { w: number; h: number } | null = null;
@@ -134,7 +134,7 @@ export async function checkPrintPdf(
     try {
       inspection = await inspectPrintPdf(file.path, kind, spec);
     } catch {
-      throw new HttpError(400, `We could not read the pages of “${name}”. Re-export it from your design app (PDF/X-1a or PDF/X-4 is ideal) and try again.`);
+      throw new HttpError(400, `We could not read the pages of “${name}”. Re-export it from your design app (a flattened PDF/X-3 export in RGB is ideal) and try again.`);
     }
     sizeIn = inspection.sizeIn;
     if (inspection.problems.length) {
@@ -157,7 +157,7 @@ export async function checkPrintPdf(
   try {
     content = await inspectPdfContent(file.path);
   } catch {
-    throw new HttpError(400, `We could not read the inside of “${name}”. Re-export it from your design app (PDF/X-1a or PDF/X-4 is ideal) and try again.`);
+    throw new HttpError(400, `We could not read the inside of “${name}”. Re-export it from your design app (a flattened PDF/X-3 export in RGB is ideal) and try again.`);
   }
   if (content.problems.length) {
     throw new HttpError(400, describeContentRefusal(label, name, content.problems), {

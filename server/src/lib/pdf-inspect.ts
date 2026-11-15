@@ -20,7 +20,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import zlib from 'node:zlib';
 
-export type ContentReason = 'transparency' | 'masks' | 'page_wrappers' | 'low_resolution' | 'image_format' | 'fonts' | 'pdf_version' | 'corrupted';
+export type ContentReason = 'transparency' | 'masks' | 'page_wrappers' | 'low_resolution' | 'image_format' | 'fonts' | 'pdf_version' | 'corrupted' | 'color_mode';
 export interface ContentProblem { reason: ContentReason; detail: string }
 export interface ContentInspection {
   problems: ContentProblem[];
@@ -354,11 +354,20 @@ export async function inspectPdfContent(pdfPath: string): Promise<ContentInspect
     problems.push({ reason: 'pdf_version', detail: `The file is PDF ${version}. Export as PDF/X-1a:2003 (PDF 1.3 or 1.4), which has no transparency by definition.` });
   }
 
-  // --- the object dictionaries: transparency, masks ---
+  // --- the object dictionaries: transparency, masks, CMYK and spot color ---
   const s = await readStructure(pdfPath);
   let softMasks = 0; let groups = 0; let alphaObjs = 0; let stencils = 0; let imageMasks = 0;
+  let cmykObjs = 0; let spotObjs = 0;
   const blendModes = new Map<string, number>();
-  for (const { text } of s.dictTexts) {
+  // The PDF/X output intent names a press profile; that one CMYK profile is not content.
+  const outputProfiles = new Set<number>();
+  for (const { text } of s.dictTexts) for (const m of text.matchAll(/\/DestOutputProfile\s+(\d+)\s+\d+\s+R/g)) outputProfiles.add(Number(m[1]));
+  for (const { num, text } of s.dictTexts) {
+    const iccProfile = /\/N\s+\d/.test(text) && /\/Alternate\b/.test(text) && !/\/Subtype\s*\/Image\b/.test(text);
+    if (iccProfile) {
+      if (/\/N\s+4\b/.test(text) && !outputProfiles.has(num)) cmykObjs++;
+    } else if (/\/DeviceCMYK\b/.test(text)) cmykObjs++;
+    if (/\/Separation\b|\/DeviceN\b/.test(text) && !/\/Type\s*\/OutputIntent\b/.test(text)) spotObjs++;
     if (/\/SMask(?![A-Za-z])\s*(?!\/None\b)(?:\d+\s+\d+\s+R|<<)/.test(text)) softMasks++;
     if (/\/S\s*\/Transparency\b/.test(text)) groups++;
     for (const bm of text.matchAll(/\/BM\s*(\/[A-Za-z]+|\[[^\]]*\])/g)) {
@@ -379,6 +388,22 @@ export async function inspectPdfContent(pdfPath: string): Promise<ContentInspect
     if (blendModes.size) bits.push(`blend mode ${[...blendModes.keys()].join('/')} on ${plural([...blendModes.values()].reduce((a, b) => a + b, 0), 'object')}`);
     if (alphaObjs) bits.push(`opacity below 100% on ${plural(alphaObjs, 'object')}`);
     problems.push({ reason: 'transparency', detail: `Live transparency: ${bits.join(', ')}. Flatten before export so every page is plain painted content.` });
+  }
+  // Content streams: CMYK fills and strokes (the k / K operators) and the cs/CS of a CMYK space.
+  let cmykOps = 0;
+  const pageObjsForColor = pageObjects(s);
+  for (const page of pageObjsForColor) {
+    const content = await pageContent(s, page);
+    if (!content) continue;
+    const hits = content.match(/(?:[-\d.]+\s+){4}[kK](?=[\s%\/\[<(]|$)/gm);
+    if (hits) cmykOps += hits.length;
+  }
+  if (cmykObjs || spotObjs || cmykOps) {
+    const bits: string[] = [];
+    if (cmykObjs) bits.push(plural(cmykObjs, 'CMYK color space or image'));
+    if (cmykOps) bits.push(`CMYK fills or strokes on the pages (${plural(cmykOps, 'use')})`);
+    if (spotObjs) bits.push(plural(spotObjs, 'spot (Separation/DeviceN) color'));
+    problems.push({ reason: 'color_mode', detail: `Not RGB: ${bits.join(', ')}. Converting to CMYK yourself clips the colors to an offset-press gamut before we ever see them, and the Fiery then faithfully prints that smaller gamut, so the result is flat and dull. Hand us RGB and the RIP uses the full gamut of the press. Keep the document in sRGB (8-bit, profile embedded) and export in RGB.` });
   }
   if (stencils || imageMasks) {
     const bits: string[] = [];
@@ -418,7 +443,7 @@ export async function inspectPdfContent(pdfPath: string): Promise<ContentInspect
   try {
     const im = await run('pdfimages', ['-list', pdfPath], 120_000);
     const low: { page: number; ppi: number }[] = [];
-    const sixteen: number[] = []; const jpx: number[] = []; const jbig: number[] = []; const maskImgs: number[] = [];
+    const sixteen: number[] = []; const jpx: number[] = []; const jbig: number[] = []; const maskImgs: number[] = []; const cmykImgs: number[] = [];
     for (const line of im.stdout.split('\n').slice(2)) {
       const c = line.trim().split(/\s+/);
       if (c.length < 13 || !/^\d+$/.test(c[0]!)) continue;
@@ -427,6 +452,8 @@ export async function inspectPdfContent(pdfPath: string): Promise<ContentInspect
       const bpc = Number(c[7]); const enc = c[8]!; const xppi = Number(c[c.length - 4]); const yppi = Number(c[c.length - 3]);
       if (type === 'smask' || type === 'stencil' || type === 'mask') maskImgs.push(page);
       if (type !== 'image') continue;
+      const color = c[5]!; const comp = Number(c[6]);
+      if (color === 'cmyk' || color === 'sep' || color === 'devn' || (color === 'icc' && comp === 4) || (color === 'index' && comp === 4)) cmykImgs.push(page);
       if (bpc === 16) sixteen.push(page);
       if (enc === 'jpx') jpx.push(page);
       if (enc === 'jbig2') jbig.push(page);
@@ -446,6 +473,9 @@ export async function inspectPdfContent(pdfPath: string): Promise<ContentInspect
       if (jpx.length) bits.push(`JPEG 2000 images on ${plural(jpx.length, 'page')} ${list([...new Set(jpx)])}`);
       if (jbig.length) bits.push(`JBIG2 images on ${plural(jbig.length, 'page')} ${list([...new Set(jbig)])}`);
       problems.push({ reason: 'image_format', detail: `${bits.join('; ')}. Use 8-bit CMYK or sRGB images with ordinary JPEG or Flate compression.` });
+    }
+    if (cmykImgs.length && !problems.some((p) => p.reason === 'color_mode')) {
+      problems.push({ reason: 'color_mode', detail: `CMYK images on ${plural(new Set(cmykImgs).size, 'page')} ${list([...new Set(cmykImgs)])}. Converting to CMYK yourself clips the colors to an offset-press gamut before we ever see them, and the Fiery then faithfully prints that smaller gamut, so the result is flat and dull. Hand us RGB and the RIP uses the full gamut of the press. Keep images in sRGB (8-bit, profile embedded).` });
     }
     if (maskImgs.length && !problems.some((p) => p.reason === 'masks' || p.reason === 'transparency')) {
       problems.push({ reason: 'masks', detail: `Masked images on ${plural(new Set(maskImgs).size, 'page')} ${list([...new Set(maskImgs)])}. Composite art onto its background before placing it.` });

@@ -31,7 +31,7 @@ const KINDS = [
 const fmt = (n: number) => String(Number(n.toFixed(3)));
 
 export function FileCheck() {
-  useSeo({ title: 'File Checker — Is my PDF print-ready?', description: 'Upload a cover, interior or art-print PDF and get a pass/fail checklist: page size and bleed, page count, flattened transparency, masks, image resolution, fonts and PDF version. Files are deleted the moment the check finishes.' });
+  useSeo({ title: 'File Checker — Is my PDF print-ready?', description: 'Upload a cover, interior or art-print PDF and get a pass/fail checklist: page size and bleed, page count, flattened transparency, masks, RGB color, image resolution, fonts and PDF version. Files are deleted the moment the check finishes.' });
   const [formats, setFormats] = useState<Format[]>([]);
   const [format, setFormat] = useState('standard');
   const [custom, setCustom] = useState('');
@@ -68,7 +68,7 @@ export function FileCheck() {
     <ResourcePage
       eyebrow="Resources"
       title="File Checker"
-      intro="Drop your PDF here and get the same checklist our upload runs: page size and bleed, page count, flattened transparency, masks, image resolution, fonts and PDF version. Green means it will clear; red tells you exactly what to fix."
+      intro="Drop your PDF here and get the same checklist our upload runs: page size and bleed, page count, flattened transparency, masks, RGB color, image resolution, fonts and PDF version. Green means it will clear; red tells you exactly what to fix."
     >
       <Section id="check" title="Check a file">
         <div style={{ display: 'grid', gap: '.9rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginBottom: '1rem' }}>
@@ -144,7 +144,7 @@ export function FileCheck() {
             {failed.length > 0 && (
               <div style={{ padding: '.9rem 1.1rem', borderTop: '1px solid #eee', background: '#fafafa', fontSize: '.9rem' }}>
                 <strong>How to fix it:</strong>{' '}
-                {failed.some((c) => ['transparency', 'masks', 'page_wrappers', 'pdf_version', 'image_format', 'fonts', 'low_resolution', 'corrupted'].includes(c.reason ?? '')) && <><Link to="/resources/file-prep#flat">Flat files: no transparency, no masks</Link> · </>}
+                {failed.some((c) => ['transparency', 'masks', 'page_wrappers', 'pdf_version', 'image_format', 'fonts', 'low_resolution', 'corrupted', 'color_mode'].includes(c.reason ?? '')) && <><Link to="/resources/file-prep#flat">Flat files: no transparency, no masks</Link> · </>}
                 {failed.some((c) => ['wrong_size', 'no_bleed', 'spreads', 'wrong_orientation', 'mixed_page_sizes', 'crop_marks'].includes(c.reason ?? '')) && <>{result.format?.templateUrl ? <><a href={result.format.templateUrl}>Download the {result.format.label} template</a> · </> : null}<Link to="/resources/templates">Templates</Link> · </>}
                 <Link to="/resources/file-prep">File Prep guide</Link>
               </div>
@@ -154,16 +154,17 @@ export function FileCheck() {
       </Section>
 
       <Section id="what" title="What the checker looks at">
-        <p>Every one of these is a rule a file can fail on its own, so the checker is exact about them. Color, ink and the art itself are confirmed by a person at prepress.</p>
+        <p>Every one of these is a rule a file can fail on its own, so the checker is exact about them. The art itself is confirmed by a person at prepress.</p>
         <ul style={{ lineHeight: 1.6 }}>
           <li><strong>Page size and bleed.</strong> Every page is the trim plus 0.125&Prime; on every side, upright, single pages, all the same size, no crop marks.</li>
           <li><strong>Page count.</strong> A Cover PDF is exactly 4 pages; an interior matches the count you ordered (or a multiple of 4).</li>
           <li><strong>Flat content.</strong> No soft masks, transparency groups, blend modes or partial opacity; no stencil or image masks; pages drawn directly, not wrapped in a form with a clipping mask.</li>
           <li><strong>Images.</strong> 300 ppi at the printed size (minimum 250), 8-bit, no JPEG 2000 or JBIG2.</li>
-          <li><strong>Fonts</strong> embedded or outlined. <strong>PDF version</strong> 1.4 or lower (PDF/X-1a:2003). Every resource a page draws is present in the file.</li>
+          <li><strong>Color.</strong> RGB (sRGB) throughout: no CMYK, no spot colors. Converting to CMYK yourself clips the colors to an offset-press gamut before we ever see them, and the Fiery then faithfully prints that smaller gamut, so the result is flat and dull. Hand us RGB and the RIP uses the full gamut of the press.</li>
+          <li><strong>Fonts</strong> embedded or outlined. <strong>PDF version</strong> 1.4 or lower (the PDF/X-3 preset). Every resource a page draws is present in the file.</li>
         </ul>
         <Callout kind="tip" title="Make it pass first time">
-          Build on the <Link to="/resources/templates">template</Link> for your size and export with the PDF/X-1a:2003 preset, transparency flattened. The <Link to="/resources/file-prep#flat">File Prep guide</Link> has the settings for each app.
+          Build on the <Link to="/resources/templates">template</Link> for your size, keep it in RGB, and export with the PDF/X-3 preset, transparency flattened. The <Link to="/resources/file-prep#flat">File Prep guide</Link> has the settings for each app.
         </Callout>
       </Section>
 

@@ -73,19 +73,19 @@ export function printFileInstructions(kind: PrintFileKind, expectedPages: number
         'One PDF with exactly 4 pages, in this order: 1 front cover · 2 inside front cover · 3 inside back cover · 4 back cover.',
         'No interior pages in this file. If nothing prints on a page (an inside cover, say), leave it blank — it still counts as a page.',
         size ?? 'Trim size of the book plus 0.125″ bleed on every side.',
-        'Single upright pages, CMYK, fonts embedded or outlined.',
+        'Single upright pages, RGB (sRGB) — not CMYK — fonts embedded or outlined.',
       ];
     case 'interior':
       return [
         `One PDF with ${expectedPages ? `all ${expectedPages}` : 'every'} interior page${expectedPages === 1 ? '' : 's'} in reading order — every page between the inside front cover and the inside back cover.`,
         'Do not include the front cover, inside covers or back cover. They go in the Cover PDF.',
         size ?? 'Trim size plus 0.125″ bleed on every side.',
-        'Single pages, not spreads. CMYK, fonts embedded or outlined.',
+        'Single pages, not spreads. RGB (sRGB) — not CMYK — fonts embedded or outlined.',
       ];
     case 'artwork':
       return [
         size ? `One print-ready PDF. ${size}` : 'One print-ready PDF at the ordered size, with 0.125″ bleed on every side.',
-        'CMYK, 300 DPI, flattened, fonts embedded or outlined.',
+        'RGB (sRGB) — not CMYK — 300 ppi, flattened, fonts embedded or outlined.',
       ];
   }
 }

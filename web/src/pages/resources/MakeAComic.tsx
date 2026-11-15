@@ -808,10 +808,11 @@ export function MakeAComic() {
           desaturated for dread or distance. Keep values readable &mdash; squint at the page; if the
           storytelling survives in grayscale, your color is supporting the art rather than fighting it.
         </p>
-        <Callout kind="warn" title="Print is CMYK">
-          Screens glow in RGB; presses print CMYK ink, which cannot reproduce the most electric neons.
-          Work in a print-aware palette and convert before you export so nothing shifts on press &mdash;
-          the how-to is in <Link to="/resources/file-prep">File Prep</Link>.
+        <Callout kind="warn" title="Keep it in RGB, but think in ink">
+          Screens glow in RGB and ink cannot reproduce the most electric neons, so work in a print-aware
+          palette. Do <strong>not</strong> convert to CMYK yourself: that clips your colors to an offset-press
+          gamut before we ever see them. Our Fiery RIP converts from RGB and uses the full gamut of the press.
+          The how-to is in <Link to="/resources/file-prep#color">File Prep</Link>.
         </Callout>
       </Section>
 
@@ -916,7 +917,7 @@ export function MakeAComic() {
           headers={['Software', 'Platform', 'Where it shines']}
           rows={[
             ['Clip Studio Paint', 'Win / Mac / iPad', 'Purpose-built for comics: panel tools, perspective rulers, screentones, a superb pen engine'],
-            ['Photoshop', 'Win / Mac', 'Painting, color, texture, and heavy-duty CMYK print prep'],
+            ['Photoshop', 'Win / Mac', 'Painting, color, texture, and heavy-duty print prep'],
             ['Procreate', 'iPad', 'Fast, portable drawing and inking — ideal for thumbnails and sketching anywhere'],
             ['Krita', 'Win / Mac / Linux (free)', 'Powerful open-source painting and inking with comic-specific tools'],
             ['Affinity Photo / Designer', 'Win / Mac / iPad', 'One-time-purchase alternative to Photoshop and Illustrator'],
@@ -940,8 +941,8 @@ export function MakeAComic() {
           the file, not the art. Build these habits and you will sail through prepress.
         </p>
         <Callout kind="warn" title="The usual suspects">
-          Low-resolution art (upscaled or screen-grabbed) that turns soft in print. Electric RGB neons
-          that go muddy in CMYK. Text or logos drifting into the bleed and getting trimmed off. A page
+          Low-resolution art (upscaled or screen-grabbed) that turns soft in print. Electric neons
+          that no ink can match. Files converted to CMYK that come out flat. Text or logos drifting into the bleed and getting trimmed off. A page
           count that is not a multiple of 4 (saddle stitch) or 2 (perfect bind). Accidental tangents
           that flatten depth. Unflattened files where a hidden layer or live blend mode shifts on
           export.
@@ -950,7 +951,7 @@ export function MakeAComic() {
           items={[
             'Set the canvas to final trim size at 300 dpi with 0.125 in bleed before you draw a single line.',
             'Keep all text and critical content inside the safe area, well clear of the trim.',
-            'Work with a print-aware palette and convert to CMYK before export — check for neon surprises.',
+            'Work with a print-aware palette and keep the file in RGB — no CMYK conversion; check for neon surprises.',
             'Confirm your page count fits the binding math early, and count covers and blanks.',
             'Name and organize layers; flatten a copy for output and keep your layered master.',
             'Proof at 100% and print a quick home test or order a proof — screens flatter, paper is honest.',
@@ -1007,7 +1008,7 @@ export function MakeAComic() {
           >
             <div style={{ fontWeight: 700 }}>File Prep checklist</div>
             <p style={{ margin: 0, fontSize: '.9rem', color: MUTED, flex: 1 }}>
-              The exact resolution, bleed, CMYK, font, and PDF settings our presses expect &mdash; the
+              The exact resolution, bleed, color, font, and PDF settings our presses expect &mdash; the
               final gate before you upload.
             </p>
             <Link to="/resources/file-prep" className="btn secondary" style={{ textAlign: 'center' }}>
@@ -1025,7 +1026,7 @@ export function MakeAComic() {
               title: 'Export to spec',
               body: (
                 <>
-                  Flatten, convert to CMYK, and export a print-ready PDF following the{' '}
+                  Flatten, keep it in RGB, and export a print-ready PDF following the{' '}
                   <Link to="/resources/file-prep">File Prep guide</Link>.
                 </>
               ),

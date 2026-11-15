@@ -128,64 +128,67 @@ function ResolutionDiagram() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Diagram 3 — CMYK inks, K100 vs rich black, TAC                      */
+/* Diagram 3 — RGB in, the Fiery RIP converts; black done right          */
 /* ------------------------------------------------------------------ */
 function ColorDiagram() {
-  const inks = [
-    { x: 73, fill: '#00A9E0', letter: 'C', name: 'Cyan', dark: false },
-    { x: 201, fill: '#EC008C', letter: 'M', name: 'Magenta', dark: false },
-    { x: 329, fill: '#FFE800', letter: 'Y', name: 'Yellow', dark: true },
-    { x: 457, fill: '#1a1a1a', letter: 'K', name: 'Key / Black', dark: false },
+  const channels = [
+    { x: 73, fill: '#e53935', letter: 'R', name: 'Red' },
+    { x: 201, fill: '#43a047', letter: 'G', name: 'Green' },
+    { x: 329, fill: '#1e74fc', letter: 'B', name: 'Blue' },
   ];
 
   return (
     <svg
       viewBox="0 0 640 340"
       role="img"
-      aria-label="The four CMYK process inks, and the difference between K100 and rich black"
+      aria-label="Keep files in sRGB: the Fiery RIP converts to ink with the full gamut of the press. A file converted to CMYK first has been clipped to an offset gamut and prints flat."
       style={{ ...svgStyle, maxWidth: 640 }}
     >
-      <text x={320} y={26} fill={INK} fontSize={14} fontWeight={700} textAnchor="middle">Build in CMYK — the four process inks</text>
+      <text x={320} y={26} fill={INK} fontSize={14} fontWeight={700} textAnchor="middle">Hand us sRGB — the RIP converts to ink with the full press gamut</text>
 
-      {inks.map((k) => (
+      {channels.map((k) => (
         <g key={k.letter}>
           <rect x={k.x} y={40} width={110} height={60} rx={6} fill={k.fill} stroke={INK} strokeWidth={1} />
-          <text x={k.x + 55} y={70} fill={k.dark ? INK : '#ffffff'} fontSize={22} fontWeight={800} textAnchor="middle" dominantBaseline="central">
+          <text x={k.x + 55} y={70} fill="#ffffff" fontSize={22} fontWeight={800} textAnchor="middle" dominantBaseline="central">
             {k.letter}
           </text>
           <text x={k.x + 55} y={120} fill={MUTED} fontSize={12} textAnchor="middle">{k.name}</text>
         </g>
       ))}
+      <rect x={457} y={40} width={110} height={60} rx={6} fill="#ffffff" stroke={INK} strokeWidth={1} strokeDasharray="4 3" />
+      <text x={512} y={62} fill={INK} fontSize={12} fontWeight={700} textAnchor="middle">Fiery RIP</text>
+      <text x={512} y={80} fill={MUTED} fontSize={11} textAnchor="middle">converts to ink</text>
+      <text x={512} y={120} fill={MUTED} fontSize={12} textAnchor="middle">calibrated, once</text>
 
       <line x1={40} y1={140} x2={600} y2={140} stroke="#e3e3e6" strokeWidth={1} />
 
-      {/* black, done right */}
-      <text x={40} y={166} fill={INK} fontSize={14} fontWeight={700}>Black, done right</text>
-
-      <rect x={48} y={180} width={120} height={110} rx={4} fill="#2b2b2b" stroke={INK} strokeWidth={1} />
-      <text x={108} y={212} fill="#ffffff" fontSize={15} fontWeight={700} textAnchor="middle">K100</text>
-      <text x={108} y={234} fill="#dddddd" fontSize={11} textAnchor="middle">100% black only</text>
-      <text x={108} y={252} fill="#dddddd" fontSize={11} textAnchor="middle">small text and lines</text>
-
-      <rect x={188} y={180} width={120} height={110} rx={4} fill="#0a0a0a" stroke={INK} strokeWidth={1} />
-      <text x={248} y={212} fill="#ffffff" fontSize={15} fontWeight={700} textAnchor="middle">Rich black</text>
-      <text x={248} y={234} fill="#cccccc" fontSize={11} textAnchor="middle">C60 M40 Y40 K100</text>
-      <text x={248} y={252} fill="#cccccc" fontSize={11} textAnchor="middle">large solid areas</text>
+      {/* the right way */}
+      <text x={40} y={166} fill={INK} fontSize={14} fontWeight={700}>Right: RGB file → RIP → press</text>
+      <rect x={48} y={180} width={52} height={34} rx={4} fill="#12e0ff" stroke={INK} strokeWidth={1} />
+      <text x={112} y={198} fill={INK} fontSize={20} textAnchor="middle" dominantBaseline="central">→</text>
+      <rect x={124} y={180} width={52} height={34} rx={4} fill="#1fc8e3" stroke={INK} strokeWidth={1} />
+      <text x={74} y={232} fill={MUTED} fontSize={10} textAnchor="middle">your sRGB</text>
+      <text x={150} y={232} fill={MUTED} fontSize={10} textAnchor="middle">on paper</text>
+      <text x={48} y={262} fill={INK} fontSize={12}>Converted once, with our profiles,</text>
+      <text x={48} y={278} fill={INK} fontSize={12}>using the full gamut of the press.</text>
 
       <line x1={326} y1={162} x2={326} y2={300} stroke="#e3e3e6" strokeWidth={1} />
 
-      {/* gamut shift */}
-      <text x={340} y={186} fill={INK} fontSize={13} fontWeight={700}>RGB → CMYK gamut shift</text>
-      <rect x={344} y={200} width={52} height={34} rx={4} fill="#12e0ff" stroke={INK} strokeWidth={1} />
-      <text x={408} y={218} fill={INK} fontSize={20} textAnchor="middle" dominantBaseline="central">→</text>
-      <rect x={420} y={200} width={52} height={34} rx={4} fill="#3fb0bf" stroke={INK} strokeWidth={1} />
-      <text x={370} y={248} fill={MUTED} fontSize={10} textAnchor="middle">vivid RGB</text>
-      <text x={446} y={248} fill={MUTED} fontSize={10} textAnchor="middle">CMYK result</text>
-      <text x={340} y={274} fill={INK} fontSize={12}>Convert it yourself so you approve</text>
-      <text x={340} y={290} fill={INK} fontSize={12}>the shift — not the press.</text>
+      {/* the wrong way */}
+      <text x={340} y={166} fill={RED} fontSize={14} fontWeight={700}>Wrong: converted to CMYK first</text>
+      <rect x={344} y={180} width={44} height={34} rx={4} fill="#12e0ff" stroke={INK} strokeWidth={1} />
+      <text x={398} y={198} fill={INK} fontSize={16} textAnchor="middle" dominantBaseline="central">→</text>
+      <rect x={408} y={180} width={44} height={34} rx={4} fill="#3fb0bf" stroke={INK} strokeWidth={1} />
+      <text x={462} y={198} fill={INK} fontSize={16} textAnchor="middle" dominantBaseline="central">→</text>
+      <rect x={472} y={180} width={44} height={34} rx={4} fill="#6f9ea5" stroke={INK} strokeWidth={1} />
+      <text x={366} y={232} fill={MUTED} fontSize={10} textAnchor="middle">your sRGB</text>
+      <text x={430} y={232} fill={MUTED} fontSize={10} textAnchor="middle">your CMYK</text>
+      <text x={494} y={232} fill={MUTED} fontSize={10} textAnchor="middle">RIP again</text>
+      <text x={340} y={262} fill={INK} fontSize={12}>Clipped to an offset gamut: flat and dull.</text>
+      <text x={340} y={278} fill={INK} fontSize={12}>Our upload refuses CMYK files.</text>
 
       <text x={320} y={326} fill={RED} fontSize={12.5} fontWeight={700} textAnchor="middle">
-        Keep Total Area Coverage ≤ 300%   (rich black 60+40+40+100 = 240% ✓)
+        Black: plain R0 G0 B0 for text and lines — the RIP builds the rich black for solids.
       </text>
     </svg>
   );
@@ -282,27 +285,27 @@ export function FilePrep() {
   const appTips = [
     {
       name: 'Photoshop',
-      body: 'Set the canvas to your with-bleed size at 300 ppi. Image ▸ Mode ▸ CMYK Color, then Flatten Image. Save As ▸ Photoshop PDF and pick the PDF/X-1a preset.',
+      body: 'Set the canvas to your with-bleed size at 300 ppi in RGB Color (sRGB). Flatten Image, then Save As ▸ Photoshop PDF with the PDF/X-3 preset — no CMYK conversion.',
     },
     {
       name: 'Illustrator',
-      body: 'Set a 0.125 in bleed in Document Setup and File ▸ Document Color Mode ▸ CMYK. Outline or embed fonts, then Save As PDF using PDF/X-1a with Use Document Bleed Settings on.',
+      body: 'Set a 0.125 in bleed in Document Setup and keep File ▸ Document Color Mode ▸ RGB. Outline or embed fonts, then Save As PDF using the PDF/X-3 preset with Use Document Bleed Settings on.',
     },
     {
       name: 'InDesign',
-      body: 'Start the document with a 0.125 in bleed. File ▸ Export ▸ Adobe PDF (Print), choose [PDF/X-1a:2001], and enable Use Document Bleed under Marks and Bleeds.',
+      body: 'Start the document with a 0.125 in bleed and RGB images. File ▸ Export ▸ Adobe PDF (Print), choose [PDF/X-3:2002], set Color Conversion to No Color Conversion, and enable Use Document Bleed under Marks and Bleeds.',
     },
     {
       name: 'Clip Studio Paint',
-      body: 'Turn on the bleed/crop guides and work at 300–600 ppi. File ▸ Export ▸ .pdf or a high-res .jpg. CSP exports RGB — convert to CMYK in Photoshop/Affinity, or send it and we will verify.',
+      body: 'Turn on the bleed/crop guides and work at 300–600 ppi. File ▸ Export ▸ .pdf with layers merged. CSP exports RGB, which is exactly what we want — do not convert to CMYK.',
     },
     {
       name: 'Procreate',
-      body: 'Create the canvas at your with-bleed size and 300 ppi up front — resolution cannot be added later. Share ▸ PDF or JPEG. Procreate is RGB only, so convert to CMYK before submitting or ask us.',
+      body: 'Create the canvas at your with-bleed size and 300 ppi up front — resolution cannot be added later. Share ▸ PDF (flattened). Procreate is RGB only, which is exactly what we want.',
     },
     {
       name: 'Affinity (Photo / Designer / Publisher)',
-      body: 'Set the document to CMYK/8 with a 0.125 in bleed. File ▸ Export ▸ PDF ▸ PDF/X-1a, enable Bleed, and embed fonts or convert text to curves.',
+      body: 'Set the document to RGB/8 (sRGB) with a 0.125 in bleed. File ▸ Export ▸ PDF ▸ PDF/X-3, enable Bleed, leave the color space as RGB, and embed fonts or convert text to curves.',
     },
   ];
 
@@ -310,7 +313,7 @@ export function FilePrep() {
     <ResourcePage
       eyebrow="File Prep"
       title="File preparation and prepress guide"
-      intro="Everything you need to hand off files that print exactly the way you drew them — bleed and safe area, resolution, CMYK color, covers and spine, binding math, and a clean PDF export."
+      intro="Everything you need to hand off files that print exactly the way you drew them — bleed and safe area, resolution, RGB color (yes, RGB), covers and spine, binding math, and a clean flattened PDF export."
     >
       <Callout kind="info" title="Start here">
         New to print? Pair this guide with our{' '}
@@ -330,11 +333,11 @@ export function FilePrep() {
             'Build your document at the exact trim size for your chosen format, plus 0.125 in bleed on all four sides.',
             'Extend backgrounds and full-bleed art out to the bleed edge; keep text and key art at least 0.25 in inside the trim.',
             'Work at 300 ppi for color/greyscale, or 600–1200 ppi for bitmap line art, at final print size.',
-            'Convert everything to CMYK before export — no leftover RGB, and no spot colors unless we have agreed them.',
-            'Use K100 for small black text; rich black (≈ C60 M40 Y40 K100) only for large solids; keep total ink ≤ 300%.',
+            'Keep everything in RGB (sRGB, 8-bit) — do not convert to CMYK, and no spot colors. Our Fiery RIP converts from RGB and uses the full gamut of the press.',
+            'Use plain black (R0 G0 B0) for small text and fine lines; the RIP builds the rich black for large solids.',
             'Embed every font, or outline/flatten type before export.',
             'Flatten transparency, layers and blend modes; never set white to overprint.',
-            'Export one flattened PDF for the interior and one for the cover (a single back–spine–front spread). PDF/X-1a:2001 preferred.',
+            'Export one flattened PDF for the interior and one for the cover. The PDF/X-3 preset (PDF 1.3/1.4, RGB allowed) is the target; no live transparency or masks.',
             'Match the page count to your binding: multiples of 4 for saddle stitch, multiples of 2 for perfect/glue bind.',
             'Name files clearly (e.g. MyComic_interior.pdf, MyComic_cover.pdf) and double-check the page order.',
           ]}
@@ -420,26 +423,30 @@ export function FilePrep() {
       </Section>
 
       {/* 5 --------------------------------------------------------------- */}
-      <Section id="color" title="Color for print — CMYK, rich black and TAC">
+      <Section id="color" title="Color for print — stay in RGB">
         <p>
-          Screens glow in <strong>RGB</strong>; presses lay down <strong>CMYK</strong> ink. CMYK covers a smaller
-          range of colors, so the brightest RGB blues, greens and oranges shift when converted. Convert to CMYK{' '}
-          <em>yourself</em> before exporting — that way you see and approve the shift, rather than letting our RIP
-          decide for you.
+          Our presses run behind a <strong>Fiery RIP</strong> that converts color to ink with profiles calibrated
+          to our paper and machines, and it renders RGB with the <strong>full gamut of the press</strong>. Converting
+          to CMYK yourself does the opposite: it clips your colors to an offset-press gamut (SWOP or similar) before
+          we ever see them, and the RIP then faithfully prints that smaller, duller range. So: build and export in{' '}
+          <strong>sRGB</strong>, and <strong>do not convert to CMYK</strong>. Our upload checks for it and refuses
+          CMYK and spot-color files.
         </p>
-        <Figure caption="The four process inks, plus black done right: K100 for crisp small text, rich black (≈ C60 M40 Y40 K100) for large solids — always keeping total ink at or below 300%.">
+        <Figure caption="Keep the file in sRGB and let the RIP convert to ink with the full gamut of the press. A file converted to CMYK first has already been clipped to an offset gamut, and prints flat.">
           <ColorDiagram />
         </Figure>
-        <p>
-          For black there are two jobs. Use <strong>K100</strong> (100% black only) for small text and fine lines so
-          they stay crisp and never mis-register. Use <strong>rich black</strong> (about C60 M40 Y40 K100) for large
-          solid black areas so they read deep rather than washed-out. Keep <strong>Total Area Coverage</strong> — the
-          sum of all four ink percentages in any spot — at or below <strong>300%</strong> so pages dry properly and
-          don&apos;t offset.
-        </p>
-        <Callout kind="tip" title="Soft-proof before you export">
-          Turn on your app&apos;s CMYK soft-proof (in Photoshop, View ▸ Proof Setup ▸ Working CMYK) to preview the
-          gamut shift on screen, then adjust saturated colors so there are no surprises on press.
+        <Checklist
+          items={[
+            'Document and images in RGB — sRGB, 8 bits per channel, with the profile embedded. Grayscale is fine for black-and-white interiors.',
+            'No CMYK images, no CMYK fills, no spot (Pantone / Separation) colors.',
+            'Use plain black (R0 G0 B0) for text and fine lines so they stay crisp; the RIP builds a rich black for large solids on its own.',
+            'Ink still cannot match the most electric screen neons. Work in a print-aware palette and soft-proof if your app can, but leave the file in RGB.',
+          ]}
+        />
+        <Callout kind="tip" title="Soft-proof, don’t convert">
+          Previewing the ink gamut on screen (Photoshop: View ▸ Proof Setup) is useful; converting the file is not.
+          Adjust the colors you don&apos;t like, then export the RGB file as it is. If you use Acrobat to convert
+          an existing PDF to PDF/X-3, check the result: Acrobat&apos;s conversion can turn RGB into CMYK on the way.
         </Callout>
       </Section>
 
@@ -526,19 +533,19 @@ export function FilePrep() {
             [<strong>No masks over the art</strong>, 'Luminosity or alpha soft masks, stencil-masked images, image /Mask entries.', 'Composite transparent PNGs onto their background before placing them; never place art with its alpha channel.'],
             [<strong>Pages drawn directly</strong>, 'Each page nested inside a single form with a clip rectangle.', 'Draw page content on the page. The page size already keeps the art in place; a clip path is not needed.'],
             [<strong>Images at print resolution</strong>, 'Any raster under 250 ppi at its placed size.', '300 ppi effective at placed size. A 72–150 ppi image is a screen asset and must never go into a print file, not even as a mask.'],
-            [<strong>Flat 8-bit images</strong>, '16-bit images, JPEG 2000 (JPX), JBIG2.', 'CMYK or sRGB, 8 bits per channel, ordinary JPEG or ZIP compression.'],
+            [<strong>Flat 8-bit RGB images</strong>, '16-bit images, JPEG 2000 (JPX), JBIG2, CMYK or spot color.', 'sRGB (or grayscale), 8 bits per channel, profile embedded, ordinary JPEG or ZIP compression. No CMYK: the RIP converts from RGB.'],
             [<strong>Fonts embedded</strong>, 'Any font that is not embedded.', 'Embed and subset every font, or convert text to outlines.'],
             [<strong>Page geometry</strong>, 'Pages that are not the trim plus bleed, spreads, sideways pages, crop marks inside the art.', 'One page per PDF page at trim size plus 0.125″ bleed; TrimBox and BleedBox set if your app offers them.'],
-            [<strong>PDF 1.4 or lower</strong>, 'A PDF version above 1.4.', 'Export with the PDF/X-1a:2003 preset (PDF 1.3/1.4). Newer versions allow live transparency.'],
+            [<strong>PDF 1.4 or lower</strong>, 'A PDF version above 1.4.', 'Export with the PDF/X-3 preset (PDF 1.3/1.4, RGB allowed). Newer versions allow live transparency.'],
             [<strong>Every page renders</strong>, 'A page that draws an image or form the file does not contain.', 'Re-export from the original document. Splitting or merging PDFs can drop the resources pages depend on.'],
           ]}
         />
         <h3 style={{ fontSize: '1.1rem', margin: '1.5rem 0 .5rem' }}>How to flatten before export</h3>
         <Steps
           items={[
-            { title: 'Simplest, and right for comic interiors: rasterize each page', body: 'Export every page as a flat 300 ppi CMYK (or sRGB) image with the background filled, then place one image per page as the page\u2019s only content and export the PDF. Nothing can be left live.' },
-            { title: 'Keeping vectors: use the PDF/X-1a preset', body: 'In InDesign, Affinity Publisher, Illustrator or Scribus, export with the PDF/X-1a:2003 preset and transparency flattening at high resolution. Photoshop and Clip Studio: flatten the image first, then save as PDF with no layers.' },
-            { title: 'Already have a PDF with transparency? Flatten it', body: 'Acrobat: Print Production → Flattener Preview, or Save As PDF/X-1a. Ghostscript: gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.3 -dPDFSETTINGS=/prepress -o flat.pdf in.pdf. Then run the result through the File Checker.' },
+            { title: 'Simplest, and right for comic interiors: rasterize each page', body: 'Export every page as a flat 300 ppi sRGB image with the background filled, then place one image per page as the page\u2019s only content and export the PDF. Nothing can be left live.' },
+            { title: 'Keeping vectors: use the PDF/X-3 preset', body: 'In InDesign, Affinity Publisher, Illustrator or Scribus, export with the PDF/X-3 preset (not X-1a, which forces CMYK), no color conversion, and transparency flattening at high resolution. Photoshop and Clip Studio: flatten the image first, then save as PDF with no layers.' },
+            { title: 'Already have a PDF with transparency? Flatten it', body: 'Acrobat: Print Production → Flattener Preview, or Save As PDF/X-3. Ghostscript: gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.3 -dPDFSETTINGS=/prepress -o flat.pdf in.pdf. Then run the result through the File Checker.' },
             { title: 'Verify', body: 'Open the exported PDF in a second viewer (Acrobat, Chrome, Affinity) and confirm every page shows its art with no Mask layers and no blank pages, then drop it on the File Checker.' },
           ]}
         />
@@ -551,7 +558,7 @@ export function FilePrep() {
       {/* 9 --------------------------------------------------------------- */}
       <Section id="export-pdf" title="Exporting your PDF">
         <p>
-          The finish line is a single flattened, high-resolution PDF — <strong>PDF/X-1a:2003</strong> is the target. Work through these six steps in order, then submit one PDF for the
+          The finish line is a single flattened, high-resolution PDF in RGB — the <strong>PDF/X-3</strong> preset is the target. Work through these six steps in order, then submit one PDF for the
           interior and one for the cover.
         </p>
         <Steps
@@ -561,8 +568,8 @@ export function FilePrep() {
               body: 'Build the canvas at the exact trim size for your format, then add 0.125 in of bleed on all four sides. Pull background art out to the bleed; keep text 0.25 in inside the trim.',
             },
             {
-              title: 'Convert to CMYK',
-              body: 'Switch the whole document to CMYK before export so you — not the press — decide how RGB colors shift. Use K100 for small text and rich black only for large solids.',
+              title: 'Keep it in RGB',
+              body: 'Leave the document and every image in sRGB, 8-bit, profile embedded. Do not convert to CMYK — that clips your colors to an offset gamut; our Fiery RIP converts from RGB with the full gamut of the press. Plain black (R0 G0 B0) for text and lines.',
             },
             {
               title: 'Embed or outline fonts',
@@ -574,7 +581,7 @@ export function FilePrep() {
             },
             {
               title: 'Export the PDF',
-              body: 'Export a single flattened, high-resolution PDF using the PDF/X-1a:2003 preset (PDF 1.3/1.4) — one file for the interior, one for the cover. Our upload refuses files with live transparency, masks or a PDF version above 1.4.',
+              body: 'Export a single flattened, high-resolution PDF using the PDF/X-3 preset (PDF 1.3/1.4, RGB allowed, no color conversion) — one file for the interior, one for the cover. Our upload refuses files with live transparency, masks, CMYK color or a PDF version above 1.4.',
             },
             {
               title: 'Verify',
@@ -612,7 +619,7 @@ export function FilePrep() {
           items={[
             'Interior: one flattened, high-resolution PDF (or JPG), sized to your chosen format with 0.125 in bleed.',
             'Cover: one flattened PDF as a single back–spine–front spread, with the spine width confirmed with us for perfect binding.',
-            'Color is CMYK throughout; fonts are embedded or outlined; transparency is flattened; no white overprint.',
+            'Color is RGB throughout (no CMYK, no spot colors); fonts are embedded or outlined; transparency and masks are flattened; no white overprint.',
             'Page count matches the binding (×4 for saddle stitch, ×2 for perfect bind) and pages are in the correct order.',
             'Files are clearly named (interior vs cover) and match the format and options you selected at checkout.',
           ]}

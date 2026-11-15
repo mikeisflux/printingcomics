@@ -45,7 +45,7 @@ export function buildReport(args: {
 
   checks.push(args.opened
     ? { id: 'opens', label: 'Opens as a PDF', status: 'pass', detail: `${pages ?? '?'} page${pages === 1 ? '' : 's'}.` }
-    : { id: 'opens', label: 'Opens as a PDF', status: 'fail', detail: 'The file could not be opened as a PDF. Re-export it from your design app (PDF/X-1a is ideal).', reason: 'corrupted' });
+    : { id: 'opens', label: 'Opens as a PDF', status: 'fail', detail: 'The file could not be opened as a PDF. Re-export it from your design app (a flattened PDF/X-3 export is ideal).', reason: 'corrupted' });
   if (!args.opened) return finish(checks, pages, null, content?.version ?? null);
 
   checks.push(args.encrypted
@@ -99,7 +99,8 @@ export function buildReport(args: {
         ? { id, label, status: 'fail', detail: p.detail, reason }
         : { id, label, status: infoWhen ? 'info' : 'pass', detail: infoWhen ? (infoDetail ?? passDetail) : passDetail });
     };
-    line('version', `PDF version ${MAX_PDF_VERSION} or lower (PDF/X-1a)`, 'pdf_version', `PDF ${content.version ?? '1.4'}.`);
+    line('version', `PDF version ${MAX_PDF_VERSION} or lower (PDF/X-3)`, 'pdf_version', `PDF ${content.version ?? '1.4'}.`);
+    line('color', 'RGB color, no CMYK or spot', 'color_mode', 'No CMYK or spot color found: the Fiery RIP converts from RGB and uses the full gamut of the press.');
     line('transparency', 'No live transparency', 'transparency', 'No soft masks, transparency groups, blend modes or partial opacity.');
     line('masks', 'No masks over the art', 'masks', 'No stencil masks or image masks.');
     line('wrappers', 'Content drawn directly on each page', 'page_wrappers', 'Pages are not wrapped in a form with a clipping mask.');
@@ -108,7 +109,7 @@ export function buildReport(args: {
     line('image-format', 'Images are 8-bit, no JPEG 2000 or JBIG2', 'image_format', content.images ? 'Every image is 8 bits per channel in ordinary JPEG or Flate compression.' : 'No raster images.', content.images === 0, 'No raster images in the file.');
     line('fonts', 'Fonts embedded or outlined', 'fonts', content.fonts ? `${content.fonts} font${content.fonts === 1 ? '' : 's'}, all embedded.` : 'No fonts (text is outlined or the pages are images).', content.fonts === 0, 'No fonts in the file: text is outlined, or the pages are images.');
   }
-  checks.push({ id: 'manual', label: 'Color, ink and content', status: 'info', detail: 'CMYK conversion, rich black, total ink and the art itself are confirmed by a person at prepress; the checks above are the ones a file can fail on its own.' });
+  checks.push({ id: 'manual', label: 'The art itself', status: 'info', detail: 'Page order, art reaching the bleed, text inside the safe area and overall quality are confirmed by a person at prepress; the checks above are the ones a file can fail on its own.' });
 
   return finish(checks, pages, size?.sizeIn ? inches(size.sizeIn) : null, content?.version ?? null);
 }
@@ -138,5 +139,5 @@ export async function checkPrintFile(pdfPath: string, args: { kind: PrintFileKin
 export function describeContentRefusal(fileLabel: string, fileName: string, problems: ContentProblem[]): string {
   const lead = problems.slice(0, 3).map((p) => p.detail).join(' ');
   const more = problems.length > 3 ? ` (${problems.length - 3} more issue${problems.length - 3 === 1 ? '' : 's'} in the full report.)` : '';
-  return `The ${fileLabel} was not accepted: “${fileName}” is not a flat print file. ${lead}${more} Export as PDF/X-1a:2003 with transparency flattened and fonts embedded, or rasterize each page to a flat ${TARGET_IMAGE_PPI} ppi image, then run it through our File Checker before uploading again.`;
+  return `The ${fileLabel} was not accepted: “${fileName}” is not a flat print file. ${lead}${more} Export a flattened PDF in RGB (the PDF/X-3 preset, PDF 1.3/1.4) with fonts embedded, or rasterize each page to a flat ${TARGET_IMAGE_PPI} ppi sRGB image, then run it through our File Checker before uploading again.`;
 }

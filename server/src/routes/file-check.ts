@@ -62,7 +62,7 @@ router.post('/', limiter, upload.single('file'), async (req, res) => {
     const expectedRaw = Number(req.body?.expectedPages);
     const expectedPages = kind === 'interior' && Number.isFinite(expectedRaw) && expectedRaw > 0 ? Math.round(expectedRaw) : null;
     const isPdf = file.mimetype === 'application/pdf' || /\.pdf$/i.test(file.originalname);
-    if (!isPdf) throw new HttpError(400, `“${file.originalname}” is not a PDF. Export your file as a PDF (PDF/X-1a is ideal) and check that.`);
+    if (!isPdf) throw new HttpError(400, `“${file.originalname}” is not a PDF. Export your file as a PDF (a flattened PDF/X-3 export in RGB is ideal) and check that.`);
     const problem = await popplerProblem();
     if (problem) throw new HttpError(503, 'The checker is not available right now. Please try again later.');
     const report = await checkPrintFile(file.path, { kind, spec, expectedPages });
