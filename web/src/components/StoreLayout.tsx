@@ -453,6 +453,7 @@ const NAV_GROUPS = {
   resources: [
     { to: '/resources/make-a-comic', label: 'Make A Comic' },
     { to: '/resources/file-prep', label: 'File Prep' },
+    { to: '/resources/file-check', label: 'File Checker' },
     { to: '/resources/templates', label: 'Templates' },
     { to: '/resources/faq', label: 'FAQ' },
   ],

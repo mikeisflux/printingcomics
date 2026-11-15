@@ -137,6 +137,7 @@ export function Templates() {
           0.125&Prime; on every side. A file at the bare trim size, a spread, a page turned sideways, pages of mixed
           sizes, or a page padded out with crop marks is refused on the spot, and the message tells you the size we
           measured, the size we need and which template to use. Build on the template and it clears first time.
+          Not sure? Run it through the <Link to="/resources/file-check">File Checker</Link> before you order.
         </Callout>
       </Section>
 

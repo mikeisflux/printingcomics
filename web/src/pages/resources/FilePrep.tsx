@@ -509,11 +509,49 @@ export function FilePrep() {
         </Callout>
       </Section>
 
+      {/* 8b -------------------------------------------------------------- */}
+      <Section id="flat" title="Flat files: no transparency, no masks">
+        <p>
+          A print file has to be <strong>plain painted content</strong>: images, vectors and text drawn directly on
+          each page. Nothing wrapped in a mask, nothing left for the press to composite. Files exported the way a
+          screen flipbook or a web viewer builds pages — every page a transparency group with a low-resolution soft
+          mask over it, plus a clipping group and the art underneath — cannot be imposed, proofed or ripped reliably.
+          They open fine in one viewer and come up blank in another, and the mask turns pages solid white on press.
+        </p>
+        <p>These are hard rules. Our upload reads the inside of every PDF and refuses a file that breaks any of them, and the <Link to="/resources/file-check">File Checker</Link> runs the same checks before you order.</p>
+        <SpecTable
+          headers={['Rule', 'What we look for', 'How to meet it']}
+          rows={[
+            [<strong>No live transparency</strong>, 'Soft masks, transparency groups, blend modes other than Normal, opacity below 100%.', 'Flatten before export. PDF/X-1a:2003 forbids transparency by definition, which is the point.'],
+            [<strong>No masks over the art</strong>, 'Luminosity or alpha soft masks, stencil-masked images, image /Mask entries.', 'Composite transparent PNGs onto their background before placing them; never place art with its alpha channel.'],
+            [<strong>Pages drawn directly</strong>, 'Each page nested inside a single form with a clip rectangle.', 'Draw page content on the page. The page size already keeps the art in place; a clip path is not needed.'],
+            [<strong>Images at print resolution</strong>, 'Any raster under 250 ppi at its placed size.', '300 ppi effective at placed size. A 72–150 ppi image is a screen asset and must never go into a print file, not even as a mask.'],
+            [<strong>Flat 8-bit images</strong>, '16-bit images, JPEG 2000 (JPX), JBIG2.', 'CMYK or sRGB, 8 bits per channel, ordinary JPEG or ZIP compression.'],
+            [<strong>Fonts embedded</strong>, 'Any font that is not embedded.', 'Embed and subset every font, or convert text to outlines.'],
+            [<strong>Page geometry</strong>, 'Pages that are not the trim plus bleed, spreads, sideways pages, crop marks inside the art.', 'One page per PDF page at trim size plus 0.125″ bleed; TrimBox and BleedBox set if your app offers them.'],
+            [<strong>PDF 1.4 or lower</strong>, 'A PDF version above 1.4.', 'Export with the PDF/X-1a:2003 preset (PDF 1.3/1.4). Newer versions allow live transparency.'],
+            [<strong>Every page renders</strong>, 'A page that draws an image or form the file does not contain.', 'Re-export from the original document. Splitting or merging PDFs can drop the resources pages depend on.'],
+          ]}
+        />
+        <h3 style={{ fontSize: '1.1rem', margin: '1.5rem 0 .5rem' }}>How to flatten before export</h3>
+        <Steps
+          items={[
+            { title: 'Simplest, and right for comic interiors: rasterize each page', body: 'Export every page as a flat 300 ppi CMYK (or sRGB) image with the background filled, then place one image per page as the page\u2019s only content and export the PDF. Nothing can be left live.' },
+            { title: 'Keeping vectors: use the PDF/X-1a preset', body: 'In InDesign, Affinity Publisher, Illustrator or Scribus, export with the PDF/X-1a:2003 preset and transparency flattening at high resolution. Photoshop and Clip Studio: flatten the image first, then save as PDF with no layers.' },
+            { title: 'Already have a PDF with transparency? Flatten it', body: 'Acrobat: Print Production → Flattener Preview, or Save As PDF/X-1a. Ghostscript: gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.3 -dPDFSETTINGS=/prepress -o flat.pdf in.pdf. Then run the result through the File Checker.' },
+            { title: 'Verify', body: 'Open the exported PDF in a second viewer (Acrobat, Chrome, Affinity) and confirm every page shows its art with no Mask layers and no blank pages, then drop it on the File Checker.' },
+          ]}
+        />
+        <Callout kind="info" title="Check it before you order">
+          The <Link to="/resources/file-check">File Checker</Link> reads your PDF and shows a green tick or a red cross
+          for every rule on this page, with what to fix. Your file is deleted the moment the check finishes.
+        </Callout>
+      </Section>
+
       {/* 9 --------------------------------------------------------------- */}
       <Section id="export-pdf" title="Exporting your PDF">
         <p>
-          The finish line is a single flattened, high-resolution PDF — <strong>PDF/X-1a:2001</strong> is preferred
-          (a high-quality JPG is also accepted). Work through these six steps in order, then submit one PDF for the
+          The finish line is a single flattened, high-resolution PDF — <strong>PDF/X-1a:2003</strong> is the target. Work through these six steps in order, then submit one PDF for the
           interior and one for the cover.
         </p>
         <Steps
@@ -532,11 +570,11 @@ export function FilePrep() {
             },
             {
               title: 'Flatten',
-              body: 'Flatten transparency, layers and blend modes so nothing re-renders differently on our RIP, and make sure white is never set to overprint.',
+              body: 'Flatten transparency, layers, masks and blend modes so every page is plain painted content (see Flat files above), and make sure white is never set to overprint.',
             },
             {
               title: 'Export the PDF',
-              body: 'Export a single flattened, high-resolution PDF using the PDF/X-1a:2001 preset — one file for the interior, one for the cover spread. A high-quality JPG is also accepted.',
+              body: 'Export a single flattened, high-resolution PDF using the PDF/X-1a:2003 preset (PDF 1.3/1.4) — one file for the interior, one for the cover. Our upload refuses files with live transparency, masks or a PDF version above 1.4.',
             },
             {
               title: 'Verify',

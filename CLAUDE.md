@@ -89,6 +89,17 @@ npm run db:studio                    # Prisma Studio
   expected size and the template; the account path also writes "Upload
   refused" to the order timeline. `web/src/lib/print-files.ts` mirrors the
   table so the slot can say the exact size up front — keep the two in step.
+  The inside of the file is inspected too (`lib/pdf-inspect.ts`: object
+  dictionaries read straight from the file, object streams included, plus
+  `pdfimages -list` / `pdffonts`): live transparency (SMask, transparency
+  groups, blend modes, CA/ca < 1), stencil/image masks, pages that are
+  only a clipped form, images under 250 ppi / 16-bit / JPX / JBIG2, fonts
+  not embedded, PDF version > 1.4, pages drawing resources the file lacks.
+  Any of these is a 400 with `details.code = 'not_print_ready'`. The same
+  engine backs the public File Checker (`routes/file-check.ts`,
+  `/resources/file-check`): the PDF goes to a scratch dir under os.tmpdir()
+  and is unlinked in `finally`; nothing is published or recorded.
+  `lib/file-check.ts` turns both inspections into the pass/fail checklist.
 - Staff-placed orders (`/admin/orders/new`) go through `server/src/lib/manual-order.ts`:
   the same pricing engine, packer and coupon rules as checkout, plus a per-line
   price override. Payment is a pay link (the customer pays on

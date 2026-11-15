@@ -39,7 +39,7 @@ export function UploadOption({ opt, value, onChange, productId, product, printSi
   const kind = PRINT_FILE_KIND_BY_OPTION_KEY[key] ?? null;
   const spec = trimSpecFor(product, printSize);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<{ message: string; templateUrl?: string | null; templateLabel?: string | null } | null>(null);
+  const [err, setErr] = useState<{ message: string; templateUrl?: string | null; templateLabel?: string | null; helpUrl?: string | null; checkerUrl?: string | null } | null>(null);
   const [progress, setProgress] = useState(0);
   const [known, setKnown] = useState<Record<string, Uploaded>>({});
   const urls = typeof value === 'string' && value ? value.split('\n').map((s) => s.trim()).filter(Boolean) : [];
@@ -64,7 +64,7 @@ export function UploadOption({ opt, value, onChange, productId, product, printSi
       onChange(single ? uploaded[0]!.url : [...urls, ...uploaded.map((u) => u.url)].join('\n'));
     } catch (e: any) {
       const d = e instanceof UploadError ? e.details : null;
-      setErr({ message: e?.message ?? 'Upload failed. Please try again.', templateUrl: d?.templateUrl ?? null, templateLabel: d?.templateLabel ?? null });
+      setErr({ message: e?.message ?? 'Upload failed. Please try again.', templateUrl: d?.templateUrl ?? null, templateLabel: d?.templateLabel ?? null, helpUrl: d?.helpUrl ?? null, checkerUrl: d?.checkerUrl ?? null });
     } finally {
       setBusy(false);
     }
@@ -128,6 +128,12 @@ export function UploadOption({ opt, value, onChange, productId, product, printSi
                 <a href={err.templateUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 700 }}>Download the {err.templateLabel ?? 'template'}</a>
                 {' · '}
                 <a href="/resources/templates" target="_blank" rel="noreferrer">How to use it</a>
+              </div>
+            )}
+            {err.helpUrl && (
+              <div style={{ marginTop: '.4rem' }}>
+                <a href={err.helpUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 700 }}>How to flatten your file</a>
+                {err.checkerUrl && <>{' · '}<a href={err.checkerUrl} target="_blank" rel="noreferrer">Run the File Checker</a></>}
               </div>
             )}
           </div>

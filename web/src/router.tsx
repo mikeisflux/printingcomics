@@ -33,6 +33,7 @@ import {
 import { Templates } from './pages/resources/Templates';
 import { MakeAComic } from './pages/resources/MakeAComic';
 import { FilePrep } from './pages/resources/FilePrep';
+import { FileCheck } from './pages/resources/FileCheck';
 import { Developers } from './pages/Developers';
 import { ProofReview } from './pages/ProofReview';
 import { ReviewForm } from './pages/ReviewForm';
@@ -190,6 +191,7 @@ export const router = createBrowserRouter([
       { path: 'sample-pack', element: <SamplePack /> },
       { path: 'resources/make-a-comic', element: <MakeAComic /> },
       { path: 'resources/file-prep', element: <FilePrep /> },
+      { path: 'resources/file-check', element: <FileCheck /> },
       { path: 'resources/templates', element: <Templates /> },
       { path: 'resources/faq', element: <Faq /> },
       { path: 'developers', element: <Developers /> },

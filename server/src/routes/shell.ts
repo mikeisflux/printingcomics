@@ -232,6 +232,7 @@ const STATIC_META: Record<string, { title: string; description: string; image?: 
   '/distribution/apply': { title: `Apply — Distribution | ${SITE_NAME}`, description: 'Join the Printing Comics Distribution program as a publisher or a comic shop.', image: '/og-distribution.png' },
   '/resources/make-a-comic': { title: `How to Make a Comic Book | ${SITE_NAME}`, description: 'From script to print-ready files: a guide to making a comic book.' },
   '/resources/file-prep': { title: `File Prep for Comic Printing | ${SITE_NAME}`, description: 'How to set up your cover and interior PDFs for printing: bleed, trim, resolution, color.' },
+  '/resources/file-check': { title: `File Checker — Is my PDF print-ready? | ${SITE_NAME}`, description: 'Upload a cover, interior or art-print PDF and get a pass/fail checklist: page size and bleed, page count, flattened transparency, masks, image resolution, fonts and PDF version. Files are deleted the moment the check finishes.' },
   '/resources/templates': { title: `Comic Book Templates | ${SITE_NAME}`, description: 'Free print templates for standard comic, graphic novel and trading card sizes.' },
   '/resources/faq': { title: `FAQ | ${SITE_NAME}`, description: 'Answers about printing, proofs, turnaround and shipping at Printing Comics.' },
 };

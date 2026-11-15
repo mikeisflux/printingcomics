@@ -23,6 +23,8 @@ import { HttpError } from '../middleware/error.js';
 import { proofKindsForItem, itemLabel } from './proofs.js';
 import { pageCount, popplerProblem } from './pdf-preview.js';
 import { BLEED_IN, describeSizeRefusal, inches, inspectPrintPdf, pageSizeFor, trimSpecFor, type TrimSpec } from './print-specs.js';
+import { inspectPdfContent } from './pdf-inspect.js';
+import { describeContentRefusal, FLAT_FILE_HELP } from './file-check.js';
 import { publishUpload, deleteStored } from './storage.js';
 import { notifyStaff } from './proof-emails.js';
 
@@ -147,6 +149,24 @@ export async function checkPrintPdf(
         templatesPage: '/resources/templates',
       });
     }
+  }
+  // Flat painted content only: no transparency or masks, print-resolution
+  // images in a format the press takes, fonts embedded, PDF 1.4 or lower,
+  // every drawn resource present.
+  let content: Awaited<ReturnType<typeof inspectPdfContent>> | null = null;
+  try {
+    content = await inspectPdfContent(file.path);
+  } catch {
+    throw new HttpError(400, `We could not read the inside of “${name}”. Re-export it from your design app (PDF/X-1a or PDF/X-4 is ideal) and try again.`);
+  }
+  if (content.problems.length) {
+    throw new HttpError(400, describeContentRefusal(label, name, content.problems), {
+      code: 'not_print_ready',
+      reasons: content.problems.map((p) => p.reason),
+      findings: content.problems,
+      helpUrl: FLAT_FILE_HELP,
+      checkerUrl: '/resources/file-check',
+    });
   }
   if (kind === 'cover' && pages !== 4) {
     throw new HttpError(400, `The ${label} must have exactly 4 pages — front cover, inside front cover, inside back cover, back cover — and “${name}” has ${pages}. ${pages > 4 ? 'Interior pages belong in the Interior PDF.' : 'Add a blank page for any cover side that prints nothing.'}`);

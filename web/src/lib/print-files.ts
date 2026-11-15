@@ -104,7 +104,7 @@ export function formatFileSize(bytes: number): string {
 
 /** A refusal from the server, with whatever it attached (the page-size check adds the template to download). */
 export class UploadError extends Error {
-  constructor(message: string, public details?: { code?: string; templateUrl?: string | null; templateLabel?: string | null; templatesPage?: string | null; measured?: { w: number; h: number } | null; expected?: { w: number; h: number } | null } | null) {
+  constructor(message: string, public details?: { code?: string; templateUrl?: string | null; templateLabel?: string | null; templatesPage?: string | null; measured?: { w: number; h: number } | null; expected?: { w: number; h: number } | null; helpUrl?: string | null; checkerUrl?: string | null } | null) {
     super(message);
   }
 }

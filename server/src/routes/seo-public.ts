@@ -21,7 +21,7 @@ router.get('/sitemap.xml', async (_req, res) => {
 
   const staticPaths = [
     '/', '/shop', '/crowdfunding', '/distribution', '/distribution/catalog', '/distribution/handbook', '/about', '/terms', '/contact', '/sample-pack',
-    '/resources/make-a-comic', '/resources/file-prep', '/resources/templates', '/resources/faq',
+    '/resources/make-a-comic', '/resources/file-prep', '/resources/file-check', '/resources/templates', '/resources/faq',
   ];
   const urls: { loc: string; lastmod?: string; priority?: number; changefreq?: string }[] = [
     ...staticPaths.map((p) => ({ loc: base + p, priority: p === '/' ? 1.0 : 0.6, changefreq: 'monthly' })),
