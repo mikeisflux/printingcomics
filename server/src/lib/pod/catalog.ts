@@ -299,14 +299,19 @@ export async function applyListingDelta(args: {
   const { cycle, listing: l, settings, actor, summary } = args;
   const cycleId = cycle.id;
   const item = await prisma.catalogCycleItem.findFirst({ where: { cycleId, listingId: l.id }, orderBy: { version: 'desc' } });
-  const raised = item?.raisedUnits ?? 0;
+  // Not in the published catalog: shops could not have ordered it, and
+  // without a snapshot row to remember what was raised a lock would raise it
+  // again every time. Nothing to do.
+  if (!item) return;
+  const raised = item.raisedUnits;
   const deltaUnits = args.orderedUnits - raised;
   const postedSale = sum(await prisma.partnerLedgerEntry.findMany({ where: { cycleId, listingId: l.id, kind: 'SALE' }, select: { amountCents: true } }));
   const deltaSale = args.orderedWholesaleCents - postedSale;
   if (deltaUnits === 0 && deltaSale === 0) return;
 
   const bps = l.partner.commissionBps ?? (l.fulfillment === 'PRINTED_BY_US' ? settings.commissionBpsPrintedByUs : l.fulfillment === 'CONSIGNMENT' ? settings.commissionBpsConsignment : settings.commissionBpsPartnerShips);
-  const tag = deltaUnits >= 0 ? `${args.orderedUnits} × wholesale` : `${-deltaUnits} copies cancelled`;
+  const tag = deltaUnits >= 0 ? `${args.orderedUnits} × wholesale` : `${-deltaUnits} copies canceled`;
+  const changedPos = new Set<string>();
 
   await prisma.$transaction(async (tx) => {
     if (deltaSale !== 0) {
@@ -323,13 +328,19 @@ export async function applyListingDelta(args: {
       if (deltaUnits > 0) {
         const pull = Math.min(deltaUnits, Math.max(0, l.inventoryUnits));
         await tx.listing.update({ where: { id: l.id }, data: { inventoryUnits: { decrement: pull } } });
-        await tx.podEvent.create({ data: { subjectType: 'listing', subjectId: l.id, kind: 'inventory', message: `${deltaUnits} copies pulled from consignment stock for ${cycle.name}${deltaUnits > l.inventoryUnits ? ` — SHORT by ${deltaUnits - l.inventoryUnits}` : ''}`, actorId: actor.id, actorName: actor.name } });
+        await tx.catalogCycleItem.update({ where: { id: item.id }, data: { pulledUnits: { increment: pull } } });
+        await tx.podEvent.create({ data: { subjectType: 'listing', subjectId: l.id, kind: 'inventory', message: `${pull} copies pulled from consignment stock for ${cycle.name}${deltaUnits > pull ? ` — SHORT by ${deltaUnits - pull}` : ''}`, actorId: actor.id, actorName: actor.name } });
         // The storefront sells from the same shelf.
         if (l.productId) await tx.product.update({ where: { id: l.productId }, data: { stock: Math.max(0, l.inventoryUnits - pull) } }).catch(() => undefined);
       } else if (deltaUnits < 0) {
-        await tx.listing.update({ where: { id: l.id }, data: { inventoryUnits: { increment: -deltaUnits } } });
-        await tx.podEvent.create({ data: { subjectType: 'listing', subjectId: l.id, kind: 'inventory', message: `${-deltaUnits} copies returned to consignment stock (order cancelled in ${cycle.name})`, actorId: actor.id, actorName: actor.name } });
-        if (l.productId) await tx.product.update({ where: { id: l.productId }, data: { stock: { increment: -deltaUnits } } }).catch(() => undefined);
+        // Only copies that were actually pulled go back: a short pull took fewer than were raised.
+        const back = Math.min(-deltaUnits, Math.max(0, item.pulledUnits));
+        if (back > 0) {
+          await tx.listing.update({ where: { id: l.id }, data: { inventoryUnits: { increment: back } } });
+          await tx.catalogCycleItem.update({ where: { id: item.id }, data: { pulledUnits: { decrement: back } } });
+          await tx.podEvent.create({ data: { subjectType: 'listing', subjectId: l.id, kind: 'inventory', message: `${back} copies returned to consignment stock (order canceled in ${cycle.name})`, actorId: actor.id, actorName: actor.name } });
+          if (l.productId) await tx.product.update({ where: { id: l.productId }, data: { stock: { increment: back } } }).catch(() => undefined);
+        }
       }
       summary.units += Math.max(0, deltaUnits);
     } else if (l.fulfillment === 'PRINTED_BY_US') {
@@ -350,7 +361,7 @@ export async function applyListingDelta(args: {
         const total = newRetailerQty + run.partnerAddOnQty;
         const cost = total > 0 ? await estimatePrintCost(l, total) : null;
         run = await tx.productionOrder.update({ where: { id: run.id }, data: { retailerQty: newRetailerQty, totalQty: total, printUnitCents: cost?.unitCents ?? run.printUnitCents, printTotalCents: cost?.totalCents ?? run.printTotalCents } });
-        await tx.podEvent.create({ data: { subjectType: 'production', subjectId: run.id, kind: deltaUnits > 0 ? 'add-on' : 'reduced', message: deltaUnits > 0 ? `${deltaUnits} retailer copies added at FOC lock (now ${total})` : `${-deltaUnits} retailer copies cancelled (now ${total})`, actorId: actor.id, actorName: actor.name } });
+        await tx.podEvent.create({ data: { subjectType: 'production', subjectId: run.id, kind: deltaUnits > 0 ? 'add-on' : 'reduced', message: deltaUnits > 0 ? `${deltaUnits} retailer copies added at FOC lock (now ${total})` : `${-deltaUnits} retailer copies canceled (now ${total})`, actorId: actor.id, actorName: actor.name } });
       }
       if (run) {
         // The publisher pays for the shops' copies: post the difference between what those copies cost now and what was charged so far.
@@ -375,7 +386,9 @@ export async function applyListingDelta(args: {
         const wholesaleCents = lines.reduce((a, x) => a + x.wholesaleCents, 0);
         const commissionCents = Math.round((wholesaleCents * poBps) / 10_000);
         await tx.purchaseOrder.update({ where: { id: open.id }, data: { lines: lines as unknown as Prisma.InputJsonValue, unitsTotal, wholesaleCents, commissionCents, netCents: wholesaleCents - commissionCents } });
-        await tx.podEvent.create({ data: { subjectType: 'purchase_order', subjectId: open.id, kind: 'updated', message: `${l.catalogKey}: ${deltaUnits > 0 ? `${deltaUnits} copies added` : `${-deltaUnits} copies cancelled`} (now ${args.orderedUnits})`, actorId: actor.id, actorName: actor.name } });
+        await tx.podEvent.create({ data: { subjectType: 'purchase_order', subjectId: open.id, kind: 'updated', message: `${l.catalogKey}: ${deltaUnits > 0 ? `${deltaUnits} copies added` : `${-deltaUnits} copies canceled`} (now ${args.orderedUnits})`, actorId: actor.id, actorName: actor.name } });
+        // The publisher already has this purchase order in hand: they get the changed one.
+        if (open.status === 'SENT' || open.status === 'ACKNOWLEDGED') changedPos.add(open.id);
       } else if (args.orderedUnits > 0 && deltaUnits > 0) {
         const commissionCents = Math.round((line.wholesaleCents * poBps) / 10_000);
         const po = await tx.purchaseOrder.create({ data: {
@@ -388,8 +401,50 @@ export async function applyListingDelta(args: {
       summary.units += Math.max(0, deltaUnits);
     }
 
-    if (item) await tx.catalogCycleItem.update({ where: { id: item.id }, data: { raisedUnits: args.orderedUnits } });
+    await tx.catalogCycleItem.update({ where: { id: item.id }, data: { raisedUnits: args.orderedUnits } });
   });
+  for (const poId of changedPos) {
+    const { sendPurchaseOrderEmail } = await import('./emails.js');
+    const mail = await sendPurchaseOrderEmail(poId, { changed: true }).catch((e: any) => ({ sent: false, to: '', error: e?.message ?? String(e) } as const));
+    await recordPodEvent('purchase_order', poId, 'resent', mail.sent ? `Changed purchase order emailed to ${mail.to}` : `Changed; email failed (${mail.error})`, actor);
+  }
+}
+
+/**
+ * A run that is cancelled no longer covers the shops' copies it was raised
+ * for: those count as not raised again, so the next lock raises a fresh run
+ * for them. Bringing a cancelled run back takes them back on.
+ */
+export async function adjustRaisedForRun(run: { cycleId: string | null; listingId: string; retailerQty: number }, direction: 'cancel' | 'restore'): Promise<void> {
+  if (!run.cycleId || run.retailerQty <= 0) return;
+  const item = await prisma.catalogCycleItem.findFirst({ where: { cycleId: run.cycleId, listingId: run.listingId }, orderBy: { version: 'desc' } });
+  if (!item) return;
+  const next = direction === 'cancel' ? Math.max(0, item.raisedUnits - run.retailerQty) : item.raisedUnits + run.retailerQty;
+  await prisma.catalogCycleItem.update({ where: { id: item.id }, data: { raisedUnits: next } });
+}
+
+/**
+ * Move a listing to another catalog. Its snapshot in the old catalog goes
+ * with it, so the old catalog stops showing a title no lock there would
+ * ever raise — unless shops have already ordered it from the old catalog,
+ * in which case it stays put.
+ */
+export async function moveListingCycle(listingId: string, toCycleId: string | null): Promise<void> {
+  const l = await prisma.listing.findUnique({ where: { id: listingId }, select: { cycleId: true, cycle: { select: { name: true, status: true, lockedAt: true } } } });
+  if (!l || l.cycleId === toCycleId) return;
+  if (l.cycleId && l.cycle) {
+    const locked = l.cycle.status === 'FOC_LOCKED' || l.cycle.status === 'CLOSED' || Boolean(l.cycle.lockedAt);
+    if (!locked) {
+      // Still open for ordering: orders placed there would never be raised
+      // (a lock works from the listing's cycle), so the title stays put.
+      const ordered = await prisma.orderItem.count({ where: { listingId, order: { cycleId: l.cycleId, source: 'retailer', status: { notIn: ['CANCELLED', 'REFUNDED'] } } } });
+      if (ordered > 0) throw new HttpError(400, `Shops have already ordered this title from ${l.cycle.name}; it stays in that catalog until it locks.`);
+      await prisma.catalogCycleItem.deleteMany({ where: { cycleId: l.cycleId, listingId } });
+    }
+    // A locked or closed catalog keeps its snapshot: it is the record of what
+    // was sold and raised there, and the title can go on to the next catalog.
+  }
+  await prisma.listing.update({ where: { id: listingId }, data: { cycleId: toCycleId } });
 }
 
 /** Copies and wholesale money per listing across a cycle's live retailer orders. */
@@ -443,12 +498,23 @@ export async function lockCycle(cycleId: string, actor: Actor): Promise<LockSumm
  * and when the cycle has already been locked the copies and money raised
  * for its lines are taken back out of the runs, purchase orders and ledger.
  */
-export async function cancelRetailerOrder(orderId: string, actor: Actor, args: { by: 'retailer' | 'staff'; reason?: string | null }): Promise<void> {
+export async function cancelRetailerOrder(orderId: string, actor: Actor, args: { by: 'retailer' | 'staff'; reason?: string | null; refund?: { method: string; reference?: string | null } | null }): Promise<void> {
   const o = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true, cycle: true, retailer: { select: { id: true } } } });
   if (!o || o.source !== 'retailer' || !o.retailer) throw new HttpError(404, 'Order not found');
   if (o.status === 'CANCELLED' || o.status === 'REFUNDED') return;
-  if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'A paid order is refunded from the store Orders area, not cancelled here.');
-  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: args.by === 'retailer' ? 'Canceled by the retailer before FOC' : (args.reason ?? 'Canceled by staff'), actorId: actor.id, actorName: actor.name } } } });
+  // A paid order is voided: staff say how the money went back (PayPal
+  // refund, check, store credit…) and the order is recorded as refunded;
+  // everything raised for it unwinds the same way as a cancel.
+  if (o.paymentStatus === 'CAPTURED' && (args.by !== 'staff' || !args.refund)) throw new HttpError(400, 'This order is paid. To void it, record how the money was refunded.');
+  const refund = o.paymentStatus === 'CAPTURED' ? args.refund! : null;
+  const to = refund ? 'REFUNDED' : 'CANCELLED';
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({ where: { id: o.id }, data: { status: to, ...(refund ? { paymentStatus: 'REFUNDED' } : {}), events: { create: { kind: 'status', fromStatus: o.status, toStatus: to, message: args.by === 'retailer' ? 'Canceled by the retailer before FOC' : (args.reason ?? (refund ? 'Voided by staff' : 'Canceled by staff')), actorId: actor.id, actorName: actor.name } } } });
+    if (refund) {
+      await tx.payment.updateMany({ where: { orderId: o.id, status: 'CAPTURED' }, data: { status: 'REFUNDED' } });
+      await tx.orderStatusEvent.create({ data: { orderId: o.id, kind: 'payment', fromStatus: 'CAPTURED', toStatus: 'REFUNDED', actorId: actor.id, actorName: actor.name, message: `Refunded ${(o.totalCents / 100).toFixed(2)} by ${refund.method}${refund.reference ? ` (${refund.reference})` : ''}` } });
+    }
+  });
   const prev = ((o.wholesale ?? {}) as { creditApplied?: number }).creditApplied ?? 0;
   if (prev) await prisma.retailer.update({ where: { id: o.retailer.id }, data: { creditCents: { increment: prev } } });
   // Anything raised at lock for these lines comes back out.
@@ -462,7 +528,7 @@ export async function cancelRetailerOrder(orderId: string, actor: Actor, args: {
       const t = tally.get(l.id);
       await applyListingDelta({ cycle: o.cycle, listing: l, orderedUnits: t?.qty ?? 0, orderedWholesaleCents: t?.wholesaleCents ?? 0, shipTo: t?.shipTo ?? [], settings, actor, summary });
     }
-    if (summary.ledgerEntries) await recordPodEvent('cycle', o.cycle.id, 'adjusted', `Order ${o.number} cancelled after FOC: ${summary.ledgerEntries} ledger entr${summary.ledgerEntries === 1 ? 'y' : 'ies'} reversed`, actor);
+    if (summary.ledgerEntries) await recordPodEvent('cycle', o.cycle.id, 'adjusted', `Order ${o.number} ${refund ? 'voided' : 'canceled'} after FOC: ${summary.ledgerEntries} ledger entr${summary.ledgerEntries === 1 ? 'y' : 'ies'} reversed`, actor);
   }
 }
 
@@ -485,7 +551,7 @@ export async function reconcileRunPrinting(runId: string, actor: Actor): Promise
     const charged = -sum(await prisma.partnerLedgerEntry.findMany({ where: { ref }, select: { amountCents: true } }));
     const delta = target - charged;
     if (delta === 0) continue;
-    await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -delta, description: cancelled ? `${l.catalogKey}: printing charge reversed, run ${run.number} cancelled` : `${l.catalogKey}: printing ${qty} ${part === 'retailer' ? 'retailer' : 'publisher'} copies (${run.number})${delta < 0 ? ' — reduced' : ''}`, cycleId: run.cycleId, listingId: l.id, actorName: actor.name, ref } });
+    await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -delta, description: cancelled ? `${l.catalogKey}: printing charge reversed, run ${run.number} canceled` : `${l.catalogKey}: printing ${qty} ${part === 'retailer' ? 'retailer' : 'publisher'} copies (${run.number})${delta < 0 ? ' — reduced' : ''}`, cycleId: run.cycleId, listingId: l.id, actorName: actor.name, ref } });
     posted++;
   }
   return posted;
@@ -508,13 +574,13 @@ export async function cancelPurchaseOrder(poId: string, actor: Actor): Promise<v
       if (!line.wholesaleCents) continue;
       const commission = Math.round((line.wholesaleCents * bps) / 10_000);
       await tx.partnerLedgerEntry.createMany({ data: [
-        { partnerId: po.partnerId, kind: 'SALE', amountCents: -line.wholesaleCents, description: `${line.catalogKey}: ${line.quantity} copies — purchase order ${po.number} cancelled (${po.cycle.name})`, cycleId: po.cycleId, listingId: line.listingId, actorName: actor.name, ref: `sale:${po.cycleId}:${line.listingId}` },
-        { partnerId: po.partnerId, kind: 'COMMISSION', amountCents: commission, description: `${line.catalogKey}: commission reversed, ${po.number} cancelled`, cycleId: po.cycleId, listingId: line.listingId, actorName: actor.name, ref: `commission:${po.cycleId}:${line.listingId}` },
+        { partnerId: po.partnerId, kind: 'SALE', amountCents: -line.wholesaleCents, description: `${line.catalogKey}: ${line.quantity} copies — purchase order ${po.number} canceled (${po.cycle.name})`, cycleId: po.cycleId, listingId: line.listingId, actorName: actor.name, ref: `sale:${po.cycleId}:${line.listingId}` },
+        { partnerId: po.partnerId, kind: 'COMMISSION', amountCents: commission, description: `${line.catalogKey}: commission reversed, ${po.number} canceled`, cycleId: po.cycleId, listingId: line.listingId, actorName: actor.name, ref: `commission:${po.cycleId}:${line.listingId}` },
       ] });
       await tx.catalogCycleItem.updateMany({ where: { cycleId: po.cycleId, listingId: line.listingId }, data: { raisedUnits: 0 } });
     }
   });
-  await recordPodEvent('purchase_order', po.id, 'cancelled', `Cancelled; ${po.unitsTotal} copies and ${(po.wholesaleCents / 100).toFixed(2)} wholesale taken back out of the ledger`, actor);
+  await recordPodEvent('purchase_order', po.id, 'canceled', `Canceled; ${po.unitsTotal} copies and ${(po.wholesaleCents / 100).toFixed(2)} wholesale taken back out of the ledger`, actor);
 }
 
 export async function reopenCycle(cycleId: string, actor: Actor) {

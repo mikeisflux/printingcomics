@@ -12,7 +12,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { getPodSettings, savePodSettings } from '../../lib/pod/settings.js';
 import {
   CATALOG_ELIGIBLE, CYCLE_STATUS_LABELS, FORMATS, LISTING_STATUSES, LISTING_STATUS_LABELS, closeCycle, cycleItems, cycleOrderingOpen, deriveCatalogKey,
-  cancelPurchaseOrder, cancelRetailerOrder, estimatePrintCost, lockCycle, publishCycle, reconcileRunPrinting, refreshSnapshot, reopenCycle, setListingStatus, syncListingProduct, uniqueCatalogKey, type ListingStatusKey,
+  adjustRaisedForRun, cancelPurchaseOrder, cancelRetailerOrder, estimatePrintCost, lockCycle, moveListingCycle, publishCycle, reconcileRunPrinting, refreshSnapshot, reopenCycle, setListingStatus, syncListingProduct, uniqueCatalogKey, type ListingStatusKey,
 } from '../../lib/pod/catalog.js';
 import { listingInclude, loadListing, presentListing } from '../../lib/pod/present.js';
 import { deleteListingFile, isFileKind, listingUpload, rerunPreflight, restoreListingFileVersion, storeListingFile, storePublisherAsset, requireUploadType, UPLOAD_TYPES, csvUpload } from '../../lib/pod/files.js';
@@ -27,8 +27,8 @@ import { catalogCsv } from '../../lib/pod/csv.js';
 import { promises as fsp } from 'node:fs';
 import { LEDGER_LABELS, generateStatement, issueStatement, ledgerSummary, markStatementPaid, voidStatement } from '../../lib/pod/payouts.js';
 import { notifyStaffListingSubmitted, sendListingStatusEmail, sendPartnerPortalInviteEmail, sendPurchaseOrderEmail, sendRetailerApprovedEmail, sendStatementEmail, sendRetailerOrderCancelledEmail, sendRetailerStatusEmail, sendPartnerStatusEmail, sendApplicationDeclinedEmail, sendReturnDecisionEmail, sendStatementPaidEmail } from '../../lib/pod/emails.js';
-import { ensureCustomerAccount, magicLink } from '../../lib/customer-accounts.js';
-import { PAYMENT_METHODS } from '../../lib/manual-order.js';
+import { ensurePortalAccount, magicLink } from '../../lib/customer-accounts.js';
+import { PAYMENT_KEYS, PAYMENT_METHODS } from '../../lib/manual-order.js';
 import { sendPartnerPortalInviteEmail as inviteMail } from '../../lib/pod/emails.js';
 void inviteMail;
 
@@ -114,10 +114,10 @@ router.post('/publishers', async (req, res) => {
   for (let i = 2; await prisma.partner.findUnique({ where: { slug }, select: { id: true } }); i++) slug = `${slugify(body.name)}-${i}`;
   const { inviteEmail, address, ...rest } = body;
   const p = await prisma.partner.create({ data: { ...rest, address: address ?? undefined, slug, platform: 'publisher', status: 'ACTIVE', createdById: req.session?.sub ?? null } });
-  await recordPodEvent('listing', p.id, 'publisher-created', body.name, actorOf(req));
+  await recordPodEvent('partner', p.id, 'publisher-created', body.name, actorOf(req));
   let mail: Awaited<ReturnType<typeof sendPartnerPortalInviteEmail>> | null = null;
   if (inviteEmail) {
-    const user = await ensureCustomerAccount(inviteEmail, { firstName: body.contactName?.split(' ')[0], lastName: body.contactName?.split(' ').slice(1).join(' ') });
+    const user = await ensurePortalAccount(inviteEmail, { firstName: body.contactName?.split(' ')[0], lastName: body.contactName?.split(' ').slice(1).join(' ') });
     if (!user.partnerId || user.partnerId === p.id) { await prisma.user.update({ where: { id: user.id }, data: { partnerId: p.id } }); mail = await sendPartnerPortalInviteEmail(p.id, user.id); }
   }
   res.status(201).json({ publisher: await publisherView(p.id), mail });
@@ -130,7 +130,7 @@ router.get('/publishers/:id', async (req, res) => {
     ledgerSummary(publisher.id),
     prisma.publisherAsset.findMany({ where: { partnerId: publisher.id }, orderBy: { createdAt: 'desc' }, include: { media: { select: { id: true, url: true, originalName: true, size: true, mimeType: true } } } }),
     prisma.barcode.groupBy({ by: ['status'], where: { partnerId: publisher.id }, _count: { _all: true } }),
-    prisma.podEvent.findMany({ where: { OR: [{ subjectType: 'listing', subjectId: publisher.id }, { subjectType: 'listing', subjectId: { in: (await prisma.listing.findMany({ where: { partnerId: publisher.id }, select: { id: true } })).map((l) => l.id) } }] }, orderBy: { createdAt: 'desc' }, take: 60 }),
+    prisma.podEvent.findMany({ where: { OR: [{ subjectType: 'partner', subjectId: publisher.id }, { subjectType: 'listing', subjectId: publisher.id }, { subjectType: 'listing', subjectId: { in: (await prisma.listing.findMany({ where: { partnerId: publisher.id }, select: { id: true } })).map((l) => l.id) } }] }, orderBy: { createdAt: 'desc' }, take: 60 }),
   ]);
   res.json({ publisher, listings: listings.map((l) => presentListing(l, 'staff')), ledger, assets, barcodes: Object.fromEntries(barcodes.map((b) => [b.status, b._count._all])), events });
 });
@@ -139,7 +139,7 @@ router.patch('/publishers/:id', async (req, res) => {
   const body = publisherBody.parse(req.body);
   const { address, ...rest } = body;
   const p = await prisma.partner.update({ where: { id: req.params.id }, data: { ...rest, ...(address === undefined ? {} : { address: address === null ? Prisma.DbNull : address }) }, select: { id: true } });
-  await recordPodEvent('listing', p.id, 'publisher-edited', Object.keys(body).join(', '), actorOf(req));
+  await recordPodEvent('partner', p.id, 'publisher-edited', Object.keys(body).join(', '), actorOf(req));
   res.json({ publisher: await publisherView(p.id) });
 });
 
@@ -154,13 +154,18 @@ for (const [action, status] of [['suspend', 'SUSPENDED'], ['restore', 'ACTIVE'],
   });
 }
 
-/** A one-time sign-in link for a publisher's member, for staff who hold only this section. */
+/**
+ * A sign-in link for a publisher's member, for staff who hold only this
+ * section. Good for one hour, and only ever into a customer account: a link
+ * into a staff account would hand over that account.
+ */
 router.post('/publishers/:id/members/:userId/sign-in-link', async (req, res) => {
-  const u = await prisma.user.findFirst({ where: { id: String(req.params.userId), partnerId: String(req.params.id) }, select: { id: true, email: true } });
+  const u = await prisma.user.findFirst({ where: { id: String(req.params.userId), partnerId: String(req.params.id) }, select: { id: true, email: true, role: true } });
   if (!u) throw new HttpError(404, 'That person is not a member of this publisher');
-  const link = await magicLink(u.id, '/publisher');
-  await recordPodEvent('partner', String(req.params.id), 'sign-in-link', `One-time sign-in link made for ${u.email}`, actorOf(req));
-  res.json({ link, email: u.email });
+  if (u.role !== 'CUSTOMER') throw new HttpError(403, 'That member is a staff account; staff sign in with their own password');
+  const link = await magicLink(u.id, '/publisher', { ttl: '1h' });
+  await recordPodEvent('partner', String(req.params.id), 'sign-in-link', `Sign-in link (1 hour) made for ${u.email}`, actorOf(req));
+  res.json({ link, email: u.email, expiresInMinutes: 60 });
 });
 
 router.delete('/publishers/:id/members/:userId', async (req, res) => {
@@ -197,10 +202,12 @@ router.post('/publishers/applications/:appId/approve', async (req, res) => {
   if (!app) throw new HttpError(404, 'Application not found');
   if (app.status !== 'PENDING') throw new HttpError(400, 'Already decided');
   const body = z.object({ commissionBps: z.coerce.number().int().min(0).max(9999).nullable().optional(), note: opt(1000) }).parse(req.body ?? {});
+  // The seat holder is checked before anything is created: a staff address
+  // cannot take a portal seat, and that must not leave a publisher behind.
+  const user = await ensurePortalAccount(app.contactEmail, { firstName: app.contactName.split(' ')[0], lastName: app.contactName.split(' ').slice(1).join(' ') });
   let slug = slugify(app.name);
   for (let i = 2; await prisma.partner.findUnique({ where: { slug }, select: { id: true } }); i++) slug = `${slugify(app.name)}-${i}`;
   const p = await prisma.$transaction(async (tx) => { const created = await tx.partner.create({ data: { slug, name: app.name, platform: 'publisher', status: 'ACTIVE', contactEmail: app.contactEmail, contactName: app.contactName, website: app.website, commissionBps: body.commissionBps ?? null, notes: app.message, createdById: req.session?.sub ?? null } }); await tx.partnerApplication.update({ where: { id: app.id }, data: { status: 'APPROVED', reviewerId: req.session?.sub ?? null, reviewNotes: body.note ?? null, reviewedAt: new Date(), partnerId: created.id } }); return created; });
-  const user = await ensureCustomerAccount(app.contactEmail, { firstName: app.contactName.split(' ')[0], lastName: app.contactName.split(' ').slice(1).join(' ') });
   const linked = !user.partnerId || user.partnerId === p.id;
   if (!user.partnerId) await prisma.user.update({ where: { id: user.id }, data: { partnerId: p.id } });
   const mail = linked ? await sendPartnerPortalInviteEmail(p.id, user.id) : { sent: false, to: user.email, error: 'that email already belongs to another publisher; invite a different address' };
@@ -223,11 +230,11 @@ router.post('/publishers/:id/invite', async (req, res) => {
   const body = z.object({ email: z.string().trim().email(), firstName: opt(80), lastName: opt(80) }).parse(req.body);
   const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
   if (!partner) throw new HttpError(404, 'Partner not found');
-  const user = await ensureCustomerAccount(body.email, { firstName: body.firstName, lastName: body.lastName });
+  const user = await ensurePortalAccount(body.email, { firstName: body.firstName, lastName: body.lastName });
   if (user.partnerId && user.partnerId !== partner.id) throw new HttpError(409, 'That account already belongs to another partner');
   await prisma.user.update({ where: { id: user.id }, data: { partnerId: partner.id } });
   const mail = await sendPartnerPortalInviteEmail(partner.id, user.id);
-  await recordPodEvent('listing', partner.id, 'invite', `${body.email} invited to the publisher portal`, actorOf(req));
+  await recordPodEvent('partner', partner.id, 'invite', `${body.email} invited to the publisher portal`, actorOf(req));
   res.json({ ok: true, userId: user.id, mail });
 });
 
@@ -304,6 +311,7 @@ router.patch('/listings/:id', async (req, res) => {
   const data = listingData(body as z.infer<typeof listingBody>);
   if (body.catalogKey && body.catalogKey !== l.catalogKey) data.catalogKey = await uniqueCatalogKey(body.catalogKey, l.id);
   if (body.partnerId && body.partnerId !== l.partnerId) data.partnerId = body.partnerId;
+  if (body.cycleId !== undefined && body.cycleId !== l.cycleId) { await moveListingCycle(l.id, body.cycleId); delete data.cycleId; }
   await prisma.listing.update({ where: { id: l.id }, data });
   if (l.productId) await syncListingProduct(l.id);
   // Shops order from the cycle snapshot: a price or title change after publish reaches them too.
@@ -370,7 +378,7 @@ router.post('/listings/:id/files/:fileId/restore', async (req, res) => {
 });
 
 router.post('/listings/:id/inventory', async (req, res) => {
-  const body = z.object({ delta: num.int().optional(), damagedDelta: num.int().optional(), incomingDelta: num.int().optional(), reorderLevel: num.int().min(0).nullable().optional(), location: opt(120), reason: str(300) }).parse(req.body);
+  const body = z.object({ delta: num.int().min(-100_000).max(100_000).optional(), damagedDelta: num.int().min(-100_000).max(100_000).optional(), incomingDelta: num.int().min(-100_000).max(100_000).optional(), reorderLevel: num.int().min(0).nullable().optional(), location: opt(120), reason: str(300) }).parse(req.body);
   const l = await prisma.listing.findUnique({ where: { id: req.params.id }, select: { id: true, inventoryUnits: true, inventoryDamaged: true, inventoryIncoming: true, productId: true } });
   if (!l) throw new HttpError(404, 'Listing not found');
   const delta = body.delta ?? 0;
@@ -520,7 +528,7 @@ router.post('/cycles/:id/catalog-file', listingUpload.single('file'), async (req
   const kind = req.body?.kind === 'cover' ? 'cover' : 'pdf';
   await requireUploadType(req.file, kind === 'cover' ? UPLOAD_TYPES.image : UPLOAD_TYPES.print, kind === 'cover' ? 'The catalog cover' : 'The catalog PDF');
   const { publishUpload } = await import('../../lib/storage.js');
-  const stored = await publishUpload({ subdir: 'pod', filename: req.file.filename, localPath: req.file.path, contentType: req.file.mimetype, originalName: req.file.originalname });
+  const stored = await publishUpload({ subdir: 'pod', filename: req.file.filename, localPath: req.file.path, contentType: req.file.mimetype, originalName: req.file.originalname, gated: kind !== 'cover' });
   await prisma.mediaFile.create({ data: { filename: req.file.filename, originalName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, url: stored.url, folder: '/pod/catalogs', tags: ['pod-catalog', `cycle:${c.id}`, `kind:${kind}`], uploaderId: req.session?.sub } });
   await prisma.catalogCycle.update({ where: { id: c.id }, data: kind === 'cover' ? { catalogCoverUrl: stored.url } : { catalogPdfUrl: stored.url } });
   await recordPodEvent('cycle', c.id, 'catalog-file', `${kind === 'cover' ? 'Catalog cover' : 'Catalog PDF'} uploaded: ${req.file.originalname}`, actorOf(req));
@@ -619,7 +627,7 @@ router.post('/retailers/:id/approve', async (req, res) => {
   if (!r) throw new HttpError(404, 'Retailer not found');
   let userId = r.members[0]?.id ?? null;
   if (!userId) {
-    const user = await ensureCustomerAccount(r.contactEmail, { firstName: r.contactName?.split(' ')[0], lastName: r.contactName?.split(' ').slice(1).join(' ') });
+    const user = await ensurePortalAccount(r.contactEmail, { firstName: r.contactName?.split(' ')[0], lastName: r.contactName?.split(' ').slice(1).join(' ') });
     if (user.retailerId && user.retailerId !== r.id) throw new HttpError(409, 'That email already belongs to another retailer account');
     await prisma.user.update({ where: { id: user.id }, data: { retailerId: r.id } });
     userId = user.id;
@@ -634,6 +642,8 @@ for (const [action, status] of [['suspend', 'SUSPENDED'], ['restore', 'ACTIVE'],
   router.post(`/retailers/:id/${action}`, async (req, res) => {
     const body = z.object({ note: opt(1000), email: z.boolean().optional() }).parse(req.body ?? {});
     const r = await prisma.retailer.update({ where: { id: String(req.params.id) }, data: { status } });
+    // A declined or archived shop lets go of its logins, so the same people can apply again with a clean slate.
+    if (status === 'ARCHIVED') await prisma.user.updateMany({ where: { retailerId: r.id }, data: { retailerId: null } });
     const mail = body.email === false ? null : await sendRetailerStatusEmail(r.id, action, body.note ?? null);
     await recordPodEvent('retailer', r.id, action, mail ? (mail.sent ? `Shop emailed (${mail.to})` : `Email failed (${mail.error})`) : null, actorOf(req));
     res.json({ retailer: await prisma.retailer.findUnique({ where: { id: r.id }, include: retailerInclude }), mail });
@@ -644,12 +654,24 @@ router.post('/retailers/:id/members', async (req, res) => {
   const body = z.object({ email: z.string().trim().email(), firstName: opt(80), lastName: opt(80) }).parse(req.body);
   const r = await prisma.retailer.findUnique({ where: { id: req.params.id } });
   if (!r) throw new HttpError(404, 'Retailer not found');
-  const user = await ensureCustomerAccount(body.email, { firstName: body.firstName, lastName: body.lastName });
+  const user = await ensurePortalAccount(body.email, { firstName: body.firstName, lastName: body.lastName });
   if (user.retailerId && user.retailerId !== r.id) throw new HttpError(409, 'That account already belongs to another retailer');
   await prisma.user.update({ where: { id: user.id }, data: { retailerId: r.id } });
   const mail = r.status === 'ACTIVE' ? await sendRetailerApprovedEmail(r.id, user.id) : null;
   await recordPodEvent('retailer', r.id, 'member', `${body.email} added`, actorOf(req));
   res.json({ retailer: await prisma.retailer.findUnique({ where: { id: r.id }, include: retailerInclude }), mail });
+});
+
+/** Store credit by hand: a goodwill credit, or taking back one given in error. */
+router.post('/retailers/:id/credit', async (req, res) => {
+  const body = z.object({ deltaCents: num.int().min(-1_000_000).max(1_000_000), note: str(300) }).parse(req.body);
+  if (!body.deltaCents) throw new HttpError(400, 'An adjustment needs an amount');
+  const r = await prisma.retailer.findUnique({ where: { id: req.params.id }, select: { id: true, creditCents: true } });
+  if (!r) throw new HttpError(404, 'Retailer not found');
+  if (r.creditCents + body.deltaCents < 0) throw new HttpError(400, `The shop holds $${(r.creditCents / 100).toFixed(2)} of credit; it cannot go below zero.`);
+  await prisma.retailer.update({ where: { id: r.id }, data: { creditCents: { increment: body.deltaCents } } });
+  await recordPodEvent('retailer', r.id, 'credit', `Store credit ${body.deltaCents > 0 ? '+' : '−'}$${(Math.abs(body.deltaCents) / 100).toFixed(2)} (now $${((r.creditCents + body.deltaCents) / 100).toFixed(2)}): ${body.note}`, actorOf(req));
+  res.json({ retailer: await prisma.retailer.findUnique({ where: { id: r.id }, include: retailerInclude }) });
 });
 
 router.delete('/retailers/:id/members/:userId', async (req, res) => {
@@ -675,17 +697,16 @@ router.get('/production', async (req, res) => {
 });
 
 router.post('/production', async (req, res) => {
-  const body = z.object({ listingId: str(40), cycleId: str(40).nullable().optional(), retailerQty: num.int().min(0).optional(), partnerAddOnQty: num.int().min(0).optional(), deadline: date.nullable().optional(), notes: opt(2000) }).parse(req.body);
+  const body = z.object({ listingId: str(40), cycleId: str(40).nullable().optional(), retailerQty: num.int().min(0).max(100_000).optional(), partnerAddOnQty: num.int().min(0).max(100_000).optional(), deadline: date.nullable().optional(), notes: opt(2000) }).parse(req.body);
   const l = await prisma.listing.findUnique({ where: { id: body.listingId } });
   if (!l) throw new HttpError(404, 'Listing not found');
   const totalQty = (body.retailerQty ?? 0) + (body.partnerAddOnQty ?? 0);
   if (totalQty < 1) throw new HttpError(400, 'How many copies?');
   const cost = await estimatePrintCost(l, totalQty);
   const po = await prisma.productionOrder.create({ data: { number: await numbering.production(), listingId: l.id, cycleId: body.cycleId ?? l.cycleId, retailerQty: body.retailerQty ?? 0, partnerAddOnQty: body.partnerAddOnQty ?? 0, totalQty, printUnitCents: cost?.unitCents ?? null, printTotalCents: cost?.totalCents ?? null, deadline: body.deadline ?? null, notes: body.notes ?? null, status: 'FILES_NEEDED' } });
-  if (body.partnerAddOnQty && cost) {
-    const addOn = await estimatePrintCost(l, body.partnerAddOnQty);
-    if (addOn) await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -addOn.totalCents, description: `${l.catalogKey}: ${body.partnerAddOnQty} publisher copies (${po.number})`, cycleId: po.cycleId, listingId: l.id, actorName: actorOf(req).name } });
-  }
+  // Printing is charged per part (the shops' copies, the publisher's add-on
+  // copies) under the run's refs, so later edits and a cancel post deltas.
+  await reconcileRunPrinting(po.id, actorOf(req));
   await recordPodEvent('production', po.id, 'created', `Created by staff: ${totalQty} copies`, actorOf(req));
   res.status(201).json({ production: await prisma.productionOrder.findUnique({ where: { id: po.id }, include: productionInclude }) });
 });
@@ -697,7 +718,7 @@ router.get('/production/:id', async (req, res) => {
 });
 
 router.patch('/production/:id', async (req, res) => {
-  const body = z.object({ status: z.enum(['PLANNED', 'FILES_NEEDED', 'PREFLIGHT', 'APPROVED', 'IN_PRODUCTION', 'DONE', 'CANCELLED']).optional(), deadline: date.nullable().optional(), notes: opt(2000), internalNotes: opt(5000), retailerQty: num.int().min(0).optional(), partnerAddOnQty: num.int().min(0).optional() }).parse(req.body);
+  const body = z.object({ status: z.enum(['PLANNED', 'FILES_NEEDED', 'PREFLIGHT', 'APPROVED', 'IN_PRODUCTION', 'DONE', 'CANCELLED']).optional(), deadline: date.nullable().optional(), notes: opt(2000), internalNotes: opt(5000), retailerQty: num.int().min(0).max(100_000).optional(), partnerAddOnQty: num.int().min(0).max(100_000).optional() }).parse(req.body);
   const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, include: { listing: true } });
   if (!po) throw new HttpError(404, 'Production order not found');
   // A run moves forward; it may go back to the file steps while files change, and may be cancelled until it is on press.
@@ -713,11 +734,14 @@ router.patch('/production/:id', async (req, res) => {
   const cost = totalQty !== po.totalQty ? await estimatePrintCost(po.listing, totalQty) : null;
   await prisma.productionOrder.update({ where: { id: po.id }, data: { ...body, retailerQty, partnerAddOnQty, totalQty, ...(cost ? { printUnitCents: cost.unitCents, printTotalCents: cost.totalCents } : {}) } });
   if (body.status && body.status !== po.status) await recordPodEvent('production', po.id, 'status', `${po.status} → ${body.status}`, actorOf(req));
+  // The shops' copies on a cancelled run count as not raised, so the next lock raises them again; bringing the run back takes them back on.
+  if (body.status === 'CANCELLED' && po.status !== 'CANCELLED') await adjustRaisedForRun(po, 'cancel');
+  else if (po.status === 'CANCELLED' && body.status && body.status !== 'CANCELLED') await adjustRaisedForRun({ ...po, retailerQty }, 'restore');
   else await recordPodEvent('production', po.id, 'edited', Object.keys(body).join(', '), actorOf(req));
   // The publisher's printing charge follows the quantities, and a cancelled run charges nothing.
   if (totalQty !== po.totalQty || (body.status && body.status !== po.status && (body.status === 'CANCELLED' || po.status === 'CANCELLED'))) {
     const posted = await reconcileRunPrinting(po.id, actorOf(req));
-    if (posted) await recordPodEvent('production', po.id, 'ledger', `Printing charge brought in line with ${totalQty} copies${body.status === 'CANCELLED' ? ' (cancelled: reversed)' : ''}`, actorOf(req));
+    if (posted) await recordPodEvent('production', po.id, 'ledger', `Printing charge brought in line with ${totalQty} copies${body.status === 'CANCELLED' ? ' (canceled: reversed)' : ''}`, actorOf(req));
   }
   res.json({ production: await prisma.productionOrder.findUnique({ where: { id: po.id }, include: productionInclude }) });
 });
@@ -755,7 +779,8 @@ router.patch('/purchase-orders/:id', async (req, res) => {
   const body = z.object({ status: z.enum(['DRAFT', 'SENT', 'ACKNOWLEDGED', 'FULFILLED', 'CANCELLED']).optional(), notes: opt(5000) }).parse(req.body);
   const po = await prisma.purchaseOrder.findUnique({ where: { id: req.params.id } });
   if (!po) throw new HttpError(404, 'Purchase order not found');
-  if (po.status === 'CANCELLED' && body.status && body.status !== 'CANCELLED') throw new HttpError(400, 'A cancelled purchase order stays cancelled; lock the cycle again to raise a new one.');
+  if (po.status === 'CANCELLED' && body.status && body.status !== 'CANCELLED') throw new HttpError(400, 'A canceled purchase order stays canceled; lock the cycle again to raise a new one.');
+  if (po.status === 'FULFILLED' && body.status && body.status !== 'FULFILLED') throw new HttpError(400, 'A fulfilled purchase order has shipped; use Returns & damages for anything that came back.');
   if (body.status === 'CANCELLED' && po.status !== 'CANCELLED') {
     await cancelPurchaseOrder(po.id, actorOf(req));
     if (body.notes !== undefined) await prisma.purchaseOrder.update({ where: { id: po.id }, data: { notes: body.notes } });
@@ -818,6 +843,14 @@ router.post('/payouts/statements/:id/mark-paid', async (req, res) => {
   const mail = await sendStatementPaidEmail(req.params.id);
   res.json({ statement: await statementView(req.params.id), mail });
 });
+router.post('/payouts/statements/:id/send', async (req, res) => {
+  const s = await prisma.payoutStatement.findUnique({ where: { id: req.params.id }, select: { id: true, status: true } });
+  if (!s) throw new HttpError(404, 'Statement not found');
+  if (s.status === 'DRAFT' || s.status === 'VOID') throw new HttpError(400, 'Issue the statement first; a draft or void statement is not sent.');
+  const mail = await sendStatementEmail(s.id);
+  await recordPodEvent('statement', s.id, 'resent', mail.sent ? `Statement re-sent to ${mail.to}` : `Re-send failed (${mail.error})`, actorOf(req));
+  res.json({ statement: await statementView(s.id), mail });
+});
 router.post('/payouts/statements/:id/void', async (req, res) => {
   await voidStatement(req.params.id, actorOf(req));
   res.json({ statement: await statementView(req.params.id) });
@@ -865,7 +898,7 @@ router.get('/orders', async (req, res) => {
   if (req.query.retailerId) where.retailerId = String(req.query.retailerId);
   const q = String(req.query.q ?? '').trim();
   if (q) where.OR = [{ number: { contains: q, mode: 'insensitive' } }, { retailer: { name: { contains: q, mode: 'insensitive' } } }, { email: { contains: q, mode: 'insensitive' } }];
-  const rows = await prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take: 300, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, shippingCents: true, totalCents: true, createdAt: true, wholesale: true, retailer: { select: { id: true, name: true } }, cycle: { select: { id: true, name: true } }, _count: { select: { items: true, shipments: true } } } });
+  const rows = await prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take: 300, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, shippingCents: true, totalCents: true, createdAt: true, wholesale: true, retailer: { select: { id: true, name: true } }, cycle: { select: { id: true, name: true, status: true } }, _count: { select: { items: true, shipments: true } } } });
   const totals = await prisma.order.aggregate({ where: { source: 'retailer', status: { notIn: ['CANCELLED', 'REFUNDED'] } }, _sum: { subtotalCents: true }, _count: { _all: true } });
   const unpaid = await prisma.order.aggregate({ where: { source: 'retailer', paymentStatus: 'PENDING', status: { notIn: ['CANCELLED', 'REFUNDED'] } }, _sum: { totalCents: true }, _count: { _all: true } });
   res.json({ orders: rows, totals: { count: totals._count._all, wholesaleCents: totals._sum.subtotalCents ?? 0, unpaidCount: unpaid._count._all, unpaidCents: unpaid._sum.totalCents ?? 0 } });
@@ -905,10 +938,11 @@ router.post('/orders/:id/pay-link', async (req, res) => {
 });
 
 router.post('/orders/:id/cancel', async (req, res) => {
-  const body = z.object({ reason: opt(300) }).parse(req.body ?? {});
-  const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true } });
+  const body = z.object({ reason: opt(300), refund: z.object({ method: str(40), reference: opt(120) }).nullable().optional() }).parse(req.body ?? {});
+  const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true, paymentStatus: true } });
   if (!o) throw new HttpError(404, 'Order not found');
-  await cancelRetailerOrder(o.id, actorOf(req), { by: 'staff', reason: body.reason ?? null });
+  if (body.refund && !PAYMENT_KEYS.has(body.refund.method)) throw new HttpError(400, 'Choose how the money was refunded.');
+  await cancelRetailerOrder(o.id, actorOf(req), { by: 'staff', reason: body.reason ?? null, refund: body.refund ?? null });
   const mail = await sendRetailerOrderCancelledEmail(o.id, body.reason ?? null);
   res.json({ order: await prisma.order.findUnique({ where: { id: o.id }, select: podOrderSelect }), mail });
 });
@@ -1121,7 +1155,7 @@ async function pendingShipments() {
     const units = o.items.reduce((s2, i) => s2 + i.quantity, 0);
     const weightOz = o.items.reduce((s2, i) => s2 + i.quantity * (i.listing?.weightOz ?? (i.listing?.pageCount ? 1.5 + i.listing.pageCount * 0.08 : 3)), 0);
     return { ...o, units, weightOz: Math.round(weightOz * 10) / 10, weightLb: Math.round((weightOz / 16) * 100) / 100, publisherShipsLines: o.items.filter((i) => i.listing?.fulfillment === 'PARTNER_SHIPS').length };
-  });
+  }).filter((o) => o.publisherShipsLines < o.items.length);
 }
 
 router.get('/fulfillment', async (_req, res) => {
@@ -1149,10 +1183,18 @@ router.post('/fulfillment/:orderId/ship', async (req, res) => {
   const ours = o.items.filter((it) => it.listing?.fulfillment !== 'PARTNER_SHIPS');
   if (ours.length === 0) throw new HttpError(400, 'Every line on this order ships from the publisher; nothing to ship from here.');
   const shipment = await prisma.shipment.create({ data: { orderId: o.id, carrier: body.carrier, service: body.service ?? null, trackingCode: body.trackingCode ?? null, weightOz: body.weightOz ?? null, status: 'SHIPPED', items: { create: ours.map((i) => ({ orderItemId: i.id, quantity: i.quantity })) } } });
-  await prisma.order.update({ where: { id: o.id }, data: { status: 'SHIPPED', trackingNumber: body.trackingCode ?? o.trackingNumber, events: { create: { kind: 'tracking', fromStatus: o.status, toStatus: 'SHIPPED', message: `Shipped via ${body.carrier}${body.trackingCode ? ` · ${body.trackingCode}` : ''} by ${actorOf(req).name}`, actorName: actorOf(req).name } } } });
+  // The order is SHIPPED once every line has gone: ours now, the publisher's from their purchase order.
+  const theirs = o.items.length - ours.length;
+  const { markShippedWhenComplete } = await import('../../lib/pod/fulfillment.js');
+  await prisma.order.update({ where: { id: o.id }, data: { trackingNumber: body.trackingCode ?? o.trackingNumber, events: { create: { kind: 'tracking', message: `${theirs ? `${ours.length} of ${o.items.length} lines shipped` : 'Shipped'} via ${body.carrier}${body.trackingCode ? ` · ${body.trackingCode}` : ''} by ${actorOf(req).name}`, actorName: actorOf(req).name } } } });
+  // Complete: the order is SHIPPED and the tracking email goes (the shop
+  // hears once, with every line gone). Partial: the shop hears about our
+  // box now; the rest follows the publisher's shipment.
+  const complete = await markShippedWhenComplete(o.id, body.trackingCode ?? null, { notify: body.notify !== false });
   let mail: { sent: boolean; error?: string } | null = null;
-  if (body.notify !== false) { const { sendShippingNotificationEmail } = await import('../../lib/order-emails.js'); mail = await sendShippingNotificationEmail(o.id).then(() => ({ sent: true })).catch((e: any) => ({ sent: false, error: e?.message })); }
-  res.status(201).json({ shipment, mail });
+  if (complete) mail = complete.mail;
+  else if (body.notify !== false) { const { sendShippingNotificationEmail } = await import('../../lib/order-emails.js'); mail = await sendShippingNotificationEmail(o.id).then((sent) => (sent ? { sent: true } : { sent: false, error: 'no tracking number to send' })).catch((e: any) => ({ sent: false, error: e?.message })); }
+  res.status(201).json({ shipment, mail, complete: Boolean(complete), waitingOnPublisher: theirs > 0 && !complete });
 });
 
 // ---------------------------------------------------------------------------

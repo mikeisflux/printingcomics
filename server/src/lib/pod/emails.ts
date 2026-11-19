@@ -135,7 +135,7 @@ export async function sendRetailerReceiptEmail(orderId: string): Promise<MailRes
   const rows = o.items.map((it) => `<tr><td style="padding:.35rem .5rem;border-bottom:1px solid #eee">${esc(it.name)}</td><td style="padding:.35rem .5rem;border-bottom:1px solid #eee;text-align:right">${it.quantity}</td><td style="padding:.35rem .5rem;border-bottom:1px solid #eee;text-align:right">${money(it.totalCents)}</td></tr>`).join('');
   const html = wrap(`
     <h2 style="margin:0 0 .5rem">Payment received for order ${esc(o.number)}</h2>
-    <p>Thanks, ${esc(o.retailer?.name ?? '')}. Your ${esc(o.cycle?.name ?? 'wholesale')} order is paid${paid ? ` (${esc(paid.provider)}${paid.providerRef ? ` · ${esc(paid.providerRef)}` : ''})` : ''}. We will email tracking when it ships.</p>
+    <p>Thanks, ${esc(o.retailer?.name ?? '')}. Your ${esc(o.cycle?.name ?? 'wholesale')} order is paid${paid ? ` (${esc(paid.provider)}${paid.providerRef ? ` · ${esc(paid.providerRef)}` : ''})` : ''}. ${o.status === 'SHIPPED' || o.status === 'DELIVERED' ? 'It has already shipped.' : 'We will email tracking when it ships.'}</p>
     <table style="border-collapse:collapse;width:100%"><thead><tr><th align="left" style="padding:.35rem .5rem">Title</th><th align="right" style="padding:.35rem .5rem">Qty</th><th align="right" style="padding:.35rem .5rem">Total</th></tr></thead><tbody>${rows}</tbody></table>
     <p style="text-align:right;font-size:1.1rem">Subtotal ${money(o.subtotalCents)}${o.shippingCents ? `<br>Shipping ${money(o.shippingCents)}` : ''}${o.discountCents ? `<br>Credit and discounts −${money(o.discountCents)}` : ''}<br><strong>Paid ${money(o.totalCents)}</strong></p>
     <p>${btn(`${base}/retailer/orders/${o.number}`, 'View the order')}</p>
@@ -151,16 +151,16 @@ export async function sendRetailerOrderCancelledEmail(orderId: string, reason?: 
   const base = await baseUrl();
   const w = (o.wholesale ?? {}) as { creditApplied?: number };
   const html = wrap(`
-    <h2 style="margin:0 0 .5rem">Order ${esc(o.number)} cancelled</h2>
-    <p>${esc(o.retailer?.name ?? '')}, your ${esc(o.cycle?.name ?? 'wholesale')} order has been cancelled.${reason ? ` ${esc(reason)}` : ''}${w.creditApplied ? ` The ${money(w.creditApplied)} of store credit it used is back on your account.` : ''}</p>
+    <h2 style="margin:0 0 .5rem">Order ${esc(o.number)} canceled</h2>
+    <p>${esc(o.retailer?.name ?? '')}, your ${esc(o.cycle?.name ?? 'wholesale')} order has been canceled.${reason ? ` ${esc(reason)}` : ''}${w.creditApplied ? ` The ${money(w.creditApplied)} of store credit it used is back on your account.` : ''}</p>
     ${o.cycle ? `<p>${btn(`${base}/retailer/catalog?cycle=${o.cycle.id}`, 'Order the catalog')}</p>` : ''}
     <p style="color:#666;font-size:.9rem">Questions? Just reply to this email.</p>
   `, name);
-  return trySend({ to: { email: o.retailer?.contactEmail || o.email }, subject: `Order ${o.number} cancelled — ${name} wholesale`, html, tags: ['pod-retailer'] });
+  return trySend({ to: { email: o.retailer?.contactEmail || o.email }, subject: `Order ${o.number} canceled — ${name} wholesale`, html, tags: ['pod-retailer'] });
 }
 
 /** A purchase order went to the publisher who ships it. */
-export async function sendPurchaseOrderEmail(purchaseOrderId: string): Promise<MailResult> {
+export async function sendPurchaseOrderEmail(purchaseOrderId: string, opts: { changed?: boolean } = {}): Promise<MailResult> {
   const po = await prisma.purchaseOrder.findUnique({ where: { id: purchaseOrderId }, include: { partner: { include: { members: { select: { email: true }, take: 1 } } }, cycle: true } });
   if (!po) return { sent: false, error: 'Purchase order not found' };
   const email = po.partner.contactEmail || po.partner.members[0]?.email;
@@ -169,13 +169,13 @@ export async function sendPurchaseOrderEmail(purchaseOrderId: string): Promise<M
   const base = await baseUrl();
   const lines = (po.lines as { catalogKey: string; title: string; quantity: number }[]).map((l) => `<tr><td style="padding:.35rem .5rem;border-bottom:1px solid #eee">${esc(l.catalogKey)}</td><td style="padding:.35rem .5rem;border-bottom:1px solid #eee">${esc(l.title)}</td><td style="padding:.35rem .5rem;border-bottom:1px solid #eee;text-align:right">${l.quantity}</td></tr>`).join('');
   const html = wrap(`
-    <h2 style="margin:0 0 .5rem">Purchase order ${esc(po.number)}</h2>
-    <p>${esc(po.cycle.name)} closed at FOC. Please ship the copies below; ship-to addresses are on the order in your portal.</p>
+    <h2 style="margin:0 0 .5rem">Purchase order ${esc(po.number)}${opts.changed ? ' has changed' : ''}</h2>
+    <p>${opts.changed ? `The copies on this purchase order for ${esc(po.cycle.name)} have changed since we sent it; the list below replaces the earlier one.` : `${esc(po.cycle.name)} closed at FOC.`} Please ship the copies below; ship-to addresses are on the order in your portal.</p>
     <table style="border-collapse:collapse;width:100%"><thead><tr><th align="left" style="padding:.35rem .5rem">Catalog id</th><th align="left" style="padding:.35rem .5rem">Title</th><th align="right" style="padding:.35rem .5rem">Copies</th></tr></thead><tbody>${lines}</tbody></table>
     <p style="text-align:right"><strong>${po.unitsTotal} copies · wholesale ${money(po.wholesaleCents)} · net to you ${money(po.netCents)}</strong></p>
     <p>${btn(`${base}/publisher/purchase-orders/${po.id}`, 'Open the purchase order')}</p>
   `, name);
-  return trySend({ to: { email }, subject: `Purchase order ${po.number} — ${po.cycle.name}`, html, tags: ['pod-partner'] });
+  return trySend({ to: { email }, subject: `Purchase order ${po.number}${opts.changed ? ' changed' : ''} — ${po.cycle.name}`, html, tags: ['pod-partner'] });
 }
 
 /** A payout statement was issued. */

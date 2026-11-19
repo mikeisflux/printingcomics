@@ -368,15 +368,6 @@
 
 /* --- Portal shell (publisher / retailer) -------------------------------- */
 .pod .portal { display: grid; grid-template-columns: 250px 1fr; min-height: 70vh; }
-@media (max-width: 900px) {
-  .pod .portal { grid-template-columns: 1fr; }
-  /* On a phone the portal menu is a scrolling strip, not a full column above the page. */
-  .pod .portal .pside { position: static; padding: .75rem 1rem; }
-  .pod .portal .pside .who { padding: .25rem .25rem .6rem; }
-  .pod .portal .pside nav { display: flex; gap: .3rem; overflow-x: auto; padding-bottom: .25rem; scrollbar-width: none; }
-  .pod .portal .pside nav a { white-space: nowrap; padding: .45rem .7rem; font-size: .85rem; }
-  .pod .portal .pside > div:last-child { display: none; }
-}
 @media (min-width: 701px) { .pod .split.wide-left { grid-template-columns: 1.3fr .7fr; } }
 .pod .portal .pside { background: var(--p-ink); color: var(--p-text-inv); padding: 1.5rem 1rem; position: sticky; top: 0; align-self: start; }
 .pod .portal .pside .who { display: flex; align-items: center; gap: .75rem; padding: .5rem .5rem 1.25rem; }
@@ -391,6 +382,16 @@
 .pod .portal .ptop { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .pod .portal .ptop h1 { margin: 0; font-size: clamp(1.6rem, 3vw, 2.3rem); }
 .pod .portal .ptop .sub { color: var(--p-text-dim); margin-top: .25rem; }
+/* Phone: the menu is a scrolling strip. Kept after the base rules above so it wins at equal specificity. */
+@media (max-width: 900px) {
+  .pod .portal { grid-template-columns: 1fr; }
+  /* On a phone the portal menu is a scrolling strip, not a full column above the page. */
+  .pod .portal .pside { position: static; padding: .75rem 1rem; }
+  .pod .portal .pside .who { padding: .25rem .25rem .6rem; }
+  .pod .portal .pside nav { display: flex; gap: .3rem; overflow-x: auto; padding-bottom: .25rem; scrollbar-width: none; }
+  .pod .portal .pside nav a { white-space: nowrap; padding: .45rem .7rem; font-size: .85rem; }
+  .pod .portal .pside > div:last-child { display: none; }
+}
 
 /* --- Admin section shell ------------------------------------------------- */
 .pod.pod-admin { margin: -1.5rem; padding: 0; min-height: calc(100vh - 0px); background: var(--p-paper); }

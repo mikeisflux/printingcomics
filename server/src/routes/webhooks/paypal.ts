@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../db.js';
-import { settlePaidOrder } from '../../lib/paid-order.js';
+import { paidStatusFor, sendPaidReceipt, settlePaidOrder } from '../../lib/paid-order.js';
 import { getPayPalAccessToken, getPayPalConfig } from '../../lib/payments/paypal/config.js';
 import { dispatchPartnerWebhook } from '../../lib/partners.js';
 import { settleAdjustment } from '../../lib/order-adjustments.js';
@@ -87,7 +87,7 @@ router.post('/', async (req, res) => {
       // only if still PENDING (idempotent CAS).
       const cas = await prisma.order.updateMany({
         where: { id: payment.orderId, paymentStatus: 'PENDING' },
-        data: { paymentStatus: 'CAPTURED', status: 'PAID' },
+        data: { paymentStatus: 'CAPTURED', status: paidStatusFor(payment.order.status) as never },
       });
       // For this event `resource` IS the capture, so resource.id is the
       // capture id. Store it: a refund has to target the capture, and a row
@@ -111,7 +111,11 @@ router.post('/', async (req, res) => {
           console.warn('[paypal-webhook] settleAdjustment failed:', e?.message ?? e),
         );
       }
-      if (cas.count > 0) await settlePaidOrder(payment.orderId);
+      if (cas.count > 0) {
+        await settlePaidOrder(payment.orderId);
+        // We flipped it, so the browser's capture did not: the receipt goes from here.
+        void sendPaidReceipt(payment.orderId);
+      }
       // First-mover wins → fire partner webhook only if WE flipped the order.
       if (cas.count > 0 && payment.order.partnerId) {
         const refreshed = await prisma.order.findUnique({
@@ -154,10 +158,26 @@ router.post('/', async (req, res) => {
       // The order was never paid: take it out of the paid list — unless another
       // payment on it did complete (a retry after this one), which keeps it.
       const otherPaid = await prisma.payment.count({ where: { orderId: payment.orderId, status: 'CAPTURED', id: { not: payment.id } } });
-      const reverted = otherPaid > 0 ? { count: 0 } : await prisma.order.updateMany({
-        where: { id: payment.orderId, status: { in: ['PENDING', 'PAID'] } },
-        data: { paymentStatus: 'FAILED', status: 'CANCELLED' },
-      });
+      let reverted = { count: 0 };
+      if (otherPaid === 0 && payment.order.source === 'retailer') {
+        // A wholesale order unwinds through its own routine: store credit
+        // goes back, whatever the FOC lock raised for it is reversed, and the
+        // shop is told. A shipped order is not cancelled by a bounced payment;
+        // it stays open for the shop to pay again.
+        if (['PENDING', 'PAID'].includes(payment.order.status)) {
+          const { cancelRetailerOrder } = await import('../../lib/pod/catalog.js');
+          const { sendRetailerOrderCancelledEmail } = await import('../../lib/pod/emails.js');
+          await cancelRetailerOrder(payment.orderId, { id: null, name: 'PayPal' }, { by: 'staff', reason: `PayPal did not complete the payment (${reason}).` }).catch((e: any) => console.warn('[paypal-webhook] cancelRetailerOrder failed:', e?.message ?? e));
+          await prisma.order.updateMany({ where: { id: payment.orderId, status: 'CANCELLED' }, data: { paymentStatus: 'FAILED' } });
+          void sendRetailerOrderCancelledEmail(payment.orderId, `PayPal did not complete the payment (${reason}). Place the order again, or reply to this email and we will send a new invoice.`);
+          reverted = { count: 1 };
+        }
+      } else if (otherPaid === 0) {
+        reverted = await prisma.order.updateMany({
+          where: { id: payment.orderId, status: { in: ['PENDING', 'PAID'] } },
+          data: { paymentStatus: 'FAILED', status: 'CANCELLED' },
+        });
+      }
       await prisma.orderStatusEvent.create({
         data: {
           orderId: payment.orderId,

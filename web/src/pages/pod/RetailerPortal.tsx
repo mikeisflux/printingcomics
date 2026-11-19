@@ -35,12 +35,12 @@ export function RetailerLayout() {
   const [viewAs, setViewAsState] = useState(() => getViewAs('retailer'));
   useEffect(() => onViewAsChange(() => setViewAsState(getViewAs('retailer'))), []);
   const needPick = staff && !viewAs;
-  const { data, error, reload } = useLoad<Me>(loaded && user && !needPick ? '/pod/retailer/me' : null, [viewAs?.id]);
+  const { data, error, reload, errorDetails } = useLoad<Me>(loaded && user && !needPick ? '/pod/retailer/me' : null, [viewAs?.id]);
   useSeo({ title: 'Wholesale ordering — Distribution', description: 'Order the Distribution catalog at wholesale.' });
   if (!loaded || !user) return <div className="pod container" style={{ padding: '3rem' }}><p className="dim">Loading…</p></div>;
   if (needPick || (error && staff)) return <ViewAsPicker kind="retailer" notice={error} />;
   if (error) {
-    const pending = /being reviewed/i.test(error);
+    const pending = Boolean((errorDetails as { pending?: boolean } | null)?.pending);
     return <div className="pod container" style={{ padding: '3rem 1.25rem' }}><Empty title={pending ? 'Your application is in review' : 'This account is not a retailer account'} body={error} action={<div className="row" style={{ justifyContent: 'center' }}>{!pending && <Link to="/distribution/apply?as=retailer" className="pbtn hot">Open a wholesale account</Link>}<Link to="/distribution/catalog" className="pbtn ghost">Browse the catalog</Link></div>} /></div>;
   }
   return (
@@ -94,7 +94,7 @@ export function RetailerDashboard() {
         <div className="stack">
           <div className="panel accent"><h3>Discount tiers</h3><p className="dim tight" style={{ fontSize: '.86rem', margin: '.25rem 0 .75rem' }}>Set by the order's total at cover price.</p><TierLadder tiers={me.settings.tiers} activeIndex={me.retailer.tierOverride ? me.retailer.tierOverride - 1 : undefined} /></div>
           <div className="panel"><div className="panel-head"><h3>Recent orders</h3><Link to="/retailer/orders" className="pbtn ghost xs">All</Link></div>{me.recentOrders.length === 0 ? <p className="dim tight" style={{ fontSize: '.88rem' }}>No orders yet.</p> : me.recentOrders.map((o) => <div key={o.id} className="between" style={{ fontSize: '.86rem', padding: '.35rem 0', borderBottom: '1px dashed var(--p-line)' }}><Link to={`/retailer/orders/${o.number}`}><b>{o.number}</b></Link><span className="dim">{o.cycle?.name}</span><b className="mono">{money(o.subtotalCents)}</b></div>)}</div>
-          <div className="panel"><h3>Ship to</h3><p className="tight" style={{ fontSize: '.9rem' }}>{me.retailer.address ? [me.retailer.address.line1, me.retailer.address.line2, [me.retailer.address.city, me.retailer.address.region, me.retailer.address.postalCode].filter(Boolean).join(', ')].filter(Boolean).join(' · ') : 'No address on file'}</p><p className="dim" style={{ fontSize: '.82rem', margin: '.5rem 0 0' }}>{me.settings.retailerShipping.mode === 'flat' ? `Shipping: ${money(me.settings.retailerShipping.flatCents)} per order.` : 'Shipping is billed at cost when the order ships.'} To change the address, <Link to="/contact">write to us</Link>.</p></div>
+          <div className="panel"><h3>Ship to</h3><p className="tight" style={{ fontSize: '.9rem' }}>{me.retailer.address ? [me.retailer.address.line1, me.retailer.address.line2, [me.retailer.address.city, me.retailer.address.region, me.retailer.address.postalCode].filter(Boolean).join(', ')].filter(Boolean).join(' · ') : 'No address on file'}</p><p className="dim" style={{ fontSize: '.82rem', margin: '.5rem 0 0' }}>{me.settings.retailerShipping.mode === 'flat' ? `Shipping: ${money(me.settings.retailerShipping.flatCents)} per order.` : 'Shipping is billed at cost when the order ships.'} Change it under <Link to="/retailer/store">Store info</Link>.</p></div>
         </div>
       </div>
     </>

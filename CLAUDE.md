@@ -136,12 +136,37 @@ npm run db:studio                    # Prisma Studio
   raised. `PartnerLedgerEntry.ref` names the running total an entry belongs
   to (`sale:<cycle>:<listing>`, `commission:…`, `printing:<run>:retailer`,
   `printing:<run>:addon`, `return:<id>`); `reconcileRunPrinting` and
-  `cancelPurchaseOrder` post against the same refs. Wholesale orders are
-  payable through the same pay link as staff-placed orders
-  (`orderPayable` accepts source `retailer`). Publisher uploads go through
-  `requireUploadType` (per-slot allowlist, safe extension) and
-  `/uploads/pod` is served only to the owning publisher/shop or staff
-  except cover, marketing and logo images (index.ts).
+  `cancelPurchaseOrder` post against the same refs; every run, staff-made
+  or publisher-ordered, is charged through `reconcileRunPrinting`, and a
+  cancelled run hands its shops' copies back to `raisedUnits`
+  (`adjustRaisedForRun`) so the next lock raises a fresh run. Consignment
+  pulls are counted on `CatalogCycleItem.pulledUnits` so a cancel returns
+  only what was taken. `moveListingCycle` is the one way a listing changes
+  catalog (refused while shops' orders sit in an unlocked catalog).
+  Wholesale orders are billed later: shipping is set when packed, so they
+  are payable (`orderPayable`, the portal `payLink`, the public order page)
+  while PENDING, SHIPPED or DELIVERED, and paying keeps a shipped status
+  (`paidStatusFor`). Every paid path (browser capture, PayPal webhook, staff
+  mark-paid) sends through `sendPaidReceipt` (`lib/paid-order.ts`): the
+  wholesale receipt for source `retailer`, the storefront confirmation
+  otherwise; a PayPal DENIED on a wholesale order goes through
+  `cancelRetailerOrder`. A paid wholesale order is voided from
+  `/admin/pod/orders` with a refund record (`cancelRetailerOrder` with
+  `refund`), which reverses credit, ledger, runs and PO lines.
+  Shipping is shared: we ship our lines from `/admin/pod/fulfillment`, the
+  publisher theirs from the purchase order (carrier + tracking), each as a
+  `Shipment` on the shop's order; `lib/pod/fulfillment.ts` marks the order
+  SHIPPED and emails tracking once every line has gone. Publisher uploads
+  go through `requireUploadType` (per-slot allowlist, safe extension, stored
+  type from the extension); who may open a Distribution file is decided in
+  `lib/pod/file-access.ts`, used by both `/uploads/pod` (index.ts) and
+  `/api/files/pod` (gated files on R2 are linked through `/api/files`, never
+  the public bucket URL). Every `/uploads` path must be plain: encoded or
+  dot segments and double slashes are refused before any prefix gate runs.
+  Portal seats (invites, approvals, members) only ever go to CUSTOMER
+  accounts (`ensurePortalAccount`); staff sign-in links last one hour.
+  Publisher-level events are logged under subject `partner`, barcode block
+  loads under `barcode`.
   Staff view: an ADMIN, or STAFF holding `pod`, opens `/publisher` or
   `/retailer` and picks who to view as (`web/src/lib/view-as.ts` keeps the
   pick in localStorage and the API client sends it as `X-View-As-Partner` /

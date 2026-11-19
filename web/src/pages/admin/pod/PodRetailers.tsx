@@ -14,7 +14,7 @@ import { useOverview } from './PodLayout';
 interface Retailer {
   id: string; slug: string; name: string; contactName: string | null; contactEmail: string; phone: string | null; website: string | null; address: Record<string, string> | null; status: string; tierOverride: number | null;
   resaleCertNumber: string | null; resaleCertState: string | null; resaleCertExpires: string | null; resaleCertStatus: string; taxExempt: boolean; applicationMessage: string | null; notes: string | null; createdAt: string;
-  members: { id: string; email: string; firstName: string | null; lastName: string | null; lastLoginAt: string | null; passwordSetAt: string | null }[]; orderCount: number; wholesaleCents?: number;
+  members: { id: string; email: string; firstName: string | null; lastName: string | null; lastLoginAt: string | null; passwordSetAt: string | null }[]; orderCount: number; wholesaleCents?: number; creditCents?: number;
 }
 const US = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
 
@@ -105,6 +105,7 @@ export function PodRetailerDetail() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState('');
+  const [credit, setCredit] = useState({ amount: '', note: '' });
   const r = data?.retailer;
   const act = async (path: string, body?: unknown, confirmText?: string) => {
     if (confirmText && !confirm(confirmText)) return;
@@ -132,7 +133,7 @@ export function PodRetailerDetail() {
         <Kpi label="Orders" value={r.orderCount} sub={`${money(spend)} wholesale`} />
         <Kpi label="Tier" value={r.tierOverride ? st?.settings.tiers[r.tierOverride - 1]?.name ?? `Tier ${r.tierOverride}` : 'By order'} sub={r.tierOverride ? 'fixed on the account' : (st?.settings.tiers.map((t) => `${Math.round(t.discountBps / 100)}%`).join(' · ') ?? '')} />
         <Kpi label="Resale certificate" value={r.resaleCertStatus.replace('_', ' ')} sub={r.resaleCertNumber ? `${r.resaleCertNumber} · ${r.resaleCertState ?? ''}${r.resaleCertExpires ? ` · exp ${dateShort(r.resaleCertExpires)}` : ''}` : 'none on file'} tone={r.resaleCertStatus === 'submitted' ? 'hot' : undefined} />
-        <Kpi label="Resale certificate" value={r.taxExempt ? 'On file' : 'Missing'} sub={r.taxExempt ? 'approved' : 'ask the shop for one'} dark />
+        <Kpi label="Tax exempt" value={r.taxExempt ? 'Yes' : 'No'} sub={r.taxExempt ? 'certificate approved' : 'ask the shop for a resale certificate'} dark />
       </div>
       <div className="split">
         <div className="stack">
@@ -141,6 +142,11 @@ export function PodRetailerDetail() {
         </div>
         <aside className="stack">
           <div className="panel"><h3>Contact &amp; ship-to</h3><dl className="spec" style={{ marginTop: '.5rem' }}><dt>Contact</dt><dd>{r.contactName ?? '—'}</dd><dt>Email</dt><dd><a href={`mailto:${r.contactEmail}`}>{r.contactEmail}</a></dd><dt>Phone</dt><dd>{r.phone ?? '—'}</dd><dt>Address</dt><dd>{r.address ? [r.address.line1, r.address.line2, [r.address.city, r.address.region, r.address.postalCode].filter(Boolean).join(', ')].filter(Boolean).join(', ') : '—'}</dd></dl>{r.notes && <p className="dim" style={{ fontSize: '.86rem', whiteSpace: 'pre-wrap', marginTop: '.75rem' }}>{r.notes}</p>}</div>
+          <div className="panel"><h3>Store credit</h3>
+            <p style={{ margin: '.35rem 0 .5rem' }}><b className="mono" style={{ fontSize: '1.2rem' }}>{money(r.creditCents ?? 0)}</b> <span className="dim" style={{ fontSize: '.84rem' }}>comes off the shop's next order</span></p>
+            <div className="row" style={{ flexWrap: 'wrap' }}><input className="inp mono" style={{ width: 100 }} placeholder="± $" value={credit.amount} onChange={(e) => setCredit((x) => ({ ...x, amount: e.target.value }))} /><input className="inp" style={{ flex: 1, minWidth: 140 }} placeholder="Why (the history keeps this)" value={credit.note} onChange={(e) => setCredit((x) => ({ ...x, note: e.target.value }))} /><button className="pbtn soft sm" disabled={busy !== null || !Number(credit.amount) || !credit.note.trim()} onClick={() => { void act('credit', { deltaCents: Math.round(Number(credit.amount) * 100), note: credit.note.trim() }); setCredit({ amount: '', note: '' }); }}>Adjust</button></div>
+            <p className="dim" style={{ fontSize: '.76rem', marginTop: '.5rem' }}>Approved returns and damage claims add credit on their own; use this for goodwill or to take back a credit given in error.</p>
+          </div>
           <div className="panel"><h3>People who can order</h3>
             {r.members.length === 0 && <p className="dim" style={{ fontSize: '.86rem' }}>No logins yet. Approving creates one for the contact email.</p>}
             {r.members.map((m) => <div key={m.id} className="between" style={{ fontSize: '.88rem', padding: '.4rem 0', borderBottom: '1px dashed var(--p-line)' }}><span><b>{[m.firstName, m.lastName].filter(Boolean).join(' ') || m.email}</b><div className="dim" style={{ fontSize: '.76rem' }}>{m.email} · {m.passwordSetAt ? (m.lastLoginAt ? `last in ${dateShort(m.lastLoginAt)}` : 'never signed in') : 'password not set'}</div></span><button className="pbtn ghost xs" onClick={() => { if (confirm(`Remove ${m.email} from this shop?`)) void api.del(`/admin/pod/retailers/${id}/members/${m.id}`).then(() => reload()); }} aria-label="Remove"><Trash2 size={12} /></button></div>)}

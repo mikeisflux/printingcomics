@@ -55,11 +55,14 @@ export function RetailerCatalog() {
   const [placed, setPlaced] = useState<{ number: string; replaced: boolean; creditApplied: number } | null>(null);
   const [serverProblems, setServerProblems] = useState<string[]>([]);
   const seededFor = useRef<string | null>(null);
-  useEffect(() => { if (data?.cycle && seededFor.current !== data.cycle.id) { setQty(Object.fromEntries((data.openOrder?.items ?? []).map((i) => [i.listingId, i.quantity]))); seededFor.current = data.cycle.id; } }, [data]);
+  useEffect(() => { if (data?.cycle && seededFor.current !== data.cycle.id) { const inCatalog = new Set((data.listings ?? []).map((t) => t.listingId)); const kept = (data.openOrder?.items ?? []).filter((i) => inCatalog.has(i.listingId)); const dropped = (data.openOrder?.items ?? []).length - kept.length; setQty(Object.fromEntries(kept.map((i) => [i.listingId, i.quantity]))); if (dropped > 0) setServerProblems([`${dropped} line${dropped === 1 ? ' is' : 's are'} no longer in this catalog and ${dropped === 1 ? 'was' : 'were'} left out; save to update your order.`]); seededFor.current = data.cycle.id; } }, [data]);
 
   const titles = data?.listings ?? [];
   const c = data?.cycle;
   const basket = useMemo(() => priceBasket(qty, titles.map((t) => ({ listingId: t.listingId, catalogKey: t.catalogKey, title: t.title, msrpCents: t.msrpCents, incentiveRatio: t.incentiveRatio })), data?.tiers ?? me?.settings.tiers ?? [], data?.forcedTier ?? me?.retailer.tierOverride), [qty, titles, data, me]);
+  // Mirrors the server: the code comes off first, store credit covers what is left.
+  const couponCents = couponState?.ok ? Math.min(couponState.discountCents, basket.subtotalCents) : 0;
+  const creditPreview = Math.min(me?.retailer.creditCents ?? 0, Math.max(0, basket.subtotalCents - couponCents));
   const publishers = useMemo(() => Array.from(new Map(titles.map((t) => [t.partner.id, t.partner])).values()).sort((a, b) => a.name.localeCompare(b.name)), [titles]);
   const formats = useMemo(() => Array.from(new Set(titles.map((t) => t.format))), [titles]);
   const inStorePassed = c ? new Date(c.inStoreDate).getTime() <= Date.now() : false;
@@ -182,8 +185,8 @@ export function RetailerCatalog() {
           <aside className="sticky stack">
             <div className="panel accent">
               <div className="between"><h3>Your order</h3>{data?.openOrder && <Pill tone="violet">{data.openOrder.number}</Pill>}</div>
-              <div className="display-md mono" style={{ marginTop: '.5rem' }}>{money(Math.max(0, basket.subtotalCents - Math.min(me?.retailer.creditCents ?? 0, basket.subtotalCents)))}</div>
-              <div className="dim" style={{ fontSize: '.85rem' }}>{basket.units} copies · {money(basket.msrpSubtotalCents)} at cover · you save {money(basket.savingsCents)}{(me?.retailer.creditCents ?? 0) > 0 && basket.subtotalCents > 0 ? ` · ${money(Math.min(me!.retailer.creditCents, basket.subtotalCents))} store credit applied` : ''}</div>
+              <div className="display-md mono" style={{ marginTop: '.5rem' }}>{money(Math.max(0, basket.subtotalCents - couponCents - creditPreview))}</div>
+              <div className="dim" style={{ fontSize: '.85rem' }}>{basket.units} copies · {money(basket.msrpSubtotalCents)} at cover · you save {money(basket.savingsCents)}{couponCents > 0 ? ` · ${money(couponCents)} code` : ''}{creditPreview > 0 ? ` · ${money(creditPreview)} store credit applied` : ''}</div>
               <div style={{ margin: '1rem 0 .5rem' }}>
                 <div className="between" style={{ fontSize: '.82rem', marginBottom: '.35rem' }}><b>{basket.tier.tier.name} · {Math.round(basket.tier.tier.discountBps / 100)}% off</b>{basket.tier.next && !basket.tier.forced && <span className="dim">{money(basket.tier.toNextCents)} more at cover → {basket.tier.next.name}</span>}</div>
                 <Meter value={basket.tier.progress} />

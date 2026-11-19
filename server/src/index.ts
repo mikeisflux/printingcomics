@@ -6,6 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import path from 'node:path';
+import { podFileAccess, podFileInline, uploadPathIsPlain } from './lib/pod/file-access.js';
 
 import { config } from './config.js';
 import { attachSession } from './middleware/auth.js';
@@ -125,6 +126,15 @@ app.use(
   v1Routes,
 );
 
+// Nothing under /uploads may be addressed with a trick path. The gates below
+// are prefix gates, so a path that only resolves to /uploads/pod once decoded
+// or normalized (`/uploads/customer/..%2Fpod/x`, `/uploads//pod/x`) is
+// refused outright instead of being resolved after the gate has passed.
+app.use('/uploads', (req, res, next) => {
+  if (!uploadPathIsPlain(req.path)) return res.status(404).json({ error: 'Not found' });
+  next();
+});
+
 // Partner-uploaded print files require ?t=<accessToken>. The token is
 // sha256(filename + JWT_SECRET) so leaked filenames alone can't be enumerated.
 // Authenticated admins skip the check (so the admin UI can preview without
@@ -143,30 +153,21 @@ app.use('/uploads/partner', async (req, res, next) => {
   next();
 });
 
-// Distribution files. Cover images, marketing images and logos are public (the
-// catalog shows them). Print PDFs and extras belong to their publisher, a
-// resale certificate to its shop, a catalog PDF to signed-in publishers and
-// shops; staff see everything. Anything that is not a PDF or an image is
-// handed over as a download, never shown inline.
+// Distribution files: who may open what lives in lib/pod/file-access.ts,
+// shared with /api/files so the two never disagree. Anything that is not a
+// PDF or an image is handed over as a download, never shown inline.
 app.use('/uploads/pod', async (req, res, next) => {
-  const isStaff = req.session?.role === 'ADMIN' || req.session?.role === 'STAFF';
   const filename = path.basename(req.path);
   const { prisma: db } = await import('./db.js');
   const media = await db.mediaFile.findUnique({ where: { filename }, select: { tags: true, partnerId: true, mimeType: true } });
   if (!media) return res.status(404).json({ error: 'Not found' });
-  if (!/^(application\/pdf|image\/(jpeg|png|webp|gif))$/i.test(media.mimeType)) res.locals.attachment = true;
-  if (isStaff) return next();
-  const kind = media.tags.find((t) => t.startsWith('kind:'))?.slice(5) ?? '';
-  const isCatalog = media.tags.includes('pod-catalog');
-  const isAsset = media.tags.includes('pod-asset');
-  const isCert = media.tags.includes('pod-cert');
-  const isPublic = (!isCatalog && !isCert && (kind === 'cover_image' || kind === 'marketing' || (isAsset && kind === 'logo'))) || (isCatalog && kind === 'cover');
-  if (isPublic) return next();
-  if (!req.session) return res.status(403).json({ error: 'Sign in to open this file' });
-  const user = await db.user.findUnique({ where: { id: req.session.sub }, select: { partnerId: true, retailerId: true } });
-  if (isCatalog && (user?.partnerId || user?.retailerId)) return next();
-  if (isCert && user?.retailerId && media.tags.includes(`retailer:${user.retailerId}`)) return next();
-  if (media.partnerId && user?.partnerId === media.partnerId) return next();
+  if (!podFileInline(media.mimeType)) res.locals.attachment = true;
+  const verdict = await podFileAccess(media, req.session);
+  if (verdict === 'public' || verdict === 'allow') {
+    if (verdict === 'allow') res.setHeader('Cache-Control', 'private, no-store');
+    return next();
+  }
+  if (verdict === 'sign-in') return res.status(403).json({ error: 'Sign in to open this file' });
   return res.status(403).json({ error: 'This file is not yours to open' });
 });
 

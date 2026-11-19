@@ -12,7 +12,7 @@ import { statusWord, money, dateShort, dateTime, RETURN_STATUS } from '../../../
 import { Drawer, Empty, Events, Kpi, Pill, TonePill, errText, useFlash, useLoad } from '../../../components/pod/ui';
 import { useOverview } from './PodLayout';
 
-interface Row { id: string; number: string; status: string; paymentStatus: string; subtotalCents: number; shippingCents: number; totalCents: number; createdAt: string; wholesale: { tierName?: string; poNumber?: string | null } | null; retailer: { id: string; name: string } | null; cycle: { id: string; name: string } | null; _count: { items: number; shipments: number } }
+interface Row { id: string; number: string; status: string; paymentStatus: string; subtotalCents: number; shippingCents: number; totalCents: number; createdAt: string; wholesale: { tierName?: string; poNumber?: string | null } | null; retailer: { id: string; name: string } | null; cycle: { id: string; name: string; status?: string } | null; _count: { items: number; shipments: number } }
 interface Detail { order: Row & { email: string; taxCents: number; discountCents: number; notes: string | null; shippingMethod: string | null; shippingAddress: Record<string, string>; retailer: { id: string; name: string; contactEmail: string; creditCents: number } | null; items: { id: string; name: string; quantity: number; unitPriceCents: number; totalCents: number; options: { catalogKey?: string; publisher?: string } | null; wholesale: { msrpCents: number } | null; listing: { id: string; catalogKey: string; partner: { name: string } } | null }[]; shipments: { id: string; carrier: string | null; service: string | null; trackingCode: string | null; status: string; createdAt: string }[]; payments: { id: string; provider: string; status: string; amountCents: number; createdAt: string }[]; events: { id: string; kind: string; message: string | null; actorName: string | null; createdAt: string }[]; retailerReturns: { id: string; number: string; status: string; quantity: number; creditCents: number; kind: string }[] }; payLink: string | null; paymentMethods: { key: string; label: string }[] }
 
 const tone = (s: string) => ({ PENDING: 'amber', PAID: 'teal', IN_PRODUCTION: 'violet', SHIPPED: 'green', DELIVERED: 'green', CANCELLED: 'slate', REFUNDED: 'slate' } as Record<string, string>)[s] ?? 'slate';
@@ -30,18 +30,18 @@ export function PodOrders() {
   const [ship, setShip] = useState('');
   const [pay, setPay] = useState({ provider: 'bank', reference: '' });
   const o = det?.order;
-  const run = async (fn: () => Promise<unknown>, ok: string) => { setBusy(true); try { await fn(); show(ok); await Promise.all([reload(), reloadDetail()]); void reloadOverview(); } catch (e) { show(errText(e), true); } finally { setBusy(false); } };
+  const run = async (fn: () => Promise<{ mail?: { sent: boolean; error?: string } | null } | unknown>, ok: string) => { setBusy(true); try { const r = (await fn()) as { mail?: { sent: boolean; error?: string } | null } | null; const mail = r && typeof r === 'object' && 'mail' in r ? r.mail : null; show(mail ? `${ok} · ${mail.sent ? 'shop emailed' : `email failed: ${mail.error}`}` : ok); await Promise.all([reload(), reloadDetail()]); void reloadOverview(); } catch (e) { show(errText(e), true); } finally { setBusy(false); } };
   return (
     <>
       {node}
       <div className="grid cols-4" style={{ marginBottom: '1.25rem' }}>
         <Kpi label="Wholesale orders" value={data?.totals.count ?? '—'} sub={`${money(data?.totals.wholesaleCents ?? 0)} wholesale, all time`} />
         <Kpi label="Unpaid" value={data?.totals.unpaidCount ?? '—'} sub={`${money(data?.totals.unpaidCents ?? 0)} outstanding`} tone="hot" to="/admin/pod/orders?status=unpaid" />
-        <Kpi label="Awaiting shipment" value={(data?.orders ?? []).filter((r) => r.status === 'PAID').length} sub="paid, not yet shipped" to="/admin/pod/fulfillment" />
+        <Kpi label="Awaiting shipment" value={(data?.orders ?? []).filter((r) => (r.status === 'PAID' || r.status === 'PENDING') && (r.cycle?.status === 'FOC_LOCKED' || r.cycle?.status === 'CLOSED')).length} sub="catalog locked, not yet shipped" to="/admin/pod/fulfillment" />
         <Kpi label="Shipped" value={(data?.orders ?? []).filter((r) => r.status === 'SHIPPED' || r.status === 'DELIVERED').length} sub="in this list" dark />
       </div>
       <div className="toolbar">
-        <div className="seg">{[['', 'All'], ['unpaid', 'Unpaid'], ['paid', 'Paid'], ['PENDING', 'Pending'], ['PAID', 'Awaiting shipment'], ['SHIPPED', 'Shipped'], ['CANCELLED', 'Canceled']].map(([k, l]) => <button key={k} className={status === k ? 'on' : ''} onClick={() => setParams(k ? { status: k } : {})}>{l}</button>)}</div>
+        <div className="seg">{[['', 'All'], ['unpaid', 'Unpaid'], ['paid', 'Paid'], ['PENDING', 'Open'], ['PAID', 'Paid, not shipped'], ['SHIPPED', 'Shipped'], ['CANCELLED', 'Canceled']].map(([k, l]) => <button key={k} className={status === k ? 'on' : ''} onClick={() => setParams(k ? { status: k } : {})}>{l}</button>)}</div>
         <div className="search"><Search size={15} /><input className="inp" placeholder="Order number, shop, email…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       </div>
       <div className="panel flush scroll-x">
@@ -62,7 +62,13 @@ export function PodOrders() {
               </div>
               <div className="panel tight"><h3>Ship to</h3><p className="tight" style={{ fontSize: '.88rem' }}>{[o.shippingAddress.company, `${o.shippingAddress.firstName ?? ''} ${o.shippingAddress.lastName ?? ''}`.trim(), o.shippingAddress.line1, o.shippingAddress.line2, [o.shippingAddress.city, o.shippingAddress.region, o.shippingAddress.postalCode].filter(Boolean).join(', '), o.shippingAddress.phone, o.email].filter(Boolean).join(' · ')}</p>{o.notes && <div className="notice info" style={{ marginTop: '.5rem', fontSize: '.84rem' }}>{o.notes}</div>}</div>
             </div>
-            {o.paymentStatus !== 'CAPTURED' && o.status !== 'CANCELLED' && (
+            {o.paymentStatus === 'CAPTURED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED' && (
+              <div className="panel tight" style={{ marginBottom: '1rem' }}><h3>Paid</h3>
+                <p className="dim" style={{ fontSize: '.84rem', margin: '.35rem 0 .5rem' }}>To void this order, record how the money went back to the shop; store credit, printing and purchase-order lines raised for it are reversed.</p>
+                <div className="row" style={{ flexWrap: 'wrap' }}><select className="inp" style={{ width: 'auto' }} value={pay.provider} onChange={(e) => setPay((x) => ({ ...x, provider: e.target.value }))}>{(det?.paymentMethods ?? []).map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}</select><input className="inp" style={{ width: 150 }} placeholder="Refund reference" value={pay.reference} onChange={(e) => setPay((x) => ({ ...x, reference: e.target.value }))} /><button className="pbtn danger sm" disabled={busy} onClick={() => { const r = window.prompt(`Void order ${o.number} and record a ${money(o.totalCents)} refund? Reason the shop will read:`); if (r !== null) void run(() => api.post(`/admin/pod/orders/${o.id}/cancel`, { reason: r, refund: { method: pay.provider, reference: pay.reference || null } }), 'Voided and refund recorded'); }}><Ban size={14} /> Void &amp; refund</button></div>
+              </div>
+            )}
+            {o.paymentStatus !== 'CAPTURED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED' && (
               <div className="panel accent" style={{ marginBottom: '1rem' }}><h3>Payment</h3>
                 <div className="row" style={{ marginTop: '.5rem', flexWrap: 'wrap' }}>
                   <button className="pbtn glow sm" disabled={busy} onClick={() => void run(() => api.post(`/admin/pod/orders/${o.id}/pay-link`), 'Pay link emailed to the shop')}><Send size={14} /> Email pay link</button>
@@ -74,7 +80,7 @@ export function PodOrders() {
             )}
             {o.shipments.length > 0 && <div className="panel tight" style={{ marginBottom: '1rem' }}><h3>Shipments</h3>{o.shipments.map((s2) => <div key={s2.id} className="row" style={{ fontSize: '.86rem', padding: '.3rem 0' }}><Truck size={14} /> {s2.carrier} {s2.service} <span className="mono">{s2.trackingCode}</span> <span className="dim">{dateShort(s2.createdAt)}</span></div>)}</div>}
             {o.retailerReturns.length > 0 && <div className="panel tight" style={{ marginBottom: '1rem' }}><h3>Claims</h3>{o.retailerReturns.map((r) => <div key={r.id} className="between" style={{ fontSize: '.86rem', padding: '.3rem 0' }}><span>{r.number} · {r.quantity} copies · {r.kind}</span><span className="row"><TonePill map={RETURN_STATUS} status={r.status} /><b className="mono">{money(r.creditCents)}</b></span></div>)}</div>}
-            {o.status === 'PAID' && <Link to={`/admin/pod/fulfillment?open=${o.id}`} className="pbtn soft sm" style={{ marginBottom: '1rem' }}><Truck size={14} /> Ship it from Fulfillment</Link>}
+            {(o.status === 'PAID' || o.status === 'PENDING') && (o.cycle?.status === 'FOC_LOCKED' || o.cycle?.status === 'CLOSED') && <Link to={`/admin/pod/fulfillment?open=${o.id}`} className="pbtn soft sm" style={{ marginBottom: '1rem' }}><Truck size={14} /> Ship it from Fulfillment{o.paymentStatus !== 'CAPTURED' ? ' (unpaid: billed when shipped)' : ''}</Link>}
             <div className="panel"><h3>History</h3><div style={{ marginTop: '.5rem' }}><Events events={o.events} /></div></div>
           </>
         )}
@@ -100,13 +106,13 @@ export function PodFulfillment() {
     <>
       {node}
       <div className="grid cols-3" style={{ marginBottom: '1.25rem' }}>
-        <Kpi label="Orders to ship" value={data?.pending.length ?? '—'} sub="paid wholesale orders" tone="hot" />
+        <Kpi label="Orders to ship" value={data?.pending.length ?? '—'} sub="catalog locked, paid or billed when shipped" tone="hot" />
         <Kpi label="Copies" value={totalUnits} sub={`${Math.round((data?.pending ?? []).reduce((s, p) => s + p.weightLb, 0) * 10) / 10} lb in total`} />
         <Kpi label="Shipped recently" value={data?.recentShipments.length ?? '—'} sub="last 50 shipments" dark />
       </div>
       <div className="toolbar"><div><h2 className="display-md" style={{ margin: 0 }}>Pending shipments</h2><div className="dim" style={{ fontSize: '.88rem' }}>Weights are calculated from each title's weight (or page count). Export the rows for your label tool, then record the tracking here; the shop gets the tracking email.</div></div><a className="pbtn ghost sm" href="/api/admin/pod/fulfillment/export.csv"><Download size={14} /> Export shipping CSV</a></div>
       <div className="panel flush scroll-x" style={{ marginBottom: '1.25rem' }}>
-        {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.pending.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="Nothing waiting to ship" body="Paid wholesale orders show up here." /></div> : (
+        {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.pending.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="Nothing waiting to ship" body="Wholesale orders show up here once their catalog locks at FOC, paid or not: shipping is set when the boxes are packed and the invoice follows." /></div> : (
           <table className="ptable"><thead><tr><th>Order</th><th>Shop</th><th>Ship to</th><th>Catalog</th><th className="num">Copies</th><th className="num">Weight</th><th></th></tr></thead><tbody>
             {data.pending.map((p) => <tr key={p.id}><td><b>{p.number}</b><div className="dim" style={{ fontSize: '.74rem' }}>{dateShort(p.createdAt)}{p.publisherShipsLines ? ` · ${p.publisherShipsLines} publisher-shipped line(s)` : ''}</div></td><td>{p.retailer?.name}</td><td style={{ fontSize: '.84rem' }}>{[p.shippingAddress.line1, p.shippingAddress.line2, [p.shippingAddress.city, p.shippingAddress.region, p.shippingAddress.postalCode].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</td><td>{p.cycle?.name}<div className="dim" style={{ fontSize: '.74rem' }}>in store {dateShort(p.cycle?.inStoreDate)}</div></td><td className="num mono">{p.units}</td><td className="num mono">{p.weightOz} oz<div className="dim" style={{ fontSize: '.74rem' }}>{p.weightLb} lb</div></td><td><button className="pbtn primary xs" onClick={() => setParams({ open: p.id })}><Truck size={12} /> Ship</button></td></tr>)}
           </tbody></table>

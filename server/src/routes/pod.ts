@@ -14,7 +14,7 @@ import { requireAuth } from '../middleware/auth.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { ListingStatusKey } from '../lib/pod/catalog.js';
 import { getPodSettings, publicPodSettings } from '../lib/pod/settings.js';
-import { CYCLE_STATUS_LABELS, FORMATS, LISTING_STATUS_LABELS, PARTNER_EDITABLE, cancelRetailerOrder, currentPublisherCycle, currentRetailerCycle, cycleItems, cycleOrderingOpen, deriveCatalogKey, priceRetailerBasket, setListingStatus, uniqueCatalogKey } from '../lib/pod/catalog.js';
+import { CYCLE_STATUS_LABELS, FORMATS, LISTING_STATUS_LABELS, PARTNER_EDITABLE, cancelRetailerOrder, currentPublisherCycle, currentRetailerCycle, cycleItems, cycleOrderingOpen, deriveCatalogKey, moveListingCycle, priceRetailerBasket, reconcileRunPrinting, setListingStatus, uniqueCatalogKey } from '../lib/pod/catalog.js';
 import { listingInclude, loadListing, presentListing, presentPublicListing } from '../lib/pod/present.js';
 import { UPLOAD_TYPES, csvUpload, deleteListingFile, isFileKind, listingUpload, requireUploadType, restoreListingFileVersion, storeListingFile, storePublisherAsset } from '../lib/pod/files.js';
 import { assignBarcode, barcodeSvg, normalizeBarcode } from '../lib/pod/barcodes.js';
@@ -28,7 +28,7 @@ import { pickTier, wholesaleUnit } from '../lib/pod/wholesale.js';
 import { ledgerSummary } from '../lib/pod/payouts.js';
 import { notifyStaff, notifyStaffListingSubmitted, notifyStaffPublisherApplied, notifyStaffRetailerApplied, sendPublisherApplicationReceivedEmail, sendRetailerOrderCancelledEmail, sendRetailerOrderEmail } from '../lib/pod/emails.js';
 import { newOrderNumber } from '../lib/checkout-order.js';
-import { orderPayLink } from '../lib/manual-order.js';
+import { orderPayLink, orderPayable } from '../lib/manual-order.js';
 import { clientIp } from '../middleware/botblocker.js';
 import { evaluateCoupon } from '../lib/coupons.js';
 
@@ -73,6 +73,7 @@ router.get('/catalog', async (req, res) => {
   res.json({
     cycle: { id: cycle.id, slug: cycle.slug, name: cycle.name, status: cycle.status, statusLabel: CYCLE_STATUS_LABELS[cycle.status], catalogDate: cycle.catalogDate, focDate: cycle.focDate, inStoreDate: cycle.inStoreDate, orderingOpen: cycleOrderingOpen(cycle) },
     cycles: cycles.map((c) => ({ id: c.id, slug: c.slug, name: c.name, status: c.status, catalogDate: c.catalogDate, focDate: c.focDate, inStoreDate: c.inStoreDate })),
+    tiers: (await getPodSettings()).tiers.map((t) => ({ name: t.name, minCents: t.minCents, discountBps: t.discountBps })),
     listings,
   });
 });
@@ -288,11 +289,23 @@ partner.patch('/listings/:id', async (req, res) => {
     const c = await prisma.catalogCycle.findUnique({ where: { id: body.cycleId } });
     if (!c || !c.publisherOpen || !['DRAFT', 'OPEN'].includes(c.status)) throw new HttpError(400, 'That catalog is not open to new listings');
   }
-  await prisma.listing.update({ where: { id: l.id }, data: body as Prisma.ListingUncheckedUpdateInput });
-  if ((body.seriesCode !== undefined || body.upc !== undefined) && (l.status === 'DRAFT' || l.status === 'CHANGES_REQUESTED')) {
+  const { cycleId: toCycleId, ...rest } = body;
+  if (toCycleId !== undefined && toCycleId !== l.cycleId) await moveListingCycle(l.id, toCycleId);
+  await prisma.listing.update({ where: { id: l.id }, data: rest as Prisma.ListingUncheckedUpdateInput });
+  // The catalog id follows the series code and UPC while the listing is
+  // still the publisher's to shape — and only when those actually changed
+  // and the result is the real SERIESCODE-last5(UPC) form, never a fresh
+  // random id on every save.
+  const codeChanged = body.seriesCode !== undefined && body.seriesCode !== l.seriesCode;
+  const upcChanged = body.upc !== undefined && body.upc !== l.upc;
+  if ((codeChanged || upcChanged) && (l.status === 'DRAFT' || l.status === 'CHANGES_REQUESTED')) {
     const fresh = await prisma.listing.findUnique({ where: { id: l.id } });
+    const deterministic = Boolean((fresh?.seriesCode ?? '').replace(/[^A-Za-z0-9]/g, '')) && (fresh?.upc ?? '').replace(/\D/g, '').length >= 5;
     const wanted = deriveCatalogKey(fresh!);
-    if (wanted !== l.catalogKey) await prisma.listing.update({ where: { id: l.id }, data: { catalogKey: await uniqueCatalogKey(wanted, l.id) } });
+    if (deterministic && wanted !== l.catalogKey) {
+      await prisma.listing.update({ where: { id: l.id }, data: { catalogKey: await uniqueCatalogKey(wanted, l.id) } });
+      await recordPodEvent('listing', l.id, 'catalog-id', `Catalog id ${l.catalogKey} → ${wanted}`, actorOf(req));
+    }
   }
   await recordPodEvent('listing', l.id, 'edited', `Publisher edited ${Object.keys(body).join(', ')}`, actorOf(req));
   res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
@@ -320,6 +333,10 @@ partner.post('/listings/:id/submit', async (req, res) => {
   if (!l.pageCount) problems.push('the page count');
   if (!l.trimWidthIn || !l.trimHeightIn) problems.push('the trim size');
   if (!l.cycleId) problems.push('a catalog to go in');
+  else {
+    const c = await prisma.catalogCycle.findUnique({ where: { id: l.cycleId }, select: { name: true, status: true, publisherOpen: true } });
+    if (!c || !['DRAFT', 'OPEN', 'PUBLISHED'].includes(c.status) || (c.status !== 'PUBLISHED' && !c.publisherOpen)) throw new HttpError(400, `${c?.name ?? 'That catalog'} is no longer taking listings. Move this listing to an open catalog, then submit it.`);
+  }
   if (!l.files.some((f) => f.kind === 'cover_image')) problems.push('a cover image');
   if (l.fulfillment === 'PRINTED_BY_US') {
     if (!l.files.some((f) => f.kind === 'cover')) problems.push('the cover PDF');
@@ -379,7 +396,7 @@ partner.post('/assets', listingUpload.single('file'), async (req, res) => {
   if (!req.file) throw new HttpError(400, 'No file received');
   const kind = ['logo', 'marketing', 'press', 'other'].includes(String(req.body?.kind)) ? String(req.body.kind) : 'marketing';
   const asset = await storePublisherAsset({ partnerId: partnerId(req), kind, title: req.body?.title ? String(req.body.title) : null, file: req.file, actor: actorOf(req), uploaderId: req.session!.sub });
-  await recordPodEvent('listing', partnerId(req), 'asset', `${kind} uploaded: ${req.file.originalname}`, actorOf(req));
+  await recordPodEvent('partner', partnerId(req), 'asset', `${kind} uploaded: ${req.file.originalname}`, actorOf(req));
   res.status(201).json({ asset });
 });
 
@@ -426,6 +443,7 @@ partner.delete('/listings/:id/files/:fileId', async (req, res) => {
 partner.post('/listings/:id/barcode', async (req, res) => {
   const l = await ownListing(req);
   if (l.upc && !l.barcode) throw new HttpError(400, 'This listing already has a UPC you typed; clear it first if you want one of ours');
+  if (!PARTNER_EDITABLE.has(l.status as never)) throw new HttpError(400, 'A barcode goes on before the listing is submitted; ask us to add one to a listing in review or live.');
   const s = await getPodSettings();
   const reserved = await prisma.barcode.findFirst({ where: { status: 'RESERVED', partnerId: l.partnerId } });
   if (!reserved && !s.publishersSelfAssignBarcodes) throw new HttpError(403, 'No barcodes are reserved for you. Ask us to allocate some.');
@@ -475,9 +493,15 @@ partner.post('/print-orders', async (req, res) => {
     po = await prisma.productionOrder.create({ data: { number: await numbering.production(), listingId: l.id, cycleId: l.cycleId, retailerQty: 0, partnerAddOnQty: body.quantity, totalQty: body.quantity, printUnitCents: cost.unitCents, printTotalCents: cost.totalCents, status: 'FILES_NEEDED', notes: body.notes ? `Publisher: ${body.notes}` : 'Publisher print order', deadline: null } });
     await recordPodEvent('production', po.id, 'created', `Publisher ordered ${body.quantity} copies`, actorOf(req));
   }
-  await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -cost.totalCents, description: `${l.catalogKey}: ${body.quantity} publisher copies (${po.number})`, cycleId: l.cycleId, listingId: l.id, actorName: actorOf(req).name, ref: `printing:${po.id}:addon` } });
+  // Charged under the run's add-on ref at the run's price for all the
+  // publisher's copies on it, so what the portal shows and what the ledger
+  // holds are the same number and a later staff edit posts no surprise.
+  const chargedBefore = -(await prisma.partnerLedgerEntry.aggregate({ where: { ref: `printing:${po.id}:addon` }, _sum: { amountCents: true } }))._sum.amountCents!;
+  await reconcileRunPrinting(po.id, actorOf(req));
+  const chargedAfter = -(await prisma.partnerLedgerEntry.aggregate({ where: { ref: `printing:${po.id}:addon` }, _sum: { amountCents: true } }))._sum.amountCents!;
+  const chargedCents = (chargedAfter || 0) - (chargedBefore || 0);
   void notifyStaff(`Publisher print order: ${body.quantity} × ${l.title}`, `<h2 style="margin:0 0 .5rem">Publisher print order</h2><p><strong>${body.quantity}</strong> copies of <strong>${l.title}</strong> (${l.catalogKey}) ${open ? `added to run ${po.number}` : `as new run ${po.number}`}.</p>`, `/admin/pod/production?open=${po.id}`);
-  res.status(201).json({ printOrder: { id: po.id, number: po.number, quantity: body.quantity, unitCents: cost.unitCents, totalCents: cost.totalCents, addedToRun: Boolean(open) } });
+  res.status(201).json({ printOrder: { id: po.id, number: po.number, quantity: body.quantity, unitCents: po.printUnitCents ?? cost.unitCents, totalCents: chargedCents, addedToRun: Boolean(open) } });
 });
 
 partner.get('/purchase-orders', async (req, res) => {
@@ -509,8 +533,10 @@ partner.post('/purchase-orders/:id/shipped', async (req, res) => {
   const note = [tracking ? `Tracking: ${tracking}` : null, body.note].filter(Boolean).join(' — ') || null;
   await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: 'FULFILLED', fulfilledAt: new Date(), notes: note ? `${po.notes ? `${po.notes}\n` : ''}${note}` : po.notes } });
   await recordPodEvent('purchase_order', po.id, 'shipped', note ?? 'Marked shipped by the publisher', actorOf(req));
-  void notifyStaff(`Purchase order ${po.number} shipped`, `<h2 style="margin:0 0 .5rem">Purchase order shipped</h2><p>The publisher marked <strong>${po.number}</strong> (${po.unitsTotal} copies) shipped.${note ? ` ${note}` : ''}</p>`, `/admin/pod/purchase-orders`);
-  res.json({ ok: true });
+  const { recordPublisherShipment } = await import('../lib/pod/fulfillment.js');
+  const shipped = await recordPublisherShipment(po.id, { carrier: body.carrier ?? null, trackingCode: body.trackingCode ?? null }, actorOf(req));
+  void notifyStaff(`Purchase order ${po.number} shipped`, `<h2 style="margin:0 0 .5rem">Purchase order shipped</h2><p>The publisher marked <strong>${po.number}</strong> (${po.unitsTotal} copies) shipped.${note ? ` ${note}` : ''}</p><p>${shipped.ordersShipped} shop order(s) are now fully shipped${shipped.ordersWaiting ? `; ${shipped.ordersWaiting} still wait on copies shipping from here` : ''}.</p>`, `/admin/pod/purchase-orders`);
+  res.json({ ok: true, ...shipped });
 });
 
 partner.get('/statements', async (req, res) => {
@@ -735,7 +761,7 @@ retailer.post('/resale-certificate', listingUpload.single('file'), async (req, r
   if (!req.file) throw new HttpError(400, 'No file received');
   await requireUploadType(req.file, UPLOAD_TYPES.pdfOrImage, 'The resale certificate');
   const { publishUpload } = await import('../lib/storage.js');
-  const stored = await publishUpload({ subdir: 'pod', filename: req.file.filename, localPath: req.file.path, contentType: req.file.mimetype, originalName: req.file.originalname });
+  const stored = await publishUpload({ subdir: 'pod', filename: req.file.filename, localPath: req.file.path, contentType: req.file.mimetype, originalName: req.file.originalname, gated: true });
   const media = await prisma.mediaFile.create({ data: { filename: req.file.filename, originalName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, url: stored.url, folder: '/pod/certificates', tags: ['pod-cert', `retailer:${r.id}`], uploaderId: req.session!.sub } });
   await prisma.retailer.update({ where: { id: r.id }, data: { resaleCertMediaId: media.id, resaleCertStatus: 'submitted', ...(req.body?.number ? { resaleCertNumber: String(req.body.number) } : {}), ...(req.body?.state ? { resaleCertState: String(req.body.state) } : {}) } });
   await recordPodEvent('retailer', r.id, 'certificate', `Resale certificate uploaded: ${req.file.originalname}`, actorOf(req));
@@ -780,7 +806,7 @@ retailer.get('/returns', async (req, res) => {
 });
 
 retailer.post('/returns', async (req, res) => {
-  const body = z.object({ orderId: str(40), orderItemId: str(40), quantity: num.int().min(1), kind: z.enum(['return', 'damage']), reason: str(1000) }).parse(req.body);
+  const body = z.object({ orderId: str(40), orderItemId: str(40), quantity: num.int().min(1).max(10_000), kind: z.enum(['return', 'damage']), reason: str(1000) }).parse(req.body);
   const r = await requestReturn({ retailerId: retailerOf(req).id, ...body }, actorOf(req));
   void notifyStaff(`${body.kind === 'damage' ? 'Damage claim' : 'Return request'} ${r.number} from ${retailerOf(req).name}`, `<h2 style="margin:0 0 .5rem">${body.kind === 'damage' ? 'Damage claim' : 'Return request'}</h2><p><strong>${retailerOf(req).name}</strong> claims ${body.quantity} copies: ${body.reason}</p>`, '/admin/pod/returns');
   res.status(201).json({ return: r });
@@ -801,16 +827,18 @@ retailer.get('/orders/:number', async (req, res) => {
   if (!o) throw new HttpError(404, 'Order not found');
   const editable = o.cycle ? cycleOrderingOpen(o.cycle) && o.paymentStatus === 'PENDING' && o.status === 'PENDING' : false;
   // Once invoiced the shop pays through the same link staff can email.
-  const payLink = o.paymentStatus === 'PENDING' && o.status === 'PENDING' && o.totalCents > 0 && (!o.cycle || !cycleOrderingOpen(o.cycle)) ? await orderPayLink(o.id, o.number) : null;
+  const payLink = (!o.cycle || !cycleOrderingOpen(o.cycle)) && (await orderPayable(o)) ? await orderPayLink(o.id, o.number) : null;
   res.json({ order: o, editable, payLink });
 });
 
 retailer.post('/orders/:number/cancel', async (req, res) => {
   const o = await prisma.order.findFirst({ where: { number: req.params.number, retailerId: retailerOf(req).id }, include: { cycle: true } });
   if (!o) throw new HttpError(404, 'Order not found');
-  if (!o.cycle || !cycleOrderingOpen(o.cycle) || o.paymentStatus !== 'PENDING') throw new HttpError(400, 'This order is past FOC and cannot be canceled online. Write to us.');
+  if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'This order is paid. Write to us and we will sort out a refund or a credit.');
+  if (o.status !== 'PENDING') throw new HttpError(400, 'This order has already shipped. For a return or a damage claim, use Returns & damages.');
+  if (!o.cycle || !cycleOrderingOpen(o.cycle)) throw new HttpError(400, 'This order is past the final order cutoff and cannot be canceled online. Write to us.');
   await cancelRetailerOrder(o.id, actorOf(req), { by: 'retailer' });
-  void sendRetailerOrderCancelledEmail(o.id, 'You cancelled this order before the final order cutoff.');
+  void sendRetailerOrderCancelledEmail(o.id, 'You canceled this order before the final order cutoff.');
   res.json({ ok: true });
 });
 

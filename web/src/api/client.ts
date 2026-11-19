@@ -20,7 +20,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error ?? 'Request failed', body.details);
+    throw new ApiError(res.status, body.error ?? 'Request failed', body.details ?? body);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -31,7 +31,7 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: 'POST', credentials: 'include', headers: path.startsWith('/pod') ? viewAsHeaders() : {}, body: form });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error ?? 'Request failed', body.details);
+    throw new ApiError(res.status, body.error ?? 'Request failed', body.details ?? body);
   }
   return res.json();
 }

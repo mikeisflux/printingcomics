@@ -1598,6 +1598,9 @@ model CatalogCycleItem {
   /// Units already raised for this listing at FOC lock (runs, purchase
   /// orders, consignment pulls); a re-lock or a cancel posts the difference.
   raisedUnits Int        @default(0)
+  /// Consignment copies actually taken off the publisher's shelf for this
+  /// listing (a short pull takes fewer than raised); a cancel returns at most this.
+  pulledUnits Int        @default(0)
   createdAt DateTime     @default(now())
 
   @@unique([cycleId, listingId, version])

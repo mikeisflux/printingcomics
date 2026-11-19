@@ -57,7 +57,7 @@ export function PublisherHandbook() {
           <li><b>Catalog &amp; rules:</b> which catalog cycle, incentive ratio for retailer-incentive covers, whether shops may reorder.</li>
           <li><b>Files:</b> a cover image for the catalog, and for titles we print a cover PDF and an interior PDF.</li>
         </ul>
-        <p>Submit when the readiness list on the listing is all green. We review within a few days: approve, request changes (you get our notes by email and on the listing), or decline. Approved and live listings are locked; write to us for changes, and print files can still be replaced.</p>
+        <p>Submit when the readiness list on the listing is all green. We review within a few days: approve, request changes (you get our notes by email and on the listing), or decline. Approved and live listings are locked; write to us for changes. Print files can still be replaced (or an older version restored) on approved and live titles, never on one that is in review.</p>
 
         <H id="files" icon={<FileCheck size={22} style={{ color: 'var(--p-violet)' }} />}>4. Files &amp; preflight</H>
         <p>Build files on our templates and follow our file-prep guide; both are the same ones every Printing Comics customer uses:</p>
@@ -65,7 +65,7 @@ export function PublisherHandbook() {
         <p>The moment a PDF lands we check that it opens, is not password-protected, has the right page count (interiors a multiple of {s?.pageCountStep ?? 4}; covers four pages or a wrap), uses one page size throughout, has no two-page spreads, matches the listed trim, and carries 0.125" bleed. Failures are listed on the file with what to fix. A person then confirms fonts, color, resolution and flattening before press. Every upload is a new version; older versions stay and can be restored from <Link to="/publisher/files">Files</Link>.</p>
 
         <H id="barcodes" icon={<BarcodeIcon size={22} style={{ color: 'var(--p-violet)' }} />}>5. Barcodes &amp; catalog ids</H>
-        <p>Every cover needs its own UPC. Use your own, or take one of ours from the listing page ("Get a barcode"): we hold blocks and can reserve a batch for you. The scannable image is downloadable from the listing and from <Link to="/publisher/barcodes">Barcodes</Link>. Your catalog id is your series code plus the last five digits of the UPC (for example <span className="key">SAV-92708</span>); it is what shops type to order and it is fixed once the listing is live.</p>
+        <p>Every cover needs its own UPC. Use your own, or take one of ours from the listing page ("Get a barcode"): we hold blocks and can reserve a batch for you. The scannable image is downloadable from the listing and from <Link to="/publisher/barcodes">Barcodes</Link>. Your catalog id is your series code plus the last five digits of the UPC (for example <span className="key">SAV-92708</span>); it is what shops type to order. It follows the series code and UPC while the listing is a draft or back with you for changes, and is fixed from the moment it is submitted.</p>
 
         <H id="catalog" icon={<Calendar size={22} style={{ color: 'var(--p-violet)' }} />}>6. The catalog cycle</H>
         <ul>

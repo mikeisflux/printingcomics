@@ -12,6 +12,7 @@
  */
 import { Router } from 'express';
 import path from 'node:path';
+import { podFileAccess, uploadPathIsPlain } from '../lib/pod/file-access.js';
 import { prisma } from '../db.js';
 import { isR2Enabled, r2PublicUrl, r2SignedUrl } from '../lib/r2.js';
 
@@ -31,6 +32,20 @@ router.get(/^\/(.+)$/, async (req, res) => {
   if (!key || key.includes('..')) return res.status(400).json({ error: 'Bad file path' });
 
   const filename = path.basename(key);
+  let gated = false;
+  if (!uploadPathIsPlain('/' + key)) return res.status(400).json({ error: 'Bad file path' });
+
+  // Distribution files: the same rules as /uploads/pod, whether the bytes are
+  // on local disk or on R2.
+  if (key.startsWith('pod/')) {
+    const media = await prisma.mediaFile.findUnique({ where: { filename }, select: { tags: true, partnerId: true, mimeType: true } });
+    if (!media) return res.status(404).json({ error: 'File not found' });
+    const verdict = await podFileAccess(media, req.session);
+    if (verdict === 'sign-in') return res.status(403).json({ error: 'Sign in to open this file' });
+    if (verdict === 'deny') return res.status(403).json({ error: 'This file is not yours to open' });
+    if (verdict === 'allow') res.setHeader('Cache-Control', 'private, no-store');
+    gated = verdict !== 'public';
+  }
 
   // Partner uploads stay capability-gated exactly as they are on local disk:
   // the ?t= token must match, unless an admin/staff session is making the call.
@@ -66,7 +81,7 @@ router.get(/^\/(.+)$/, async (req, res) => {
   if (await isR2Enabled()) {
     const url = wantsDownload
       ? await r2SignedUrl(key, 3600, { contentDisposition: attachmentDisposition(originalName) })
-      : (await r2PublicUrl(key)) ?? (await r2SignedUrl(key, 3600));
+      : (gated ? null : await r2PublicUrl(key)) ?? (await r2SignedUrl(key, 3600));
     if (url) {
       // Short-lived redirect: the signature expires, the /api/files URL doesn't.
       // Downloads are never cached, so a redirect minted before a deploy can't

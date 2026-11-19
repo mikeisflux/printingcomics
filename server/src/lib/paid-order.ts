@@ -11,6 +11,29 @@ import { redeemCouponForOrder } from './coupons.js';
  * Each step logs and swallows its own failure: a stock hiccup must never
  * undo a payment that already happened.
  */
+/** The order status once its money arrives: PENDING becomes PAID; a wholesale order that already shipped stays shipped. */
+export function paidStatusFor(status: string): string {
+  return status === 'PENDING' || status === 'CANCELLED' ? 'PAID' : status;
+}
+
+/**
+ * The "you paid" email for whichever kind of order this is: the storefront
+ * confirmation, or the wholesale receipt for a shop. Every path that marks an
+ * order paid (browser capture, PayPal webhook, staff mark-paid) sends through
+ * here so a shop never gets the storefront's proofs-and-printing email.
+ */
+export async function sendPaidReceipt(orderId: string): Promise<void> {
+  const { prisma } = await import('../db.js');
+  const o = await prisma.order.findUnique({ where: { id: orderId }, select: { source: true } });
+  if (o?.source === 'retailer') {
+    const { sendRetailerReceiptEmail } = await import('./pod/emails.js');
+    await sendRetailerReceiptEmail(orderId).catch((e: any) => console.warn('[pod] receipt failed:', e?.message ?? e));
+  } else {
+    const { sendOrderConfirmationEmail } = await import('./order-emails.js');
+    await sendOrderConfirmationEmail(orderId).catch((e: any) => console.warn('[orders] confirmation failed:', e?.message ?? e));
+  }
+}
+
 export async function settlePaidOrder(orderId: string): Promise<void> {
   // Wholesale orders pull consigned stock at the catalog's FOC lock (lib/pod/catalog.ts), not here.
   const { prisma } = await import('../db.js');

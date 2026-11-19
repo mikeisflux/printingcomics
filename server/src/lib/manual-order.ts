@@ -23,6 +23,7 @@ import { ensureCustomerAccount } from './customer-accounts.js';
 import { newOrderNumber, type StoredShippingQuote } from './checkout-order.js';
 import { settlePaidOrder } from './paid-order.js';
 import { sendOrderConfirmationEmail, sendPayRequestEmail } from './order-emails.js';
+import { sendPaidReceipt } from './paid-order.js';
 import { orderViewToken } from './order-view.js';
 import { isTracked, availableItems } from './inventory.js';
 import { assertOfferedOptions } from './order-adjustments.js';
@@ -94,7 +95,7 @@ export const PAYMENT_METHODS: { key: string; label: string }[] = [
   { key: 'bank', label: 'Bank transfer / wire' },
   { key: 'other', label: 'Other' },
 ];
-const PAYMENT_KEYS = new Set(PAYMENT_METHODS.map((m) => m.key));
+export const PAYMENT_KEYS = new Set(PAYMENT_METHODS.map((m) => m.key));
 
 // The same product shape a cart line carries, so the packer and the stock
 // check see exactly what checkout shows them.
@@ -403,8 +404,11 @@ export async function orderPayLink(orderId: string, number: string): Promise<str
  * already in flight (an eCheck clearing), which must not be paid twice.
  */
 export async function orderPayable(order: { id: string; source: string | null; status: string; paymentStatus: string; totalCents: number }): Promise<boolean> {
-  // Staff-placed orders and wholesale (retailer) orders are paid through the pay link.
-  if (!((order.source === 'admin' || order.source === 'retailer') && order.status === 'PENDING' && order.paymentStatus === 'PENDING' && order.totalCents > 0)) return false;
+  // Staff-placed orders are paid before anything prints. Wholesale (retailer)
+  // orders are billed later: shipping is set when the boxes are packed, so an
+  // order may well have shipped before the shop pays its invoice.
+  const open = order.source === 'retailer' ? ['PENDING', 'SHIPPED', 'DELIVERED'].includes(order.status) : order.status === 'PENDING';
+  if (!((order.source === 'admin' || order.source === 'retailer') && open && order.paymentStatus === 'PENDING' && order.totalCents > 0)) return false;
   const pending = await prisma.payment.findMany({ where: { orderId: order.id, status: 'PENDING' }, select: { rawPayload: true } });
   return !pending.some((p) => p.rawPayload != null);
 }
@@ -435,11 +439,6 @@ export async function markOrderPaid(orderId: string, how: { provider: string; re
     });
   });
   await settlePaidOrder(orderId);
-  if (order.source === 'retailer') {
-    const { sendRetailerReceiptEmail } = await import('./pod/emails.js');
-    void sendRetailerReceiptEmail(orderId);
-  } else {
-    void sendOrderConfirmationEmail(orderId);
-  }
+  void sendPaidReceipt(orderId);
   return prisma.order.findUnique({ where: { id: orderId } });
 }

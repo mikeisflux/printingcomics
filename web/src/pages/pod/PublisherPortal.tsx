@@ -242,7 +242,7 @@ function toBody(f: Form) {
   };
 }
 
-export function ListingForm({ value, onChange, cycles, settings, disabled, admin }: { value: Form; onChange: (f: Form) => void; cycles: { id: string; name: string; catalogDate: string; focDate: string; status?: string }[]; settings: PublicSettings | null; disabled?: boolean; admin?: boolean }) {
+export function ListingForm({ value, onChange, cycles, settings, disabled, admin, upcLocked }: { upcLocked?: boolean; value: Form; onChange: (f: Form) => void; cycles: { id: string; name: string; catalogDate: string; focDate: string; status?: string }[]; settings: PublicSettings | null; disabled?: boolean; admin?: boolean }) {
   const set = <K extends keyof Form>(k: K) => (e: { target: { value: string } }) => onChange({ ...value, [k]: e.target.value });
   const step = settings?.pageCountStep ?? 4;
   const pages = Number(value.pageCount);
@@ -259,7 +259,7 @@ export function ListingForm({ value, onChange, cycles, settings, disabled, admin
           <div className="field"><label>Cover description</label><input value={value.coverDescription} onChange={set('coverDescription')} placeholder="Main Cover · Cover B — Virgin" /><span className="hint">One listing per cover. Variants are their own listing.</span></div>
           <div className="field"><label>Format</label><select value={value.format} onChange={set('format')}>{Object.entries(FORMAT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
           <div className="field"><label>Series code <span className="dim">3–6 letters</span></label><input value={value.seriesCode} onChange={(e) => onChange({ ...value, seriesCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })} placeholder="SAV" /><span className="hint">Makes the catalog id: CODE-last five of the UPC.</span></div>
-          <div className="field"><label>UPC / ISBN</label><input value={value.upc} onChange={set('upc')} placeholder="9798995292708" /></div>
+          <div className="field"><label>UPC / ISBN</label><input value={value.upc} onChange={set('upc')} placeholder="9798995292708" disabled={disabled || upcLocked} readOnly={upcLocked} />{upcLocked && <span className="hint">One of our barcodes: release it from the Barcode card before changing the UPC.</span>}</div>
           <div className="field"><label>Series type</label><select value={value.seriesType} onChange={set('seriesType')}><option value="ongoing">Ongoing</option><option value="limited">Limited series</option><option value="one_shot">One-shot</option><option value="collection">Collection / trade</option></select></div>
           <div className="field"><label>Age rating</label><select value={value.ageRating} onChange={set('ageRating')}><option value="">—</option>{AGE_RATINGS.map((a) => <option key={a}>{a}</option>)}</select></div>
         </div>
@@ -357,7 +357,10 @@ export function PublisherListingEdit() {
   const getBarcode = async () => { setBusy('barcode'); try { await api.post(`/pod/publisher/listings/${id}/barcode`); show('Barcode assigned'); await reload(); setForm((f) => f); } catch (x) { show(errText(x), true); } finally { setBusy(null); } };
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(false);
-  const readyToSubmit = l && !l.missingFiles.length && l.files.cover_image && l.cycle && l.msrpCents > 0 && l.pageCount && l.trimWidthIn;
+  const canRestore = Boolean(l && (editable || ['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)));
+  // A print PDF whose checks failed blocks submission on the server too; say so here instead of at the 400.
+  const failedPdf = l ? (['cover', 'interior'] as const).filter((k) => l.fulfillment === 'PRINTED_BY_US' && l.files[k]?.reviewStatus === 'rejected') : [];
+  const readyToSubmit = l && !l.missingFiles.length && l.files.cover_image && l.cycle && l.msrpCents > 0 && l.pageCount && l.trimWidthIn && failedPdf.length === 0;
   return (
     <>
       {node}
@@ -386,14 +389,14 @@ export function PublisherListingEdit() {
         ))}
       </div>
       <div className="split">
-        <form onSubmit={save} className="listing-form"><ListingForm value={form} onChange={change} cycles={cyc?.cycles ?? []} settings={me?.settings ?? null} disabled={!editable} /></form>
+        <form onSubmit={save} className="listing-form"><ListingForm value={form} onChange={change} cycles={cyc?.cycles ?? []} settings={me?.settings ?? null} disabled={!editable} upcLocked={Boolean(l?.barcode)} /></form>
         <aside className="stack sticky">
           {!isNew && l && (
             <>
               <div className="panel accent">
                 <h3>Readiness</h3>
                 <ul style={{ listStyle: 'none', padding: 0, margin: '.5rem 0 0', display: 'grid', gap: '.35rem', fontSize: '.9rem' }}>
-                  {[[Boolean(l.msrpCents && l.pageCount && l.trimWidthIn), 'Price, pages and trim set'], [Boolean(l.cycle), 'Catalog cycle picked'], [Boolean(l.files.cover_image), 'Cover image'], ...(l.fulfillment === 'PRINTED_BY_US' ? [[Boolean(l.files.cover), 'Cover PDF'], [Boolean(l.files.interior), 'Interior PDF']] as [boolean, string][] : [])].map(([ok, label]) => (
+                  {[[Boolean(l.msrpCents && l.pageCount && l.trimWidthIn), 'Price, pages and trim set'], [Boolean(l.cycle), 'Catalog cycle picked'], [Boolean(l.files.cover_image), 'Cover image'], ...(l.fulfillment === 'PRINTED_BY_US' ? [[Boolean(l.files.cover), 'Cover PDF'], [Boolean(l.files.interior), 'Interior PDF'], [Boolean(l.files.cover || l.files.interior) && failedPdf.length === 0, failedPdf.length ? `Newest ${failedPdf.join(' and ')} PDF passed its checks (not yet: upload a corrected file)` : 'Newest print PDFs passed their checks']] as [boolean, string][] : [])].map(([ok, label]) => (
                     <li key={label as string} className="row" style={{ gap: '.5rem' }}><span style={{ width: 18, height: 18, borderRadius: '50%', background: ok ? 'var(--p-green)' : 'var(--p-line)', display: 'inline-grid', placeItems: 'center', color: '#fff', fontSize: '.7rem', fontWeight: 800 }}>{ok ? '✓' : ''}</span>{label}</li>
                   ))}
                 </ul>
@@ -401,14 +404,14 @@ export function PublisherListingEdit() {
               <div className="panel tight">
                 <div className="between"><b>Barcode</b>{l.barcode ? <Pill tone="teal">{l.barcode.symbology}</Pill> : l.upc ? <Pill tone="slate">your own UPC</Pill> : <Pill tone="amber">none yet</Pill>}</div>
                 {l.barcode || l.upc ? <div style={{ marginTop: '.5rem' }}><Barcode code={l.barcode?.code ?? l.upc!} /><div className="row" style={{ marginTop: '.4rem', justifyContent: 'space-between' }}><span className="mono" style={{ fontSize: '.84rem' }}>{l.barcode?.code ?? l.upc}</span><a className="pbtn ghost xs" href={`/api/pod/barcode/${l.barcode?.code ?? l.upc}.svg`} download>SVG</a></div></div>
-                  : <><p className="dim tight" style={{ fontSize: '.82rem', margin: '.4rem 0 .6rem' }}>Every cover needs its own UPC. Type yours in the form, or take one of ours.</p><button className="pbtn soft sm" disabled={busy !== null} onClick={() => void getBarcode()}>Get a barcode</button></>}
+                  : <><p className="dim tight" style={{ fontSize: '.82rem', margin: '.4rem 0 .6rem' }}>Every cover needs its own UPC. Type yours in the form, or take one of ours.</p>{editable ? <button className="pbtn soft sm" disabled={busy !== null} onClick={() => void getBarcode()}>Get a barcode</button> : <span className="dim" style={{ fontSize: '.8rem' }}>Ask us to add one of our barcodes to a listing in review or live.</span>}</>}
               </div>
-              <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} hint="JPG, PNG or WebP · the catalog thumbnail" onUpload={(f) => void upload('cover_image', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('cover_image')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+              <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} hint="JPG, PNG or WebP · the catalog thumbnail" onUpload={(f) => void upload('cover_image', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('cover_image')} onRestore={canRestore ? (fid) => void fileVersionAct(fid, 'restore') : undefined} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               {l.fulfillment === 'PRINTED_BY_US' && <>
-                <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} hint="4 pages or a wrap, with 0.125&quot; bleed" onUpload={(f) => void upload('cover', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('cover')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
-                <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} hint={`${l.pageCount ?? '?'} single pages with bleed`} onUpload={(f) => void upload('interior', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('interior')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+                <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} hint="4 pages or a wrap, with 0.125&quot; bleed" onUpload={(f) => void upload('cover', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('cover')} onRestore={canRestore ? (fid) => void fileVersionAct(fid, 'restore') : undefined} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+                <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} hint={`${l.pageCount ?? '?'} single pages with bleed`} onUpload={(f) => void upload('interior', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('interior')} onRestore={canRestore ? (fid) => void fileVersionAct(fid, 'restore') : undefined} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               </>}
-              <FileSlot label="Marketing image" file={l.files.marketing} accept="image/*" busy={busy === 'marketing'} hint="A preview page or promo image shops can use" onUpload={(f) => void upload('marketing', f)} readOnly={l.status === 'SUBMITTED'} versions={olderVersions('marketing')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+              <FileSlot label="Marketing image" file={l.files.marketing} accept="image/*" busy={busy === 'marketing'} hint="A preview page or promo image shops can use" onUpload={(f) => void upload('marketing', f)} readOnly={l.status === 'SUBMITTED'} versions={olderVersions('marketing')} onRestore={canRestore ? (fid) => void fileVersionAct(fid, 'restore') : undefined} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               {l.fulfillment === 'CONSIGNMENT' && <div className="panel tight"><b>Consignment stock</b><div className="display-md mono" style={{ marginTop: '.3rem' }}>{l.inventory.units}</div><div className="dim" style={{ fontSize: '.8rem' }}>copies on our shelf{l.inventory.damaged ? ` · ${l.inventory.damaged} damaged` : ''}. Ship more to us and we log them in.</div></div>}
               {data && data.sales.units > 0 && <div className="panel"><h3>Sales</h3><div className="display-md mono">{data.sales.units} copies</div><div className="dim">{money(data.sales.wholesaleCents)} wholesale to date</div></div>}
               <div className="panel"><h3>History</h3><div style={{ marginTop: '.5rem' }}><Events events={data?.events ?? []} /></div></div>
@@ -448,6 +451,7 @@ export function PublisherPurchaseOrders() {
   const { id } = useParams();
   const { show, node } = useFlash();
   const [note, setNote] = useState('');
+  const [ship, setShip] = useState({ carrier: '', trackingCode: '' });
   const sel = data?.purchaseOrders.find((p) => p.id === id) ?? null;
   const act = async (path: string, body?: unknown) => { try { await api.post(`/pod/publisher/purchase-orders/${sel!.id}/${path}`, body); show('Thanks — noted.'); await reload(); } catch (x) { show(errText(x), true); } };
   const fmtAddr = (a: Record<string, string>) => [a.company, [a.firstName, a.lastName].filter(Boolean).join(' '), a.line1, a.line2, [a.city, a.region, a.postalCode].filter(Boolean).join(', '), a.phone].filter(Boolean).join(' · ');
@@ -456,7 +460,7 @@ export function PublisherPurchaseOrders() {
       <>
         {node}
         <div className="ptop"><div><Link to="/publisher/purchase-orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Purchase orders</Link><h1>{sel.number}</h1><div className="row" style={{ marginTop: '.4rem' }}><TonePill map={PURCHASE_STATUS} status={sel.status} /><span className="dim">{sel.cycle.name} · ship for {dateShort(sel.cycle.inStoreDate)}</span></div></div>
-          <div className="row">{sel.status === 'SENT' && <button className="pbtn soft" onClick={() => void act('acknowledge')}>Acknowledge</button>}{(sel.status === 'SENT' || sel.status === 'ACKNOWLEDGED') && <button className="pbtn glow" onClick={() => void act('shipped', { note })}><Truck size={16} /> Mark shipped</button>}</div></div>
+          <div className="row">{sel.status === 'SENT' && <button className="pbtn soft" onClick={() => void act('acknowledge')}>Acknowledge</button>}{(sel.status === 'SENT' || sel.status === 'ACKNOWLEDGED') && <button className="pbtn glow" onClick={() => { if (!ship.trackingCode.trim() && !confirm('No tracking number: the shops will not get a tracking email. Mark shipped anyway?')) return; void act('shipped', { note, carrier: ship.carrier.trim() || null, trackingCode: ship.trackingCode.trim() || null }); }}><Truck size={16} /> Mark shipped</button>}</div></div>
         <div className="split">
           <div className="stack">
             {sel.lines.map((ln) => (
@@ -465,7 +469,10 @@ export function PublisherPurchaseOrders() {
                 <table className="ptable" style={{ marginTop: '.75rem' }}><thead><tr><th>Ship to</th><th className="num">Copies</th></tr></thead><tbody>{ln.shipTo.map((s, i) => <tr key={i}><td style={{ fontSize: '.86rem' }}>{fmtAddr(s.address)}</td><td className="num mono">{s.qty}</td></tr>)}</tbody></table>
               </div>
             ))}
-            {(sel.status === 'SENT' || sel.status === 'ACKNOWLEDGED') && <div className="panel"><label className="lbl">Shipping note for us (tracking, carrier, dates)</label><textarea className="inp" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></div>}
+            {(sel.status === 'SENT' || sel.status === 'ACKNOWLEDGED') && <div className="panel">
+              <div className="form-grid"><div className="field"><label>Carrier</label><input className="inp" placeholder="USPS, UPS, FedEx…" value={ship.carrier} onChange={(e) => setShip((x) => ({ ...x, carrier: e.target.value }))} /></div><div className="field"><label>Tracking number</label><input className="inp mono" placeholder="Goes to the shops with their tracking email" value={ship.trackingCode} onChange={(e) => setShip((x) => ({ ...x, trackingCode: e.target.value }))} /></div></div>
+              <label className="lbl" style={{ marginTop: '.5rem' }}>Note for us (dates, split shipments…)</label><textarea className="inp" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>}
           </div>
           <aside className="panel sticky"><h3>Money on this order</h3>
             <div className="money-row"><span>{sel.unitsTotal} copies at wholesale</span><b className="mono">{money(sel.wholesaleCents)}</b></div>

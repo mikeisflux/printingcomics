@@ -45,7 +45,7 @@ export async function sendOrderConfirmationEmail(orderId: string) {
       <table style="width:100%;margin-top:1rem">
         <tr><td>Subtotal</td><td style="text-align:right">${formatMoney(order.subtotalCents)}</td></tr>
         ${order.discountCents > 0 ? `<tr><td>Discount${order.couponCode ? ` (${escape(order.couponCode)})` : ''}</td><td style="text-align:right">−${formatMoney(order.discountCents)}</td></tr>` : ''}
-        <tr><td>Shipping${order.shippingMethod ? ` · ${escape(order.shippingMethod)}` : ''}</td><td style="text-align:right">${order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</td></tr>
+        <tr><td>Shipping${order.shippingMethod ? ` · ${escape(order.shippingMethod)}` : ''}</td><td style="text-align:right">${shippingCell(order)}</td></tr>
         <tr><td>Tax</td><td style="text-align:right">${formatMoney(order.taxCents)}</td></tr>
         <tr style="font-weight:700"><td>Total</td><td style="text-align:right">${formatMoney(order.totalCents)}</td></tr>
       </table>
@@ -81,15 +81,27 @@ export async function sendOrderConfirmationEmail(orderId: string) {
   }
 }
 
-export async function sendShippingNotificationEmail(orderId: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
-  if (!order || !order.trackingNumber) return;
+/** The shipping line of a totals table: "Free" only when a method was chosen and it cost nothing; a wholesale order billed later says so. */
+function shippingCell(order: { shippingCents: number; shippingMethod: string | null; source?: string | null }): string {
+  if (order.shippingCents > 0) return formatMoney(order.shippingCents);
+  if (order.source === 'retailer') return 'Billed at cost when shipped';
+  return order.shippingMethod ? 'Free' : formatMoney(0);
+}
+
+/** True when the email went out; false when the order has no tracking number yet (nothing to say). */
+export async function sendShippingNotificationEmail(orderId: string): Promise<boolean> {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { shipments: { orderBy: { createdAt: 'desc' }, take: 1, select: { carrier: true, service: true } } } });
+  if (!order || !order.trackingNumber) return false;
 
   const storeName = await resolveStoreName();
+  // The carrier that actually took the box, when a shipment recorded one;
+  // the checkout's method name otherwise ("Billed at cost when shipped" is
+  // not a carrier).
+  const carrier = order.shipments[0]?.carrier ? [order.shipments[0].carrier, order.shipments[0].service].filter(Boolean).join(' ') : order.source === 'retailer' ? '' : order.shippingMethod ?? '';
   const html = `
     <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto">
       <h2>Your order is on its way!</h2>
-      <p>Order <strong>${escape(order.number)}</strong> shipped${order.shippingMethod ? ` via ${escape(order.shippingMethod)}` : ''}.</p>
+      <p>Order <strong>${escape(order.number)}</strong> shipped${carrier ? ` via ${escape(carrier)}` : ''}.</p>
       <p><strong>Tracking:</strong> <code>${escape(order.trackingNumber)}</code></p>
       <p style="margin-top:2rem;color:#666;font-size:0.9rem">${escape(storeName)}</p>
     </div>
@@ -110,6 +122,7 @@ export async function sendShippingNotificationEmail(orderId: string) {
         message: `Shipping email sent to ${order.email}${providerRef ? ` (${providerRef})` : ''}`,
       },
     });
+    return true;
   } catch (e: any) {
     await prisma.orderStatusEvent.create({
       data: {
@@ -118,6 +131,7 @@ export async function sendShippingNotificationEmail(orderId: string) {
         message: `Failed to send shipping email: ${e.message}`,
       },
     });
+    throw e;
   }
 }
 
@@ -182,12 +196,12 @@ export async function sendPayRequestEmail(orderId: string, payUrl: string): Prom
       <table style="width:100%;margin-top:1rem">
         <tr><td>Subtotal</td><td style="text-align:right">${formatMoney(order.subtotalCents)}</td></tr>
         ${order.discountCents > 0 ? `<tr><td>Discount${order.couponCode ? ` (${escape(order.couponCode)})` : ''}</td><td style="text-align:right">−${formatMoney(order.discountCents)}</td></tr>` : ''}
-        <tr><td>Shipping${order.shippingMethod ? ` · ${escape(order.shippingMethod)}` : ''}</td><td style="text-align:right">${order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</td></tr>
+        <tr><td>Shipping${order.shippingMethod ? ` · ${escape(order.shippingMethod)}` : ''}</td><td style="text-align:right">${shippingCell(order)}</td></tr>
         <tr><td>Tax</td><td style="text-align:right">${formatMoney(order.taxCents)}</td></tr>
         <tr style="font-weight:700"><td>Total</td><td style="text-align:right">${formatMoney(order.totalCents)}</td></tr>
       </table>
       <p style="margin-top:1.5rem"><a href="${payUrl}" style="display:inline-block;padding:12px 22px;background:#c61a22;color:#fff;text-decoration:none;border-radius:6px;font-weight:700">Pay ${formatMoney(order.totalCents)} now</a></p>
-      <p style="color:#666;font-size:0.9rem">Pay securely with PayPal or any major card — no account needed. The link works for 30 days. Nothing ships or prints until the order is paid.</p>
+      <p style="color:#666;font-size:0.9rem">Pay securely with PayPal or any major card — no account needed. The link works for 30 days. ${order.source === 'retailer' ? (order.status === 'SHIPPED' || order.status === 'DELIVERED' ? 'Your books have shipped; this is the invoice for them.' : 'Your books ship on the catalog schedule; shipping is billed at cost.') : 'Nothing ships or prints until the order is paid.'}</p>
       <p style="color:#666;font-size:0.9rem">Questions, or something not right? Just reply to this email.</p>
       <p style="margin-top:2rem;color:#666;font-size:0.9rem">${escape(storeName)}</p>
     </div>

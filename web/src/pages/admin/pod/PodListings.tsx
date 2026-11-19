@@ -21,7 +21,7 @@ export function PodListings() {
   const partner = params.get('partner') ?? '';
   const [q, setQ] = useState('');
   const [view, setView] = useState<'board' | 'table'>(status === 'queue' ? 'board' : 'table');
-  const { data, loading, reload } = useLoad<ListResp>(`/admin/pod/listings?status=${encodeURIComponent(status === 'queue' || status === 'all' ? (status === 'all' ? '' : 'queue') : status)}${partner ? `&partner=${encodeURIComponent(partner)}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`, [status, partner, q]);
+  const { data, loading, reload } = useLoad<ListResp>(`/admin/pod/listings?status=${encodeURIComponent(status === 'queue' || status === 'all' ? (status === 'all' ? '' : 'queue') : status)}${partner ? `&partnerId=${encodeURIComponent(partner)}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`, [status, partner, q]);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -181,7 +181,7 @@ export function PodListingDetail() {
 
   const act = async (path: string, body?: unknown, ok?: string) => {
     setBusy(path);
-    try { const r = await api.post<{ mail?: { sent: boolean; error?: string } | null }>(`/admin/pod/listings/${id}/${path}`, body); show(ok ?? 'Done' + (r.mail ? (r.mail.sent ? ' · publisher emailed' : ` · email failed: ${r.mail.error}`) : '')); setDecision(null); setNote(''); await reload(); void reloadOverview(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
+    try { const r = await api.post<{ mail?: { sent: boolean; error?: string } | null }>(`/admin/pod/listings/${id}/${path}`, body); show((ok ?? 'Done') + (r.mail ? (r.mail.sent ? ' · publisher emailed' : ` · email failed: ${r.mail.error}`) : '')); setDecision(null); setNote(''); await reload(); void reloadOverview(); } catch (x) { show(errText(x), true); } finally { setBusy(null); }
   };
   const save = async () => {
     setBusy('save');

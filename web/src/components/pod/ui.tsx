@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, XCircle, Info, UploadCloud, X } from 'lucide-react';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 import { LISTING_STATUS, type ListingStatus, type PreflightResult, daysUntil, dateShort, money, hueOf, initials, fileSize } from '../../lib/pod';
 
 // --- Pills ------------------------------------------------------------------
@@ -297,15 +297,16 @@ export function errText(e: unknown, fallback = 'Something went wrong') {
 export function useLoad<T>(path: string | null, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<unknown>(null);
   const [loading, setLoading] = useState(Boolean(path));
   const reload = useCallback(async () => {
     if (!path) return;
     setLoading(true);
-    try { setData(await api.get<T>(path)); setError(null); } catch (e) { setError(errText(e)); } finally { setLoading(false); }
+    try { setData(await api.get<T>(path)); setError(null); setErrorDetails(null); } catch (e) { setError(errText(e)); setErrorDetails(e instanceof ApiError ? e.details ?? null : null); } finally { setLoading(false); }
   }, [path]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void reload(); }, [reload, ...deps]);
-  return { data, error, loading, reload, setData };
+  return { data, error, errorDetails, loading, reload, setData };
 }
 
 export function Empty({ title, body, action }: { title: string; body?: ReactNode; action?: ReactNode }) {

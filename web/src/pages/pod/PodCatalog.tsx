@@ -15,9 +15,18 @@ export interface PublicListing {
   trimWidthIn: number | null; trimHeightIn: number | null; interiorColor: string | null; msrpCents: number; description: string | null; synopsis: string | null; writer: string | null; artist: string | null;
   coverArtist: string | null; ageRating: string | null; genres: string[]; incentiveRatio: string | null; fulfillment: string; partner: { id: string; name: string; slug: string }; coverImageUrl: string | null; productSlug: string | null;
 }
+/** "40–50%" from the live tiers, so the public copy never drifts from the settings. */
+function tierRange(tiers?: { discountBps: number }[]): string {
+  if (!tiers?.length) return 'wholesale';
+  const pct = tiers.map((t) => Math.round(t.discountBps / 100));
+  const lo = Math.min(...pct); const hi = Math.max(...pct);
+  return lo === hi ? `${hi}%` : `${lo}–${hi}%`;
+}
+
 interface CatalogResp {
   cycle: { id: string; slug: string; name: string; status: string; statusLabel: string; catalogDate: string; focDate: string; inStoreDate: string; orderingOpen: boolean } | null;
   cycles: { id: string; slug: string; name: string; status: string; catalogDate: string }[];
+  tiers?: { name: string; minCents: number; discountBps: number }[];
   listings: PublicListing[];
 }
 
@@ -65,7 +74,7 @@ export function PodCatalog() {
       <section className="container" style={{ padding: '1.5rem 1.25rem 3rem' }}>
         {user?.retailer?.status !== 'ACTIVE' && (
           <div className="notice info" style={{ marginBottom: '1.25rem', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="row"><Store size={18} /> Prices shown are cover price. Comic shops order at {`up to 50%`} off in the wholesale portal.</span>
+            <span className="row"><Store size={18} /> Prices shown are cover price. Comic shops order at {tierRange(data?.tiers)} off in the wholesale portal.</span>
             <Link to={user ? '/distribution/apply?as=retailer' : '/login?redirect=/retailer'} className="pbtn soft sm">{user ? 'Open a wholesale account' : 'Retailer sign in'} <ArrowRight size={14} /></Link>
           </div>
         )}

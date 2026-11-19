@@ -9,7 +9,14 @@ import { BookOpen, Store, CheckCircle2, ArrowRight } from 'lucide-react';
 import { api } from '../../api/client';
 import { useSeo } from '../../lib/seo';
 import { useAuth } from '../../store/auth';
-import { errText } from '../../components/pod/ui';
+import { errText, useLoad } from '../../components/pod/ui';
+
+/** "40% off to start, then 45% and 50% as the order grows", from the live tiers. */
+function tierSentence(tiers?: { discountBps: number }[]): string {
+  if (!tiers?.length) return 'a wholesale discount that grows with the order';
+  const pct = tiers.map((t) => `${Math.round(t.discountBps / 100)}%`);
+  return pct.length === 1 ? `${pct[0]} off` : `${pct[0]} off to start, then ${pct.slice(1).join(' and ')} as the order grows`;
+}
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
 
@@ -89,6 +96,7 @@ function PublisherForm() {
 }
 
 function RetailerForm() {
+  const { data: landing } = useLoad<{ settings: { tiers: { name: string; discountBps: number }[] } }>('/pod');
   const { user } = useAuth();
   const [f, setF] = useState({ name: '', contactName: user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '', contactEmail: user?.email ?? '', phone: '', website: '', line1: '', line2: '', city: '', region: '', postalCode: '', resaleCertNumber: '', resaleCertState: '', message: '' });
   const [busy, setBusy] = useState(false);
@@ -129,7 +137,7 @@ function RetailerForm() {
       </div>
       <aside className="stack rise rise-1">
         <div className="panel accent"><h3>How ordering works</h3><ol style={{ margin: '.5rem 0 0', paddingLeft: '1.1rem', color: 'var(--p-text-dim)', fontSize: '.92rem', display: 'grid', gap: '.4rem' }}><li>A new catalog opens each month.</li><li>Order online, or download the sheet and upload it back.</li><li>Change anything until the final order cutoff.</li><li>One shipment lands for the in-store date; shipping billed at cost.</li></ol></div>
-        <div className="panel"><h3>Discounts</h3><p className="dim tight" style={{ fontSize: '.92rem' }}>Set by the order's total at cover price: 40% off to start, 45% and 50% as the order grows. Every title in the order gets the same discount.</p></div>
+        <div className="panel"><h3>Discounts</h3><p className="dim tight" style={{ fontSize: '.92rem' }}>Set by the order's total at cover price: {tierSentence(landing?.settings.tiers)}. Every title in the order gets the same discount.</p></div>
       </aside>
     </form>
   );

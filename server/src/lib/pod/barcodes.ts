@@ -60,7 +60,7 @@ export async function loadBlock(args: { codes: string[]; block: string | null; p
   if (fresh.length) {
     await prisma.barcode.createMany({ data: fresh.map((r) => ({ code: r.code, symbology: r.symbology, block: args.block, partnerId: args.partnerId ?? null, status: args.partnerId ? 'RESERVED' : 'AVAILABLE', notes: args.notes ?? null })) });
   }
-  await recordPodEvent('listing', 'barcodes', 'block-loaded', `${fresh.length} codes loaded${args.block ? ` into "${args.block}"` : ''}${taken.size ? `, ${taken.size} already known` : ''}`, actor);
+  await recordPodEvent('barcode', 'barcodes', 'block-loaded', `${fresh.length} codes loaded${args.block ? ` into "${args.block}"` : ''}${taken.size ? `, ${taken.size} already known` : ''}`, actor);
   return { loaded: fresh.length, skipped: taken.size };
 }
 

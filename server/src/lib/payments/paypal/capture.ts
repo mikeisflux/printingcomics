@@ -2,9 +2,8 @@ import { prisma } from '../../../db.js';
 import { HttpError } from '../../../middleware/error.js';
 import { getPayPalAccessToken, getPayPalConfig } from './config.js';
 import { paypalHttpError, paypalNetworkError } from './errors.js';
-import { sendOrderConfirmationEmail } from '../../order-emails.js';
 import { dispatchPartnerWebhook } from '../../partners.js';
-import { settlePaidOrder } from '../../paid-order.js';
+import { paidStatusFor, sendPaidReceipt, settlePaidOrder } from '../../paid-order.js';
 
 export interface CaptureResult {
   orderId: string;
@@ -92,10 +91,12 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
   }
 
   if (status === 'COMPLETED') {
-    // CAS: only mark PAID once.
+    // CAS: only mark PAID once. A wholesale order that already shipped keeps
+    // its shipped status; only a waiting order moves to PAID.
+    const before = await prisma.order.findUnique({ where: { id: payment.orderId }, select: { status: true } });
     const cas = await prisma.order.updateMany({
       where: { id: payment.orderId, paymentStatus: 'PENDING' },
-      data: { paymentStatus: 'CAPTURED', status: 'PAID' },
+      data: { paymentStatus: 'CAPTURED', status: paidStatusFor(before?.status ?? 'PENDING') as never },
     });
     if (cas.count > 0) {
       await prisma.payment.update({
@@ -120,13 +121,14 @@ export async function capturePaypalOrder(paypalOrderId: string): Promise<Capture
         data: {
           orderId: payment.orderId,
           kind: 'status',
-          fromStatus: 'PENDING',
-          toStatus: 'PAID',
-          message: 'Order marked PAID after successful capture',
+          fromStatus: before?.status ?? 'PENDING',
+          toStatus: paidStatusFor(before?.status ?? 'PENDING'),
+          message: 'Order marked paid after successful capture',
         },
       });
-      // Fire confirmation email. Failures are logged as events by the lib.
-      void sendOrderConfirmationEmail(payment.orderId);
+      // Fire the receipt (storefront confirmation, or the wholesale receipt
+      // for a shop). Failures are logged as events by the lib.
+      void sendPaidReceipt(payment.orderId);
       // If this order was submitted by a partner, fire order.paid so the
       // partner's system learns about the capture without polling.
       if (payment.order.partnerId) {

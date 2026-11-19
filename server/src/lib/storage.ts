@@ -51,6 +51,11 @@ export async function publishUpload(args: {
   originalName?: string;
   /** Append this to the local URL when staying on disk (e.g. '?t=token'). */
   localQuery?: string;
+  /**
+   * The file is not for everyone: never hand out the bucket's public URL,
+   * link it through /api/files so every open goes through the access rules.
+   */
+  gated?: boolean;
 }): Promise<StoredFile> {
   const localUrl = `/uploads/${args.subdir.replace(/^\/|\/$/g, '')}/${args.filename}${args.localQuery ?? ''}`;
 
@@ -68,7 +73,7 @@ export async function publishUpload(args: {
     // Prefer the public domain (permanent + cacheable). Without one, persist a
     // stable /api/files URL that signs on demand — a stored signed URL would
     // expire and silently break old proof emails.
-    const publicUrl = await r2PublicUrl(key);
+    const publicUrl = args.gated ? null : await r2PublicUrl(key);
     const url = publicUrl ?? `/api/files/${key}${args.localQuery ?? ''}`;
     // Uploaded — reclaim the disk copy.
     await fs.unlink(args.localPath).catch(() => undefined);

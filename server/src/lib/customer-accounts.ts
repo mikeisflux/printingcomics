@@ -16,6 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db.js';
+import { HttpError } from '../middleware/error.js';
 import { config } from '../config.js';
 import { hashPassword } from './password.js';
 import { getSetting } from './settings.js';
@@ -25,6 +26,17 @@ export async function attachOrdersToUser(userId: string, email: string): Promise
   // Older and API-submitted orders may carry the address in any case.
   const r = await prisma.order.updateMany({ where: { email: { equals: email.trim(), mode: 'insensitive' }, userId: null }, data: { userId } });
   return r.count;
+}
+
+/**
+ * The customer account a portal (publisher or shop) seat is given to. A staff
+ * or admin account is never handed a seat: a seat comes with sign-in links,
+ * and a link into an admin account would be a way in for whoever holds it.
+ */
+export async function ensurePortalAccount(email: string, names?: { firstName?: string | null; lastName?: string | null }) {
+  const user = await ensureCustomerAccount(email, names);
+  if (user.role !== 'CUSTOMER') throw new HttpError(400, 'That email belongs to a staff account. Portal access needs a customer account; use a different address.');
+  return user;
 }
 
 /** The account for an email address, created on the spot when there is none. */
@@ -75,9 +87,9 @@ interface MagicClaims { sub: string; kind: 'magic'; to: string }
 
 const MAGIC_TTL = '14d';
 
-export async function magicLink(userId: string, to: string): Promise<string> {
+export async function magicLink(userId: string, to: string, opts: { ttl?: string } = {}): Promise<string> {
   const path = to.startsWith('/') && !to.startsWith('//') ? to : '/account';
-  const token = jwt.sign({ sub: userId, kind: 'magic', to: path } satisfies MagicClaims, config.jwtSecret, { expiresIn: MAGIC_TTL });
+  const token = jwt.sign({ sub: userId, kind: 'magic', to: path } satisfies MagicClaims, config.jwtSecret, { expiresIn: (opts.ttl ?? MAGIC_TTL) as jwt.SignOptions['expiresIn'] });
   const base = ((await getSetting<string>('store.publicUrl')) || process.env.PUBLIC_URL || 'https://printingcomics.com').replace(/\/$/, '');
   return `${base}/api/auth/magic?token=${encodeURIComponent(token)}`;
 }

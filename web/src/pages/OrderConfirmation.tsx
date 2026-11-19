@@ -58,6 +58,8 @@ interface Order {
   events?: OrderEvent[];
   /** Set up by staff and still waiting for its money: it is paid on this page. */
   payable?: boolean;
+  /** "retailer" for a comic shop's wholesale order, "admin" for a staff-placed one. */
+  source?: string | null;
   items: {
     id: string;
     name: string;
@@ -150,6 +152,8 @@ export function OrderConfirmation() {
   const isCancelled = order.status === 'CANCELLED' || order.status === 'REFUNDED';
   const paid = order.paymentStatus === 'CAPTURED';
   const payable = !!order.payable && !paid && !isCancelled;
+  const wholesale = order.source === 'retailer';
+  const shipped = order.status === 'SHIPPED' || order.status === 'DELIVERED';
 
   return (
     <div className="container" style={{ padding: '2rem 0', maxWidth: 880 }}>
@@ -161,7 +165,7 @@ export function OrderConfirmation() {
           fontSize: '2rem', marginBottom: '.75rem',
         }}>{paid ? '✓' : payable ? '💳' : '⏳'}</div>
         <h1 style={{ margin: 0 }}>
-          {paid ? 'Thank you!' : payable ? 'Your order is ready to pay' : 'Order received'}
+          {paid ? 'Thank you!' : payable ? (wholesale && shipped ? 'Your invoice is ready to pay' : 'Your order is ready to pay') : 'Order received'}
         </h1>
         <p className="muted">
           Order <strong>{order.number}</strong> · {new Date(order.createdAt).toLocaleString()}
@@ -177,10 +181,17 @@ export function OrderConfirmation() {
         )}
         {payable && (
           <p className="muted" style={{ margin: '.75rem auto 0', maxWidth: 560 }}>
-            We set this order up for you. Check it over below, then pay securely with PayPal or any card — no account needed.
+            {wholesale
+              ? (shipped ? 'Your books have shipped. This is the invoice for them: pay securely with PayPal or any card.' : 'Your wholesale order, with shipping at cost. Check it over below, then pay securely with PayPal or any card.')
+              : 'We set this order up for you. Check it over below, then pay securely with PayPal or any card — no account needed.'}
           </p>
         )}
-        {!paid && !isCancelled && !payable && (
+        {!paid && !isCancelled && !payable && wholesale && (
+          <p className="muted" style={{ margin: '.75rem auto 0', maxWidth: 560 }}>
+            {order.payments.some((p) => p.status === 'PENDING') ? 'Your payment is still clearing at PayPal; we will email the receipt the moment it does.' : 'This order is open for ordering changes until the final order cutoff. The invoice to pay comes once the catalog locks and shipping is set.'}
+          </p>
+        )}
+        {!paid && !isCancelled && !payable && !wholesale && (
           <div style={{ background: '#fff3cd', border: '1px solid #f0d58c', borderRadius: 8, padding: '.75rem 1rem', margin: '1rem auto 0', maxWidth: 560, textAlign: 'left', fontSize: '.92rem' }}>
             <strong>Your payment is still processing at PayPal.</strong> Some payments (bank transfers, payments under review) take a little while to clear. We’ll email you the moment it does, and nothing goes to print until then. <strong>Please don’t pay again</strong> — if the payment doesn’t clear, we’ll let you know.
           </div>
@@ -344,7 +355,7 @@ export function OrderConfirmation() {
         )}
         <div className="spread" style={{ padding: '.5rem 0' }}>
           <span>Shipping{order.shippingMethod ? <span className="muted"> · {order.shippingMethod}</span> : null}</span>
-          <span>{order.shippingCents === 0 && order.shippingMethod ? 'Free' : formatMoney(order.shippingCents)}</span>
+          <span>{order.shippingCents === 0 && order.shippingMethod ? (wholesale ? 'Billed at cost when shipped' : 'Free') : formatMoney(order.shippingCents)}</span>
         </div>
         <div className="spread" style={{ padding: '.5rem 0' }}><span>Tax</span><span>{formatMoney(order.taxCents)}</span></div>
         <div className="spread" style={{ padding: '.75rem 0', borderTop: '1px solid var(--border)', fontWeight: 700, fontSize: '1.1rem' }}>
@@ -385,12 +396,12 @@ export function OrderConfirmation() {
       )}
       <div className="row" style={{ justifyContent: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
         {viewer === 'owner' && <Link to="/account/orders" className="btn secondary">All orders</Link>}
-        {viewer === 'owner' && (
+        {viewer === 'owner' && !wholesale && (
           <button className="btn secondary" disabled={reordering} onClick={() => void reorder()}>
             {reordering ? 'Adding to cart…' : 'Reorder these items'}
           </button>
         )}
-        <Link to="/shop" className="btn">Keep shopping</Link>
+        {wholesale ? <Link to={`/retailer/orders/${encodeURIComponent(order.number)}`} className="btn">Open in the retailer portal</Link> : <Link to="/shop" className="btn">Keep shopping</Link>}
       </div>
     </div>
   );
