@@ -42,7 +42,7 @@ export function PublisherHandbook() {
         <H id="account" icon={<ShieldCheck size={22} style={{ color: 'var(--p-violet)' }} />}>2. Your account</H>
         <ul>
           <li>Apply from the <Link to="/distribution/apply?as=publisher">Distribution page</Link>. We reply within two business days and send a portal sign-in link; you set your own password on first login.</li>
-          <li>One publisher account can have several logins. Ask us, or an existing login can invite colleagues from Company profile.</li>
+          <li>One publisher account can have several logins. Write to us with the colleague's email and we add them.</li>
           <li>Keep your <Link to="/publisher/assets">company profile</Link> current: contact, mailing address, payout method, logo. Your logo and bio show on your public publisher page and next to your titles.</li>
           <li>Accounts on hold cannot submit; listings stay in place. Write to us to sort out any hold.</li>
         </ul>
@@ -83,7 +83,7 @@ export function PublisherHandbook() {
         <p>You can also order printed copies of any approved title for yourself from <Link to="/publisher/print-orders">Print copies</Link>; they are priced at our public rate and charged against your next payout.</p>
 
         <H id="money" icon={<HandCoins size={22} style={{ color: 'var(--p-violet)' }} />}>8. Money &amp; payouts</H>
-        <p>Shops buy at a tier discount off your cover price{top ? ` (up to ${pct(top.discountBps)} on orders from ${money(top.minCents)} at cover)` : ''}. Your ledger records every sale, our commission, printing and any return credits as they happen; <Link to="/publisher/statements">Sales &amp; payouts</Link> shows what is pending. After each cycle we issue a statement that sweeps those entries up and pay the net by the method on your profile. Set your cover price with printing in mind: at the top tier, after commission, it must clear our per-copy print price or you would owe us on every sale; the listing page warns you.</p>
+        <p>Shops buy at a tier discount off your cover price{top ? ` (up to ${pct(top.discountBps)} on orders from ${money(top.minCents)} at cover)` : ''}. Your ledger records every sale, our commission, printing and any return credits as they happen; <Link to="/publisher/statements">Sales &amp; payouts</Link> shows what is pending. After each cycle we issue a statement that sweeps those entries up and pay the net by the method on your profile. Set your cover price with printing in mind: at the top tier, after commission, it must clear our per-copy print price or you would owe us on every sale; we tell you at review.</p>
 
         <H id="returns" icon={<FileCheck size={22} style={{ color: 'var(--p-violet)' }} />}>9. Returns &amp; damages</H>
         <p>Shops may claim damaged, misprinted or wrong copies on any shipped order, and return unsold copies within a small allowance per order set by their tier{s ? ` (${s.returnAllowanceByTier.join(' / ')} copies)` : ''}. Approved claims are credited to the shop and charged to the publisher's ledger at the wholesale price of the copies.</p>

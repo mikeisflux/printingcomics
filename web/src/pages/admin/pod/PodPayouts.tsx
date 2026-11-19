@@ -33,7 +33,7 @@ export function PodPayouts() {
   const partner = data?.partners.find((p) => p.id === partnerId) ?? null;
   const all = (data?.partners ?? []).reduce((s, p) => ({ owed: s.owed + p.summary.unassignedCents, gross: s.gross + p.summary.grossCents, paid: s.paid - p.summary.payoutsCents, commission: s.commission - p.summary.commissionCents }), { owed: 0, gross: 0, paid: 0, commission: 0 });
   const refreshAll = async () => { await Promise.all([reload(), reloadLedger(), reloadStatement()]); void reloadOverview(); };
-  const run = async (fn: () => Promise<unknown>, ok: string) => { setBusy(true); try { await fn(); show(ok); await refreshAll(); } catch (e) { show(errText(e), true); } finally { setBusy(false); } };
+  const run = async (fn: () => Promise<unknown>, ok: string) => { setBusy(true); try { const r = (await fn()) as { mail?: { sent: boolean; error?: string } | null } | undefined; const mail = r?.mail; show(mail ? (mail.sent ? ok : `${ok.replace(/ and emailed$/, '')} — email not sent${mail.error ? ` (${mail.error})` : ''}`) : ok); await refreshAll(); } catch (e) { show(errText(e), true); } finally { setBusy(false); } };
   const s = stDetail?.statement;
   return (
     <>

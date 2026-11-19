@@ -6,7 +6,9 @@
 import type { PricedWholesaleLine } from './wholesale.js';
 
 export const csvEscape = (v: unknown): string => {
-  const s = String(v ?? '');
+  let s = String(v ?? '');
+  // A cell that starts like a formula would run when the sheet opens in Excel; a leading quote keeps it text.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

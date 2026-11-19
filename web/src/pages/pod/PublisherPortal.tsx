@@ -43,7 +43,7 @@ export function PublisherLayout() {
   if (error) {
     return (
       <div className="pod container" style={{ padding: '3rem 1.25rem' }}>
-        <Empty title="This account is not a publisher account" body={error} action={<div className="row" style={{ justifyContent: 'center' }}><Link to="/distribution/apply?as=publisher" className="pbtn glow">Apply as a publisher</Link><Link to="/account" className="pbtn ghost">My account</Link></div>} />
+        <Empty title={/on hold/i.test(error) ? 'Your publisher account is on hold' : 'This account is not a publisher account'} body={error} action={/on hold/i.test(error) ? <Link to="/contact" className="pbtn ghost">Write to us</Link> : <div className="row" style={{ justifyContent: 'center' }}><Link to="/distribution/apply?as=publisher" className="pbtn glow">Apply as a publisher</Link><Link to="/account" className="pbtn ghost">My account</Link></div>} />
       </div>
     );
   }
@@ -241,7 +241,7 @@ function toBody(f: Form) {
   };
 }
 
-export function ListingForm({ value, onChange, cycles, settings, disabled, admin }: { value: Form; onChange: (f: Form) => void; cycles: { id: string; name: string; catalogDate: string; focDate: string }[]; settings: PublicSettings | null; disabled?: boolean; admin?: boolean }) {
+export function ListingForm({ value, onChange, cycles, settings, disabled, admin }: { value: Form; onChange: (f: Form) => void; cycles: { id: string; name: string; catalogDate: string; focDate: string; status?: string }[]; settings: PublicSettings | null; disabled?: boolean; admin?: boolean }) {
   const set = <K extends keyof Form>(k: K) => (e: { target: { value: string } }) => onChange({ ...value, [k]: e.target.value });
   const step = settings?.pageCountStep ?? 4;
   const pages = Number(value.pageCount);
@@ -295,7 +295,7 @@ export function ListingForm({ value, onChange, cycles, settings, disabled, admin
       <div className="panel">
         <h3>Catalog &amp; retailer rules</h3>
         <div className="form-grid" style={{ marginTop: '.75rem' }}>
-          <div className="field span-2"><label>Catalog cycle</label><select value={value.cycleId} onChange={set('cycleId')}><option value="">— pick when ready —</option>{cycles.map((c) => <option key={c.id} value={c.id}>{c.name} · catalog {dateShort(c.catalogDate)} · FOC {dateShort(c.focDate)}</option>)}</select><span className="hint">The three dates come with the cycle; you never type them.</span></div>
+          <div className="field span-2"><label>Catalog cycle</label><select value={value.cycleId} onChange={set('cycleId')}><option value="">— pick when ready —</option>{cycles.map((c) => <option key={c.id} value={c.id}>{c.name} · catalog {dateShort(c.catalogDate)} · FOC {dateShort(c.focDate)}{c.status && !['DRAFT', 'OPEN'].includes(c.status) ? ' · published' : ''}</option>)}</select><span className="hint">The three dates come with the cycle; you never type them.</span></div>
           <div className="field"><label>Retailer incentive ratio <span className="dim">optional</span></label><input value={value.incentiveRatio} onChange={set('incentiveRatio')} placeholder="1:10" /><span className="hint">For incentive covers: one free per 10 copies of the qualifying cover.</span></div>
           <div className="field"><label>Qualifying catalog id <span className="dim">optional</span></label><input value={value.incentiveQualifierKey} onChange={set('incentiveQualifierKey')} placeholder="SAV-92708" /><span className="hint">Leave blank to use the main cover of the same issue.</span></div>
           <label className="switch span-2"><input type="checkbox" checked={value.reorderable} onChange={(e) => onChange({ ...value, reorderable: e.target.checked })} /> Shops may reorder after this cycle</label>
@@ -312,8 +312,10 @@ export function PublisherListingEdit() {
   const navigate = useNavigate();
   const { me, reload: reloadMe } = useMe();
   const { show, node } = useFlash();
-  const { data: cyc } = useLoad<{ cycles: { id: string; name: string; catalogDate: string; focDate: string; inStoreDate: string }[] }>('/pod/publisher/cycles');
   const { data, reload } = useLoad<{ listing: Listing; events: PodEvent[]; sales: { units: number; wholesaleCents: number }; editable: boolean }>(isNew ? null : `/pod/publisher/listings/${id}`, [id]);
+  // The listing's own cycle stays in the picker even after it closes to new listings.
+  const ownCycle = data?.listing?.cycle?.id ?? null;
+  const { data: cyc } = useLoad<{ cycles: { id: string; name: string; catalogDate: string; focDate: string; inStoreDate: string; status?: string }[] }>(`/pod/publisher/cycles${ownCycle ? `?include=${encodeURIComponent(ownCycle)}` : ''}`, [ownCycle]);
   const [form, setForm] = useState<Form>(blank);
   const [busy, setBusy] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -365,7 +367,7 @@ export function PublisherListingEdit() {
           {l && <div className="row" style={{ marginTop: '.4rem' }}><StatusPill status={l.status} /><span className="key">{l.catalogKey}</span>{l.cycle && <span className="dim" style={{ fontSize: '.88rem' }}>{l.cycle.name}</span>}</div>}
         </div>
         <div className="row">
-          {!isNew && l && (l.status === 'DRAFT' || l.status === 'CHANGES_REQUESTED') && <button className="pbtn glow" disabled={!readyToSubmit || busy !== null || dirty} title={dirty ? 'Save first' : !readyToSubmit ? 'Finish the details and files first' : ''} onClick={() => void act('submit', 'Sent for review. We will email you.')}><Send size={16} /> Submit for review</button>}
+          {!isNew && l && (l.status === 'DRAFT' || l.status === 'CHANGES_REQUESTED') && <button className="pbtn glow" disabled={!readyToSubmit || busy !== null || dirty} title={dirty ? 'Save first' : !readyToSubmit ? (!l.cycle ? (me?.openCycle ? 'Pick the catalog cycle in the form first' : 'No catalog is open for new listings yet. Finish the draft; submit when the next one opens.') : l.missingFiles.length ? `Still missing: ${l.missingFiles.join(', ')}` : 'Finish the details and files first') : ''} onClick={() => void act('submit', 'Sent for review. We will email you.')}><Send size={16} /> Submit for review</button>}
           {!isNew && l?.status === 'SUBMITTED' && <button className="pbtn ghost" disabled={busy !== null} onClick={() => void act('withdraw', 'Back to draft.')}><Undo2 size={16} /> Withdraw</button>}
           {!isNew && <button className="pbtn ghost" onClick={() => setPreview(true)}>Preview website listing</button>}
           {editable && <button className="pbtn primary" disabled={busy !== null || (!isNew && !dirty)} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : isNew ? 'Create listing' : 'Save changes'}</button>}
@@ -373,7 +375,7 @@ export function PublisherListingEdit() {
       </div>
 
       {l?.status === 'CHANGES_REQUESTED' && l.reviewNote && <div className="notice warn" style={{ marginBottom: '1rem' }}><FileText size={18} /><div><b>Changes requested</b><div style={{ whiteSpace: 'pre-wrap' }}>{l.reviewNote}</div></div></div>}
-      {l?.status === 'REJECTED' && <div className="notice bad" style={{ marginBottom: '1rem' }}><div><b>Not accepted</b>{l.reviewNote && <div style={{ whiteSpace: 'pre-wrap' }}>{l.reviewNote}</div>}</div></div>}
+      {l?.status === 'REJECTED' && <div className="notice bad" style={{ marginBottom: '1rem', alignItems: 'center' }}><div style={{ flex: 1 }}><b>Not accepted</b>{l.reviewNote && <div style={{ whiteSpace: 'pre-wrap' }}>{l.reviewNote}</div>}<div className="dim" style={{ fontSize: '.84rem', marginTop: '.3rem' }}>Fix what was raised in a fresh draft and submit that; this one stays here for the record.</div></div><button className="pbtn soft sm" disabled={busy !== null} onClick={async () => { setBusy('dup'); try { const r = await api.post<{ listing: Listing }>(`/pod/publisher/listings/${id}/duplicate`, { coverDescription: l.coverDescription ?? undefined }); navigate(`/publisher/listings/${r.listing.id}`); } catch (x) { show(errText(x), true); } finally { setBusy(null); } }}>Start a new draft from this</button></div>}
       {l && !editable && l.status !== 'REJECTED' && <div className="notice info" style={{ marginBottom: '1rem' }}><CheckCircle2 size={18} /> This listing is {LISTING_STATUS[l.status].label.toLowerCase()}, so its details are locked. Write to us if something must change. Print files can still be replaced on approved or live titles.</div>}
       {isNew && <div className="notice info" style={{ marginBottom: '1rem' }}><Sparkles size={18} /> Create the listing first; the cover image and print files are added on the next screen.</div>}
 
@@ -400,12 +402,12 @@ export function PublisherListingEdit() {
                 {l.barcode || l.upc ? <div style={{ marginTop: '.5rem' }}><Barcode code={l.barcode?.code ?? l.upc!} /><div className="row" style={{ marginTop: '.4rem', justifyContent: 'space-between' }}><span className="mono" style={{ fontSize: '.84rem' }}>{l.barcode?.code ?? l.upc}</span><a className="pbtn ghost xs" href={`/api/pod/barcode/${l.barcode?.code ?? l.upc}.svg`} download>SVG</a></div></div>
                   : <><p className="dim tight" style={{ fontSize: '.82rem', margin: '.4rem 0 .6rem' }}>Every cover needs its own UPC. Type yours in the form, or take one of ours.</p><button className="pbtn soft sm" disabled={busy !== null} onClick={() => void getBarcode()}>Get a barcode</button></>}
               </div>
-              <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} hint="JPG, PNG or WebP · the catalog thumbnail" onUpload={(f) => void upload('cover_image', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} versions={olderVersions('cover_image')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+              <FileSlot label="Cover image" file={l.files.cover_image} accept="image/*" busy={busy === 'cover_image'} hint="JPG, PNG or WebP · the catalog thumbnail" onUpload={(f) => void upload('cover_image', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('cover_image')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               {l.fulfillment === 'PRINTED_BY_US' && <>
-                <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} hint="4 pages or a wrap, with 0.125&quot; bleed" onUpload={(f) => void upload('cover', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} versions={olderVersions('cover')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
-                <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} hint={`${l.pageCount ?? '?'} single pages with bleed`} onUpload={(f) => void upload('interior', f)} readOnly={!editable && !['APPROVED', 'LIVE'].includes(l.status)} versions={olderVersions('interior')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+                <FileSlot label="Cover PDF" file={l.files.cover} accept="application/pdf" busy={busy === 'cover'} hint="4 pages or a wrap, with 0.125&quot; bleed" onUpload={(f) => void upload('cover', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('cover')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+                <FileSlot label="Interior PDF" file={l.files.interior} accept="application/pdf" busy={busy === 'interior'} hint={`${l.pageCount ?? '?'} single pages with bleed`} onUpload={(f) => void upload('interior', f)} readOnly={!editable && !['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)} versions={olderVersions('interior')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               </>}
-              <FileSlot label="Marketing image" file={l.files.marketing} accept="image/*" busy={busy === 'marketing'} hint="A preview page or promo image shops can use" onUpload={(f) => void upload('marketing', f)} versions={olderVersions('marketing')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
+              <FileSlot label="Marketing image" file={l.files.marketing} accept="image/*" busy={busy === 'marketing'} hint="A preview page or promo image shops can use" onUpload={(f) => void upload('marketing', f)} readOnly={l.status === 'SUBMITTED'} versions={olderVersions('marketing')} onRestore={(fid) => void fileVersionAct(fid, 'restore')} onDelete={editable ? (fid) => void fileVersionAct(fid, 'delete') : undefined} />
               {l.fulfillment === 'CONSIGNMENT' && <div className="panel tight"><b>Consignment stock</b><div className="display-md mono" style={{ marginTop: '.3rem' }}>{l.inventory.units}</div><div className="dim" style={{ fontSize: '.8rem' }}>copies on our shelf{l.inventory.damaged ? ` · ${l.inventory.damaged} damaged` : ''}. Ship more to us and we log them in.</div></div>}
               {data && data.sales.units > 0 && <div className="panel"><h3>Sales</h3><div className="display-md mono">{data.sales.units} copies</div><div className="dim">{money(data.sales.wholesaleCents)} wholesale to date</div></div>}
               <div className="panel"><h3>History</h3><div style={{ marginTop: '.5rem' }}><Events events={data?.events ?? []} /></div></div>
@@ -467,7 +469,7 @@ export function PublisherPurchaseOrders() {
             <div className="money-row"><span>{sel.unitsTotal} copies at wholesale</span><b className="mono">{money(sel.wholesaleCents)}</b></div>
             <div className="money-row"><span>Our commission</span><b className="mono neg">−{money(sel.commissionCents)}</b></div>
             <div className="money-row total"><span>Net to you</span><b className="mono">{money(sel.netCents)}</b></div>
-            <p className="dim" style={{ fontSize: '.82rem' }}>Paid out on your next statement once the order has shipped.</p>
+            <p className="dim" style={{ fontSize: '.82rem' }}>The wholesale sale and our commission are already on your ledger from the catalog's final order cutoff; they go out on your next statement.</p>
             {sel.notes && <div className="notice info" style={{ marginTop: '.75rem', whiteSpace: 'pre-wrap' }}>{sel.notes}</div>}
           </aside>
         </div>

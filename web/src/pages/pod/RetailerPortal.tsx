@@ -4,7 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Receipt, ArrowLeft, Store, RefreshCw, FolderDown, Building2, Truck } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Receipt, ArrowLeft, Store, RefreshCw, FolderDown, Building2, Truck, CreditCard } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../store/auth';
 import { getViewAs, isPodStaff, onViewAsChange } from '../../lib/view-as';
@@ -106,7 +106,7 @@ interface OrderRow { id: string; number: string; status: string; paymentStatus: 
 export function RetailerOrders() {
   const { number } = useParams();
   const { data } = useLoad<{ orders: OrderRow[] }>('/pod/retailer/orders');
-  const { data: one, reload } = useLoad<{ order: OrderRow & { items: { id: string; name: string; quantity: number; unitPriceCents: number; totalCents: number; wholesale: { msrpCents: number } | null; options: { catalogKey?: string; publisher?: string } | null }[]; shippingAddress: Record<string, string>; events: { id: string; kind: string; message: string | null; createdAt: string }[] }; editable: boolean }>(number ? `/pod/retailer/orders/${number}` : null, [number]);
+  const { data: one, reload } = useLoad<{ order: OrderRow & { items: { id: string; name: string; quantity: number; unitPriceCents: number; totalCents: number; wholesale: { msrpCents: number } | null; options: { catalogKey?: string; publisher?: string } | null }[]; shippingAddress: Record<string, string>; events: { id: string; kind: string; message: string | null; createdAt: string }[] }; payLink?: string | null; editable: boolean }>(number ? `/pod/retailer/orders/${number}` : null, [number]);
   const { show, node } = useFlash();
   const [, setParams] = useSearchParams();
   void setParams;
@@ -117,7 +117,8 @@ export function RetailerOrders() {
       <>
         {node}
         <div className="ptop"><div><Link to="/retailer/orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Orders</Link><h1>{o?.number ?? '…'}</h1>{o && <div className="row" style={{ marginTop: '.4rem' }}><Pill tone={tone(o.status)}>{statusWord(o.status)}</Pill>{o.cycle && <span className="dim">{o.cycle.name} · in store {dateShort(o.cycle.inStoreDate)}</span>}{o.wholesale && <Pill tone="violet">{o.wholesale.tierName}</Pill>}</div>}</div>
-          {one?.editable && <div className="row"><Link to="/retailer/catalog" className="pbtn soft">Edit the order</Link><button className="pbtn danger" onClick={async () => { if (!confirm('Cancel this order?')) return; try { await api.post(`/pod/retailer/orders/${number}/cancel`); show('Order canceled'); await reload(); } catch (x) { show(errText(x), true); } }}>Cancel</button></div>}</div>
+          {one?.payLink && <a href={one.payLink} className="pbtn hot" data-testid="retailer-pay-now"><CreditCard size={16} /> Pay now · {money(o!.totalCents)}</a>}
+          {one?.editable && <div className="row"><Link to={`/retailer/catalog${o?.cycle ? `?cycle=${o.cycle.id}` : ''}`} className="pbtn soft">Edit the order</Link><button className="pbtn danger" onClick={async () => { if (!confirm('Cancel this order?')) return; try { await api.post(`/pod/retailer/orders/${number}/cancel`); show('Order canceled'); await reload(); } catch (x) { show(errText(x), true); } }}>Cancel</button></div>}</div>
         {o && (
           <div className="split">
             <div className="panel flush"><table className="ptable"><thead><tr><th>Title</th><th className="num">Cover</th><th className="num">Wholesale</th><th className="num">Qty</th><th className="num">Total</th></tr></thead><tbody>

@@ -43,6 +43,11 @@ export function errorHandler(
       code: err.code,
     });
   }
+  // Prisma: a missing row is a 404, a bad reference a 400, a duplicate a 409.
+  const code = (err as { code?: string } | null)?.code;
+  if (code === 'P2025') return res.status(404).json({ error: 'Not found' });
+  if (code === 'P2003') return res.status(400).json({ error: 'That refers to something that does not exist' });
+  if (code === 'P2002') return res.status(409).json({ error: 'That already exists' });
   console.error('[error]', err);
   res.status(500).json({ error: 'Internal server error' });
 }

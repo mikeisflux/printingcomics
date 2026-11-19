@@ -403,7 +403,8 @@ export async function orderPayLink(orderId: string, number: string): Promise<str
  * already in flight (an eCheck clearing), which must not be paid twice.
  */
 export async function orderPayable(order: { id: string; source: string | null; status: string; paymentStatus: string; totalCents: number }): Promise<boolean> {
-  if (!(order.source === 'admin' && order.status === 'PENDING' && order.paymentStatus === 'PENDING' && order.totalCents > 0)) return false;
+  // Staff-placed orders and wholesale (retailer) orders are paid through the pay link.
+  if (!((order.source === 'admin' || order.source === 'retailer') && order.status === 'PENDING' && order.paymentStatus === 'PENDING' && order.totalCents > 0)) return false;
   const pending = await prisma.payment.findMany({ where: { orderId: order.id, status: 'PENDING' }, select: { rawPayload: true } });
   return !pending.some((p) => p.rawPayload != null);
 }
@@ -434,6 +435,11 @@ export async function markOrderPaid(orderId: string, how: { provider: string; re
     });
   });
   await settlePaidOrder(orderId);
-  void sendOrderConfirmationEmail(orderId);
+  if (order.source === 'retailer') {
+    const { sendRetailerReceiptEmail } = await import('./pod/emails.js');
+    void sendRetailerReceiptEmail(orderId);
+  } else {
+    void sendOrderConfirmationEmail(orderId);
+  }
   return prisma.order.findUnique({ where: { id: orderId } });
 }

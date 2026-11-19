@@ -1595,6 +1595,9 @@ model CatalogCycleItem {
   listingId String
   version   Int
   snapshot  Json
+  /// Units already raised for this listing at FOC lock (runs, purchase
+  /// orders, consignment pulls); a re-lock or a cancel posts the difference.
+  raisedUnits Int        @default(0)
   createdAt DateTime     @default(now())
 
   @@unique([cycleId, listingId, version])
@@ -1715,10 +1718,15 @@ model PartnerLedgerEntry {
   statement   PayoutStatement? @relation(fields: [statementId], references: [id], onDelete: SetNull)
   statementId String?
   actorName   String?
+  /// What this entry is the running total of, so later locks and cancels can
+  /// post deltas against it: "sale:<cycle>:<listing>", "commission:…",
+  /// "printing:<run>:retailer", "printing:<run>:addon".
+  ref         String?
   createdAt   DateTime         @default(now())
 
   @@index([partnerId, statementId])
   @@index([cycleId])
+  @@index([ref])
 }
 
 model PayoutStatement {

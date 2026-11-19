@@ -58,7 +58,7 @@ export function PublisherFiles() {
                 <div className="panel-head"><h3><Link to={`/publisher/listings/${l.id}`}>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}</Link> <span className="key">{l.catalogKey}</span></h3><Link to={`/publisher/listings/${l.id}`} className="pbtn ghost xs">Open listing <ExternalLink size={11} /></Link></div>
                 <div className="scroll-x"><table className="ptable"><thead><tr><th>File</th><th>Kind</th><th>Version</th><th>Checks</th><th>Status</th><th>Uploaded</th><th></th></tr></thead><tbody>
                   {group.map((f) => (
-                    <tr key={f.id} style={!f.isCurrent ? { opacity: .65 } : undefined}>
+                    <tr key={f.id} style={f.listing.status !== 'SUBMITTED' && !f.isCurrent ? { opacity: .65 } : undefined}>
                       <td><a href={f.media.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{f.media.originalName}</a><div className="dim" style={{ fontSize: '.76rem' }}>{fileSize(f.media.size)} · {f.media.mimeType}</div></td>
                       <td>{f.kindLabel}</td>
                       <td className="mono">v{f.version}{f.isCurrent ? <Pill tone="violet">current</Pill> : ''}</td>
@@ -100,7 +100,8 @@ export function PublisherProfile() {
   const upload = async (kind: string, file: File) => { setBusy(kind); try { const fd = new FormData(); fd.append('kind', kind); fd.append('file', file); await api.postForm('/pod/publisher/assets', fd); show(kind === 'logo' ? 'Logo updated' : 'Uploaded'); await reload(); } catch (e) { show(errText(e), true); } finally { setBusy(null); } };
   const del = async (a: Asset) => { if (!confirm(`Delete ${a.media.originalName}?`)) return; try { await api.del(`/pod/publisher/assets/${a.id}`); await reload(); } catch (e) { show(errText(e), true); } };
   if (!p || !form) return <p className="dim">Loading…</p>;
-  const assets = data!.assets.filter((a) => a.kind !== 'logo');
+  const currentLogoId = data!.profile.logo?.id ?? null;
+  const assets = data!.assets.filter((a) => a.kind !== 'logo' || a.media.id !== currentLogoId);
   return (
     <>
       {node}
@@ -230,7 +231,7 @@ export function PublisherResources() {
       <div className="grid cols-3">
         <a className="panel" href="/resources/templates" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><FileText size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Print templates</h3><p className="dim tight" style={{ fontSize: '.9rem' }}>Trim, bleed and safe-area templates for every size we print.</p></a>
         <a className="panel" href="/resources/file-prep" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><Upload size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>File prep guide</h3><p className="dim tight" style={{ fontSize: '.9rem' }}>Single pages, 0.125" bleed, embedded fonts, flattened images, CMYK.</p></a>
-        <a className="panel" href="/resources/make-a-comic" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><BarcodeIcon size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Barcodes &amp; catalog ids</h3><p className="dim tight" style={{ fontSize: '.9rem' }}>Each cover gets one UPC. Your catalog id is SERIES-last five of the UPC. Need codes? <Link to="/publisher/barcodes">Barcodes</Link>.</p></a>
+        <Link className="panel" to="/publisher/barcodes" style={{ textDecoration: 'none' }}><BarcodeIcon size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Barcodes &amp; catalog ids</h3><p className="dim tight" style={{ fontSize: '.9rem' }}>Each cover gets one UPC. Your catalog id is SERIES-last five of the UPC. Need codes? <Link to="/publisher/barcodes">Barcodes</Link>.</p></Link>
       </div>
       {s && (
         <div className="grid cols-2" style={{ marginTop: '1rem' }}>

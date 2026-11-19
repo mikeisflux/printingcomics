@@ -234,14 +234,30 @@ export async function publishCycle(cycleId: string, actor: Actor): Promise<{ ver
   return { version, count: listings.length };
 }
 
-/** The newest snapshot of each listing in a cycle. */
-export async function cycleItems(cycleId: string): Promise<ListingSnapshot[]> {
+/** After a staff edit: the snapshot shops order from follows the listing while its cycle is open or locked. */
+export async function refreshSnapshot(listingId: string): Promise<boolean> {
+  const l = await prisma.listing.findUnique({ where: { id: listingId }, include: { partner: { select: { id: true, name: true, slug: true } }, coverImage: true, cycle: { select: { id: true, status: true } } } });
+  if (!l?.cycle || !['PUBLISHED', 'FOC_LOCKED'].includes(l.cycle.status)) return false;
+  const item = await prisma.catalogCycleItem.findFirst({ where: { cycleId: l.cycle.id, listingId: l.id }, orderBy: { version: 'desc' } });
+  if (!item) return false;
+  await prisma.catalogCycleItem.update({ where: { id: item.id }, data: { snapshot: listingSnapshot(l) as unknown as Prisma.InputJsonValue } });
+  return true;
+}
+
+/**
+ * The newest snapshot of each listing in a cycle. A listing that has since
+ * been rejected, withdrawn or archived is left out, so shops cannot order a
+ * title that was pulled; pass `includePulled` to see everything.
+ */
+export async function cycleItems(cycleId: string, opts: { includePulled?: boolean } = {}): Promise<ListingSnapshot[]> {
   const items = await prisma.catalogCycleItem.findMany({ where: { cycleId }, orderBy: [{ listingId: 'asc' }, { version: 'desc' }] });
+  const live = opts.includePulled ? null : new Set((await prisma.listing.findMany({ where: { id: { in: [...new Set(items.map((i) => i.listingId))] }, status: { in: [...CATALOG_ELIGIBLE] } }, select: { id: true } })).map((l) => l.id));
   const seen = new Set<string>();
   const out: ListingSnapshot[] = [];
   for (const it of items) {
     if (seen.has(it.listingId)) continue;
     seen.add(it.listingId);
+    if (live && !live.has(it.listingId)) continue;
     out.push(it.snapshot as unknown as ListingSnapshot);
   }
   return out.sort((a, b) => a.partner.name.localeCompare(b.partner.name) || a.title.localeCompare(b.title));
@@ -253,23 +269,133 @@ export function snapshotsAsTitles(items: ListingSnapshot[]): WholesaleTitle[] {
 
 interface LockSummary { productionOrders: number; purchaseOrders: number; ledgerEntries: number; units: number }
 
+type LockListing = Prisma.ListingGetPayload<{ include: { partner: true } }>;
+type PoLine = { listingId: string; catalogKey: string; title: string; quantity: number; wholesaleCents: number; shipTo: unknown[] };
+
+const sum = (rows: { amountCents: number }[]) => rows.reduce((a, r) => a + r.amountCents, 0);
+
 /**
- * Final order cutoff. Ordering closes; every retailer line in the cycle is
- * tallied per listing; PRINTED_BY_US listings get a production order (and
- * printing is charged against the publisher), PARTNER_SHIPS listings go on
- * a purchase order to the publisher; wholesale revenue and commission land
- * in the ledger. Running it again only adds what is missing.
+ * Bring one listing's raised units and ledger in line with what the shops
+ * have ordered in a cycle. Called per listing at FOC lock, and again (with
+ * negative deltas) when an order is cancelled after the lock. Everything is
+ * posted as a difference against what was already raised, so running it
+ * twice changes nothing and a reopen that adds orders adds exactly the new
+ * copies and the new money. Returns what it added to the summary.
  */
-export async function lockCycle(cycleId: string, actor: Actor): Promise<LockSummary> {
-  const cycle = await prisma.catalogCycle.findUnique({ where: { id: cycleId } });
-  if (!cycle) throw new HttpError(404, 'Cycle not found');
-  if (cycle.status !== 'PUBLISHED' && cycle.status !== 'FOC_LOCKED') throw new HttpError(400, 'Only a published cycle can be locked');
-  const settings = await getPodSettings();
+export async function applyListingDelta(args: {
+  cycle: { id: string; name: string; inStoreDate: Date };
+  listing: LockListing;
+  /** What the shops have ordered now: copies and wholesale money, in total. */
+  orderedUnits: number;
+  orderedWholesaleCents: number;
+  /** Where the copies go (for the publisher's purchase order). */
+  shipTo: { retailerName: string; qty: number; address: unknown; orderNumber: string }[];
+  settings: PodSettings;
+  actor: Actor;
+  summary: LockSummary;
+}): Promise<void> {
+  const { cycle, listing: l, settings, actor, summary } = args;
+  const cycleId = cycle.id;
+  const item = await prisma.catalogCycleItem.findFirst({ where: { cycleId, listingId: l.id }, orderBy: { version: 'desc' } });
+  const raised = item?.raisedUnits ?? 0;
+  const deltaUnits = args.orderedUnits - raised;
+  const postedSale = sum(await prisma.partnerLedgerEntry.findMany({ where: { cycleId, listingId: l.id, kind: 'SALE' }, select: { amountCents: true } }));
+  const deltaSale = args.orderedWholesaleCents - postedSale;
+  if (deltaUnits === 0 && deltaSale === 0) return;
+
+  const bps = l.partner.commissionBps ?? (l.fulfillment === 'PRINTED_BY_US' ? settings.commissionBpsPrintedByUs : l.fulfillment === 'CONSIGNMENT' ? settings.commissionBpsConsignment : settings.commissionBpsPartnerShips);
+  const tag = deltaUnits >= 0 ? `${args.orderedUnits} × wholesale` : `${-deltaUnits} copies cancelled`;
+
+  await prisma.$transaction(async (tx) => {
+    if (deltaSale !== 0) {
+      const commission = Math.round((deltaSale * bps) / 10_000);
+      await tx.partnerLedgerEntry.createMany({ data: [
+        { partnerId: l.partnerId, kind: 'SALE', amountCents: deltaSale, description: `${l.catalogKey} ${l.title}: ${tag} (${cycle.name})`, cycleId, listingId: l.id, actorName: actor.name, ref: `sale:${cycleId}:${l.id}` },
+        { partnerId: l.partnerId, kind: 'COMMISSION', amountCents: -commission, description: `${l.catalogKey}: ${(bps / 100).toFixed(bps % 100 ? 2 : 0)}% commission${deltaUnits < 0 ? ' reversed' : ''} (${cycle.name})`, cycleId, listingId: l.id, actorName: actor.name, ref: `commission:${cycleId}:${l.id}` },
+      ] });
+      summary.ledgerEntries += 2;
+    }
+
+    if (l.fulfillment === 'CONSIGNMENT') {
+      // We ship from the publisher's consigned stock; nothing to print or send out.
+      if (deltaUnits > 0) {
+        const pull = Math.min(deltaUnits, Math.max(0, l.inventoryUnits));
+        await tx.listing.update({ where: { id: l.id }, data: { inventoryUnits: { decrement: pull } } });
+        await tx.podEvent.create({ data: { subjectType: 'listing', subjectId: l.id, kind: 'inventory', message: `${deltaUnits} copies pulled from consignment stock for ${cycle.name}${deltaUnits > l.inventoryUnits ? ` — SHORT by ${deltaUnits - l.inventoryUnits}` : ''}`, actorId: actor.id, actorName: actor.name } });
+        // The storefront sells from the same shelf.
+        if (l.productId) await tx.product.update({ where: { id: l.productId }, data: { stock: Math.max(0, l.inventoryUnits - pull) } }).catch(() => undefined);
+      } else if (deltaUnits < 0) {
+        await tx.listing.update({ where: { id: l.id }, data: { inventoryUnits: { increment: -deltaUnits } } });
+        await tx.podEvent.create({ data: { subjectType: 'listing', subjectId: l.id, kind: 'inventory', message: `${-deltaUnits} copies returned to consignment stock (order cancelled in ${cycle.name})`, actorId: actor.id, actorName: actor.name } });
+        if (l.productId) await tx.product.update({ where: { id: l.productId }, data: { stock: { increment: -deltaUnits } } }).catch(() => undefined);
+      }
+      summary.units += Math.max(0, deltaUnits);
+    } else if (l.fulfillment === 'PRINTED_BY_US') {
+      // One run per listing per cycle. A publisher's own print order may have
+      // raised it first; the shops' copies join that run.
+      let run = await tx.productionOrder.findFirst({ where: { cycleId, listingId: l.id, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' } });
+      const newRetailerQty = Math.max(0, (run?.retailerQty ?? 0) + deltaUnits);
+      if (!run && deltaUnits > 0) {
+        const cost = await estimatePrintCost(l, deltaUnits);
+        run = await tx.productionOrder.create({ data: {
+          number: await numbering.production(), cycleId, listingId: l.id, retailerQty: deltaUnits, partnerAddOnQty: 0, totalQty: deltaUnits,
+          printUnitCents: cost?.unitCents ?? null, printTotalCents: cost?.totalCents ?? null, status: 'FILES_NEEDED', deadline: cycle.inStoreDate,
+          notes: `Raised at FOC lock for ${cycle.name}.`,
+        } });
+        await tx.podEvent.create({ data: { subjectType: 'production', subjectId: run.id, kind: 'created', message: `Raised at FOC lock for ${cycle.name}: ${deltaUnits} copies`, actorId: actor.id, actorName: actor.name } });
+        summary.productionOrders++;
+      } else if (run && deltaUnits !== 0) {
+        const total = newRetailerQty + run.partnerAddOnQty;
+        const cost = total > 0 ? await estimatePrintCost(l, total) : null;
+        run = await tx.productionOrder.update({ where: { id: run.id }, data: { retailerQty: newRetailerQty, totalQty: total, printUnitCents: cost?.unitCents ?? run.printUnitCents, printTotalCents: cost?.totalCents ?? run.printTotalCents } });
+        await tx.podEvent.create({ data: { subjectType: 'production', subjectId: run.id, kind: deltaUnits > 0 ? 'add-on' : 'reduced', message: deltaUnits > 0 ? `${deltaUnits} retailer copies added at FOC lock (now ${total})` : `${-deltaUnits} retailer copies cancelled (now ${total})`, actorId: actor.id, actorName: actor.name } });
+      }
+      if (run) {
+        // The publisher pays for the shops' copies: post the difference between what those copies cost now and what was charged so far.
+        const target = newRetailerQty > 0 ? (await estimatePrintCost(l, newRetailerQty))?.totalCents ?? 0 : 0;
+        const charged = -sum(await tx.partnerLedgerEntry.findMany({ where: { ref: `printing:${run.id}:retailer` }, select: { amountCents: true } }));
+        const deltaPrinting = target - charged;
+        if (deltaPrinting !== 0) {
+          await tx.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -deltaPrinting, description: deltaPrinting > 0 ? `${l.catalogKey}: printing ${newRetailerQty} copies (${run.number})` : `${l.catalogKey}: printing charge reduced to ${newRetailerQty} copies (${run.number})`, cycleId, listingId: l.id, actorName: actor.name, ref: `printing:${run.id}:retailer` } });
+          summary.ledgerEntries++;
+        }
+      }
+      summary.units += Math.max(0, deltaUnits);
+    } else {
+      // The publisher ships: the copies go on a purchase order to them.
+      const open = await tx.purchaseOrder.findFirst({ where: { cycleId, partnerId: l.partnerId, status: { in: ['DRAFT', 'SENT', 'ACKNOWLEDGED'] } }, orderBy: { createdAt: 'desc' } });
+      const line: PoLine = { listingId: l.id, catalogKey: l.catalogKey, title: l.title, quantity: args.orderedUnits, wholesaleCents: args.orderedWholesaleCents, shipTo: args.shipTo };
+      const poBps = l.partner.commissionBps ?? settings.commissionBpsPartnerShips;
+      if (open) {
+        const lines = ((open.lines as unknown as PoLine[]) ?? []).filter((x) => x.listingId !== l.id);
+        if (args.orderedUnits > 0) lines.push(line);
+        const unitsTotal = lines.reduce((a, x) => a + x.quantity, 0);
+        const wholesaleCents = lines.reduce((a, x) => a + x.wholesaleCents, 0);
+        const commissionCents = Math.round((wholesaleCents * poBps) / 10_000);
+        await tx.purchaseOrder.update({ where: { id: open.id }, data: { lines: lines as unknown as Prisma.InputJsonValue, unitsTotal, wholesaleCents, commissionCents, netCents: wholesaleCents - commissionCents } });
+        await tx.podEvent.create({ data: { subjectType: 'purchase_order', subjectId: open.id, kind: 'updated', message: `${l.catalogKey}: ${deltaUnits > 0 ? `${deltaUnits} copies added` : `${-deltaUnits} copies cancelled`} (now ${args.orderedUnits})`, actorId: actor.id, actorName: actor.name } });
+      } else if (args.orderedUnits > 0 && deltaUnits > 0) {
+        const commissionCents = Math.round((line.wholesaleCents * poBps) / 10_000);
+        const po = await tx.purchaseOrder.create({ data: {
+          number: await numbering.purchaseOrder(), cycleId, partnerId: l.partnerId, status: 'DRAFT',
+          lines: [line] as unknown as Prisma.InputJsonValue, unitsTotal: line.quantity, wholesaleCents: line.wholesaleCents, commissionCents, netCents: line.wholesaleCents - commissionCents,
+        } });
+        await tx.podEvent.create({ data: { subjectType: 'purchase_order', subjectId: po.id, kind: 'created', message: `Raised at FOC lock for ${cycle.name}`, actorId: actor.id, actorName: actor.name } });
+        summary.purchaseOrders++;
+      }
+      summary.units += Math.max(0, deltaUnits);
+    }
+
+    if (item) await tx.catalogCycleItem.update({ where: { id: item.id }, data: { raisedUnits: args.orderedUnits } });
+  });
+}
+
+/** Copies and wholesale money per listing across a cycle's live retailer orders. */
+async function tallyCycleOrders(cycleId: string) {
   const orders = await prisma.order.findMany({
     where: { cycleId, source: 'retailer', status: { notIn: ['CANCELLED', 'REFUNDED'] } },
     include: { items: { where: { listingId: { not: null } } }, retailer: { select: { id: true, name: true } } },
   });
-  // Tally per listing.
   const tally = new Map<string, { qty: number; wholesaleCents: number; shipTo: { retailerName: string; qty: number; address: unknown; orderNumber: string }[] }>();
   for (const o of orders) {
     for (const it of o.items) {
@@ -280,71 +406,113 @@ export async function lockCycle(cycleId: string, actor: Actor): Promise<LockSumm
       tally.set(it.listingId!, t);
     }
   }
-  const listings = await prisma.listing.findMany({ where: { cycleId }, include: { partner: true } });
-  const summary: LockSummary = { productionOrders: 0, purchaseOrders: 0, ledgerEntries: 0, units: 0 };
-  const byPartner = new Map<string, { partner: (typeof listings)[number]['partner']; lines: { listing: (typeof listings)[number]; qty: number; wholesaleCents: number; shipTo: unknown[] }[] }>();
+  return { orders, tally };
+}
 
+/**
+ * Final order cutoff. Ordering closes; every retailer line in the cycle is
+ * tallied per listing; PRINTED_BY_US listings get a production order (and
+ * printing is charged against the publisher), PARTNER_SHIPS listings go on
+ * a purchase order to the publisher; wholesale revenue and commission land
+ * in the ledger. Every amount is posted as a difference against what was
+ * already raised, so running it again — including after a reopen that let
+ * more orders in — adds only what is new. Listings pulled from the catalog
+ * (rejected, archived) are skipped.
+ */
+export async function lockCycle(cycleId: string, actor: Actor): Promise<LockSummary> {
+  const cycle = await prisma.catalogCycle.findUnique({ where: { id: cycleId } });
+  if (!cycle) throw new HttpError(404, 'Cycle not found');
+  if (cycle.status !== 'PUBLISHED' && cycle.status !== 'FOC_LOCKED') throw new HttpError(400, 'Only a published cycle can be locked');
+  const settings = await getPodSettings();
+  const { tally } = await tallyCycleOrders(cycleId);
+  const listings = await prisma.listing.findMany({ where: { cycleId, status: { in: [...CATALOG_ELIGIBLE] } }, include: { partner: true } });
+  const summary: LockSummary = { productionOrders: 0, purchaseOrders: 0, ledgerEntries: 0, units: 0 };
   for (const l of listings) {
     const t = tally.get(l.id);
-    const qty = t?.qty ?? 0;
-    const already = await prisma.partnerLedgerEntry.findFirst({ where: { cycleId, listingId: l.id, kind: 'SALE' }, select: { id: true } });
-    if (qty > 0 && !already) {
-      const bps = l.partner.commissionBps ?? (l.fulfillment === 'PRINTED_BY_US' ? settings.commissionBpsPrintedByUs : l.fulfillment === 'CONSIGNMENT' ? settings.commissionBpsConsignment : settings.commissionBpsPartnerShips);
-      const commission = Math.round((t!.wholesaleCents * bps) / 10_000);
-      await prisma.partnerLedgerEntry.createMany({ data: [
-        { partnerId: l.partnerId, kind: 'SALE', amountCents: t!.wholesaleCents, description: `${l.catalogKey} ${l.title}: ${qty} × wholesale (${cycle.name})`, cycleId, listingId: l.id, actorName: actor.name },
-        { partnerId: l.partnerId, kind: 'COMMISSION', amountCents: -commission, description: `${l.catalogKey}: ${(bps / 100).toFixed(bps % 100 ? 2 : 0)}% commission (${cycle.name})`, cycleId, listingId: l.id, actorName: actor.name },
-      ] });
-      summary.ledgerEntries += 2;
-    }
-    if (l.fulfillment === 'CONSIGNMENT') {
-      // We ship from the publisher's consigned stock; nothing to print or send out.
-      if (qty > 0 && !already) {
-        await prisma.listing.update({ where: { id: l.id }, data: { inventoryUnits: { decrement: Math.min(qty, l.inventoryUnits) } } });
-        await recordPodEvent('listing', l.id, 'inventory', `${qty} copies pulled from consignment stock for ${cycle.name}${qty > l.inventoryUnits ? ` — SHORT by ${qty - l.inventoryUnits}` : ''}`, actor);
-        summary.units += qty;
-      }
-    } else if (l.fulfillment === 'PRINTED_BY_US') {
-      const existing = await prisma.productionOrder.findFirst({ where: { cycleId, listingId: l.id } });
-      if (!existing && qty > 0) {
-        const cost = await estimatePrintCost(l, qty);
-        const po = await prisma.productionOrder.create({ data: {
-          number: await numbering.production(), cycleId, listingId: l.id, retailerQty: qty, partnerAddOnQty: 0, totalQty: qty,
-          printUnitCents: cost?.unitCents ?? null, printTotalCents: cost?.totalCents ?? null, status: 'FILES_NEEDED', deadline: cycle.inStoreDate,
-          notes: `${orders.length} retailer order${orders.length === 1 ? '' : 's'} in ${cycle.name}.`,
-        } });
-        if (cost) {
-          await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -cost.totalCents, description: `${l.catalogKey}: printing ${qty} copies (${po.number})`, cycleId, listingId: l.id, actorName: actor.name } });
-          summary.ledgerEntries++;
-        }
-        await recordPodEvent('production', po.id, 'created', `Raised at FOC lock for ${cycle.name}: ${qty} copies`, actor);
-        summary.productionOrders++;
-        summary.units += qty;
-      }
-    } else if (qty > 0) {
-      const g = byPartner.get(l.partnerId) ?? { partner: l.partner, lines: [] };
-      g.lines.push({ listing: l, qty, wholesaleCents: t!.wholesaleCents, shipTo: t!.shipTo });
-      byPartner.set(l.partnerId, g);
-    }
-  }
-  for (const [partnerId, g] of byPartner) {
-    const existing = await prisma.purchaseOrder.findFirst({ where: { cycleId, partnerId } });
-    if (existing) continue;
-    const bps = g.partner.commissionBps ?? settings.commissionBpsPartnerShips;
-    const wholesaleCents = g.lines.reduce((s, l) => s + l.wholesaleCents, 0);
-    const commissionCents = Math.round((wholesaleCents * bps) / 10_000);
-    const po = await prisma.purchaseOrder.create({ data: {
-      number: await numbering.purchaseOrder(), cycleId, partnerId, status: 'DRAFT',
-      lines: g.lines.map((l) => ({ listingId: l.listing.id, catalogKey: l.listing.catalogKey, title: l.listing.title, quantity: l.qty, wholesaleCents: l.wholesaleCents, shipTo: l.shipTo })) as unknown as Prisma.InputJsonValue,
-      unitsTotal: g.lines.reduce((s, l) => s + l.qty, 0), wholesaleCents, commissionCents, netCents: wholesaleCents - commissionCents,
-    } });
-    await recordPodEvent('purchase_order', po.id, 'created', `Raised at FOC lock for ${cycle.name}`, actor);
-    summary.purchaseOrders++;
-    summary.units += po.unitsTotal;
+    await applyListingDelta({ cycle, listing: l, orderedUnits: t?.qty ?? 0, orderedWholesaleCents: t?.wholesaleCents ?? 0, shipTo: t?.shipTo ?? [], settings, actor, summary });
   }
   await prisma.catalogCycle.update({ where: { id: cycleId }, data: { status: 'FOC_LOCKED', retailerOpen: false, focOverrideOpen: false, lockedAt: cycle.lockedAt ?? new Date() } });
   await recordPodEvent('cycle', cycleId, 'locked', `FOC locked: ${summary.productionOrders} production order(s), ${summary.purchaseOrders} purchase order(s), ${summary.units} units`, actor);
   return summary;
+}
+
+/**
+ * Cancel a wholesale order, whoever asks: the shop's store credit goes back,
+ * and when the cycle has already been locked the copies and money raised
+ * for its lines are taken back out of the runs, purchase orders and ledger.
+ */
+export async function cancelRetailerOrder(orderId: string, actor: Actor, args: { by: 'retailer' | 'staff'; reason?: string | null }): Promise<void> {
+  const o = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true, cycle: true, retailer: { select: { id: true } } } });
+  if (!o || o.source !== 'retailer' || !o.retailer) throw new HttpError(404, 'Order not found');
+  if (o.status === 'CANCELLED' || o.status === 'REFUNDED') return;
+  if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'A paid order is refunded from the store Orders area, not cancelled here.');
+  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: args.by === 'retailer' ? 'Canceled by the retailer before FOC' : (args.reason ?? 'Canceled by staff'), actorId: actor.id, actorName: actor.name } } } });
+  const prev = ((o.wholesale ?? {}) as { creditApplied?: number }).creditApplied ?? 0;
+  if (prev) await prisma.retailer.update({ where: { id: o.retailer.id }, data: { creditCents: { increment: prev } } });
+  // Anything raised at lock for these lines comes back out.
+  if (o.cycle && (o.cycle.status === 'FOC_LOCKED' || o.cycle.status === 'CLOSED' || o.cycle.lockedAt)) {
+    const settings = await getPodSettings();
+    const { tally } = await tallyCycleOrders(o.cycle.id);
+    const summary: LockSummary = { productionOrders: 0, purchaseOrders: 0, ledgerEntries: 0, units: 0 };
+    const listingIds = [...new Set(o.items.map((it) => it.listingId).filter((x): x is string => !!x))];
+    const listings = await prisma.listing.findMany({ where: { id: { in: listingIds } }, include: { partner: true } });
+    for (const l of listings) {
+      const t = tally.get(l.id);
+      await applyListingDelta({ cycle: o.cycle, listing: l, orderedUnits: t?.qty ?? 0, orderedWholesaleCents: t?.wholesaleCents ?? 0, shipTo: t?.shipTo ?? [], settings, actor, summary });
+    }
+    if (summary.ledgerEntries) await recordPodEvent('cycle', o.cycle.id, 'adjusted', `Order ${o.number} cancelled after FOC: ${summary.ledgerEntries} ledger entr${summary.ledgerEntries === 1 ? 'y' : 'ies'} reversed`, actor);
+  }
+}
+
+/**
+ * Bring a run's printing charges in line with its quantities: the shops'
+ * copies and the publisher's add-on copies are each priced at their own
+ * quantity and the difference from what was charged so far is posted. A
+ * cancelled run charges nothing, so every earlier charge is reversed.
+ */
+export async function reconcileRunPrinting(runId: string, actor: Actor): Promise<number> {
+  const run = await prisma.productionOrder.findUnique({ where: { id: runId }, include: { listing: true } });
+  if (!run) throw new HttpError(404, 'Production order not found');
+  const l = run.listing;
+  const cancelled = run.status === 'CANCELLED';
+  let posted = 0;
+  for (const part of ['retailer', 'addon'] as const) {
+    const qty = part === 'retailer' ? run.retailerQty : run.partnerAddOnQty;
+    const target = cancelled || qty <= 0 ? 0 : (await estimatePrintCost(l, qty))?.totalCents ?? 0;
+    const ref = `printing:${run.id}:${part}`;
+    const charged = -sum(await prisma.partnerLedgerEntry.findMany({ where: { ref }, select: { amountCents: true } }));
+    const delta = target - charged;
+    if (delta === 0) continue;
+    await prisma.partnerLedgerEntry.create({ data: { partnerId: l.partnerId, kind: 'PRINTING', amountCents: -delta, description: cancelled ? `${l.catalogKey}: printing charge reversed, run ${run.number} cancelled` : `${l.catalogKey}: printing ${qty} ${part === 'retailer' ? 'retailer' : 'publisher'} copies (${run.number})${delta < 0 ? ' — reduced' : ''}`, cycleId: run.cycleId, listingId: l.id, actorName: actor.name, ref } });
+    posted++;
+  }
+  return posted;
+}
+
+/**
+ * A purchase order the publisher will not fill: the wholesale revenue and
+ * commission raised for its lines come back out of the ledger, and the
+ * copies count as not raised, so a later lock raises them afresh.
+ */
+export async function cancelPurchaseOrder(poId: string, actor: Actor): Promise<void> {
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: poId }, include: { partner: true, cycle: true } });
+  if (!po) throw new HttpError(404, 'Purchase order not found');
+  if (po.status === 'CANCELLED') return;
+  const settings = await getPodSettings();
+  const bps = po.partner.commissionBps ?? settings.commissionBpsPartnerShips;
+  await prisma.$transaction(async (tx) => {
+    await tx.purchaseOrder.update({ where: { id: po.id }, data: { status: 'CANCELLED' } });
+    for (const line of (po.lines as unknown as PoLine[]) ?? []) {
+      if (!line.wholesaleCents) continue;
+      const commission = Math.round((line.wholesaleCents * bps) / 10_000);
+      await tx.partnerLedgerEntry.createMany({ data: [
+        { partnerId: po.partnerId, kind: 'SALE', amountCents: -line.wholesaleCents, description: `${line.catalogKey}: ${line.quantity} copies — purchase order ${po.number} cancelled (${po.cycle.name})`, cycleId: po.cycleId, listingId: line.listingId, actorName: actor.name, ref: `sale:${po.cycleId}:${line.listingId}` },
+        { partnerId: po.partnerId, kind: 'COMMISSION', amountCents: commission, description: `${line.catalogKey}: commission reversed, ${po.number} cancelled`, cycleId: po.cycleId, listingId: line.listingId, actorName: actor.name, ref: `commission:${po.cycleId}:${line.listingId}` },
+      ] });
+      await tx.catalogCycleItem.updateMany({ where: { cycleId: po.cycleId, listingId: line.listingId }, data: { raisedUnits: 0 } });
+    }
+  });
+  await recordPodEvent('purchase_order', po.id, 'cancelled', `Cancelled; ${po.unitsTotal} copies and ${(po.wholesaleCents / 100).toFixed(2)} wholesale taken back out of the ledger`, actor);
 }
 
 export async function reopenCycle(cycleId: string, actor: Actor) {

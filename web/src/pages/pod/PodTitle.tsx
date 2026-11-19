@@ -41,7 +41,7 @@ export function PodTitle() {
             </div>
             <div className="row" style={{ gap: '.75rem', marginBottom: '1.5rem' }}>
               {l.productSlug && <Link to={`/product/${l.productSlug}`} className="pbtn primary"><ShoppingCart size={16} /> Buy a copy</Link>}
-              {user?.retailer ? <Link to="/retailer/catalog" className="pbtn hot"><Store size={16} /> Order wholesale</Link> : <Link to="/distribution/apply?as=retailer" className="pbtn soft"><Store size={16} /> Comic shop? Order at wholesale</Link>}
+              {user?.retailer?.status === 'ACTIVE' ? <Link to="/retailer/catalog" className="pbtn hot"><Store size={16} /> Order wholesale</Link> : <Link to="/distribution/apply?as=retailer" className="pbtn soft"><Store size={16} /> Comic shop? Order at wholesale</Link>}
             </div>
             {(l.synopsis || l.description) && <div className="panel" style={{ marginBottom: '1rem' }}>{l.synopsis && <p style={{ margin: 0, fontSize: '1.02rem', lineHeight: 1.6 }}>{l.synopsis}</p>}{l.description && l.description !== l.synopsis && <p className="dim" style={{ margin: l.synopsis ? '.75rem 0 0' : 0, whiteSpace: 'pre-wrap' }}>{l.description}</p>}</div>}
             <dl className="spec panel">

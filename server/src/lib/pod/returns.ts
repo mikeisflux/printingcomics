@@ -32,6 +32,7 @@ export async function requestReturn(args: { retailerId: string; orderId: string;
   const item = await prisma.orderItem.findFirst({ where: { id: args.orderItemId, orderId: args.orderId, order: { retailerId: args.retailerId } }, include: { order: { select: { paymentStatus: true, status: true } }, listing: { select: { id: true, partnerId: true, title: true } } } });
   if (!item || !item.listing) throw new HttpError(404, 'That line is not on one of your orders');
   if (item.order.status === 'CANCELLED') throw new HttpError(400, 'That order was canceled');
+  if (item.order.status !== 'SHIPPED' && item.order.status !== 'DELIVERED') throw new HttpError(400, 'Claims open once the order has shipped');
   if (!Number.isInteger(args.quantity) || args.quantity < 1 || args.quantity > item.quantity) throw new HttpError(400, `Enter between 1 and ${item.quantity} copies`);
   const already = await prisma.retailerReturn.aggregate({ where: { orderId: args.orderId, listingId: item.listing.id, status: { not: 'REJECTED' } }, _sum: { quantity: true } });
   if ((already._sum.quantity ?? 0) + args.quantity > item.quantity) throw new HttpError(400, `Only ${item.quantity - (already._sum.quantity ?? 0)} copies of this title can still be claimed`);
@@ -47,21 +48,35 @@ export async function requestReturn(args: { retailerId: string; orderId: string;
   return r;
 }
 
+const RETURN_ORDER: Record<string, number> = { REQUESTED: 0, APPROVED: 1, REJECTED: 1, RECEIVED: 2, CREDITED: 3 };
+
+/**
+ * Move a claim forward. States only advance (a credited claim cannot be
+ * rejected afterwards); the credit is capped at the line's wholesale total;
+ * and the publisher is charged only when the copies were theirs to get
+ * right: unsold returns, or damage on a title they shipped themselves. A
+ * misprint or transit damage on a book we printed or shipped is on us.
+ */
 export async function decideReturn(id: string, decision: { status: 'APPROVED' | 'REJECTED' | 'RECEIVED' | 'CREDITED'; creditCents?: number | null; note?: string | null }, actor: Actor) {
-  const r = await prisma.retailerReturn.findUnique({ where: { id }, include: { listing: { select: { partnerId: true, title: true, catalogKey: true } }, order: { select: { cycleId: true, number: true } } } });
+  const r = await prisma.retailerReturn.findUnique({ where: { id }, include: { listing: { select: { partnerId: true, title: true, catalogKey: true, fulfillment: true } }, order: { select: { cycleId: true, number: true } } } });
   if (!r) throw new HttpError(404, 'Return not found');
-  const credit = decision.creditCents ?? r.creditCents;
+  if (r.status === 'CREDITED') throw new HttpError(400, 'This claim is already credited; nothing more can change.');
+  if (r.status === 'REJECTED' && decision.status !== 'REJECTED') throw new HttpError(400, 'This claim was declined. Ask the shop to file it again if that was wrong.');
+  if ((RETURN_ORDER[decision.status] ?? 0) < (RETURN_ORDER[r.status] ?? 0)) throw new HttpError(400, `A ${r.status.toLowerCase()} claim cannot go back to ${decision.status.toLowerCase()}.`);
+  if (decision.status === 'REJECTED' && r.status === 'RECEIVED') throw new HttpError(400, 'The copies are already back; credit them or write to the shop.');
+  const max = r.unitCreditCents * r.quantity;
+  const credit = Math.min(max, Math.max(0, decision.creditCents ?? r.creditCents));
   const now = new Date();
-  if (decision.status === 'CREDITED' && r.status === 'CREDITED') throw new HttpError(400, 'Already credited');
+  const onPublisher = r.kind === 'return' || r.listing?.fulfillment === 'PARTNER_SHIPS';
   await prisma.$transaction(async (tx) => {
     await tx.retailerReturn.update({ where: { id }, data: { status: decision.status, creditCents: credit, reviewNote: decision.note ?? r.reviewNote, decidedAt: decision.status === 'APPROVED' || decision.status === 'REJECTED' ? now : r.decidedAt, receivedAt: decision.status === 'RECEIVED' ? now : r.receivedAt } });
     if (decision.status === 'CREDITED') {
       await tx.retailer.update({ where: { id: r.retailerId }, data: { creditCents: { increment: credit } } });
-      if (r.listing && credit) {
-        await tx.partnerLedgerEntry.create({ data: { partnerId: r.listing.partnerId, kind: 'RETURN_CREDIT', amountCents: -credit, description: `${r.number}: ${r.quantity} × ${r.listing.title} credited to the shop (order ${r.order.number})`, cycleId: r.order.cycleId, listingId: r.listingId, orderId: r.orderId, actorName: actor.name } });
+      if (r.listing && credit && onPublisher) {
+        await tx.partnerLedgerEntry.create({ data: { partnerId: r.listing.partnerId, kind: 'RETURN_CREDIT', amountCents: -credit, description: `${r.number}: ${r.quantity} × ${r.listing.title} credited to the shop (order ${r.order.number})`, cycleId: r.order.cycleId, listingId: r.listingId, orderId: r.orderId, actorName: actor.name, ref: `return:${r.id}` } });
       }
     }
   });
-  await recordPodEvent('retailer', r.retailerId, `return-${decision.status.toLowerCase()}`, `${r.number}${decision.note ? ` — ${decision.note}` : ''}${decision.status === 'CREDITED' ? ` · $${(credit / 100).toFixed(2)} store credit` : ''}`, actor);
+  await recordPodEvent('retailer', r.retailerId, `return-${decision.status.toLowerCase()}`, `${r.number}${decision.note ? ` — ${decision.note}` : ''}${decision.status === 'CREDITED' ? ` · $${(credit / 100).toFixed(2)} store credit${onPublisher ? ' charged to the publisher' : ' on us'}` : ''}`, actor);
   return prisma.retailerReturn.findUnique({ where: { id } });
 }

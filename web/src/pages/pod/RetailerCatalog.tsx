@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { ShoppingCart, Download, Upload, Search, CheckCircle2, X, Trash2, Zap, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../../api/client';
+import { withViewAs } from '../../lib/view-as';
 import { money, dateShort, FORMAT_LABELS, type PublicSettings } from '../../lib/pod';
 import { priceBasket } from '../../lib/wholesale';
 import { CoverArt, DaysLeft, Drawer, Empty, Meter, Pill, Thumb, errText, useFlash, useLoad } from '../../components/pod/ui';
@@ -124,7 +125,7 @@ export function RetailerCatalog() {
         <div className="row">
           {openCycles.length > 1 && <div className="seg">{openCycles.map((oc) => <button key={oc.id} className={(c?.id ?? '') === oc.id ? 'on' : ''} onClick={() => setParams({ cycle: oc.id })}>{oc.name}</button>)}</div>}
           <button className="pbtn soft sm" onClick={() => setFast(true)}><Zap size={14} /> Fast entry</button>
-          <a href={c ? `/api/pod/retailer/catalog/${c.id}.csv` : '/api/pod/retailer/catalog.csv'} className="pbtn ghost sm"><Download size={14} /> Order sheet</a>
+          <a href={withViewAs(c ? `/api/pod/retailer/catalog/${c.id}.csv` : '/api/pod/retailer/catalog.csv', 'retailer')} className="pbtn ghost sm"><Download size={14} /> Order sheet</a>
           <label className="pbtn ghost sm" style={{ cursor: 'pointer' }}><Upload size={14} /> Upload sheet<input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.currentTarget.value = ''; }} /></label>
         </div>
       </div>

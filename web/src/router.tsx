@@ -77,6 +77,12 @@ import { RetailerProfile, RetailerDownloads, RetailerReturns, RetailerShipments 
 import { PublisherFiles, PublisherProfile, PublisherBarcodes, PublisherPrintOrders, PublisherResources } from './pages/pod/PublisherPortalMore';
 import { Navigate, useLocation } from 'react-router-dom';
 
+/** The publisher portal used to live at /partner; emailed deep links keep their page. */
+function RedirectToPublisher() {
+  const { pathname, search, hash } = useLocation();
+  return <Navigate to={`${pathname.replace(/^\/partner/, '/publisher')}${search}${hash}`} replace />;
+}
+
 /** The program launched at /print-on-demand; old links land on the same page under /distribution. */
 function RedirectToDistribution() {
   const { pathname, search, hash } = useLocation();
@@ -169,7 +175,7 @@ export const router = createBrowserRouter([
         ],
       },
       // The portal used to live at /partner.
-      { path: 'partner/*', element: <Navigate to="/publisher" replace /> },
+      { path: 'partner/*', element: <RedirectToPublisher /> },
       {
         path: 'retailer',
         element: <RetailerLayout />,

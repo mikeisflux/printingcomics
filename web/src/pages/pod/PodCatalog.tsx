@@ -62,13 +62,13 @@ export function PodCatalog() {
       </section>
 
       <section className="container" style={{ padding: '1.5rem 1.25rem 3rem' }}>
-        {!user?.retailer && (
+        {user?.retailer?.status !== 'ACTIVE' && (
           <div className="notice info" style={{ marginBottom: '1.25rem', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="row"><Store size={18} /> Prices shown are cover price. Comic shops order at {`up to 50%`} off in the wholesale portal.</span>
             <Link to={user ? '/distribution/apply?as=retailer' : '/login?redirect=/retailer'} className="pbtn soft sm">{user ? 'Open a wholesale account' : 'Retailer sign in'} <ArrowRight size={14} /></Link>
           </div>
         )}
-        {user?.retailer && data?.cycle?.orderingOpen && (
+        {user?.retailer?.status === 'ACTIVE' && data?.cycle?.orderingOpen && (
           <div className="notice good" style={{ marginBottom: '1.25rem', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="row"><Store size={18} /> You are signed in as {user.retailer.name}. Order this catalog at wholesale.</span>
             <Link to="/retailer/catalog" className="pbtn primary sm">Go to wholesale ordering <ArrowRight size={14} /></Link>

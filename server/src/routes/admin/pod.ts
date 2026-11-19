@@ -12,10 +12,10 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { getPodSettings, savePodSettings } from '../../lib/pod/settings.js';
 import {
   CATALOG_ELIGIBLE, CYCLE_STATUS_LABELS, FORMATS, LISTING_STATUSES, LISTING_STATUS_LABELS, closeCycle, cycleItems, cycleOrderingOpen, deriveCatalogKey,
-  estimatePrintCost, lockCycle, publishCycle, reopenCycle, setListingStatus, syncListingProduct, uniqueCatalogKey, type ListingStatusKey,
+  cancelPurchaseOrder, cancelRetailerOrder, estimatePrintCost, lockCycle, publishCycle, reconcileRunPrinting, refreshSnapshot, reopenCycle, setListingStatus, syncListingProduct, uniqueCatalogKey, type ListingStatusKey,
 } from '../../lib/pod/catalog.js';
 import { listingInclude, loadListing, presentListing } from '../../lib/pod/present.js';
-import { deleteListingFile, isFileKind, listingUpload, rerunPreflight, restoreListingFileVersion, storeListingFile, storePublisherAsset } from '../../lib/pod/files.js';
+import { deleteListingFile, isFileKind, listingUpload, rerunPreflight, restoreListingFileVersion, storeListingFile, storePublisherAsset, requireUploadType, UPLOAD_TYPES, csvUpload } from '../../lib/pod/files.js';
 import { assignBarcode, barcodeSvg, expandBlock, loadBlock, normalizeBarcode, releaseBarcode } from '../../lib/pod/barcodes.js';
 import { RETURN_REASONS, decideReturn } from '../../lib/pod/returns.js';
 import { parseCsv } from '../../lib/pod/csv.js';
@@ -26,8 +26,8 @@ import { actorOf, numbering, podEvents, recordPodEvent, slugify } from '../../li
 import { catalogCsv } from '../../lib/pod/csv.js';
 import { promises as fsp } from 'node:fs';
 import { LEDGER_LABELS, generateStatement, issueStatement, ledgerSummary, markStatementPaid, voidStatement } from '../../lib/pod/payouts.js';
-import { notifyStaffListingSubmitted, sendListingStatusEmail, sendPartnerPortalInviteEmail, sendPurchaseOrderEmail, sendRetailerApprovedEmail, sendStatementEmail } from '../../lib/pod/emails.js';
-import { ensureCustomerAccount } from '../../lib/customer-accounts.js';
+import { notifyStaffListingSubmitted, sendListingStatusEmail, sendPartnerPortalInviteEmail, sendPurchaseOrderEmail, sendRetailerApprovedEmail, sendStatementEmail, sendRetailerOrderCancelledEmail, sendRetailerStatusEmail, sendPartnerStatusEmail, sendApplicationDeclinedEmail, sendReturnDecisionEmail, sendStatementPaidEmail } from '../../lib/pod/emails.js';
+import { ensureCustomerAccount, magicLink } from '../../lib/customer-accounts.js';
 import { PAYMENT_METHODS } from '../../lib/manual-order.js';
 import { sendPartnerPortalInviteEmail as inviteMail } from '../../lib/pod/emails.js';
 void inviteMail;
@@ -145,12 +145,23 @@ router.patch('/publishers/:id', async (req, res) => {
 
 for (const [action, status] of [['suspend', 'SUSPENDED'], ['restore', 'ACTIVE'], ['archive', 'ARCHIVED']] as const) {
   router.post(`/publishers/:id/${action}`, async (req, res) => {
+    const body = z.object({ note: opt(1000), email: z.boolean().optional() }).parse(req.body ?? {});
     const id = String(req.params.id);
     await prisma.partner.update({ where: { id }, data: { status } });
-    await recordPodEvent('listing', id, `publisher-${action}`, null, actorOf(req));
-    res.json({ publisher: await publisherView(id) });
+    const mail = body.email === false || action === 'archive' ? null : await sendPartnerStatusEmail(id, action, body.note ?? null);
+    await recordPodEvent('partner', id, `publisher-${action}`, mail ? (mail.sent ? `Publisher emailed (${mail.to})` : `Email failed (${mail.error})`) : null, actorOf(req));
+    res.json({ publisher: await publisherView(id), mail });
   });
 }
+
+/** A one-time sign-in link for a publisher's member, for staff who hold only this section. */
+router.post('/publishers/:id/members/:userId/sign-in-link', async (req, res) => {
+  const u = await prisma.user.findFirst({ where: { id: String(req.params.userId), partnerId: String(req.params.id) }, select: { id: true, email: true } });
+  if (!u) throw new HttpError(404, 'That person is not a member of this publisher');
+  const link = await magicLink(u.id, '/publisher');
+  await recordPodEvent('partner', String(req.params.id), 'sign-in-link', `One-time sign-in link made for ${u.email}`, actorOf(req));
+  res.json({ link, email: u.email });
+});
 
 router.delete('/publishers/:id/members/:userId', async (req, res) => {
   await prisma.user.updateMany({ where: { id: String(req.params.userId), partnerId: String(req.params.id) }, data: { partnerId: null } });
@@ -188,19 +199,23 @@ router.post('/publishers/applications/:appId/approve', async (req, res) => {
   const body = z.object({ commissionBps: z.coerce.number().int().min(0).max(9999).nullable().optional(), note: opt(1000) }).parse(req.body ?? {});
   let slug = slugify(app.name);
   for (let i = 2; await prisma.partner.findUnique({ where: { slug }, select: { id: true } }); i++) slug = `${slugify(app.name)}-${i}`;
-  const p = await prisma.partner.create({ data: { slug, name: app.name, platform: 'publisher', status: 'ACTIVE', contactEmail: app.contactEmail, contactName: app.contactName, website: app.website, commissionBps: body.commissionBps ?? null, notes: app.message, createdById: req.session?.sub ?? null } });
+  const p = await prisma.$transaction(async (tx) => { const created = await tx.partner.create({ data: { slug, name: app.name, platform: 'publisher', status: 'ACTIVE', contactEmail: app.contactEmail, contactName: app.contactName, website: app.website, commissionBps: body.commissionBps ?? null, notes: app.message, createdById: req.session?.sub ?? null } }); await tx.partnerApplication.update({ where: { id: app.id }, data: { status: 'APPROVED', reviewerId: req.session?.sub ?? null, reviewNotes: body.note ?? null, reviewedAt: new Date(), partnerId: created.id } }); return created; });
   const user = await ensureCustomerAccount(app.contactEmail, { firstName: app.contactName.split(' ')[0], lastName: app.contactName.split(' ').slice(1).join(' ') });
+  const linked = !user.partnerId || user.partnerId === p.id;
   if (!user.partnerId) await prisma.user.update({ where: { id: user.id }, data: { partnerId: p.id } });
-  const mail = await sendPartnerPortalInviteEmail(p.id, user.id);
-  await prisma.partnerApplication.update({ where: { id: app.id }, data: { status: 'APPROVED', reviewerId: req.session?.sub ?? null, reviewNotes: body.note ?? null, reviewedAt: new Date(), partnerId: p.id } });
-  await recordPodEvent('listing', p.id, 'publisher-approved', `Application approved; ${mail.sent ? `portal invite sent to ${mail.to}` : `invite email failed (${mail.error})`}`, actorOf(req));
+  const mail = linked ? await sendPartnerPortalInviteEmail(p.id, user.id) : { sent: false, to: user.email, error: 'that email already belongs to another publisher; invite a different address' };
+  await recordPodEvent('partner', p.id, 'publisher-approved', `Application approved; ${mail.sent ? `portal invite sent to ${mail.to}` : `invite not sent (${mail.error})`}`, actorOf(req));
   res.json({ publisher: await publisherView(p.id), mail });
 });
 
 router.post('/publishers/applications/:appId/decline', async (req, res) => {
-  const body = z.object({ note: opt(1000) }).parse(req.body ?? {});
-  await prisma.partnerApplication.update({ where: { id: String(req.params.appId) }, data: { status: 'REJECTED', reviewerId: req.session?.sub ?? null, reviewNotes: body.note ?? null, reviewedAt: new Date() } });
-  res.json({ ok: true });
+  const body = z.object({ note: opt(1000), email: z.boolean().optional() }).parse(req.body ?? {});
+  const app = await prisma.partnerApplication.findUnique({ where: { id: String(req.params.appId) } });
+  if (!app) throw new HttpError(404, 'Application not found');
+  if (app.status !== 'PENDING') throw new HttpError(400, 'Already decided');
+  await prisma.partnerApplication.update({ where: { id: app.id }, data: { status: 'REJECTED', reviewerId: req.session?.sub ?? null, reviewNotes: body.note ?? null, reviewedAt: new Date() } });
+  const mail = body.email === false ? null : await sendApplicationDeclinedEmail({ email: app.contactEmail, name: app.contactName, org: app.name, kind: 'publisher', note: body.note ?? null });
+  res.json({ ok: true, mail });
 });
 
 /** Give a publisher's contact a portal login (creates the account if new). */
@@ -291,6 +306,8 @@ router.patch('/listings/:id', async (req, res) => {
   if (body.partnerId && body.partnerId !== l.partnerId) data.partnerId = body.partnerId;
   await prisma.listing.update({ where: { id: l.id }, data });
   if (l.productId) await syncListingProduct(l.id);
+  // Shops order from the cycle snapshot: a price or title change after publish reaches them too.
+  await refreshSnapshot(l.id);
   await recordPodEvent('listing', l.id, 'edited', `Staff edited ${Object.keys(body).filter((k) => k !== 'partnerId').join(', ')}`, actorOf(req));
   res.json({ listing: presentListing((await loadListing(l.id))!, 'staff') });
 });
@@ -373,7 +390,7 @@ router.post('/listings/:id/barcode', async (req, res) => {
 });
 
 /** Bulk-create DRAFT listings for a publisher from a CSV (the catalog export layout, or any sheet with these headers). */
-router.post('/listings/import', listingUpload.single('file'), async (req, res) => {
+router.post('/listings/import', csvUpload.single('file'), async (req, res) => {
   if (!req.file) throw new HttpError(400, 'No file received');
   const partnerId = String(req.body?.partnerId ?? '');
   const cycleId = req.body?.cycleId ? String(req.body.cycleId) : null;
@@ -499,6 +516,7 @@ router.post('/cycles/:id/catalog-file', listingUpload.single('file'), async (req
   const c = await prisma.catalogCycle.findUnique({ where: { id: String(req.params.id) } });
   if (!c) { await fsp.unlink(req.file.path).catch(() => undefined); throw new HttpError(404, 'Cycle not found'); }
   const kind = req.body?.kind === 'cover' ? 'cover' : 'pdf';
+  await requireUploadType(req.file, kind === 'cover' ? UPLOAD_TYPES.image : UPLOAD_TYPES.print, kind === 'cover' ? 'The catalog cover' : 'The catalog PDF');
   const { publishUpload } = await import('../../lib/storage.js');
   const stored = await publishUpload({ subdir: 'pod', filename: req.file.filename, localPath: req.file.path, contentType: req.file.mimetype, originalName: req.file.originalname });
   await prisma.mediaFile.create({ data: { filename: req.file.filename, originalName: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, url: stored.url, folder: '/pod/catalogs', tags: ['pod-catalog', `cycle:${c.id}`, `kind:${kind}`], uploaderId: req.session?.sub } });
@@ -597,7 +615,6 @@ router.patch('/retailers/:id', async (req, res) => {
 router.post('/retailers/:id/approve', async (req, res) => {
   const r = await prisma.retailer.findUnique({ where: { id: req.params.id }, include: { members: { select: { id: true } } } });
   if (!r) throw new HttpError(404, 'Retailer not found');
-  await prisma.retailer.update({ where: { id: r.id }, data: { status: 'ACTIVE' } });
   let userId = r.members[0]?.id ?? null;
   if (!userId) {
     const user = await ensureCustomerAccount(r.contactEmail, { firstName: r.contactName?.split(' ')[0], lastName: r.contactName?.split(' ').slice(1).join(' ') });
@@ -605,6 +622,7 @@ router.post('/retailers/:id/approve', async (req, res) => {
     await prisma.user.update({ where: { id: user.id }, data: { retailerId: r.id } });
     userId = user.id;
   }
+  await prisma.retailer.update({ where: { id: r.id }, data: { status: 'ACTIVE' } });
   const mail = await sendRetailerApprovedEmail(r.id, userId);
   await recordPodEvent('retailer', r.id, 'approved', mail.sent ? `Welcome email sent to ${mail.to}` : `Approved; email not sent (${mail.error})`, actorOf(req));
   res.json({ retailer: await prisma.retailer.findUnique({ where: { id: r.id }, include: retailerInclude }), mail });
@@ -612,9 +630,11 @@ router.post('/retailers/:id/approve', async (req, res) => {
 
 for (const [action, status] of [['suspend', 'SUSPENDED'], ['restore', 'ACTIVE'], ['archive', 'ARCHIVED'], ['decline', 'ARCHIVED']] as const) {
   router.post(`/retailers/:id/${action}`, async (req, res) => {
+    const body = z.object({ note: opt(1000), email: z.boolean().optional() }).parse(req.body ?? {});
     const r = await prisma.retailer.update({ where: { id: String(req.params.id) }, data: { status } });
-    await recordPodEvent('retailer', r.id, action, null, actorOf(req));
-    res.json({ retailer: await prisma.retailer.findUnique({ where: { id: r.id }, include: retailerInclude }) });
+    const mail = body.email === false ? null : await sendRetailerStatusEmail(r.id, action, body.note ?? null);
+    await recordPodEvent('retailer', r.id, action, mail ? (mail.sent ? `Shop emailed (${mail.to})` : `Email failed (${mail.error})`) : null, actorOf(req));
+    res.json({ retailer: await prisma.retailer.findUnique({ where: { id: r.id }, include: retailerInclude }), mail });
   });
 }
 
@@ -678,6 +698,13 @@ router.patch('/production/:id', async (req, res) => {
   const body = z.object({ status: z.enum(['PLANNED', 'FILES_NEEDED', 'PREFLIGHT', 'APPROVED', 'IN_PRODUCTION', 'DONE', 'CANCELLED']).optional(), deadline: date.nullable().optional(), notes: opt(2000), internalNotes: opt(5000), retailerQty: num.int().min(0).optional(), partnerAddOnQty: num.int().min(0).optional() }).parse(req.body);
   const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, include: { listing: true } });
   if (!po) throw new HttpError(404, 'Production order not found');
+  // A run moves forward; it may go back to the file steps while files change, and may be cancelled until it is on press.
+  const NEXT: Record<string, string[]> = {
+    PLANNED: ['FILES_NEEDED', 'PREFLIGHT', 'APPROVED', 'CANCELLED'], FILES_NEEDED: ['PREFLIGHT', 'APPROVED', 'CANCELLED'], PREFLIGHT: ['FILES_NEEDED', 'APPROVED', 'CANCELLED'],
+    APPROVED: ['FILES_NEEDED', 'PREFLIGHT', 'IN_PRODUCTION', 'CANCELLED'], IN_PRODUCTION: ['DONE', 'APPROVED'], DONE: [], CANCELLED: ['PLANNED'],
+  };
+  if (body.status && body.status !== po.status && !NEXT[po.status]!.includes(body.status)) throw new HttpError(400, `A ${po.status.toLowerCase().replace('_', ' ')} run cannot be set to ${body.status.toLowerCase().replace('_', ' ')}.`);
+  if (po.status === 'DONE' && (body.retailerQty !== undefined || body.partnerAddOnQty !== undefined)) throw new HttpError(400, 'A finished run keeps its quantities.');
   const retailerQty = body.retailerQty ?? po.retailerQty;
   const partnerAddOnQty = body.partnerAddOnQty ?? po.partnerAddOnQty;
   const totalQty = retailerQty + partnerAddOnQty;
@@ -685,6 +712,11 @@ router.patch('/production/:id', async (req, res) => {
   await prisma.productionOrder.update({ where: { id: po.id }, data: { ...body, retailerQty, partnerAddOnQty, totalQty, ...(cost ? { printUnitCents: cost.unitCents, printTotalCents: cost.totalCents } : {}) } });
   if (body.status && body.status !== po.status) await recordPodEvent('production', po.id, 'status', `${po.status} → ${body.status}`, actorOf(req));
   else await recordPodEvent('production', po.id, 'edited', Object.keys(body).join(', '), actorOf(req));
+  // The publisher's printing charge follows the quantities, and a cancelled run charges nothing.
+  if (totalQty !== po.totalQty || (body.status && body.status !== po.status && (body.status === 'CANCELLED' || po.status === 'CANCELLED'))) {
+    const posted = await reconcileRunPrinting(po.id, actorOf(req));
+    if (posted) await recordPodEvent('production', po.id, 'ledger', `Printing charge brought in line with ${totalQty} copies${body.status === 'CANCELLED' ? ' (cancelled: reversed)' : ''}`, actorOf(req));
+  }
   res.json({ production: await prisma.productionOrder.findUnique({ where: { id: po.id }, include: productionInclude }) });
 });
 
@@ -721,6 +753,12 @@ router.patch('/purchase-orders/:id', async (req, res) => {
   const body = z.object({ status: z.enum(['DRAFT', 'SENT', 'ACKNOWLEDGED', 'FULFILLED', 'CANCELLED']).optional(), notes: opt(5000) }).parse(req.body);
   const po = await prisma.purchaseOrder.findUnique({ where: { id: req.params.id } });
   if (!po) throw new HttpError(404, 'Purchase order not found');
+  if (po.status === 'CANCELLED' && body.status && body.status !== 'CANCELLED') throw new HttpError(400, 'A cancelled purchase order stays cancelled; lock the cycle again to raise a new one.');
+  if (body.status === 'CANCELLED' && po.status !== 'CANCELLED') {
+    await cancelPurchaseOrder(po.id, actorOf(req));
+    if (body.notes !== undefined) await prisma.purchaseOrder.update({ where: { id: po.id }, data: { notes: body.notes } });
+    return res.json({ purchaseOrder: await prisma.purchaseOrder.findUnique({ where: { id: po.id }, include: purchaseInclude }) });
+  }
   const data: Prisma.PurchaseOrderUpdateInput = { ...body };
   if (body.status === 'ACKNOWLEDGED') data.acknowledgedAt = new Date();
   if (body.status === 'FULFILLED') data.fulfilledAt = new Date();
@@ -775,7 +813,8 @@ router.post('/payouts/statements/:id/issue', async (req, res) => {
 router.post('/payouts/statements/:id/mark-paid', async (req, res) => {
   const body = z.object({ method: str(40), reference: opt(120), paidAt: date.nullable().optional() }).parse(req.body);
   await markStatementPaid(req.params.id, body, actorOf(req));
-  res.json({ statement: await statementView(req.params.id) });
+  const mail = await sendStatementPaidEmail(req.params.id);
+  res.json({ statement: await statementView(req.params.id), mail });
 });
 router.post('/payouts/statements/:id/void', async (req, res) => {
   await voidStatement(req.params.id, actorOf(req));
@@ -841,15 +880,18 @@ router.post('/orders/:id/shipping', async (req, res) => {
   const body = z.object({ cents: num.int().min(0), note: opt(300) }).parse(req.body);
   const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true, shippingCents: true, subtotalCents: true, taxCents: true, discountCents: true, paymentStatus: true } });
   if (!o) throw new HttpError(404, 'Order not found');
-  if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'This order is already paid; add a separate adjustment instead');
+  if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'This order is already paid. Set shipping before the invoice goes out; to bill extra shipping on a paid order, add an adjustment from the store Orders area.');
   await prisma.order.update({ where: { id: o.id }, data: { shippingCents: body.cents, totalCents: o.subtotalCents - o.discountCents + o.taxCents + body.cents, shippingMethod: body.note ?? 'Wholesale shipping', events: { create: { kind: 'note', message: `Shipping set to $${(body.cents / 100).toFixed(2)}${body.note ? ` (${body.note})` : ''} by ${actorOf(req).name}`, actorName: actorOf(req).name } } } });
   res.json({ order: await prisma.order.findUnique({ where: { id: o.id }, select: podOrderSelect }) });
 });
 
 router.post('/orders/:id/mark-paid', async (req, res) => {
   const body = z.object({ provider: str(40), reference: opt(120) }).parse(req.body);
-  await markOrderPaid(req.params.id, body, { userId: req.session?.sub ?? null, email: req.session?.email ?? null, name: actorOf(req).name });
-  res.json({ order: await prisma.order.findUnique({ where: { id: req.params.id }, select: podOrderSelect }) });
+  // Only wholesale orders: a Distribution admin must not settle store orders by id.
+  const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true } });
+  if (!o) throw new HttpError(404, 'Order not found');
+  await markOrderPaid(o.id, body, { userId: req.session?.sub ?? null, email: req.session?.email ?? null, name: actorOf(req).name });
+  res.json({ order: await prisma.order.findUnique({ where: { id: o.id }, select: podOrderSelect }) });
 });
 
 router.post('/orders/:id/pay-link', async (req, res) => {
@@ -862,11 +904,11 @@ router.post('/orders/:id/pay-link', async (req, res) => {
 
 router.post('/orders/:id/cancel', async (req, res) => {
   const body = z.object({ reason: opt(300) }).parse(req.body ?? {});
-  const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true, status: true, paymentStatus: true } });
+  const o = await prisma.order.findFirst({ where: { id: req.params.id, source: 'retailer' }, select: { id: true } });
   if (!o) throw new HttpError(404, 'Order not found');
-  if (o.paymentStatus === 'CAPTURED') throw new HttpError(400, 'Refund a paid order from the store Orders area');
-  await prisma.order.update({ where: { id: o.id }, data: { status: 'CANCELLED', events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'CANCELLED', message: body.reason ?? 'Canceled by staff', actorName: actorOf(req).name } } } });
-  res.json({ order: await prisma.order.findUnique({ where: { id: o.id }, select: podOrderSelect }) });
+  await cancelRetailerOrder(o.id, actorOf(req), { by: 'staff', reason: body.reason ?? null });
+  const mail = await sendRetailerOrderCancelledEmail(o.id, body.reason ?? null);
+  res.json({ order: await prisma.order.findUnique({ where: { id: o.id }, select: podOrderSelect }), mail });
 });
 
 // ---------------------------------------------------------------------------
@@ -888,7 +930,8 @@ router.get('/returns', async (req, res) => {
 router.post('/returns/:id/decide', async (req, res) => {
   const body = z.object({ status: z.enum(['APPROVED', 'REJECTED', 'RECEIVED', 'CREDITED']), creditCents: num.int().min(0).nullable().optional(), note: opt(1000) }).parse(req.body);
   await decideReturn(req.params.id, body, actorOf(req));
-  res.json({ return: await prisma.retailerReturn.findUnique({ where: { id: req.params.id }, include: returnInclude }) });
+  const mail = await sendReturnDecisionEmail(req.params.id);
+  res.json({ return: await prisma.retailerReturn.findUnique({ where: { id: req.params.id }, include: returnInclude }), mail });
 });
 
 // ---------------------------------------------------------------------------
@@ -1070,7 +1113,8 @@ router.get('/inventory', async (_req, res) => {
 // ---------------------------------------------------------------------------
 
 async function pendingShipments() {
-  const orders = await prisma.order.findMany({ where: { source: 'retailer', status: { in: ['PAID', 'IN_PRODUCTION'] } }, orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true, paymentStatus: true, createdAt: true, shippingAddress: true, retailer: { select: { id: true, name: true, contactEmail: true, phone: true } }, cycle: { select: { name: true, inStoreDate: true } }, items: { select: { id: true, name: true, quantity: true, listing: { select: { weightOz: true, pageCount: true, fulfillment: true } } } }, shipments: { select: { id: true, trackingCode: true, carrier: true, createdAt: true } } } });
+  // Shipping is billed when the order ships, so unpaid invoiced orders are packed too; what is still open for ordering is not.
+  const orders = await prisma.order.findMany({ where: { source: 'retailer', status: { in: ['PENDING', 'PAID', 'IN_PRODUCTION'] }, OR: [{ cycle: null }, { cycle: { status: { in: ['FOC_LOCKED', 'CLOSED'] } } }] }, orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true, paymentStatus: true, createdAt: true, shippingAddress: true, retailer: { select: { id: true, name: true, contactEmail: true, phone: true } }, cycle: { select: { name: true, inStoreDate: true } }, items: { select: { id: true, name: true, quantity: true, listing: { select: { weightOz: true, pageCount: true, fulfillment: true } } } }, shipments: { select: { id: true, trackingCode: true, carrier: true, createdAt: true } } } });
   return orders.map((o) => {
     const units = o.items.reduce((s2, i) => s2 + i.quantity, 0);
     const weightOz = o.items.reduce((s2, i) => s2 + i.quantity * (i.listing?.weightOz ?? (i.listing?.pageCount ? 1.5 + i.listing.pageCount * 0.08 : 3)), 0);
@@ -1097,9 +1141,12 @@ router.get('/fulfillment/export.csv', async (_req, res) => {
 
 router.post('/fulfillment/:orderId/ship', async (req, res) => {
   const body = z.object({ carrier: str(40), service: opt(60), trackingCode: opt(80), weightOz: num.min(0).nullable().optional(), notify: z.boolean().optional() }).parse(req.body);
-  const o = await prisma.order.findFirst({ where: { id: req.params.orderId, source: 'retailer' }, include: { items: { select: { id: true, quantity: true } } } });
+  const o = await prisma.order.findFirst({ where: { id: req.params.orderId, source: 'retailer' }, include: { items: { select: { id: true, quantity: true, listing: { select: { fulfillment: true } } } } } });
   if (!o) throw new HttpError(404, 'Order not found');
-  const shipment = await prisma.shipment.create({ data: { orderId: o.id, carrier: body.carrier, service: body.service ?? null, trackingCode: body.trackingCode ?? null, weightOz: body.weightOz ?? null, status: 'SHIPPED', items: { create: o.items.map((i) => ({ orderItemId: i.id, quantity: i.quantity })) } } });
+  // The publisher ships their own lines from the purchase order; this shipment carries ours.
+  const ours = o.items.filter((it) => it.listing?.fulfillment !== 'PARTNER_SHIPS');
+  if (ours.length === 0) throw new HttpError(400, 'Every line on this order ships from the publisher; nothing to ship from here.');
+  const shipment = await prisma.shipment.create({ data: { orderId: o.id, carrier: body.carrier, service: body.service ?? null, trackingCode: body.trackingCode ?? null, weightOz: body.weightOz ?? null, status: 'SHIPPED', items: { create: ours.map((i) => ({ orderItemId: i.id, quantity: i.quantity })) } } });
   await prisma.order.update({ where: { id: o.id }, data: { status: 'SHIPPED', trackingNumber: body.trackingCode ?? o.trackingNumber, events: { create: { kind: 'tracking', fromStatus: o.status, toStatus: 'SHIPPED', message: `Shipped via ${body.carrier}${body.trackingCode ? ` · ${body.trackingCode}` : ''} by ${actorOf(req).name}`, actorName: actorOf(req).name } } } });
   let mail: { sent: boolean; error?: string } | null = null;
   if (body.notify !== false) { const { sendShippingNotificationEmail } = await import('../../lib/order-emails.js'); mail = await sendShippingNotificationEmail(o.id).then(() => ({ sent: true })).catch((e: any) => ({ sent: false, error: e?.message })); }

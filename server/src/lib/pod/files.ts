@@ -21,13 +21,51 @@ const SUBDIR = 'pod';
 const DIR = path.join(UPLOADS_DIR, SUBDIR);
 await fs.mkdir(DIR, { recursive: true }).catch(() => undefined);
 
+/**
+ * What may be stored at all, and under which extension. Anything else is kept
+ * as .bin so the browser never runs it. HTML, SVG, scripts and the like are
+ * never stored under their own extension: files under /uploads are served
+ * from our own origin, where a page would run with a staff session.
+ */
+const SAFE_EXTS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'zip', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ai', 'psd', 'tif', 'tiff']);
+export const PDF_EXTS = new Set(['pdf']);
+export const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
+const PDF_OR_IMAGE = new Set([...PDF_EXTS, ...IMAGE_EXTS]);
+export function fileExt(name: string): string { return path.extname(name).slice(1).toLowerCase(); }
+
 export const listingUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, DIR),
-    filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}${path.extname(file.originalname).slice(0, 10)}`),
+    filename: (_req, file, cb) => { const ext = fileExt(file.originalname); cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}.${SAFE_EXTS.has(ext) ? ext : 'bin'}`); },
   }),
   limits: { fileSize: MAX_UPLOAD_BYTES },
 });
+
+/** Order forms and listing sheets: a few megabytes of text, never a 5 GB file read into memory. */
+export const csvUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, DIR),
+    filename: (_req, _file, cb) => cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}.csv`),
+  }),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+});
+
+/** Refuse (and delete) an upload whose type does not fit the slot. */
+export async function requireUploadType(file: Express.Multer.File, allowed: Set<string>, what: string): Promise<void> {
+  const ext = fileExt(file.originalname);
+  const mimeOk = allowed.has('pdf') && /pdf$/i.test(file.mimetype) || [...allowed].some((e) => IMAGE_EXTS.has(e)) && /^image\/(jpeg|png|webp|gif)$/i.test(file.mimetype);
+  if (!allowed.has(ext) || (!mimeOk && !/^application\/(zip|octet-stream|msword|vnd\.)/i.test(file.mimetype) && !/^text\//i.test(file.mimetype))) {
+    await fs.unlink(file.path).catch(() => undefined);
+    const list = [...allowed].map((e) => e.toUpperCase()).join(', ');
+    throw new HttpError(400, `${what} must be ${list.includes(',') ? `one of ${list}` : `a ${list}`}; “${file.originalname}” is ${ext ? `.${ext}` : file.mimetype || 'not that'}.`);
+  }
+}
+export const UPLOAD_TYPES = {
+  print: PDF_EXTS,
+  image: IMAGE_EXTS,
+  pdfOrImage: PDF_OR_IMAGE,
+  extra: new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'zip', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'ai', 'psd', 'tif', 'tiff']),
+};
 
 export function isFileKind(v: unknown): v is FileKind {
   return typeof v === 'string' && (FILE_KINDS as readonly string[]).includes(v);
@@ -38,10 +76,9 @@ export async function storeListingFile(args: { listingId: string; kind: FileKind
   const { listingId, kind, file } = args;
   const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true, title: true, trimWidthIn: true, trimHeightIn: true, pageCount: true, partnerId: true } });
   if (!listing) { await fs.unlink(file.path).catch(() => undefined); throw new HttpError(404, 'Listing not found'); }
-  const isPdf = /pdf$/i.test(file.mimetype) || /\.pdf$/i.test(file.originalname);
-  const isImage = /^image\//.test(file.mimetype);
-  if ((kind === 'cover' || kind === 'interior') && !isPdf) { await fs.unlink(file.path).catch(() => undefined); throw new HttpError(400, `The ${kind} must be a PDF.`); }
-  if ((kind === 'cover_image' || kind === 'marketing') && !isImage) { await fs.unlink(file.path).catch(() => undefined); throw new HttpError(400, `The ${kind === 'marketing' ? 'marketing image' : 'cover image'} must be a JPG, PNG or WebP.`); }
+  if (kind === 'cover' || kind === 'interior') await requireUploadType(file, UPLOAD_TYPES.print, `The ${kind} PDF`);
+  else if (kind === 'cover_image' || kind === 'marketing') await requireUploadType(file, UPLOAD_TYPES.image, kind === 'marketing' ? 'A marketing image' : 'The cover image');
+  else await requireUploadType(file, UPLOAD_TYPES.extra, 'An extra file');
 
   let preflight: PreflightResult | null = null;
   if (kind === 'cover' || kind === 'interior') {
@@ -111,8 +148,8 @@ export async function deleteListingFile(fileId: string, actor: Actor) {
 /** Store a publisher asset (logo, marketing image, press kit) outside any listing. */
 export async function storePublisherAsset(args: { partnerId: string; kind: string; title?: string | null; file: Express.Multer.File; actor: Actor; uploaderId?: string | null }) {
   const { file } = args;
-  const isImage = /^image\//.test(file.mimetype);
-  if ((args.kind === 'logo' || args.kind === 'marketing') && !isImage) { await fs.unlink(file.path).catch(() => undefined); throw new HttpError(400, 'Logos and marketing images must be JPG, PNG, WebP or SVG.'); }
+  if (args.kind === 'logo' || args.kind === 'marketing') await requireUploadType(file, UPLOAD_TYPES.image, args.kind === 'logo' ? 'A logo' : 'A marketing image');
+  else await requireUploadType(file, UPLOAD_TYPES.extra, 'A press file');
   const stored = await publishUpload({ subdir: SUBDIR, filename: file.filename, localPath: file.path, contentType: file.mimetype, originalName: file.originalname });
   const media = await prisma.mediaFile.create({ data: { filename: file.filename, originalName: file.originalname, mimeType: file.mimetype, size: file.size, url: stored.url, folder: '/pod/assets', tags: ['pod-asset', `kind:${args.kind}`, `partner:${args.partnerId}`], uploaderId: args.uploaderId ?? null, partnerId: args.partnerId } });
   const asset = await prisma.publisherAsset.create({ data: { partnerId: args.partnerId, kind: args.kind, title: args.title ?? file.originalname, mediaFileId: media.id }, include: { media: true } });

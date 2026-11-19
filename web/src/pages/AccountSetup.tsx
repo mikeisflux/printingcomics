@@ -54,7 +54,7 @@ export function AccountSetup() {
     <div className="auth-box">
       <h1>Finish setting up your account</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        Your account was created with your order. Choose a password and you can sign in any time to see your orders, approve proofs and send us files.
+        {next.startsWith('/publisher') ? 'You were invited to the publisher portal. Choose a password and you can sign in any time to manage your listings, files and payouts.' : next.startsWith('/retailer') ? 'Your wholesale account is approved. Choose a password and you can sign in any time to order the catalog.' : next.startsWith('/admin') ? 'You were given staff access. Choose your own password to continue.' : 'Your account was created with your order. Choose a password and you can sign in any time to see your orders, approve proofs and send us files.'}
       </p>
       <form onSubmit={onSubmit}>
         <label>Email</label>

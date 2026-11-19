@@ -41,13 +41,19 @@ export async function generateStatement(args: { partnerId: string; cycleId?: str
   const adjustmentCents = sum('ADJUSTMENT');
   const netCents = grossCents + commissionCents + printingCents + creditsCents + adjustmentCents;
   const dates = entries.map((e) => e.createdAt.getTime());
-  const statement = await prisma.payoutStatement.create({ data: {
+  const statement = await prisma.$transaction(async (tx) => {
+    // Nobody else may have swept these lines between the read and the write.
+    const still = await tx.partnerLedgerEntry.count({ where: { id: { in: entries.map((e) => e.id) }, statementId: null } });
+    if (still !== entries.length) throw new HttpError(409, 'Another statement just took some of these entries. Reload and try again.');
+    const created = await tx.payoutStatement.create({ data: {
     number: await numbering.statement(), partnerId: args.partnerId, cycleId: args.cycleId ?? null,
     periodStart: args.periodStart ?? new Date(Math.min(...dates)), periodEnd: args.periodEnd ?? new Date(Math.max(...dates)),
     lines: entries.map((e) => ({ id: e.id, kind: e.kind, amountCents: e.amountCents, description: e.description, catalogKey: e.listing?.catalogKey ?? null, title: e.listing?.title ?? null, cycle: e.cycle?.name ?? null, at: e.createdAt.toISOString() })) as unknown as Prisma.InputJsonValue,
     grossCents, commissionCents, printingCents, creditsCents, adjustmentCents, netCents, notes: args.notes ?? null,
-  } });
-  await prisma.partnerLedgerEntry.updateMany({ where: { id: { in: entries.map((e) => e.id) } }, data: { statementId: statement.id } });
+    } });
+    await tx.partnerLedgerEntry.updateMany({ where: { id: { in: entries.map((e) => e.id) } }, data: { statementId: created.id } });
+    return created;
+  });
   await recordPodEvent('statement', statement.id, 'created', `${entries.length} ledger entries, net ${(netCents / 100).toFixed(2)}`, actor);
   return statement;
 }

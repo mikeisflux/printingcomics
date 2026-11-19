@@ -43,7 +43,7 @@ export function PrintOnDemand() {
               <p className="lead rise rise-2" style={{ marginTop: '1.25rem' }}>{s?.intro ?? 'List your comics with us, sell them to comic shops at wholesale, and let us print and ship every order. No minimums, no inventory, one monthly catalog.'}</p>
               <div className="row rise rise-3" style={{ marginTop: '1.75rem', gap: '.75rem' }}>
                 <Link to={user?.partner ? '/publisher' : '/distribution/apply?as=publisher'} className="pbtn glow"><BookOpen size={18} /> {user?.partner ? 'Open my publisher portal' : 'List your titles'}</Link>
-                <Link to={user?.retailer ? '/retailer' : '/distribution/apply?as=retailer'} className="pbtn ghost"><Store size={18} /> {user?.retailer ? 'Order wholesale' : 'Open a wholesale account'}</Link>
+                <Link to={user?.retailer?.status === 'ACTIVE' ? '/retailer' : '/distribution/apply?as=retailer'} className="pbtn ghost"><Store size={18} /> {user?.retailer?.status === 'ACTIVE' ? 'Order wholesale' : 'Open a wholesale account'}</Link>
                 <Link to="/distribution/catalog" className="pbtn ghost" style={{ border: 0 }}>Browse the catalog <ArrowRight size={16} /></Link>
               </div>
               <div className="stat-strip rise rise-4">
@@ -84,7 +84,7 @@ export function PrintOnDemand() {
             </div>
             <div className="grid cols-2" style={{ marginTop: '1rem', gap: '.75rem' }}>
               <Link to={user?.partner || staff ? '/publisher' : '/login?redirect=/publisher'} className="pbtn glow" style={{ justifyContent: 'center' }} data-testid="publisher-login"><LogIn size={16} /> {user?.partner ? 'Open publisher portal' : staff ? 'View the publisher portal' : 'Publisher login'}</Link>
-              <Link to={user?.retailer || staff ? '/retailer' : '/login?redirect=/retailer'} className="pbtn hot" style={{ justifyContent: 'center' }} data-testid="retailer-login"><LogIn size={16} /> {user?.retailer ? 'Open wholesale ordering' : staff ? 'View the retailer portal' : 'Retailer login'}</Link>
+              <Link to={user?.retailer?.status === 'ACTIVE' || staff ? '/retailer' : '/login?redirect=/retailer'} className="pbtn hot" style={{ justifyContent: 'center' }} data-testid="retailer-login"><LogIn size={16} /> {user?.retailer?.status === 'ACTIVE' ? 'Open wholesale ordering' : staff ? 'View the retailer portal' : 'Retailer login'}</Link>
             </div>
             <p className="dim" style={{ fontSize: '.8rem', textAlign: 'center', margin: '.6rem 0 0' }}>New here? <Link to="/distribution/apply?as=publisher" style={{ color: '#fff' }}>Apply as a publisher</Link> · <Link to="/distribution/apply?as=retailer" style={{ color: '#fff' }}>Open a wholesale account</Link></p>
             </div>
@@ -117,7 +117,7 @@ export function PrintOnDemand() {
             </ul>
             <span className="pbtn glow" style={{ alignSelf: 'flex-start', marginTop: '.5rem' }}>{user?.partner ? 'Open the publisher portal' : 'Apply as a publisher'} <ArrowRight size={16} /></span>
           </Link>
-          <Link to={user?.retailer ? '/retailer' : '/distribution/apply?as=retailer'} className="door shop rise rise-1">
+          <Link to={user?.retailer?.status === 'ACTIVE' ? '/retailer' : '/distribution/apply?as=retailer'} className="door shop rise rise-1">
             <Store className="big-ic" size={40} />
             <div className="eyebrow" style={{ color: 'var(--p-magenta)' }}>Comic shops</div>
             <h3>Indie books at real wholesale.</h3>
@@ -128,7 +128,7 @@ export function PrintOnDemand() {
               <li>Download the catalog as a spreadsheet, upload it back as your order</li>
               <li>Retailer incentive covers earned automatically</li>
             </ul>
-            <span className="pbtn hot" style={{ alignSelf: 'flex-start', marginTop: '.5rem' }}>{user?.retailer ? 'Order wholesale' : 'Open a wholesale account'} <ArrowRight size={16} /></span>
+            <span className="pbtn hot" style={{ alignSelf: 'flex-start', marginTop: '.5rem' }}>{user?.retailer?.status === 'ACTIVE' ? 'Order wholesale' : 'Open a wholesale account'} <ArrowRight size={16} /></span>
           </Link>
         </div>
       </section>

@@ -66,7 +66,7 @@ export function AdminLayout() {
   // choose its own before it sees anything here.
   if (user.hasPassword === false) return <Navigate to={`/account/setup?next=${encodeURIComponent(pathname)}`} replace />;
   // A Distribution admin has no store dashboard: the section is their home.
-  if (podOnly(user) && (pathname === '/admin' || pathname === '/admin/')) return <Navigate to="/admin/pod" replace />;
+  if (podOnly(user) && (pathname === '/admin' || pathname === '/admin/')) return <Navigate to={can(user, 'pod') ? '/admin/pod' : '/admin/pod/preflight'} replace />;
 
   return (
     <ToastProvider>

@@ -4,7 +4,7 @@
 import type { Request } from 'express';
 import { prisma } from '../../db.js';
 
-export type PodSubject = 'listing' | 'cycle' | 'retailer' | 'production' | 'purchase_order' | 'statement';
+export type PodSubject = 'listing' | 'cycle' | 'retailer' | 'production' | 'purchase_order' | 'statement' | 'partner' | 'barcode';
 
 export interface Actor { id: string | null; name: string }
 

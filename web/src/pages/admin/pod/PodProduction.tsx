@@ -82,7 +82,7 @@ function RunDrawer({ run, onClose, onChanged }: { run: Run | null; onClose: () =
   return (
     <Drawer open onClose={onClose} title={<span className="row"><Factory size={20} /> {run.number}</span>} width={680}>
       {node}
-      <div className="row" style={{ marginBottom: '1rem' }}><TonePill map={PRODUCTION_STATUS} status={run.status} /><Link to={`/admin/pod/listings/${run.listing.id}`} className="chip">{run.listing.title} <ExternalLink size={11} /></Link>{run.cycle && <Link to={`/admin/pod/cycles/${run.cycle.id}`} className="chip">{run.cycle.name}</Link>}{run.order && <Link to={`/admin/orders/${run.order.id}`} className="chip">Order {run.order.number}</Link>}</div>
+      <div className="row" style={{ marginBottom: '1rem' }}><TonePill map={PRODUCTION_STATUS} status={run.status} /><Link to={`/admin/pod/listings/${run.listing.id}`} className="chip">{run.listing.title} <ExternalLink size={11} /></Link>{run.cycle && <Link to={`/admin/pod/cycles/${run.cycle.id}`} className="chip">{run.cycle.name}</Link>}{run.order && <Link to={`/admin/pod/orders?open=${run.order.id}`} className="chip">Order {run.order.number}</Link>}</div>
       <div className="grid cols-3" style={{ marginBottom: '1rem' }}>
         <div className="panel tight"><div className="eyebrow">Copies</div><div className="display-md mono">{run.totalQty}</div><div className="dim" style={{ fontSize: '.78rem' }}>{run.retailerQty} retailer + {run.partnerAddOnQty} publisher</div></div>
         <div className="panel tight"><div className="eyebrow">Print charge</div><div className="display-md mono">{run.printTotalCents != null ? money(run.printTotalCents) : '—'}</div><div className="dim" style={{ fontSize: '.78rem' }}>{run.printUnitCents != null ? `${money(run.printUnitCents)} per copy, to the publisher` : 'no price: set trim + pages'}</div></div>
@@ -90,7 +90,7 @@ function RunDrawer({ run, onClose, onChanged }: { run: Run | null; onClose: () =
       </div>
       <div className="panel" style={{ marginBottom: '1rem' }}>
         <h3>Status</h3>
-        <div className="seg" style={{ marginTop: '.5rem' }}>{Object.keys(PRODUCTION_STATUS).map((k) => <button key={k} className={run.status === k ? 'on' : ''} onClick={() => void patch({ status: k })}>{PRODUCTION_STATUS[k]!.label}</button>)}</div>
+        <div className="seg" style={{ marginTop: '.5rem' }}>{Object.keys(PRODUCTION_STATUS).map((k) => <button key={k} className={run.status === k ? 'on' : ''} disabled={run.status === k} onClick={() => { if ((k === 'CANCELLED' || k === 'DONE') && !confirm(k === 'CANCELLED' ? 'Cancel this run? Its printing charge is reversed on the publisher ledger.' : 'Mark this run done? Its quantities are then fixed.')) return; void patch({ status: k }); }}>{PRODUCTION_STATUS[k]!.label}</button>)}</div>
         <p className="dim" style={{ fontSize: '.8rem', marginTop: '.5rem' }}>Preflight moves a run between Files needed, In preflight and Approved by reviewing the files. Staff set On press and Done here.</p>
       </div>
       <div className="stack" style={{ marginBottom: '1rem' }}>

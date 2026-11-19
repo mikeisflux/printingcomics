@@ -18,9 +18,10 @@ interface Publisher { id: string; name: string; slug: string; contactEmail: stri
 export function PodListings() {
   const [params, setParams] = useSearchParams();
   const status = params.get('status') ?? 'queue';
+  const partner = params.get('partner') ?? '';
   const [q, setQ] = useState('');
   const [view, setView] = useState<'board' | 'table'>(status === 'queue' ? 'board' : 'table');
-  const { data, loading, reload } = useLoad<ListResp>(`/admin/pod/listings?status=${encodeURIComponent(status === 'queue' || status === 'all' ? (status === 'all' ? '' : 'queue') : status)}${q ? `&q=${encodeURIComponent(q)}` : ''}`, [status, q]);
+  const { data, loading, reload } = useLoad<ListResp>(`/admin/pod/listings?status=${encodeURIComponent(status === 'queue' || status === 'all' ? (status === 'all' ? '' : 'queue') : status)}${partner ? `&partner=${encodeURIComponent(partner)}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`, [status, partner, q]);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
