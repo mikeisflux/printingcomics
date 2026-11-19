@@ -24,9 +24,11 @@ export function paidStatusFor(status: string): string {
  */
 export async function sendPaidReceipt(orderId: string): Promise<void> {
   const { prisma } = await import('../db.js');
-  const o = await prisma.order.findUnique({ where: { id: orderId }, select: { source: true } });
+  const o = await prisma.order.findUnique({ where: { id: orderId }, select: { source: true, retailerId: true } });
   if (o?.source === 'retailer') {
     const { sendRetailerReceiptEmail } = await import('./pod/emails.js');
+    const { notifyRetailerSystem } = await import('./pod/integration.js');
+    notifyRetailerSystem(o.retailerId, 'order.paid', orderId);
     await sendRetailerReceiptEmail(orderId).catch((e: any) => console.warn('[pod] receipt failed:', e?.message ?? e));
   } else {
     const { sendOrderConfirmationEmail } = await import('./order-emails.js');

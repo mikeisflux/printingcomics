@@ -6,6 +6,7 @@
  */
 import { prisma } from '../../db.js';
 import type { Actor } from './events.js';
+import { notifyRetailerSystem } from './integration.js';
 
 /** The publisher shipped a purchase order: a shipment lands on every shop order that holds its lines. */
 export async function recordPublisherShipment(purchaseOrderId: string, how: { carrier: string | null; trackingCode: string | null }, actor: Actor): Promise<{ ordersShipped: number; ordersWaiting: number }> {
@@ -24,6 +25,7 @@ export async function recordPublisherShipment(purchaseOrderId: string, how: { ca
     if (mine.length === 0) continue;
     await prisma.shipment.create({ data: { orderId: o.id, carrier: how.carrier ?? 'Publisher', service: `Purchase order ${po.number}`, trackingCode: how.trackingCode, status: 'SHIPPED', items: { create: mine.map((it) => ({ orderItemId: it.id, quantity: it.quantity })) } } });
     await prisma.orderStatusEvent.create({ data: { orderId: o.id, kind: 'tracking', message: `${mine.length} line(s) shipped by the publisher (${po.number})${how.trackingCode ? ` · ${how.trackingCode}` : ''}`, actorId: actor.id, actorName: actor.name } });
+    notifyRetailerSystem(o.retailerId, 'shipment.created', o.id);
     const done = await markShippedWhenComplete(o.id, how.trackingCode);
     if (done) ordersShipped++; else ordersWaiting++;
     void done;
@@ -40,6 +42,7 @@ export async function markShippedWhenComplete(orderId: string, trackingCode: str
   if (!o || o.status === 'CANCELLED' || o.status === 'REFUNDED' || o.status === 'SHIPPED' || o.status === 'DELIVERED') return null;
   if (o.items.some((it) => it.shipmentItems.length === 0)) return null;
   await prisma.order.update({ where: { id: o.id }, data: { status: 'SHIPPED', trackingNumber: trackingCode ?? o.trackingNumber, events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'SHIPPED', message: 'Every line has shipped' } } } });
+  notifyRetailerSystem(o.retailerId, 'order.shipped', o.id);
   if (opts.notify === false) return { mail: null };
   const { sendShippingNotificationEmail } = await import('../order-emails.js');
   const mail = await sendShippingNotificationEmail(o.id).then((sent) => (sent ? { sent: true } : { sent: false, error: 'no tracking number to send' })).catch((e: any) => ({ sent: false, error: e?.message }));

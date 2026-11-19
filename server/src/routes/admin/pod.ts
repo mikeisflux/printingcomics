@@ -612,7 +612,9 @@ router.get('/retailers/:id', async (req, res) => {
     prisma.order.findMany({ where: { retailerId: r.id }, orderBy: { createdAt: 'desc' }, take: 50, select: { id: true, number: true, status: true, paymentStatus: true, subtotalCents: true, totalCents: true, createdAt: true, cycle: { select: { name: true } }, wholesale: true, _count: { select: { items: true } } } }),
     podEvents('retailer', r.id),
   ]);
-  res.json({ retailer: { ...r, orderCount: r._count.orders }, orders, events });
+  const { webhookSecret, integrationKeyHash, ...safe } = r;
+  const lastDelivery = await prisma.retailerWebhookDelivery.findFirst({ where: { retailerId: r.id }, orderBy: { createdAt: 'desc' }, select: { event: true, succeeded: true, createdAt: true, error: true } });
+  res.json({ retailer: { ...safe, hasWebhookSecret: Boolean(webhookSecret), hasIntegrationKey: Boolean(integrationKeyHash), lastDelivery, orderCount: r._count.orders }, orders, events });
 });
 
 router.patch('/retailers/:id', async (req, res) => {
@@ -934,6 +936,9 @@ router.post('/orders/:id/pay-link', async (req, res) => {
   if (!o) throw new HttpError(404, 'Order not found');
   const url = await orderPayLink(o.id, o.number);
   const mail = req.body?.send === false ? null : await sendPayRequestEmail(o.id, url);
+  const { notifyRetailerSystem } = await import('../../lib/pod/integration.js');
+  const owner = await prisma.order.findUnique({ where: { id: o.id }, select: { retailerId: true } });
+  notifyRetailerSystem(owner?.retailerId, 'invoice.ready', o.id);
   res.json({ url, mail });
 });
 
@@ -1190,6 +1195,8 @@ router.post('/fulfillment/:orderId/ship', async (req, res) => {
   // Complete: the order is SHIPPED and the tracking email goes (the shop
   // hears once, with every line gone). Partial: the shop hears about our
   // box now; the rest follows the publisher's shipment.
+  const { notifyRetailerSystem } = await import('../../lib/pod/integration.js');
+  notifyRetailerSystem(o.retailerId, 'shipment.created', o.id);
   const complete = await markShippedWhenComplete(o.id, body.trackingCode ?? null, { notify: body.notify !== false });
   let mail: { sent: boolean; error?: string } | null = null;
   if (complete) mail = complete.mail;

@@ -14,7 +14,7 @@ import { useOverview } from './PodLayout';
 interface Retailer {
   id: string; slug: string; name: string; contactName: string | null; contactEmail: string; phone: string | null; website: string | null; address: Record<string, string> | null; status: string; tierOverride: number | null;
   resaleCertNumber: string | null; resaleCertState: string | null; resaleCertExpires: string | null; resaleCertStatus: string; taxExempt: boolean; applicationMessage: string | null; notes: string | null; createdAt: string;
-  members: { id: string; email: string; firstName: string | null; lastName: string | null; lastLoginAt: string | null; passwordSetAt: string | null }[]; orderCount: number; wholesaleCents?: number; creditCents?: number;
+  members: { id: string; email: string; firstName: string | null; lastName: string | null; lastLoginAt: string | null; passwordSetAt: string | null }[]; orderCount: number; wholesaleCents?: number; creditCents?: number; posSystem?: string | null; integrationKeyPrefix?: string | null; integrationKeyCreatedAt?: string | null; webhookUrl?: string | null; hasIntegrationKey?: boolean; lastDelivery?: { event: string; succeeded: boolean; createdAt: string; error: string | null } | null;
 }
 const US = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
 
@@ -142,6 +142,15 @@ export function PodRetailerDetail() {
         </div>
         <aside className="stack">
           <div className="panel"><h3>Contact &amp; ship-to</h3><dl className="spec" style={{ marginTop: '.5rem' }}><dt>Contact</dt><dd>{r.contactName ?? '—'}</dd><dt>Email</dt><dd><a href={`mailto:${r.contactEmail}`}>{r.contactEmail}</a></dd><dt>Phone</dt><dd>{r.phone ?? '—'}</dd><dt>Address</dt><dd>{r.address ? [r.address.line1, r.address.line2, [r.address.city, r.address.region, r.address.postalCode].filter(Boolean).join(', ')].filter(Boolean).join(', ') : '—'}</dd></dl>{r.notes && <p className="dim" style={{ fontSize: '.86rem', whiteSpace: 'pre-wrap', marginTop: '.75rem' }}>{r.notes}</p>}</div>
+          <div className="panel"><h3>POS integration</h3>
+            <dl className="spec" style={{ marginTop: '.5rem' }}>
+              <dt>System</dt><dd>{r.posSystem ? r.posSystem.replace(/_/g, ' ') : <span className="dim">not picked</span>}</dd>
+              <dt>Key</dt><dd>{r.hasIntegrationKey ? <><span className="mono">{r.integrationKeyPrefix}…</span>{r.integrationKeyCreatedAt ? <span className="dim"> · {dateShort(r.integrationKeyCreatedAt)}</span> : null}</> : <span className="dim">none</span>}</dd>
+              <dt>Webhook</dt><dd>{r.webhookUrl ? <span style={{ wordBreak: 'break-all' }}>{r.webhookUrl}</span> : <span className="dim">none</span>}</dd>
+              {r.lastDelivery && <><dt>Last call</dt><dd>{r.lastDelivery.event} · {r.lastDelivery.succeeded ? 'ok' : `failed (${r.lastDelivery.error ?? 'no answer'})`} · {dateShort(r.lastDelivery.createdAt)}</dd></>}
+            </dl>
+            <p className="dim" style={{ fontSize: '.76rem', marginTop: '.5rem' }}>The shop manages this itself under POS &amp; integrations; "View as" opens that page.</p>
+          </div>
           <div className="panel"><h3>Store credit</h3>
             <p style={{ margin: '.35rem 0 .5rem' }}><b className="mono" style={{ fontSize: '1.2rem' }}>{money(r.creditCents ?? 0)}</b> <span className="dim" style={{ fontSize: '.84rem' }}>comes off the shop's next order</span></p>
             <div className="row" style={{ flexWrap: 'wrap' }}><input className="inp mono" style={{ width: 100 }} placeholder="± $" value={credit.amount} onChange={(e) => setCredit((x) => ({ ...x, amount: e.target.value }))} /><input className="inp" style={{ flex: 1, minWidth: 140 }} placeholder="Why (the history keeps this)" value={credit.note} onChange={(e) => setCredit((x) => ({ ...x, note: e.target.value }))} /><button className="pbtn soft sm" disabled={busy !== null || !Number(credit.amount) || !credit.note.trim()} onClick={() => { void act('credit', { deltaCents: Math.round(Number(credit.amount) * 100), note: credit.note.trim() }); setCredit({ amount: '', note: '' }); }}>Adjust</button></div>

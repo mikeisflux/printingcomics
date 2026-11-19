@@ -74,6 +74,8 @@ import { PublisherLayout, PublisherDashboard, PublisherListings, PublisherListin
 import { RetailerLayout, RetailerDashboard, RetailerOrders } from './pages/pod/RetailerPortal';
 import { RetailerCatalog } from './pages/pod/RetailerCatalog';
 import { RetailerProfile, RetailerDownloads, RetailerReturns, RetailerShipments } from './pages/pod/RetailerPortalMore';
+import { RetailerIntegrations } from './pages/pod/RetailerIntegrations';
+import { PodPosGuide } from './pages/pod/PodPosGuide';
 import { PublisherFiles, PublisherProfile, PublisherBarcodes, PublisherPrintOrders, PublisherResources } from './pages/pod/PublisherPortalMore';
 import { Navigate, useLocation } from 'react-router-dom';
 
@@ -153,6 +155,7 @@ export const router = createBrowserRouter([
       { path: 'distribution/catalog/:key', element: <PodTitle /> },
       { path: 'distribution/apply', element: <PodApply /> },
       { path: 'distribution/handbook', element: <PublisherHandbook /> },
+      { path: 'distribution/pos', element: <PodPosGuide /> },
       { path: 'distribution/publishers/:slug', element: <PodPublisherPage /> },
       { path: 'print-on-demand', element: <RedirectToDistribution /> },
       { path: 'print-on-demand/*', element: <RedirectToDistribution /> },
@@ -187,6 +190,7 @@ export const router = createBrowserRouter([
           { path: 'returns', element: <RetailerReturns /> },
           { path: 'shipments', element: <RetailerShipments /> },
           { path: 'downloads', element: <RetailerDownloads /> },
+          { path: 'integrations', element: <RetailerIntegrations /> },
           { path: 'profile', element: <RetailerProfile /> },
         ],
       },

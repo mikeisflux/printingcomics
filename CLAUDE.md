@@ -167,6 +167,24 @@ npm run db:studio                    # Prisma Studio
   accounts (`ensurePortalAccount`); staff sign-in links last one hour.
   Publisher-level events are logged under subject `partner`, barcode block
   loads under `barcode`.
+  POS integration (`/retailer/integrations`, public guide `/distribution/pos`):
+  comic-shop tools (Manage Comics, ComicHub, Comic Shop Assistant) import
+  distributor data as files, so `lib/pod/pos-files.ts` builds the shop's
+  invoice, shipments and catalog files from one row shape in four layouts:
+  `diamond` (the Diamond invoice column order those tools read), `generic`
+  (all columns, for mappers and RMH), `shopify` (product import) and
+  `lightspeed` (item import). `lib/pod/integration.ts` holds the documents
+  (`orderDocument`, `shipmentDocuments`, `catalogDocument`), the shop's
+  integration key (`pcr_…`, sha256 on `Retailer.integrationKeyHash`) and the
+  webhooks (`dispatchRetailerWebhook`, `notifyRetailerSystem`; events
+  order.placed/updated/canceled, invoice.ready, order.paid,
+  shipment.created, order.shipped, ping; HMAC in `X-PC-Signature`; log in
+  `RetailerWebhookDelivery`). The retailer router (`retailerApi` in
+  `routes/pod.ts`) accepts the key as a bearer, `X-Api-Key`, or `?key=` on
+  GETs, and is mounted a second time at `/api/v1/retail`; under a key there
+  is no session, `actorOf` names the shop, and settings/key routes refuse
+  key callers. Export routes: `/orders/:number/invoice[.csv]`,
+  `/exports/shipments[.csv]?since=&format=`, `/exports/catalog/:id[.csv]`.
   Staff view: an ADMIN, or STAFF holding `pod`, opens `/publisher` or
   `/retailer` and picks who to view as (`web/src/lib/view-as.ts` keeps the
   pick in localStorage and the API client sends it as `X-View-As-Partner` /

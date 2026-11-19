@@ -530,6 +530,8 @@ export async function cancelRetailerOrder(orderId: string, actor: Actor, args: {
     }
     if (summary.ledgerEntries) await recordPodEvent('cycle', o.cycle.id, 'adjusted', `Order ${o.number} ${refund ? 'voided' : 'canceled'} after FOC: ${summary.ledgerEntries} ledger entr${summary.ledgerEntries === 1 ? 'y' : 'ies'} reversed`, actor);
   }
+  const { notifyRetailerSystem } = await import('./integration.js');
+  notifyRetailerSystem(o.retailer.id, 'order.canceled', o.id);
 }
 
 /**

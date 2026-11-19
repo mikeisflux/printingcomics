@@ -180,7 +180,7 @@ export function RetailerShipments() {
   const { data } = useLoad<{ shipments: ShipmentRow[] }>('/pod/retailer/shipments');
   return (
     <>
-      <div className="ptop"><div><div className="eyebrow">Shipments</div><h1>On the way</h1><div className="sub">Every box we sent you, with tracking.</div></div></div>
+      <div className="ptop"><div><div className="eyebrow">Shipments</div><h1>On the way</h1><div className="sub">Every box sent to you, from us or straight from the publisher, with tracking.</div></div><div className="row"><a className="pbtn soft sm" href={withViewAs('/api/pod/retailer/exports/shipments.csv?format=diamond&since=30d', 'retailer')}><Download size={14} /> Last 30 days for your POS</a><Link to="/retailer/integrations" className="pbtn ghost sm">Other layouts</Link></div></div>
       <div className="panel flush">
         {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.shipments.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="Nothing shipped yet" body="Tracking appears here as soon as an order ships." /></div> : (
           <table className="ptable"><thead><tr><th>Shipped</th><th>Order</th><th>Carrier</th><th>Tracking</th><th className="num">Copies</th><th>Contents</th><th></th></tr></thead><tbody>

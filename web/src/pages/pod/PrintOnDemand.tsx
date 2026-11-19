@@ -3,7 +3,7 @@
  * comic shops order them at wholesale, we print and ship each cycle.
  */
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, Store, Sparkles, Printer, Truck, HandCoins, FileCheck, Calendar, ShieldCheck, LogIn } from 'lucide-react';
+import { ArrowRight, BookOpen, Store, Sparkles, Printer, Truck, HandCoins, FileCheck, Calendar, ShieldCheck, LogIn, Plug } from 'lucide-react';
 import { useSeo } from '../../lib/seo';
 import { useAuth } from '../../store/auth';
 import { isPodStaff } from '../../lib/view-as';
@@ -158,10 +158,11 @@ export function PrintOnDemand() {
             <p className="lead" style={{ maxWidth: '40ch' }}>Tiers are set by the order's total at cover price. Every title in the order gets the same discount.</p>
           </div>
           <TierLadder tiers={s.tiers} />
-          <div className="grid cols-3" style={{ marginTop: '1.5rem' }}>
+          <div className="grid cols-4" style={{ marginTop: '1.5rem' }}>
             <div className="panel"><Truck size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Shipping</h3><p className="dim tight" style={{ fontSize: '.92rem' }}>{s.retailerShipping.mode === 'flat' ? `A flat ${money(s.retailerShipping.flatCents)} per order.` : 'Billed at cost when your order ships, one box per cycle.'}</p></div>
             <div className="panel"><FileCheck size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Terms</h3><p className="dim tight" style={{ fontSize: '.92rem' }}>{s.retailerTerms}</p></div>
             <div className="panel"><ShieldCheck size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Resale certificate</h3><p className="dim tight" style={{ fontSize: '.92rem' }}>Wholesale orders are not charged sales tax; keep your resale certificate on file in the portal so that stays true.</p></div>
+            <div className="panel"><Plug size={20} style={{ color: 'var(--p-violet)' }} /><h3 style={{ marginTop: '.5rem' }}>Works with your POS</h3><p className="dim tight" style={{ fontSize: '.92rem' }}>Invoices, shipping manifests and catalogs in the layout Manage Comics, ComicHub, Comic Shop Assistant, Shopify POS and Lightspeed import, plus an API and webhooks. <Link to="/distribution/pos">How it plugs in</Link>.</p></div>
           </div>
         </section>
       )}

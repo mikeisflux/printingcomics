@@ -4,10 +4,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Receipt, ArrowLeft, Store, RefreshCw, FolderDown, Building2, Truck, CreditCard } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Receipt, ArrowLeft, Store, RefreshCw, FolderDown, Building2, Truck, CreditCard, Plug, Download } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../store/auth';
-import { getViewAs, isPodStaff, onViewAsChange } from '../../lib/view-as';
+import { getViewAs, isPodStaff, onViewAsChange, withViewAs } from '../../lib/view-as';
 import { ViewAsBanner, ViewAsPicker } from '../../components/pod/view-as';
 import { useSeo } from '../../lib/seo';
 import { statusWord, money, dateShort, FORMAT_LABELS, type PublicSettings } from '../../lib/pod';
@@ -55,6 +55,7 @@ export function RetailerLayout() {
             <NavLink to="/retailer/shipments"><span className="row" style={{ gap: '.5rem' }}><Truck size={16} /> Shipments</span></NavLink>
             <NavLink to="/retailer/returns"><span className="row" style={{ gap: '.5rem' }}><RefreshCw size={16} /> Returns & damages</span></NavLink>
             <NavLink to="/retailer/downloads"><span className="row" style={{ gap: '.5rem' }}><FolderDown size={16} /> Downloads</span></NavLink>
+            <NavLink to="/retailer/integrations"><span className="row" style={{ gap: '.5rem' }}><Plug size={16} /> POS &amp; integrations</span></NavLink>
             <NavLink to="/retailer/profile"><span className="row" style={{ gap: '.5rem' }}><Building2 size={16} /> Store information</span></NavLink>
           </nav>
           <div style={{ marginTop: '1.5rem', padding: '.5rem .85rem', fontSize: '.78rem', color: 'var(--p-text-inv-dim)' }}>
@@ -111,6 +112,7 @@ export function RetailerOrders() {
   const { show, node } = useFlash();
   const [, setParams] = useSearchParams();
   void setParams;
+  const [posFormat, setPosFormat] = useState('diamond');
   const tone = (s: string) => ({ PENDING: 'amber', PAID: 'teal', IN_PRODUCTION: 'violet', SHIPPED: 'green', DELIVERED: 'green', CANCELLED: 'slate', REFUNDED: 'slate' } as Record<string, string>)[s] ?? 'slate';
   if (number) {
     const o = one?.order;
@@ -119,6 +121,7 @@ export function RetailerOrders() {
         {node}
         <div className="ptop"><div><Link to="/retailer/orders" className="pbtn ghost xs" style={{ marginBottom: '.5rem' }}><ArrowLeft size={14} /> Orders</Link><h1>{o?.number ?? '…'}</h1>{o && <div className="row" style={{ marginTop: '.4rem' }}><Pill tone={tone(o.status)}>{statusWord(o.status)}</Pill>{o.cycle && <span className="dim">{o.cycle.name} · in store {dateShort(o.cycle.inStoreDate)}</span>}{o.wholesale && <Pill tone="violet">{o.wholesale.tierName}</Pill>}</div>}</div>
           {one?.payLink && <a href={one.payLink} className="pbtn hot" data-testid="retailer-pay-now"><CreditCard size={16} /> Pay now · {money(o!.totalCents)}</a>}
+          {o && <span className="row" title="The invoice in the layout your point of sale imports; pick your system under POS & integrations"><select className="inp" style={{ width: 'auto' }} value={posFormat} onChange={(e) => setPosFormat(e.target.value)}><option value="diamond">Diamond layout (Manage Comics, ComicHub, CSA)</option><option value="generic">All columns</option><option value="shopify">Shopify import</option><option value="lightspeed">Lightspeed import</option></select><a className="pbtn soft" href={withViewAs(`/api/pod/retailer/orders/${encodeURIComponent(o.number)}/invoice.csv?format=${posFormat}`, 'retailer')}><Download size={16} /> Invoice for POS</a></span>}
           {one?.editable && <div className="row"><Link to={`/retailer/catalog${o?.cycle ? `?cycle=${o.cycle.id}` : ''}`} className="pbtn soft">Edit the order</Link><button className="pbtn danger" onClick={async () => { if (!confirm('Cancel this order?')) return; try { await api.post(`/pod/retailer/orders/${number}/cancel`); show('Order canceled'); await reload(); } catch (x) { show(errText(x), true); } }}>Cancel</button></div>}</div>
         {o && (
           <div className="split">

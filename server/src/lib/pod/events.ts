@@ -9,6 +9,8 @@ export type PodSubject = 'listing' | 'cycle' | 'retailer' | 'production' | 'purc
 export interface Actor { id: string | null; name: string }
 
 export function actorOf(req: Request): Actor {
+  const r = req as Request & { integration?: boolean; retailer?: { name: string } };
+  if (!req.session && r.integration && r.retailer) return { id: null, name: `${r.retailer.name} (POS integration)` };
   return { id: req.session?.sub ?? null, name: req.session?.email ?? 'system' };
 }
 

@@ -41,6 +41,7 @@ import easypostWebhookRoutes from './routes/webhooks/easypost.js';
 import adjustmentRoutes from './routes/adjustments.js';
 import previewRoutes from './routes/previews.js';
 import v1Routes from './routes/v1/index.js';
+import { retailerApi } from './routes/pod.js';
 import podRoutes from './routes/pod.js';
 import { attachAllGuestOrders } from './lib/customer-accounts.js';
 import { normalizeStoredMethodNames } from './lib/method-names.js';
@@ -110,6 +111,14 @@ app.use('/api/webhooks/paypal', paypalWebhookRoutes);
 app.use('/api/webhooks/easypost', easypostWebhookRoutes);
 app.use('/api/pod', podRoutes);
 app.use('/api/admin', adminRoutes);
+
+// A comic shop's POS integration: the retailer portal's API under a stable
+// path, authenticated with the shop's integration key (routes/pod.ts).
+app.use(
+  '/api/v1/retail',
+  rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: (req: any) => req.retailer?.id ?? req.ip }),
+  retailerApi,
+);
 
 // Public, key-authenticated developer API (orders, catalog, pricing,
 // shipping). Heavier rate limit since integrators may bulk-submit orders.

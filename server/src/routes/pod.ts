@@ -29,6 +29,8 @@ import { ledgerSummary } from '../lib/pod/payouts.js';
 import { notifyStaff, notifyStaffListingSubmitted, notifyStaffPublisherApplied, notifyStaffRetailerApplied, sendPublisherApplicationReceivedEmail, sendRetailerOrderCancelledEmail, sendRetailerOrderEmail } from '../lib/pod/emails.js';
 import { newOrderNumber } from '../lib/checkout-order.js';
 import { orderPayLink, orderPayable } from '../lib/manual-order.js';
+import { catalogDocument, dispatchRetailerWebhook, mintIntegrationKey, notifyRetailerSystem, orderDocument, publicBase, retailerForKey, revokeIntegrationKey, shipmentDocuments } from '../lib/pod/integration.js';
+import { POS_FORMATS, POS_FORMAT_LABELS, catalogPosCsv, invoiceCsv, isPosFormat, posFileName, type PosFormat } from '../lib/pod/pos-files.js';
 import { clientIp } from '../middleware/botblocker.js';
 import { evaluateCoupon } from '../lib/coupons.js';
 
@@ -587,7 +589,33 @@ type RetailerRow = Prisma.RetailerGetPayload<Record<string, never>>;
 const retailerOf = (req: Request) => (req as Request & { retailer: RetailerRow }).retailer;
 
 const retailer = Router();
-retailer.use(requireAuth, requireRetailer);
+/**
+ * A shop's POS reaches the same routes with the shop's integration key
+ * (`Authorization: Bearer pcr_…`, `X-Api-Key`, or `?key=` on a GET for
+ * tools that only take a URL). The key stands for the shop itself, so there
+ * is no session and no view-as; events are recorded under the shop's name.
+ */
+function integrationKeyOf(req: Request): string | null {
+  const auth = String(req.headers.authorization ?? '');
+  if (/^bearer\s+pcr_/i.test(auth)) return auth.replace(/^bearer\s+/i, '').trim();
+  const header = req.headers['x-api-key'];
+  if (typeof header === 'string' && header.startsWith('pcr_')) return header.trim();
+  if (req.method === 'GET' && typeof req.query.key === 'string' && req.query.key.startsWith('pcr_')) return req.query.key;
+  return null;
+}
+async function retailerAuth(req: Request, res: Response, next: NextFunction) {
+  const key = integrationKeyOf(req);
+  if (key) {
+    const r = await retailerForKey(key);
+    if (!r) return res.status(401).json({ error: 'That integration key is not valid. Make a new one on the POS & integrations page of the retailer portal.' });
+    (req as Request & { retailer: typeof r; integration: boolean }).retailer = r;
+    (req as Request & { integration: boolean }).integration = true;
+    return next();
+  }
+  return requireAuth(req, res, (err?: unknown) => (err ? next(err) : void requireRetailer(req, res, next)));
+}
+retailer.use(retailerAuth);
+export const retailerApi = retailer;
 
 retailer.get('/me', async (req, res) => {
   const r = retailerOf(req);
@@ -697,8 +725,9 @@ retailer.post('/orders', async (req, res) => {
   for (const l of pricing.lines) if (!productOf.get(l.listingId)) throw new HttpError(400, `${l.title} is not available right now`);
   const viewingAs = Boolean((req as Request & { viewingAs?: boolean }).viewingAs);
       // Under staff view-as the order belongs to the shop, not to the staff member: the shop's contact gets the emails and a shop member can open it.
-      const member = viewingAs ? await prisma.user.findFirst({ where: { retailerId: r.id, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true, email: true, firstName: true, lastName: true } }) : null;
-      const user = viewingAs ? (member ?? { id: null, email: r.contactEmail, firstName: r.contactName?.split(' ')[0] ?? null, lastName: r.contactName?.split(' ').slice(1).join(' ') ?? null }) : await prisma.user.findUnique({ where: { id: req.session!.sub }, select: { id: true, email: true, firstName: true, lastName: true } });
+      const integration = Boolean((req as Request & { integration?: boolean }).integration);
+      const member = viewingAs || integration ? await prisma.user.findFirst({ where: { retailerId: r.id, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true, email: true, firstName: true, lastName: true } }) : null;
+      const user = viewingAs || integration ? (member ?? { id: null, email: r.contactEmail, firstName: r.contactName?.split(' ')[0] ?? null, lastName: r.contactName?.split(' ').slice(1).join(' ') ?? null }) : await prisma.user.findUnique({ where: { id: req.session!.sub }, select: { id: true, email: true, firstName: true, lastName: true } });
       const addr = (r.address ?? {}) as Record<string, string>;
       const shippingAddress = { firstName: user?.firstName ?? r.contactName?.split(' ')[0] ?? '', lastName: user?.lastName ?? r.contactName?.split(' ').slice(1).join(' ') ?? '', company: r.name, line1: addr.line1 ?? '', line2: addr.line2 ?? '', city: addr.city ?? '', region: addr.region ?? '', postalCode: addr.postalCode ?? '', country: addr.country ?? 'US', phone: r.phone ?? '' };
       const shippingCents = s.retailerShipping.mode === 'flat' ? s.retailerShipping.flatCents : 0;
@@ -720,7 +749,7 @@ retailer.post('/orders', async (req, res) => {
         wholesale: wholesale as unknown as Prisma.InputJsonValue,
         items: { create: lineItems },
       };
-      const who = viewingAs ? ` by ${actorOf(req).name} (staff, viewing as the shop)` : '';
+      const who = viewingAs ? ` by ${actorOf(req).name} (staff, viewing as the shop)` : integration ? ' by the shop\'s POS integration' : '';
       const order = await prisma.$transaction(async (tx) => {
         let o;
         if (existing) {
@@ -734,6 +763,7 @@ retailer.post('/orders', async (req, res) => {
         return o;
       });
       const mail = await sendRetailerOrderEmail(order.id);
+      notifyRetailerSystem(r.id, existing ? 'order.updated' : 'order.placed', order.id);
   res.status(existing ? 200 : 201).json({ order: { id: order.id, number: order.number, subtotalCents: order.subtotalCents, totalCents: order.totalCents, creditApplied }, replaced: Boolean(existing), mail });
 });
 
@@ -839,8 +869,116 @@ retailer.post('/orders/:number/cancel', async (req, res) => {
   if (!o.cycle || !cycleOrderingOpen(o.cycle)) throw new HttpError(400, 'This order is past the final order cutoff and cannot be canceled online. Write to us.');
   await cancelRetailerOrder(o.id, actorOf(req), { by: 'retailer' });
   void sendRetailerOrderCancelledEmail(o.id, 'You canceled this order before the final order cutoff.');
+  notifyRetailerSystem(o.retailerId, 'order.canceled', o.id);
   res.json({ ok: true });
 });
+
+// ---------------------------------------------------------------------------
+// POS & integrations: the shop's key, its feeds, the files its POS imports,
+// and the webhook that tells its system what happened.
+// ---------------------------------------------------------------------------
+
+const POS_SYSTEMS = ['manage_comics', 'comichub', 'comic_shop_assistant', 'shopify_pos', 'lightspeed', 'rmh', 'other'] as const;
+
+async function integrationView(retailerId: string) {
+  const r = await prisma.retailer.findUniqueOrThrow({ where: { id: retailerId }, select: { id: true, posSystem: true, integrationKeyPrefix: true, integrationKeyCreatedAt: true, webhookUrl: true, webhookSecret: true } });
+  const base = await publicBase();
+  const deliveries = await prisma.retailerWebhookDelivery.findMany({ where: { retailerId }, orderBy: { createdAt: 'desc' }, take: 20, select: { id: true, event: true, orderId: true, statusCode: true, succeeded: true, error: true, createdAt: true } });
+  const cycles = await prisma.catalogCycle.findMany({ where: { publishedAt: { not: null } }, orderBy: { catalogDate: 'desc' }, take: 6, select: { id: true, name: true, slug: true, status: true } });
+  return {
+    posSystem: r.posSystem, posSystems: POS_SYSTEMS,
+    key: r.integrationKeyPrefix ? { prefix: r.integrationKeyPrefix, createdAt: r.integrationKeyCreatedAt } : null,
+    webhook: { url: r.webhookUrl, hasSecret: Boolean(r.webhookSecret) },
+    formats: POS_FORMATS.map((f) => ({ key: f, label: POS_FORMAT_LABELS[f] })),
+    apiBase: `${base}/api/v1/retail`,
+    feeds: {
+      shipments: `${base}/api/v1/retail/exports/shipments.csv?format=diamond&since=30d&key=YOUR_KEY`,
+      invoice: `${base}/api/v1/retail/orders/ORDER_NUMBER/invoice.csv?format=diamond&key=YOUR_KEY`,
+      catalog: `${base}/api/v1/retail/exports/catalog/CATALOG_ID.csv?format=diamond&key=YOUR_KEY`,
+    },
+    cycles, deliveries,
+  };
+}
+
+retailer.get('/integration', async (req, res) => { res.json(await integrationView(retailerOf(req).id)); });
+
+retailer.patch('/integration', async (req, res) => {
+  if ((req as Request & { integration?: boolean }).integration) throw new HttpError(403, 'Integration settings are changed from the portal, not with the key.');
+  const body = z.object({ posSystem: z.enum(POS_SYSTEMS).nullable().optional(), webhookUrl: z.string().trim().url().max(500).nullable().optional(), webhookSecret: z.string().trim().min(16).max(200).nullable().optional() }).parse(req.body ?? {});
+  if (body.webhookUrl && !/^https:\/\//i.test(body.webhookUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(body.webhookUrl)) throw new HttpError(400, 'The webhook URL must use https.');
+  const r = retailerOf(req);
+  await prisma.retailer.update({ where: { id: r.id }, data: { ...(body.posSystem !== undefined ? { posSystem: body.posSystem } : {}), ...(body.webhookUrl !== undefined ? { webhookUrl: body.webhookUrl } : {}), ...(body.webhookSecret !== undefined ? { webhookSecret: body.webhookSecret } : {}) } });
+  if (body.webhookUrl !== undefined) await recordPodEvent('retailer', r.id, 'integration', body.webhookUrl ? `Webhook URL set (${new URL(body.webhookUrl).host})` : 'Webhook URL removed', actorOf(req));
+  res.json(await integrationView(r.id));
+});
+
+/** A new key. The old one stops working the moment this answers; the key is shown once. */
+retailer.post('/integration/key', async (req, res) => {
+  if ((req as Request & { integration?: boolean }).integration) throw new HttpError(403, 'A key cannot mint another key; do it from the portal.');
+  const minted = await mintIntegrationKey(retailerOf(req).id, actorOf(req));
+  res.status(201).json({ key: minted.key, prefix: minted.prefix, view: await integrationView(retailerOf(req).id) });
+});
+retailer.delete('/integration/key', async (req, res) => {
+  if ((req as Request & { integration?: boolean }).integration) throw new HttpError(403, 'Revoke the key from the portal.');
+  await revokeIntegrationKey(retailerOf(req).id, actorOf(req));
+  res.json(await integrationView(retailerOf(req).id));
+});
+
+/** Send a ping to the webhook URL so the shop can see its endpoint answer. */
+retailer.post('/integration/webhook-test', async (req, res) => {
+  const r = retailerOf(req);
+  const result = await dispatchRetailerWebhook(r.id, 'ping', null, { shop: r.name, message: 'Hello from Printing Comics Distribution. Your webhook is wired up.' });
+  if (!result) throw new HttpError(400, 'Set a webhook URL first.');
+  res.json({ ...result, view: await integrationView(r.id) });
+});
+
+/** The key itself, as a probe: who am I. */
+retailer.get('/integration/whoami', async (req, res) => {
+  const r = retailerOf(req);
+  res.json({ shop: { id: r.id, name: r.name, slug: r.slug }, viaKey: Boolean((req as Request & { integration?: boolean }).integration) });
+});
+
+const formatOf = (req: Request): PosFormat => { const f = String(req.query.format ?? 'generic'); if (!isPosFormat(f)) throw new HttpError(400, `format must be one of ${POS_FORMATS.join(', ')}`); return f; };
+const sendCsv = (res: Response, name: string, csv: string) => { res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="${name}"`); res.setHeader('Cache-Control', 'private, no-store'); res.send(csv); };
+const sinceOf = (req: Request): Date | null => {
+  const v = String(req.query.since ?? '');
+  if (!v) return null;
+  const m = /^(\d+)d$/.exec(v);
+  if (m) return new Date(Date.now() - Number(m[1]) * 86_400_000);
+  const t = new Date(v);
+  if (Number.isNaN(t.getTime())) throw new HttpError(400, 'since must be a date (2026-01-31) or a number of days (30d)');
+  return t;
+};
+
+/** One order as an invoice file in the POS layout. */
+retailer.get('/orders/:number/invoice.csv', async (req, res) => {
+  const format = formatOf(req);
+  const doc = await orderDocument(retailerOf(req).id, String(req.params.number), { shippedOnly: req.query.shipped === '1' });
+  sendCsv(res, posFileName('invoice', doc.number, format), invoiceCsv(doc, format));
+});
+/** The same, as JSON for anyone building against the API. */
+retailer.get('/orders/:number/invoice', async (req, res) => { res.json({ invoice: await orderDocument(retailerOf(req).id, String(req.params.number)) }); });
+
+/** Everything shipped to the shop since a date, one invoice per order, in one file. */
+retailer.get('/exports/shipments.csv', async (req, res) => {
+  const format = formatOf(req);
+  const docs = await shipmentDocuments(retailerOf(req).id, sinceOf(req));
+  if (!docs.length) return sendCsv(res, posFileName('shipments', 'none', format), invoiceCsv({ number: '', date: '', catalogName: '', poNumber: null, shipping: [], lines: [] }, format));
+  const files = docs.map((doc) => invoiceCsv(doc, format));
+  // One header, every order's rows.
+  const [first, ...rest] = files;
+  const body = [first!.replace(/\r\n$/, ''), ...rest.map((f) => f.replace(/^\uFEFF/, '').split('\r\n').slice(1).filter(Boolean).join('\r\n'))].filter(Boolean).join('\r\n');
+  sendCsv(res, posFileName('shipments', docs[0]!.date || 'recent', format), `${body}\r\n`);
+});
+retailer.get('/exports/shipments', async (req, res) => { res.json({ shipments: await shipmentDocuments(retailerOf(req).id, sinceOf(req)) }); });
+
+/** A published catalog as a pre-order file at the shop's wholesale price. */
+retailer.get('/exports/catalog/:cycleId.csv', async (req, res) => {
+  const format = formatOf(req);
+  const { cycle, lines } = await catalogDocument(retailerOf(req), String(req.params.cycleId));
+  sendCsv(res, posFileName('catalog', cycle.slug, format), catalogPosCsv({ catalogName: cycle.name, releaseDate: cycle.inStoreDate, lines }, format));
+});
+retailer.get('/exports/catalog/:cycleId', async (req, res) => { res.json(await catalogDocument(retailerOf(req), String(req.params.cycleId))); });
 
 router.use('/retailer', retailer);
 
