@@ -181,7 +181,7 @@ interface PosView {
 function LiveConnection({ pos, show }: { pos: string; show: (m: string, bad?: boolean) => void }) {
   const { data, reload, setData } = useLoad<PosView>('/pod/retailer/integration/pos');
   const [busy, setBusy] = useState<string | null>(null);
-  const [kind, setKind] = useState<'shopify' | 'lightspeed_x' | 'lightspeed_r'>(pos === 'lightspeed' ? 'lightspeed_x' : 'shopify');
+  const [kind, setKind] = useState<'shopify' | 'lightspeed_x' | 'lightspeed_r'>(pos === 'shopify_pos' ? 'shopify' : 'lightspeed_x');
   const [f, setF] = useState({ shop: '', token: '', clientId: '', clientSecret: '', way: 'app' as 'app' | 'token' });
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const c = data?.connection ?? null;
@@ -212,7 +212,7 @@ function LiveConnection({ pos, show }: { pos: string; show: (m: string, bad?: bo
         </>
       ) : (
         <>
-          <p className="dim" style={{ fontSize: '.88rem', margin: '.3rem 0 .6rem' }}>Connect Shopify or Lightspeed and every shipment is received into your inventory on its own: product created if new (SKU = our catalog id, barcode = UPC, cost = your wholesale price), copies added when the box ships.</p>
+          <p className="dim" style={{ fontSize: '.88rem', margin: '.3rem 0 .6rem' }}>Connect Lightspeed (or Shopify) and every shipment is received into your inventory on its own: product created if new (SKU = our catalog id, barcode = UPC, cost = your wholesale price), copies added when the box ships.</p>
           <div className="row" style={{ flexWrap: 'wrap' }}>
             <select className="inp" style={{ width: 'auto' }} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>{data.kinds.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}</select>
           </div>

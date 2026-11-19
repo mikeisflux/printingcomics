@@ -882,7 +882,7 @@ retailer.post('/orders/:number/cancel', async (req, res) => {
 // and the webhook that tells its system what happened.
 // ---------------------------------------------------------------------------
 
-const POS_SYSTEMS = ['manage_comics', 'comichub', 'comic_shop_assistant', 'shopify_pos', 'lightspeed', 'rmh', 'other'] as const;
+const POS_SYSTEMS = ['manage_comics', 'comichub', 'comic_shop_assistant', 'lightspeed', 'rmh', 'other', 'shopify_pos'] as const;
 
 async function integrationView(retailerId: string) {
   const r = await prisma.retailer.findUniqueOrThrow({ where: { id: retailerId }, select: { id: true, posSystem: true, integrationKeyPrefix: true, integrationKeyCreatedAt: true, webhookUrl: true, webhookSecret: true } });

@@ -17,7 +17,7 @@ import { LightspeedXAdapter, type LightspeedXSecrets } from './pos-connect/light
 import { ShopifyAdapter, type ShopifySecrets } from './pos-connect/shopify.js';
 import type { PosAdapter, PosConnectionInput, PosKind, PosLineResult } from './pos-connect/types.js';
 
-export const POS_KINDS: PosKind[] = ['shopify', 'lightspeed_x', 'lightspeed_r'];
+export const POS_KINDS: PosKind[] = ['lightspeed_x', 'lightspeed_r', 'shopify'];
 export const POS_KIND_LABELS: Record<PosKind, string> = { shopify: 'Shopify / Shopify POS', lightspeed_x: 'Lightspeed Retail (X-Series)', lightspeed_r: 'Lightspeed Retail (R-Series)' };
 
 // ---------------------------------------------------------------------------

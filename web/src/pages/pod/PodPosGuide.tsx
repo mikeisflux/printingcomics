@@ -13,9 +13,9 @@ const SYSTEMS: { name: string; format: string; how: string }[] = [
   { name: 'Manage Comics', format: 'Diamond invoice layout', how: 'Invoices → Import → Diamond CSV. Works with the Lightspeed, Shopify POS and RMH registers Manage Comics plugs into; it reads our catalog ids as item codes so series carry across months.' },
   { name: 'ComicHub', format: 'Diamond invoice layout', how: 'Distributor invoice import, Diamond file type. UPC and ISBN columns match titles already in the system.' },
   { name: 'Comic Shop Assistant', format: 'All columns (or Diamond)', how: 'Upload the invoice, map Item Code, UPC, Title, Quantity, MSRP and Unit Cost once, save the template.' },
-  { name: 'Shopify POS', format: 'Live connection (or Shopify product import)', how: 'Connect the store once; every shipment is received into inventory on its own, products created with barcode = UPC, SKU = our catalog id and cost = your wholesale price. The import file is the fallback.' },
   { name: 'Lightspeed Retail', format: 'Live connection (or Lightspeed item import)', how: 'X-Series connects with a personal token, R-Series with a Connect button; shipped copies arrive as a received stock order with your cost. The import file is the fallback.' },
   { name: 'Retail Management Hero', format: 'RMH item import / PO receive', how: 'The Import Utility layout (map once, save the mapping) and the received-PO layout (Code, Qty Rcv, Cost). Any other register takes the all-columns file.' },
+  { name: 'Shopify POS', format: 'Live connection (or Shopify product import)', how: 'Connect the store once; every shipment is received into inventory on its own, products created with barcode = UPC, SKU = our catalog id and cost = your wholesale price. The import file is the fallback.' },
 ];
 
 const Code = ({ children }: { children: string }) => <pre className="panel tight mono" style={{ fontSize: '.78rem', overflowX: 'auto', margin: '.5rem 0 1rem', whiteSpace: 'pre' }}>{children}</pre>;
@@ -39,7 +39,7 @@ export function PodPosGuide() {
         </nav>
 
         <H id="systems" icon={<Plug size={22} style={{ color: 'var(--p-violet)' }} />}>Your system</H>
-        <p>Comic shop tools (Manage Comics, ComicHub, Comic Shop Assistant) take distributor data as files you import; general registers (Shopify, Lightspeed) can be pushed to directly. Pick your system on the POS &amp; integrations page of the portal: the right layout is chosen for you, the invoice file rides along on every shipped email, and Shopify or Lightspeed can be connected so nothing needs importing at all.</p>
+        <p>Comic shop tools (Manage Comics, ComicHub, Comic Shop Assistant) take distributor data as files you import; registers like Lightspeed (and Shopify) can be pushed to directly. Pick your system on the POS &amp; integrations page of the portal: the right layout is chosen for you, the invoice file rides along on every shipped email, and Lightspeed (or Shopify) can be connected so nothing needs importing at all.</p>
         <div className="grid cols-2" style={{ marginTop: '1rem' }}>
           {SYSTEMS.map((s) => <div key={s.name} className="panel"><b>{s.name}</b><div className="dim" style={{ fontSize: '.8rem', margin: '.15rem 0 .4rem' }}>{s.format}</div><p className="dim tight" style={{ fontSize: '.9rem' }}>{s.how}</p></div>)}
         </div>
@@ -59,12 +59,12 @@ https://printingcomics.com/api/v1/retail/orders/PC-ABC123/invoice.csv?format=gen
 https://printingcomics.com/api/v1/retail/exports/catalog/CATALOG_ID.csv?format=shopify&key=pcr_…`}</Code>
         <p><code>since</code> takes a date (<code>2026-01-31</code>) or a number of days (<code>30d</code>). <code>format</code> is <code>diamond</code>, <code>generic</code>, <code>shopify</code>, <code>lightspeed</code>, <code>rmh</code> or <code>rmh_receive</code>.</p>
 
-        <H id="live" icon={<Plug size={22} style={{ color: 'var(--p-violet)' }} />}>Live connections (Shopify, Lightspeed)</H>
+        <H id="live" icon={<Plug size={22} style={{ color: 'var(--p-violet)' }} />}>Live connections (Lightspeed, Shopify)</H>
         <p>Connect the store once under POS &amp; integrations and we push to it: when you order, the titles are created in your POS with zero stock (SKU = our catalog id, barcode = UPC, price = cover price, cost = your wholesale price) so pre-orders can be taken; when a box ships, the copies in that box are received into stock at the location you chose, once per box. Every push is logged on the page, and "Push to POS" on an order repeats it.</p>
         <ul>
-          <li><b>Shopify</b> — "Connect with Shopify" (our app; approve it in your admin), or paste the client id and secret of an app you made in your own Dev Dashboard (we fetch its 24-hour tokens), or a legacy admin-created custom app's <code>shpat_</code> token. Scopes: <code>write_products</code>, <code>write_inventory</code>, <code>read_locations</code>. Stock is adjusted as "available", reason "received".</li>
           <li><b>Lightspeed X-Series</b> — a personal token from Setup → Personal tokens (an admin on the Plus plan). Copies arrive as a supplier stock order marked received, with your cost, at the outlet you chose.</li>
           <li><b>Lightspeed R-Series</b> — "Connect with Lightspeed" (our registered app, scope <code>employee:inventory</code>); items are matched by custom SKU then UPC, and quantity on hand at your shop is raised.</li>
+          <li><b>Shopify</b> — "Connect with Shopify" (our app; approve it in your admin), or paste the client id and secret of an app you made in your own Dev Dashboard (we fetch its 24-hour tokens), or a legacy admin-created custom app's <code>shpat_</code> token. Scopes: <code>write_products</code>, <code>write_inventory</code>, <code>read_locations</code>. Stock is adjusted as "available", reason "received".</li>
         </ul>
 
         <H id="webhooks" icon={<Webhook size={22} style={{ color: 'var(--p-violet)' }} />}>Webhooks</H>
