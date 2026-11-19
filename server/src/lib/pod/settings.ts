@@ -1,3 +1,4 @@
+import { HttpError } from '../../middleware/error.js';
 /**
  * Distribution program settings — the retailer tier table, our
  * commission on publisher sales, how retailer shipping is charged, and the
@@ -121,6 +122,13 @@ export async function getPodSettings(): Promise<PodSettings> {
 
 export async function savePodSettings(raw: unknown): Promise<PodSettings> {
   const s = normalizePodSettings(raw);
+  // Nonsense that normalizing cannot fix is refused rather than saved.
+  if (s.minPageCount > s.maxPageCount) throw new HttpError(400, 'The minimum page count is above the maximum.');
+  if (s.pageCountStep < 1 || s.minPageCount % s.pageCountStep !== 0) throw new HttpError(400, 'The minimum page count must be a multiple of the page step.');
+  if (!s.tiers.length) throw new HttpError(400, 'Keep at least one wholesale tier.');
+  for (let i = 1; i < s.tiers.length; i++) if (s.tiers[i]!.minCents <= s.tiers[i - 1]!.minCents) throw new HttpError(400, 'Tier thresholds must rise from one tier to the next.');
+  if (s.tiers.some((t) => t.discountBps > 9000)) throw new HttpError(400, 'A tier discount above 90% would sell below cost.');
+  if (s.returnAllowanceByTier.length && s.returnAllowanceByTier.length < s.tiers.length) throw new HttpError(400, `Give every tier a return allowance (${s.tiers.length} tiers, ${s.returnAllowanceByTier.length} allowances).`);
   await setSetting(KEY, s);
   return s;
 }

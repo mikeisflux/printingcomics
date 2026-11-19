@@ -244,7 +244,7 @@ const listingBody = z.object({
   pageCount: num.int().min(1).max(2000).nullable().optional(),
   trimWidthIn: num.min(1).max(30).nullable().optional(), trimHeightIn: num.min(1).max(30).nullable().optional(),
   interiorColor: z.enum(['color', 'bw']).nullable().optional(), weightOz: num.min(0).nullable().optional(),
-  msrpCents: num.int().min(0).optional(),
+  msrpCents: num.int().min(0).max(1_000_000).optional(),
   description: opt(5000), synopsis: opt(5000), writer: opt(200), artist: opt(200), coverArtist: opt(200),
   genres: z.array(str(40)).max(10).optional(), bisac: z.array(str(20)).max(5).optional(),
   incentiveRatio: opt(20), incentiveQualifierKey: opt(40), reorderable: z.boolean().optional(),
@@ -501,6 +501,8 @@ router.patch('/cycles/:id', async (req, res) => {
   const body = cycleBody.partial().extend({ focOverrideOpen: z.boolean().optional() }).parse(req.body);
   const c = await prisma.catalogCycle.findUnique({ where: { id: req.params.id } });
   if (!c) throw new HttpError(404, 'Cycle not found');
+  // Once the catalog has locked, its dates are frozen: runs, purchase orders and shop invoices already quote them.
+  if ((body.catalogDate !== undefined || body.focDate !== undefined || body.inStoreDate !== undefined) && ['FOC_LOCKED', 'CLOSED'].includes(c.status)) throw new HttpError(400, 'A locked or closed catalog keeps its dates.');
   const next = { ...c, ...body };
   if (!(next.catalogDate <= next.focDate && next.focDate <= next.inStoreDate)) throw new HttpError(400, 'Dates run catalog → FOC → in store');
   const data: Prisma.CatalogCycleUpdateInput = { ...body };
@@ -784,7 +786,7 @@ router.get('/payouts/:partnerId/ledger', async (req, res) => {
 });
 
 router.post('/payouts/:partnerId/ledger', async (req, res) => {
-  const body = z.object({ amountCents: num.int(), description: str(300), cycleId: str(40).nullable().optional(), listingId: str(40).nullable().optional() }).parse(req.body);
+  const body = z.object({ amountCents: num.int().min(-10_000_000).max(10_000_000), description: str(300), cycleId: str(40).nullable().optional(), listingId: str(40).nullable().optional() }).parse(req.body);
   if (!body.amountCents) throw new HttpError(400, 'An adjustment needs an amount');
   const e = await prisma.partnerLedgerEntry.create({ data: { partnerId: req.params.partnerId, kind: 'ADJUSTMENT', amountCents: body.amountCents, description: body.description, cycleId: body.cycleId ?? null, listingId: body.listingId ?? null, actorName: actorOf(req).name } });
   res.status(201).json({ entry: e, summary: await ledgerSummary(req.params.partnerId) });

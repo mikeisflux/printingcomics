@@ -20,7 +20,7 @@ interface Landing {
 
 export function PrintOnDemand() {
   useSeo({ title: 'Distribution for Publishers & Comic Shops — Printing Comics', description: 'List your comics with Printing Comics, sell them to comic shops at wholesale, and let us print and ship every order. Monthly catalog, no minimums, no inventory.', image: '/og-distribution.png' });
-  const { data } = useLoad<Landing>('/pod');
+  const { data, error } = useLoad<Landing>('/pod');
   const { user } = useAuth();
   const staff = isPodStaff(user);
   const s = data?.settings;
@@ -30,6 +30,7 @@ export function PrintOnDemand() {
 
   return (
     <div className="pod">
+      {error && <div className="container" style={{ padding: '1rem 1.25rem 0' }}><div className="notice bad">This page could not load right now ({error}). Please try again in a moment.</div></div>}
       {/* ---------------------------------------------------------------- Hero */}
       <section className="hero-dark hero-pod">
         <div className="grain" />

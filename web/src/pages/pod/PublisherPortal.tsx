@@ -177,6 +177,7 @@ export function PublisherDashboard() {
 }
 
 export function PublisherListings() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const status = params.get('status') ?? '';
   const { data, loading } = useLoad<{ listings: Listing[] }>('/pod/publisher/listings');
@@ -198,7 +199,7 @@ export function PublisherListings() {
             <thead><tr><th></th><th>Title</th><th>Catalog</th><th>Cover price</th><th>Files</th><th>Status</th><th className="num">Sold</th></tr></thead>
             <tbody>
               {rows.map((l) => (
-                <tr key={l.id} className="click" onClick={() => (window.location.href = `/publisher/listings/${l.id}`)}>
+                <tr key={l.id} className="click" onClick={() => navigate(`/publisher/listings/${l.id}`)}>
                   <td style={{ width: 50 }}><Thumb url={l.coverImage?.url} title={l.title} /></td>
                   <td><b>{l.title}{l.issueNumber ? ` #${l.issueNumber}` : ''}</b><div className="dim" style={{ fontSize: '.8rem' }}>{l.coverDescription ?? FORMAT_LABELS[l.format]} · <span className="key">{l.catalogKey}</span></div></td>
                   <td>{l.cycle?.name ?? <span className="dim">—</span>}</td>
@@ -442,6 +443,7 @@ export function PublisherListingEdit() {
 interface PO { id: string; number: string; status: string; lines: { catalogKey: string; title: string; quantity: number; wholesaleCents: number; shipTo: { qty: number; address: Record<string, string> }[] }[]; unitsTotal: number; wholesaleCents: number; commissionCents: number; netCents: number; sentAt: string | null; acknowledgedAt: string | null; fulfilledAt: string | null; notes: string | null; cycle: { name: string; inStoreDate: string } }
 
 export function PublisherPurchaseOrders() {
+  const navigate = useNavigate();
   const { data, reload } = useLoad<{ purchaseOrders: PO[] }>('/pod/publisher/purchase-orders');
   const { id } = useParams();
   const { show, node } = useFlash();
@@ -481,9 +483,9 @@ export function PublisherPurchaseOrders() {
       <div className="ptop"><div><div className="eyebrow">Purchase orders</div><h1>Books you ship</h1><div className="sub">After each final order cutoff, the copies shops ordered of your publisher-shipped titles, with addresses. Shop names stay with us.</div></div></div>
       <div className="panel flush">
         {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.purchaseOrders.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No purchase orders yet" body="They appear here once a catalog with your publisher-shipped titles locks at FOC." /></div> : (
-          <table className="ptable"><thead><tr><th>Number</th><th>Catalog</th><th>Ship by</th><th className="num">Copies</th><th className="num">Net to you</th><th>Status</th></tr></thead><tbody>
-            {data.purchaseOrders.map((p) => <tr key={p.id} className="click" onClick={() => (window.location.href = `/publisher/purchase-orders/${p.id}`)}><td><b>{p.number}</b></td><td>{p.cycle.name}</td><td>{dateShort(p.cycle.inStoreDate)}</td><td className="num mono">{p.unitsTotal}</td><td className="num mono">{money(p.netCents)}</td><td><TonePill map={PURCHASE_STATUS} status={p.status} /></td></tr>)}
-          </tbody></table>
+          <div className="scroll-x"><table className="ptable"><thead><tr><th>Number</th><th>Catalog</th><th>Ship by</th><th className="num">Copies</th><th className="num">Net to you</th><th>Status</th></tr></thead><tbody>
+            {data.purchaseOrders.map((p) => <tr key={p.id} className="click" onClick={() => navigate(`/publisher/purchase-orders/${p.id}`)}><td><b>{p.number}</b></td><td>{p.cycle.name}</td><td>{dateShort(p.cycle.inStoreDate)}</td><td className="num mono">{p.unitsTotal}</td><td className="num mono">{money(p.netCents)}</td><td><TonePill map={PURCHASE_STATUS} status={p.status} /></td></tr>)}
+          </tbody></table></div>
         )}
       </div>
     </>
@@ -494,6 +496,7 @@ interface Statement { id: string; number: string; status: string; periodStart: s
 interface LedgerEntry { id: string; kind: string; amountCents: number; description: string; createdAt: string; listing: { catalogKey: string; title: string } | null; cycle: { name: string } | null }
 
 export function PublisherStatements() {
+  const navigate = useNavigate();
   const { id } = useParams();
   const { data } = useLoad<{ statements: Statement[]; summary: { grossCents: number; commissionCents: number; printingCents: number; netCents: number; unassignedCents: number; payoutsCents: number }; pending: LedgerEntry[] }>('/pod/publisher/statements');
   const sel = data?.statements.find((s) => s.id === id);
@@ -534,9 +537,9 @@ export function PublisherStatements() {
         <div className="panel flush">
           <div className="panel-head" style={{ padding: '1rem 1rem 0' }}><h3>Statements</h3></div>
           {!data ? <p className="dim" style={{ padding: '1rem' }}>Loading…</p> : data.statements.length === 0 ? <div style={{ padding: '1rem' }}><Empty title="No statements yet" body="Your first statement comes after the first cycle your titles sell in." /></div> : (
-            <table className="ptable"><thead><tr><th>Number</th><th>Period</th><th className="num">Net</th><th>Status</th></tr></thead><tbody>
-              {data.statements.map((s) => <tr key={s.id} className="click" onClick={() => (window.location.href = `/publisher/statements/${s.id}`)}><td><b>{s.number}</b>{s.cycle && <div className="dim" style={{ fontSize: '.78rem' }}>{s.cycle.name}</div>}</td><td className="dim">{dateShort(s.periodStart)} – {dateShort(s.periodEnd)}</td><td className="num mono">{money(s.netCents)}</td><td><TonePill map={STATEMENT_STATUS} status={s.status} /></td></tr>)}
-            </tbody></table>
+            <div className="scroll-x"><table className="ptable"><thead><tr><th>Number</th><th>Period</th><th className="num">Net</th><th>Status</th></tr></thead><tbody>
+              {data.statements.map((s) => <tr key={s.id} className="click" onClick={() => navigate(`/publisher/statements/${s.id}`)}><td><b>{s.number}</b>{s.cycle && <div className="dim" style={{ fontSize: '.78rem' }}>{s.cycle.name}</div>}</td><td className="dim">{dateShort(s.periodStart)} – {dateShort(s.periodEnd)}</td><td className="num mono">{money(s.netCents)}</td><td><TonePill map={STATEMENT_STATUS} status={s.status} /></td></tr>)}
+            </tbody></table></div>
           )}
         </div>
         <div className="panel flush">

@@ -104,6 +104,7 @@ export function RetailerDashboard() {
 interface OrderRow { id: string; number: string; status: string; paymentStatus: string; subtotalCents: number; shippingCents: number; totalCents: number; createdAt: string; wholesale: { tierName: string; discountBps: number; msrpSubtotalCents: number; poNumber: string | null } | null; cycle: { id: string; name: string; focDate: string; inStoreDate: string; status: string } | null; _count: { items: number }; shipments: { trackingCode: string | null; carrier: string | null }[] }
 
 export function RetailerOrders() {
+  const navigate = useNavigate();
   const { number } = useParams();
   const { data } = useLoad<{ orders: OrderRow[] }>('/pod/retailer/orders');
   const { data: one, reload } = useLoad<{ order: OrderRow & { items: { id: string; name: string; quantity: number; unitPriceCents: number; totalCents: number; wholesale: { msrpCents: number } | null; options: { catalogKey?: string; publisher?: string } | null }[]; shippingAddress: Record<string, string>; events: { id: string; kind: string; message: string | null; createdAt: string }[] }; payLink?: string | null; editable: boolean }>(number ? `/pod/retailer/orders/${number}` : null, [number]);
@@ -140,7 +141,7 @@ export function RetailerOrders() {
       <div className="panel flush">
         {!data ? <p className="dim" style={{ padding: '1.5rem' }}>Loading…</p> : data.orders.length === 0 ? <div style={{ padding: '1.5rem' }}><Empty title="No orders yet" body="Open the catalog and rack some indie books." action={<Link to="/retailer/catalog" className="pbtn primary sm">Order the catalog</Link>} /></div> : (
           <table className="ptable"><thead><tr><th>Order</th><th>Catalog</th><th>Tier</th><th className="num">Titles</th><th className="num">Wholesale</th><th>Status</th><th>Placed</th></tr></thead><tbody>
-            {data.orders.map((o) => <tr key={o.id} className="click" onClick={() => (window.location.href = `/retailer/orders/${o.number}`)}><td><b>{o.number}</b></td><td>{o.cycle?.name ?? '—'}</td><td>{o.wholesale?.tierName ?? '—'}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={tone(o.status)}>{statusWord(o.status)}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}
+            {data.orders.map((o) => <tr key={o.id} className="click" onClick={() => navigate(`/retailer/orders/${o.number}`)}><td><b>{o.number}</b></td><td>{o.cycle?.name ?? '—'}</td><td>{o.wholesale?.tierName ?? '—'}</td><td className="num mono">{o._count.items}</td><td className="num mono">{money(o.subtotalCents)}</td><td><Pill tone={tone(o.status)}>{statusWord(o.status)}</Pill></td><td className="dim">{dateShort(o.createdAt)}</td></tr>)}
           </tbody></table>
         )}
       </div>

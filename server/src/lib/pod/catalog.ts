@@ -39,11 +39,13 @@ export function deriveCatalogKey(input: { seriesCode?: string | null; upc?: stri
   return `${t}-${Date.now().toString(36).slice(-5).toUpperCase()}`;
 }
 
-export async function uniqueCatalogKey(wanted: string, exceptId?: string): Promise<string> {
+export async function uniqueCatalogKey(wanted: string, exceptId?: string, skip = 0): Promise<string> {
   let key = wanted;
+  let seen = 0;
   for (let i = 2; i < 100; i++) {
     const row = await prisma.listing.findUnique({ where: { catalogKey: key }, select: { id: true } });
-    if (!row || row.id === exceptId) return key;
+    // `skip` lets a caller that lost a race (P2002) move past the key that was just taken.
+    if ((!row || row.id === exceptId) && seen++ >= skip) return key;
     key = `${wanted}-${i}`;
   }
   throw new HttpError(409, `Catalog id ${wanted} is taken`);

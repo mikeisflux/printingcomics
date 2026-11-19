@@ -12,6 +12,9 @@ import { redeemCouponForOrder } from './coupons.js';
  * undo a payment that already happened.
  */
 export async function settlePaidOrder(orderId: string): Promise<void> {
-  await consumeStockForOrder(orderId).catch((e: any) => console.warn('[inventory] consume failed:', e?.message ?? e));
+  // Wholesale orders pull consigned stock at the catalog's FOC lock (lib/pod/catalog.ts), not here.
+  const { prisma } = await import('../db.js');
+  const o = await prisma.order.findUnique({ where: { id: orderId }, select: { source: true } });
+  if (o?.source !== 'retailer') await consumeStockForOrder(orderId).catch((e: any) => console.warn('[inventory] consume failed:', e?.message ?? e));
   await redeemCouponForOrder(orderId).catch((e: any) => console.warn('[coupons] redeem failed:', e?.message ?? e));
 }

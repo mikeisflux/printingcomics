@@ -38,7 +38,7 @@ function jobView(po: Job) {
   const { files, partner, ...listing } = po.listing;
   void files;
   return {
-    id: po.id, number: po.number, status: po.status, deadline: po.deadline, notes: po.notes, createdAt: po.createdAt, cycle: po.cycle,
+    id: po.id, number: po.number, status: po.status, deadline: po.deadline, notes: po.notes ? po.notes.split('\n').filter((line) => !/\$|cents|copies|retailer|wholesale/i.test(line)).join('\n') || null : null, createdAt: po.createdAt, cycle: po.cycle,
     listing: { ...listing, publisher: partner.name },
     files: (['cover', 'interior'] as FileKind[]).map((k) => {
       const f = newest[k];
@@ -95,6 +95,7 @@ router.post('/:id/files/:fileId/review', async (req, res) => {
 router.post('/:id/files/:fileId/preflight', async (req, res) => {
   const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, select: { listingId: true } });
   if (!po) throw new HttpError(404, 'Job not found');
+  if (!(await prisma.listingFile.findFirst({ where: { id: req.params.fileId, listingId: po.listingId }, select: { id: true } }))) throw new HttpError(404, 'That file is not on this job');
   const result = await rerunPreflight(req.params.fileId);
   const full = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, include: jobInclude });
   res.json({ preflight: result, job: jobView(full!) });
@@ -121,8 +122,8 @@ router.post('/:id/notes', async (req, res) => {
 
 /** Record that someone opened a production file (who looked at what, when). */
 router.post('/:id/files/:fileId/opened', async (req, res) => {
-  const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, select: { id: true } });
-  const f = await prisma.listingFile.findUnique({ where: { id: req.params.fileId }, select: { kind: true, version: true } });
+  const po = await prisma.productionOrder.findUnique({ where: { id: req.params.id }, select: { id: true, listingId: true } });
+  const f = po ? await prisma.listingFile.findFirst({ where: { id: req.params.fileId, listingId: po.listingId }, select: { kind: true, version: true } }) : null;
   if (!po || !f) throw new HttpError(404, 'Not found');
   await recordPodEvent('production', po.id, 'file-opened', `${f.kind} v${f.version} opened`, actorOf(req));
   res.json({ ok: true });

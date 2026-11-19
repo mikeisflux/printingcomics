@@ -5,6 +5,7 @@
  *   /retailer: a shop's catalog at wholesale, basket preview, orders, CSV
  */
 import { Router, type NextFunction, type Request, type Response } from 'express';
+import { promises as fs } from 'node:fs';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../db.js';
@@ -247,7 +248,7 @@ const partnerListingBody = z.object({
   title: str(200), seriesName: opt(200), seriesCode: opt(12), issueNumber: opt(20), coverDescription: opt(200), variantNumber: opt(20), upc: opt(20),
   format: z.enum(FORMATS).optional(), seriesType: opt(40), frequency: opt(40), language: opt(40), ageRating: opt(40),
   pageCount: num.int().min(1).max(2000).nullable().optional(), trimWidthIn: num.min(1).max(30).nullable().optional(), trimHeightIn: num.min(1).max(30).nullable().optional(),
-  interiorColor: z.enum(['color', 'bw']).nullable().optional(), weightOz: num.min(0).nullable().optional(), msrpCents: num.int().min(0).optional(),
+  interiorColor: z.enum(['color', 'bw']).nullable().optional(), weightOz: num.min(0).nullable().optional(), msrpCents: num.int().min(0).max(1_000_000).optional(),
   description: opt(5000), synopsis: opt(5000), writer: opt(200), artist: opt(200), coverArtist: opt(200), genres: z.array(str(40)).max(10).optional(),
   incentiveRatio: opt(20), incentiveQualifierKey: opt(40), reorderable: z.boolean().optional(), fulfillment: z.enum(['PRINTED_BY_US', 'PARTNER_SHIPS', 'CONSIGNMENT']).optional(),
 });
@@ -273,13 +274,14 @@ partner.post('/listings', async (req, res) => {
 partner.get('/listings/:id', async (req, res) => {
   const l = await ownListing(req);
   const sold = await prisma.orderItem.aggregate({ where: { listingId: l.id, order: { status: { notIn: ['CANCELLED', 'REFUNDED'] } } }, _sum: { quantity: true, totalCents: true } });
-  res.json({ listing: presentListing(l, 'partner'), events: (await podEvents('listing', l.id)).filter((e) => e.kind !== 'edited' || e.actorId === req.session!.sub), sales: { units: sold._sum.quantity ?? 0, wholesaleCents: sold._sum.totalCents ?? 0 }, editable: PARTNER_EDITABLE.has(l.status as never) });
+  res.json({ listing: presentListing(l, 'partner'), events: await podEvents('listing', l.id), sales: { units: sold._sum.quantity ?? 0, wholesaleCents: sold._sum.totalCents ?? 0 }, editable: PARTNER_EDITABLE.has(l.status as never) });
 });
 
 partner.patch('/listings/:id', async (req, res) => {
   const l = await ownListing(req);
   if (!PARTNER_EDITABLE.has(l.status as never)) throw new HttpError(400, `A ${LISTING_STATUS_LABELS[l.status as ListingStatusKey].toLowerCase()} listing cannot be edited. Ask us if something needs to change.`);
   const body = partnerListingBody.partial().parse(req.body);
+  if (body.upc !== undefined && (l as { barcode?: { code: string } | null }).barcode && body.upc !== (l as { barcode?: { code: string } | null }).barcode!.code) throw new HttpError(400, 'This listing carries one of our barcodes; release it before changing the UPC.');
   // The cycle is checked only when it changes: a listing sent back for
   // changes after its catalog published keeps its cycle and can still be saved.
   if (body.cycleId && body.cycleId !== l.cycleId) {
@@ -287,7 +289,7 @@ partner.patch('/listings/:id', async (req, res) => {
     if (!c || !c.publisherOpen || !['DRAFT', 'OPEN'].includes(c.status)) throw new HttpError(400, 'That catalog is not open to new listings');
   }
   await prisma.listing.update({ where: { id: l.id }, data: body as Prisma.ListingUncheckedUpdateInput });
-  if ((body.seriesCode !== undefined || body.upc !== undefined) && l.status === 'DRAFT') {
+  if ((body.seriesCode !== undefined || body.upc !== undefined) && (l.status === 'DRAFT' || l.status === 'CHANGES_REQUESTED')) {
     const fresh = await prisma.listing.findUnique({ where: { id: l.id } });
     const wanted = deriveCatalogKey(fresh!);
     if (wanted !== l.catalogKey) await prisma.listing.update({ where: { id: l.id }, data: { catalogKey: await uniqueCatalogKey(wanted, l.id) } });
@@ -324,6 +326,15 @@ partner.post('/listings/:id/submit', async (req, res) => {
     if (!l.files.some((f) => f.kind === 'interior')) problems.push('the interior PDF');
   }
   if (problems.length) throw new HttpError(400, `Before it can be reviewed the listing needs ${problems.join(', ')}.`);
+  // The newest print files must have passed their checks, and the page count must be one we can bind.
+  const s = await getPodSettings();
+  if (l.fulfillment === 'PRINTED_BY_US') {
+    for (const kind of ['cover', 'interior'] as const) {
+      const newest = l.files.filter((f) => f.kind === kind).sort((a, b) => b.version - a.version)[0];
+      if (newest?.reviewStatus === 'rejected') throw new HttpError(400, `The newest ${kind} PDF did not pass its checks. Upload a corrected ${kind} PDF before submitting.`);
+    }
+    if (l.pageCount && (l.pageCount % s.pageCountStep !== 0 || l.pageCount < s.minPageCount || l.pageCount > s.maxPageCount)) throw new HttpError(400, `The page count must be a multiple of ${s.pageCountStep} between ${s.minPageCount} and ${s.maxPageCount}.`);
+  }
   await setListingStatus(l.id, 'SUBMITTED', actorOf(req));
   void notifyStaffListingSubmitted(l.id);
   res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
@@ -337,11 +348,12 @@ partner.post('/listings/:id/withdraw', async (req, res) => {
 });
 
 partner.post('/listings/:id/files', listingUpload.single('file'), async (req, res) => {
-  const l = await ownListing(req);
+  const discard = () => (req.file ? fs.unlink(req.file.path).catch(() => undefined) : Promise.resolve());
+  const l = await ownListing(req).catch(async (e) => { await discard(); throw e; });
   const kind = req.body?.kind;
-  if (!isFileKind(kind)) throw new HttpError(400, 'Which file is this?');
+  if (!isFileKind(kind)) { await discard(); throw new HttpError(400, 'Which file is this?'); }
   if (!req.file) throw new HttpError(400, 'No file received');
-  if (!PARTNER_EDITABLE.has(l.status as never) && kind !== 'extra' && kind !== 'marketing' && !(l.status === 'APPROVED' || l.status === 'SCHEDULED' || l.status === 'LIVE')) throw new HttpError(400, 'This listing is in review; files can be replaced once it is approved or sent back');
+  if (!PARTNER_EDITABLE.has(l.status as never) && kind !== 'extra' && kind !== 'marketing' && !(l.status === 'APPROVED' || l.status === 'SCHEDULED' || l.status === 'LIVE')) { await discard(); throw new HttpError(400, 'This listing is in review; files can be replaced once it is approved or sent back'); }
   const { row, preflight } = await storeListingFile({ listingId: l.id, kind, file: req.file, actor: actorOf(req), uploaderId: req.session!.sub });
   if ((l.status === 'APPROVED' || l.status === 'SCHEDULED' || l.status === 'LIVE') && (kind === 'cover' || kind === 'interior')) {
     await prisma.productionOrder.updateMany({ where: { listingId: l.id, status: { in: ['FILES_NEEDED', 'APPROVED'] } }, data: { status: 'PREFLIGHT' } });
@@ -359,7 +371,7 @@ partner.patch('/profile', async (req, res) => {
   const body = z.object({ contactName: opt(120), contactEmail: z.string().trim().email().nullable().optional(), website: opt(200), phone: opt(40), bio: opt(2000), printerInfo: opt(500), payoutMethod: opt(60), payoutDetails: opt(500), address: z.object({ line1: opt(200), line2: opt(200), city: opt(100), region: opt(100), postalCode: opt(20), country: opt(2) }).partial().nullable().optional() }).parse(req.body);
   const { address, ...rest } = body;
   await prisma.partner.update({ where: { id: partnerId(req) }, data: { ...rest, ...(address === undefined ? {} : { address: address ?? undefined }) } });
-  await recordPodEvent('listing', partnerId(req), 'publisher-edited', `Publisher updated ${Object.keys(body).join(', ')}`, actorOf(req));
+  await recordPodEvent('partner', partnerId(req), 'publisher-edited', `Publisher updated ${Object.keys(body).join(', ')}`, actorOf(req));
   res.json({ ok: true });
 });
 
@@ -396,6 +408,8 @@ partner.post('/listings/:id/files/:fileId/restore', async (req, res) => {
   const f = await prisma.listingFile.findUnique({ where: { id: String(req.params.fileId) } });
   if (!f || f.listingId !== l.id) throw new HttpError(404, 'File not found');
   await restoreListingFileVersion(f.id, actorOf(req));
+  // A restored print file is a new version: the run goes back through preflight like an upload.
+  if ((f.kind === 'cover' || f.kind === 'interior') && ['APPROVED', 'SCHEDULED', 'LIVE'].includes(l.status)) await prisma.productionOrder.updateMany({ where: { listingId: l.id, status: { in: ['FILES_NEEDED', 'APPROVED'] } }, data: { status: 'PREFLIGHT' } });
   res.json({ listing: presentListing((await loadListing(l.id))!, 'partner') });
 });
 
@@ -783,7 +797,7 @@ retailer.get('/orders', async (req, res) => {
 });
 
 retailer.get('/orders/:number', async (req, res) => {
-  const o = await prisma.order.findFirst({ where: { number: req.params.number, retailerId: retailerOf(req).id }, include: { items: true, cycle: true, shipments: true, events: { orderBy: { createdAt: 'desc' }, where: { kind: { in: ['status', 'tracking', 'fulfillment', 'payment'] } } } } });
+  const o = await prisma.order.findFirst({ where: { number: req.params.number, retailerId: retailerOf(req).id }, include: { items: true, cycle: true, shipments: true, events: { orderBy: { createdAt: 'desc' }, where: { kind: { in: ['status', 'tracking', 'fulfillment', 'payment', 'note'] } } } } });
   if (!o) throw new HttpError(404, 'Order not found');
   const editable = o.cycle ? cycleOrderingOpen(o.cycle) && o.paymentStatus === 'PENDING' && o.status === 'PENDING' : false;
   // Once invoiced the shop pays through the same link staff can email.

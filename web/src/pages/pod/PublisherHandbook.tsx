@@ -12,12 +12,13 @@ import { useLoad } from '../../components/pod/ui';
 
 export function PublisherHandbook() {
   useSeo({ image: '/og-distribution.png', title: 'Publisher Handbook — Distribution — Printing Comics', description: 'How to list, submit and sell comics through the Printing Comics Distribution program: policies, submissions, file preparation, catalog procedure, payouts and account rules.' });
-  const { data } = useLoad<{ settings: PublicSettings }>('/pod');
+  const { data, error } = useLoad<{ settings: PublicSettings }>('/pod');
   const s = data?.settings;
   const top = s ? s.tiers[s.tiers.length - 1]! : null;
   const H = ({ id, icon, children }: { id: string; icon: React.ReactNode; children: React.ReactNode }) => <h2 id={id} className="display-md" style={{ marginTop: '2.5rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>{icon}{children}</h2>;
   return (
     <div className="pod">
+      {error && <div className="container" style={{ padding: '1rem 1.25rem 0' }}><div className="notice bad">This page could not load right now ({error}). Please try again in a moment.</div></div>}
       <section className="hero-dark" style={{ padding: '3rem 0 2rem' }}>
         <div className="grain" />
         <div className="container between" style={{ alignItems: 'flex-end' }}>

@@ -79,14 +79,20 @@ export async function assignBarcode(listingId: string, actor: Actor, barcodeId?:
       ?? (await prisma.barcode.findFirst({ where: { status: 'AVAILABLE' }, orderBy: { code: 'asc' } }));
     if (!barcode) throw new HttpError(409, 'No barcodes are available. Load a block under Distribution → Barcodes.');
   }
-  await prisma.barcode.update({ where: { id: barcode.id }, data: { status: 'ASSIGNED', listingId, partnerId: listing.partnerId, assignedAt: new Date() } });
   const data: { upc: string; catalogKey?: string } = { upc: barcode.code };
   // A draft's catalog id follows its UPC; a live one keeps the id shops already know.
   if (listing.status === 'DRAFT' || listing.status === 'CHANGES_REQUESTED' || listing.status === 'SUBMITTED') {
     const wanted = deriveCatalogKey({ seriesCode: listing.seriesCode, upc: barcode.code, title: listing.title });
     if (wanted !== listing.catalogKey) data.catalogKey = await uniqueCatalogKey(wanted, listing.id);
   }
-  await prisma.listing.update({ where: { id: listingId }, data });
+  // Claim and apply together, and only if nobody took the code first.
+  const claimed = await prisma.$transaction(async (tx) => {
+    const r = await tx.barcode.updateMany({ where: { id: barcode!.id, status: { in: ['AVAILABLE', 'RESERVED'] } }, data: { status: 'ASSIGNED', listingId, partnerId: listing.partnerId, assignedAt: new Date() } });
+    if (r.count === 0) return false;
+    await tx.listing.update({ where: { id: listingId }, data });
+    return true;
+  });
+  if (!claimed) throw new HttpError(409, `${barcode.code} was just taken by another listing; try again.`);
   await recordPodEvent('listing', listingId, 'barcode', `${barcode.code} assigned`, actor);
   return prisma.barcode.findUnique({ where: { id: barcode.id } });
 }

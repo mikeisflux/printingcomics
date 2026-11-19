@@ -24,7 +24,7 @@ interface CatalogResp {
 export function PodCatalog() {
   const [params, setParams] = useSearchParams();
   const cycleSlug = params.get('cycle') ?? '';
-  const { data, loading } = useLoad<CatalogResp>(`/pod/catalog${cycleSlug ? `?cycle=${encodeURIComponent(cycleSlug)}` : ''}`, [cycleSlug]);
+  const { data, loading, error } = useLoad<CatalogResp>(`/pod/catalog${cycleSlug ? `?cycle=${encodeURIComponent(cycleSlug)}` : ''}`, [cycleSlug]);
   const { user } = useAuth();
   const [q, setQ] = useState('');
   const [publisher, setPublisher] = useState<string>('');
@@ -42,6 +42,7 @@ export function PodCatalog() {
 
   return (
     <div className="pod">
+      {error && <div className="container" style={{ padding: '1rem 1.25rem 0' }}><div className="notice bad">This page could not load right now ({error}). Please try again in a moment.</div></div>}
       <section className="hero-dark" style={{ padding: '3rem 0 2.25rem' }}>
         <div className="grain" />
         <div className="container">

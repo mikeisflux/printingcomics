@@ -12,7 +12,8 @@ export function PodCatalogPrint() {
   const { id = '' } = useParams();
   const { data } = useLoad<{ cycle: { name: string; catalogDate: string; focDate: string; inStoreDate: string }; listings: Listing[] }>(`/admin/pod/cycles/${id}`, [id]);
   if (!data) return <p className="dim" style={{ padding: '2rem' }}>Loading…</p>;
-  const live = data.listings.filter((l) => ['LIVE', 'APPROVED', 'SCHEDULED'].includes(l.status)).sort((a, b) => a.partner.name.localeCompare(b.partner.name) || a.title.localeCompare(b.title));
+  // What shops can order: live titles only (approved-but-unpublished ones are not in their order book yet).
+  const live = data.listings.filter((l) => l.status === 'LIVE').sort((a, b) => a.partner.name.localeCompare(b.partner.name) || a.title.localeCompare(b.title));
   const byPub = new Map<string, Listing[]>();
   for (const l of live) byPub.set(l.partner.name, [...(byPub.get(l.partner.name) ?? []), l]);
   return (

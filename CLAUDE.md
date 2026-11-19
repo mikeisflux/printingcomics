@@ -128,6 +128,20 @@ npm run db:studio                    # Prisma Studio
   (`POD_ADMIN_EMAIL`/`POD_ADMIN_PASSWORD`, default
   mauramariepowers@gmail.com / password) with `passwordSetAt: null`, so the
   first login is forced through `/account/setup`.
+  Money is posted as deltas: `applyListingDelta` (lib/pod/catalog.ts) brings
+  one listing's raised units (`CatalogCycleItem.raisedUnits`) and ledger in
+  line with the shops' live orders; `lockCycle` runs it per eligible
+  listing, `cancelRetailerOrder` runs it with the order gone, so re-locking
+  after a reopen adds only what is new and a cancel reverses only what was
+  raised. `PartnerLedgerEntry.ref` names the running total an entry belongs
+  to (`sale:<cycle>:<listing>`, `commission:…`, `printing:<run>:retailer`,
+  `printing:<run>:addon`, `return:<id>`); `reconcileRunPrinting` and
+  `cancelPurchaseOrder` post against the same refs. Wholesale orders are
+  payable through the same pay link as staff-placed orders
+  (`orderPayable` accepts source `retailer`). Publisher uploads go through
+  `requireUploadType` (per-slot allowlist, safe extension) and
+  `/uploads/pod` is served only to the owning publisher/shop or staff
+  except cover, marketing and logo images (index.ts).
   Staff view: an ADMIN, or STAFF holding `pod`, opens `/publisher` or
   `/retailer` and picks who to view as (`web/src/lib/view-as.ts` keeps the
   pick in localStorage and the API client sends it as `X-View-As-Partner` /

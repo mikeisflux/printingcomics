@@ -61,7 +61,7 @@ function PublisherForm() {
   };
   if (done) return <Done title="Application received" body="We read every application ourselves and reply within two business days. When you're approved you get a portal login by email, and you can start listing right away." cta={{ to: '/distribution/catalog', label: 'Browse the catalog meanwhile' }} />;
   return (
-    <form onSubmit={submit} className="split" style={{ gridTemplateColumns: '1.3fr .7fr' }}>
+    <form onSubmit={submit} className="split wide-left">
       <div className="panel rise stack" style={{ gap: '1rem' }}>
         <div><h2 className="display-md">About your imprint</h2><p className="dim tight" style={{ fontSize: '.9rem' }}>Tell us who you are and what you publish. Nothing here is binding.</p></div>
         <div className="form-grid">
@@ -104,7 +104,7 @@ function RetailerForm() {
   };
   if (done) return <Done title="Application received" body="We check shop applications within two business days. Once you're approved you get a sign-in link by email and the current catalog opens to you at wholesale." cta={{ to: '/distribution/catalog', label: 'See the catalog' }} />;
   return (
-    <form onSubmit={submit} className="split" style={{ gridTemplateColumns: '1.3fr .7fr' }}>
+    <form onSubmit={submit} className="split wide-left">
       <div className="panel rise stack" style={{ gap: '1rem' }}>
         <div><h2 className="display-md">About your shop</h2><p className="dim tight" style={{ fontSize: '.9rem' }}>Where books ship, who to talk to, and your resale certificate if you have it handy.</p></div>
         <div className="form-grid">

@@ -113,6 +113,8 @@ export function priceWholesale(args: {
     .map(([id, q]) => [id, Math.max(0, Math.floor(Number(q) || 0))] as const)
     .filter(([id, q]) => q > 0 && byId.has(id));
   const problems: string[] = [];
+  const unknown = Object.entries(args.quantities).filter(([id, q]) => Math.floor(Number(q) || 0) > 0 && !byId.has(id)).length;
+  if (unknown) problems.push(`${unknown} line${unknown === 1 ? ' is' : 's are'} no longer in this catalog and ${unknown === 1 ? 'was' : 'were'} left out.`);
   const msrpSubtotalCents = wanted.reduce((s, [id, q]) => s + byId.get(id)!.msrpCents * q, 0);
   const tier = pickTier(args.tiers, msrpSubtotalCents, args.forcedTier);
   const lines: PricedWholesaleLine[] = wanted.map(([id, quantity]) => {

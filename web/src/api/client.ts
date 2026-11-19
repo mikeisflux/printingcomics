@@ -13,7 +13,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...viewAsHeaders(),
+      ...(path.startsWith('/pod') ? viewAsHeaders() : {}),
       ...(init.headers ?? {}),
     },
     ...init,
@@ -28,7 +28,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 /** A multipart POST (files + fields); the browser sets the content type and boundary. */
 async function requestForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', credentials: 'include', headers: viewAsHeaders(), body: form });
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', credentials: 'include', headers: path.startsWith('/pod') ? viewAsHeaders() : {}, body: form });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new ApiError(res.status, body.error ?? 'Request failed', body.details);
