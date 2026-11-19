@@ -19,14 +19,26 @@
  */
 import { csvEscape } from './csv.js';
 
-export const POS_FORMATS = ['diamond', 'generic', 'shopify', 'lightspeed'] as const;
+export const POS_FORMATS = ['diamond', 'generic', 'shopify', 'lightspeed', 'rmh', 'rmh_receive'] as const;
 export type PosFormat = (typeof POS_FORMATS)[number];
 export const POS_FORMAT_LABELS: Record<PosFormat, string> = {
   diamond: 'Diamond invoice layout (Manage Comics, ComicHub, Comic Shop Assistant)',
   generic: 'All columns (Comic Shop Assistant mapper, Retail Management Hero, spreadsheets)',
   shopify: 'Shopify product import (Shopify POS)',
   lightspeed: 'Lightspeed Retail item import',
+  rmh: 'Retail Management Hero item import (Import Utility)',
+  rmh_receive: 'Retail Management Hero purchase-order receive (Code, Qty Rcv, Cost)',
 };
+/** The layout a shop's chosen system imports, for the file we attach to its shipping email. */
+export function defaultFormatFor(posSystem: string | null | undefined): PosFormat {
+  switch (posSystem) {
+    case 'manage_comics': case 'comichub': return 'diamond';
+    case 'shopify_pos': return 'shopify';
+    case 'lightspeed': return 'lightspeed';
+    case 'rmh': return 'rmh_receive';
+    default: return 'generic';
+  }
+}
 export function isPosFormat(v: unknown): v is PosFormat { return typeof v === 'string' && (POS_FORMATS as readonly string[]).includes(v); }
 
 /** One title on an invoice, shipment or catalog, with everything any layout needs. */
@@ -79,6 +91,8 @@ export function invoiceCsv(doc: PosDocument, format: PosFormat): string {
     case 'diamond': return diamondInvoice(doc);
     case 'shopify': return shopifyProducts(doc.lines, { inventory: true });
     case 'lightspeed': return lightspeedItems(doc.lines, { inventory: true });
+    case 'rmh': return rmhItems(doc.lines, { inventory: true });
+    case 'rmh_receive': return rmhReceive(doc.lines);
     default: return genericInvoice(doc);
   }
 }
@@ -118,6 +132,7 @@ export function catalogPosCsv(args: { catalogName: string; releaseDate: string; 
     case 'diamond': return diamondCatalog(args);
     case 'shopify': return shopifyProducts(args.lines, { inventory: false });
     case 'lightspeed': return lightspeedItems(args.lines, { inventory: false });
+    case 'rmh': case 'rmh_receive': return rmhItems(args.lines, { inventory: false });
     default: return genericCatalog(args);
   }
 }
@@ -169,8 +184,30 @@ function lightspeedItems(lines: PosLine[], opts: { inventory: boolean }): string
   return file(out);
 }
 
+/**
+ * Retail Management Hero's Import Utility maps columns by hand and saves the
+ * mapping, so plain names do: lookup code, description, prices, cost,
+ * quantity, supplier, barcode (as an alias).
+ */
+function rmhItems(lines: PosLine[], opts: { inventory: boolean }): string {
+  const head = ['Item Lookup Code', 'Description', 'Extended Description', 'Price', 'Cost', 'Quantity', 'Department', 'Category', 'Supplier', 'Barcode', 'Reorder Number'];
+  const out = [row(head)];
+  for (const l of lines) {
+    const dept = l.format === 'comic' ? 'Comics' : l.format === 'graphic_novel' ? 'Graphic Novels' : 'Books';
+    out.push(row([l.catalogKey, fullTitle(l).slice(0, 30), fullTitle(l), money(l.msrpCents), money(l.unitCents), opts.inventory ? l.quantity : 0, dept, l.publisher, 'Printing Comics Distribution', l.upc ?? '', l.catalogKey]));
+  }
+  return file(out);
+}
+
+/** RMH's received-purchase-order import: exactly Code, Qty Rcv, Cost; items must already be on the purchase order. */
+function rmhReceive(lines: PosLine[]): string {
+  const out = [row(['Code', 'Qty Rcv', 'Cost'])];
+  for (const l of lines) out.push(row([l.catalogKey, l.quantity, money(l.unitCents)]));
+  return file(out);
+}
+
 /** The file name a shop sees: our number, the layout, the right extension. */
 export function posFileName(kind: 'invoice' | 'shipments' | 'catalog', ref: string, format: PosFormat): string {
-  const tag = format === 'diamond' ? 'diamond' : format === 'generic' ? 'all-columns' : format;
+  const tag = format === 'diamond' ? 'diamond' : format === 'generic' ? 'all-columns' : format === 'rmh_receive' ? 'rmh-receive' : format;
   return `${kind}-${ref.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${tag}.csv`;
 }

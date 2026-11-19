@@ -56,6 +56,7 @@ export function PodSettings() {
           </div>
         </div>
         <div className="stack">
+          <PosAppsPanel />
           <div className="panel accent"><h3>Words on the public page</h3>
             <div className="field"><label>Program name</label><input className="inp" value={s.programName} onChange={(e) => set('programName', e.target.value)} /></div>
             <div className="field" style={{ marginTop: '.75rem' }}><label>Intro</label><textarea className="inp" rows={4} value={s.intro} onChange={(e) => set('intro', e.target.value)} /></div>
@@ -66,5 +67,40 @@ export function PodSettings() {
         </div>
       </div>
     </>
+  );
+}
+
+
+/**
+ * Our own Shopify and Lightspeed R-Series app credentials. With these in
+ * place every shop's portal gets a "Connect" button; without them shops can
+ * still paste a token or a Dev Dashboard app of their own.
+ */
+function PosAppsPanel() {
+  const { data, reload } = useLoad<{ shopify: { clientId: string; hasSecret: boolean }; lightspeedR: { clientId: string; hasSecret: boolean } }>('/admin/pod/pos-apps');
+  const { show, node } = useFlash();
+  const [f, setF] = useState({ shopifyId: '', shopifySecret: '', lsId: '', lsSecret: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) setF((x) => ({ ...x, shopifyId: data.shopify.clientId, lsId: data.lightspeedR.clientId })); }, [data]);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/pod/pos-apps', { shopify: { clientId: f.shopifyId.trim(), ...(f.shopifySecret.trim() ? { clientSecret: f.shopifySecret.trim() } : {}) }, lightspeedR: { clientId: f.lsId.trim(), ...(f.lsSecret.trim() ? { clientSecret: f.lsSecret.trim() } : {}) } });
+      show('POS app credentials saved'); setF((x) => ({ ...x, shopifySecret: '', lsSecret: '' })); await reload();
+    } catch (e) { show(errText(e), true); } finally { setBusy(false); }
+  };
+  return (
+    <div className="panel">
+      {node}
+      <h3>POS connect apps</h3>
+      <p className="dim" style={{ fontSize: '.84rem', marginTop: 0 }}>Register one app with each platform and paste its credentials here; shops then connect their store with a button and shipped copies land in their inventory. Shopify: a Dev Dashboard app with scopes <code>write_products, write_inventory, read_locations</code> and redirect URL <code>{window.location.origin}/api/pod/pos/oauth/shopify/callback</code>. Lightspeed R-Series: an app from the developer OAuth registration with scope <code>employee:inventory</code> and the same style of callback (<code>/api/pod/pos/oauth/lightspeed_r/callback</code>).</p>
+      <div className="form-grid">
+        <div className="field"><label>Shopify client id</label><input className="inp mono" value={f.shopifyId} onChange={(e) => setF((x) => ({ ...x, shopifyId: e.target.value }))} /></div>
+        <div className="field"><label>Shopify client secret {data?.shopify.hasSecret && <span className="dim">· set</span>}</label><input className="inp mono" type="password" placeholder={data?.shopify.hasSecret ? '•••••••• (blank keeps it)' : ''} value={f.shopifySecret} onChange={(e) => setF((x) => ({ ...x, shopifySecret: e.target.value }))} /></div>
+        <div className="field"><label>Lightspeed R-Series client id</label><input className="inp mono" value={f.lsId} onChange={(e) => setF((x) => ({ ...x, lsId: e.target.value }))} /></div>
+        <div className="field"><label>Lightspeed R-Series client secret {data?.lightspeedR.hasSecret && <span className="dim">· set</span>}</label><input className="inp mono" type="password" placeholder={data?.lightspeedR.hasSecret ? '•••••••• (blank keeps it)' : ''} value={f.lsSecret} onChange={(e) => setF((x) => ({ ...x, lsSecret: e.target.value }))} /></div>
+      </div>
+      <button className="pbtn primary sm" style={{ marginTop: '.75rem' }} disabled={busy} onClick={() => void save()}>Save app credentials</button>
+    </div>
   );
 }

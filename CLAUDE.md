@@ -185,6 +185,24 @@ npm run db:studio                    # Prisma Studio
   is no session, `actorOf` names the shop, and settings/key routes refuse
   key callers. Export routes: `/orders/:number/invoice[.csv]`,
   `/exports/shipments[.csv]?since=&format=`, `/exports/catalog/:id[.csv]`.
+  Layouts also include `rmh` (Import Utility) and `rmh_receive` (Code, Qty
+  Rcv, Cost); `defaultFormatFor(posSystem)` picks the one attached to the
+  shop's shipped email (`sendRetailerShippedEmail`, sent by
+  `markShippedWhenComplete` for retailer orders in place of the storefront
+  shipping email). Live connections (`RetailerPosConnection`, secrets
+  AES-encrypted; `RetailerPosSync` log): `lib/pod/pos-connect/` holds one
+  adapter per system (Shopify GraphQL Admin API 2026-01 with oauth /
+  client_credentials / legacy token modes; Lightspeed X-Series 2.0 with a
+  personal token, stock as a received supplier consignment; Lightspeed
+  R-Series V3 by OAuth, ItemShop qoh) behind `PosAdapter` (`test`, `push`);
+  `lib/pod/pos-sync.ts` connects/tests/pushes and is hooked so an order
+  creates the titles (zero stock) and each shipment receives its copies
+  once (`posAfterOrder`, `posAfterShipment`). Our own app credentials for
+  the Connect buttons live in setting `pod.posApps` (`/admin/pod/pos-apps`,
+  panel on `/admin/pod/settings`); callbacks are
+  `/api/pod/pos/oauth/:kind/callback` with a signed state. In tests
+  `POS_MOCK_BASE` points every adapter at a local stand-in
+  (`posOrigin` in `pos-connect/types.ts`).
   Staff view: an ADMIN, or STAFF holding `pod`, opens `/publisher` or
   `/retailer` and picks who to view as (`web/src/lib/view-as.ts` keeps the
   pick in localStorage and the API client sends it as `X-View-As-Partner` /

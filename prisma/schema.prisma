@@ -1652,10 +1652,58 @@ model Retailer {
   orders  Order[]
   returns RetailerReturn[]
   webhookDeliveries RetailerWebhookDelivery[]
+  posConnection     RetailerPosConnection?
 
   @@index([status])
   @@index([contactEmail])
   @@index([integrationKeyHash])
+}
+
+/// A live link to the shop's point of sale (Shopify, Lightspeed): what we
+/// push shipped copies and new titles into, with the credentials encrypted.
+model RetailerPosConnection {
+  id          String   @id @default(cuid())
+  retailer    Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  retailerId  String   @unique
+  /// shopify | lightspeed_x | lightspeed_r
+  kind        String
+  /// oauth | client_credentials | token
+  mode        String
+  /// The store: myshopify domain, X-Series domain prefix, or R-Series account id.
+  shop        String
+  /// AES-GCM encrypted JSON of tokens and secrets (lib/crypto.ts).
+  secrets     String
+  /// Where stock lands: a Shopify location gid, an X-Series outlet id, an R-Series shop id.
+  locationId  String?
+  locationName String?
+  /// Push shipped copies as inventory when a box ships.
+  syncShipments Boolean @default(true)
+  /// Create the titles (zero stock) as soon as the shop orders them, so pre-orders can be taken.
+  syncOrders    Boolean @default(true)
+  status      String   @default("connected") // connected | error
+  lastError   String?
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  syncs       RetailerPosSync[]
+}
+
+/// One push into the shop's POS: which order or shipment, what happened.
+model RetailerPosSync {
+  id           String   @id @default(cuid())
+  connection   RetailerPosConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connectionId String
+  retailerId   String
+  kind         String   // shipment | order | catalog | test
+  orderId      String?
+  shipmentId   String?
+  succeeded    Boolean  @default(false)
+  summary      String
+  detail       Json?
+  createdAt    DateTime @default(now())
+
+  @@index([retailerId, createdAt])
+  @@index([shipmentId])
 }
 
 /// One attempt to tell a shop's POS about an event (order placed, invoice ready, shipment…).

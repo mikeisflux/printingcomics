@@ -143,6 +143,36 @@ export async function sendRetailerReceiptEmail(orderId: string): Promise<MailRes
   return trySend({ to: { email: o.email }, subject: `Receipt for order ${o.number} — ${name} wholesale`, html, tags: ['pod-retailer'] });
 }
 
+/**
+ * A shop's order has shipped (every line gone): tracking, and the invoice
+ * file in the layout its point of sale imports, attached, so the week's
+ * books can be checked in without opening the portal.
+ */
+export async function sendRetailerShippedEmail(orderId: string): Promise<MailResult> {
+  const o = await prisma.order.findUnique({ where: { id: orderId }, include: { cycle: true, retailer: true, shipments: { orderBy: { createdAt: 'asc' } } } });
+  if (!o || !o.retailer) return { sent: false, error: 'Order not found' };
+  const name = await storeName();
+  const base = await baseUrl();
+  const { orderDocument } = await import('./integration.js');
+  const { defaultFormatFor, invoiceCsv, posFileName, POS_FORMAT_LABELS } = await import('./pos-files.js');
+  const format = defaultFormatFor(o.retailer.posSystem);
+  let attachment: { filename: string; contentBase64: string; contentType: string } | null = null;
+  try {
+    const doc = await orderDocument(o.retailer.id, o.number, { shippedOnly: true });
+    attachment = { filename: posFileName('invoice', o.number, format), contentBase64: Buffer.from(invoiceCsv(doc, format), 'utf8').toString('base64'), contentType: 'text/csv' };
+  } catch { attachment = null; }
+  const rows = o.shipments.map((s) => `<tr><td style="padding:.35rem .5rem;border-bottom:1px solid #eee">${esc([s.carrier, s.service].filter(Boolean).join(' ') || 'Shipment')}</td><td style="padding:.35rem .5rem;border-bottom:1px solid #eee"><code>${esc(s.trackingCode ?? '—')}</code></td></tr>`).join('');
+  const html = wrap(`
+    <h2 style="margin:0 0 .5rem">Order ${esc(o.number)} has shipped</h2>
+    <p>${esc(o.retailer.name)}, every line on your ${esc(o.cycle?.name ?? 'wholesale')} order is on its way.</p>
+    <table style="border-collapse:collapse;width:100%"><thead><tr><th align="left" style="padding:.35rem .5rem">Carrier</th><th align="left" style="padding:.35rem .5rem">Tracking</th></tr></thead><tbody>${rows}</tbody></table>
+    ${attachment ? `<p style="margin-top:1rem">The invoice is attached as <strong>${esc(attachment.filename)}</strong> (${esc(POS_FORMAT_LABELS[format])}) for your point of sale. Other layouts, and the file for a whole week, are under <a href="${base}/retailer/integrations">POS &amp; integrations</a>.</p>` : ''}
+    ${o.paymentStatus !== 'CAPTURED' && o.totalCents > 0 ? `<p>Shipping is on the invoice; pay it from <a href="${base}/retailer/orders/${esc(o.number)}">the order page</a> when it suits.</p>` : ''}
+    <p>${btn(`${base}/retailer/orders/${o.number}`, 'View the order')}</p>
+  `, name);
+  return trySend({ to: { email: o.retailer.contactEmail || o.email }, subject: `Order ${o.number} shipped — ${name} wholesale`, html, tags: ['pod-retailer'], ...(attachment ? { attachments: [attachment] } : {}) });
+}
+
 /** A shop's wholesale order was cancelled, by them or by us. */
 export async function sendRetailerOrderCancelledEmail(orderId: string, reason?: string | null): Promise<MailResult> {
   const o = await prisma.order.findUnique({ where: { id: orderId }, include: { cycle: true, retailer: true } });

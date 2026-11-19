@@ -682,6 +682,20 @@ router.delete('/retailers/:id/members/:userId', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POS app credentials: our Shopify app and Lightspeed R-Series app, which
+// put a Connect button in every shop's portal.
+// ---------------------------------------------------------------------------
+
+router.get('/pos-apps', async (_req, res) => { const { posAppsView } = await import('../../lib/pod/pos-sync.js'); res.json(await posAppsView()); });
+router.put('/pos-apps', async (req, res) => {
+  const body = z.object({ shopify: z.object({ clientId: opt(200), clientSecret: opt(500) }).optional(), lightspeedR: z.object({ clientId: opt(200), clientSecret: opt(500) }).optional() }).parse(req.body ?? {});
+  const { savePosApps, posAppsView } = await import('../../lib/pod/pos-sync.js');
+  await savePosApps({ shopify: body.shopify ? { clientId: body.shopify.clientId ?? undefined, clientSecret: body.shopify.clientSecret ?? undefined } : undefined, lightspeedR: body.lightspeedR ? { clientId: body.lightspeedR.clientId ?? undefined, clientSecret: body.lightspeedR.clientSecret ?? undefined } : undefined });
+  await recordPodEvent('retailer', 'pos-apps', 'pos-apps', `POS app credentials updated (${Object.keys(body).join(', ')})`, actorOf(req));
+  res.json(await posAppsView());
+});
+
+// ---------------------------------------------------------------------------
 // Production orders
 // ---------------------------------------------------------------------------
 
@@ -1197,6 +1211,8 @@ router.post('/fulfillment/:orderId/ship', async (req, res) => {
   // box now; the rest follows the publisher's shipment.
   const { notifyRetailerSystem } = await import('../../lib/pod/integration.js');
   notifyRetailerSystem(o.retailerId, 'shipment.created', o.id);
+  const { posAfterShipment } = await import('../../lib/pod/pos-sync.js');
+  posAfterShipment(shipment.id);
   const complete = await markShippedWhenComplete(o.id, body.trackingCode ?? null, { notify: body.notify !== false });
   let mail: { sent: boolean; error?: string } | null = null;
   if (complete) mail = complete.mail;

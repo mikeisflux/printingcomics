@@ -5,8 +5,8 @@
  * scripts that fetch, and a webhook that hears about orders and shipments.
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plug, Copy, Download, KeyRound, Webhook, Send, Trash2, CheckCircle2, XCircle } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Plug, Copy, Download, KeyRound, Webhook, Send, Trash2, CheckCircle2, XCircle, RefreshCw, Link2 } from 'lucide-react';
 import { api } from '../../api/client';
 import { withViewAs } from '../../lib/view-as';
 import { dateTime } from '../../lib/pod';
@@ -28,19 +28,22 @@ export const POS_LABELS: Record<string, string> = {
 };
 
 /** Which file layout each system imports, and the words its import screen uses. */
-const GUIDES: Record<string, { format: string; steps: string[]; note?: string }> = {
-  manage_comics: { format: 'diamond', steps: ['Download the invoice (or the shipments file for a whole week) in the Diamond layout.', 'In Manage Comics open Invoices → Import and pick the Diamond CSV option.', 'Upload the file: pull lists, subscriptions and allocations fill in from the quantities.', 'Before a catalog opens, import the catalog file the same way so pre-orders can be taken against our titles.'], note: 'Our catalog ids (SERIESCODE-last five of the UPC) sit in the Item Code column, so series match across months.' },
+const GUIDES: Record<string, { format: string; steps: string[]; note?: string; live?: boolean }> = {
+  manage_comics: { format: 'diamond', live: true, steps: ['Download the invoice (or the shipments file for a whole week) in the Diamond layout.', 'In Manage Comics open Invoices → Import and pick the Diamond CSV option.', 'Upload the file: pull lists, subscriptions and allocations fill in from the quantities.', 'Before a catalog opens, import the catalog file the same way so pre-orders can be taken against our titles.'], note: 'Our catalog ids (SERIESCODE-last five of the UPC) sit in the Item Code column, so series match across months.' },
   comichub: { format: 'diamond', steps: ['Download the invoice or the shipments file in the Diamond layout.', 'In ComicHub go to the distributor invoice import and choose the Diamond file type.', 'Upload; the UPC / ISBN columns match titles already in your system, new ones are created from the description and price.'] },
   comic_shop_assistant: { format: 'generic', steps: ['Download the invoice in the all-columns layout (every field has a plain header).', 'In Comic Shop Assistant upload the invoice and map the columns once: Item Code, UPC, Title, Quantity, MSRP, Unit Cost.', 'Save the mapping as a template; later files load with one click.'], note: 'The Diamond layout works too if you would rather reuse your Diamond template.' },
-  shopify_pos: { format: 'shopify', steps: ['Download the invoice in the Shopify layout: one product per title, barcode = UPC, cost per item = your wholesale price, inventory = copies shipped.', 'In Shopify admin go to Products → Import and upload the file (tick "overwrite products with matching handles" to update).', 'Before a catalog opens, import the catalog file to create the products with zero stock for pre-orders.'] },
-  lightspeed: { format: 'lightspeed', steps: ['Download the invoice in the Lightspeed layout.', 'In Lightspeed Retail go to Inventory → Import Items and upload; match UPC and Custom SKU to your existing items.', 'Quantities land as the on-hand count for the shipment.'] },
-  rmh: { format: 'generic', steps: ['Download the invoice in the all-columns layout.', 'Use your register\'s item import or purchase-order import with the Item Code, UPC, Title, Quantity, MSRP and Unit Cost columns.'] },
+  shopify_pos: { format: 'shopify', live: true, steps: ['Connect the store below: shipped copies are received into Shopify inventory on their own, with the UPC as barcode and your wholesale price as cost. The files are the fallback.', 'Download the invoice in the Shopify layout: one product per title, barcode = UPC, cost per item = your wholesale price, inventory = copies shipped.', 'In Shopify admin go to Products → Import and upload the file (tick "overwrite products with matching handles" to update).', 'Before a catalog opens, import the catalog file to create the products with zero stock for pre-orders.'] },
+  lightspeed: { format: 'lightspeed', live: true, steps: ['Connect the store below (X-Series with a personal token, R-Series with the Connect button): shipped copies land in your inventory on their own.', 'Download the invoice in the Lightspeed layout.', 'In Lightspeed Retail go to Inventory → Import Items and upload; match UPC and Custom SKU to your existing items.', 'Quantities land as the on-hand count for the shipment.'] },
+  rmh: { format: 'rmh', steps: ['Download the invoice in the Retail Management Hero item layout for the Import Utility (map the columns once and save the mapping), or the purchase-order receive layout (Code, Qty Rcv, Cost) to receive against a PO you raised.', 'The same file is attached to the shipped email, so the week\'s books can be received without opening the portal.'] },
   other: { format: 'generic', steps: ['Use the JSON API or the CSV feeds below; every file is also available by URL with your integration key.', 'Point a webhook at your system to hear about orders, invoices and shipments without polling.'] },
 };
 
 export function RetailerIntegrations() {
   const { data, reload } = useLoad<View>('/pod/retailer/integration');
   const { show, node } = useFlash();
+  const [params] = useSearchParams();
+  const posMsg = params.get('msg');
+  const posResult = params.get('pos');
   const [busy, setBusy] = useState<string | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -66,9 +69,11 @@ export function RetailerIntegrations() {
     <>
       {node}
       <div className="ptop"><div><div className="eyebrow">POS &amp; integrations</div><h1>Plug in your point of sale</h1><div className="sub">Invoices, shipping manifests and catalogs in the file layout your system imports, a key for anything that fetches, and a webhook for anything that listens. <Link to="/distribution/pos">Read the full guide</Link>.</div></div></div>
+      {posResult && posMsg && <div className={`notice ${posResult === 'connected' ? 'info' : 'bad'}`} style={{ marginBottom: '1rem' }}>{posMsg}</div>}
       {!data ? <p className="dim">Loading…</p> : (
         <div className="split wide-left">
           <div className="stack">
+            <LiveConnection pos={pos} show={show} />
             <div className="panel accent">
               <h3><Plug size={18} style={{ verticalAlign: '-3px' }} /> Which system does your shop run?</h3>
               <div className="row" style={{ marginTop: '.6rem', flexWrap: 'wrap' }}>
@@ -157,5 +162,100 @@ export function RetailerIntegrations() {
         </div>
       )}
     </>
+  );
+}
+
+
+interface PosView {
+  connection: { kind: string; mode: string; shop: string; locationId: string | null; locationName: string | null; syncShipments: boolean; syncOrders: boolean; status: string; lastError: string | null; lastSyncAt: string | null; createdAt: string } | null;
+  kinds: { key: string; label: string }[];
+  oauth: { shopify: boolean; lightspeed_r: boolean };
+  syncs: { id: string; kind: string; orderId: string | null; succeeded: boolean; summary: string; createdAt: string }[];
+}
+
+/**
+ * The live link: Shopify and Lightspeed are pushed to, so a shop that
+ * connects never touches a file. Connect by button (our app) where we hold
+ * app credentials, or by pasting the store's own token / app.
+ */
+function LiveConnection({ pos, show }: { pos: string; show: (m: string, bad?: boolean) => void }) {
+  const { data, reload, setData } = useLoad<PosView>('/pod/retailer/integration/pos');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [kind, setKind] = useState<'shopify' | 'lightspeed_x' | 'lightspeed_r'>(pos === 'lightspeed' ? 'lightspeed_x' : 'shopify');
+  const [f, setF] = useState({ shop: '', token: '', clientId: '', clientSecret: '', way: 'app' as 'app' | 'token' });
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const c = data?.connection ?? null;
+  const run = async <T,>(label: string, fn: () => Promise<T>, ok: (r: T) => string) => { setBusy(label); try { const r = await fn(); show(ok(r)); await reload(); return r; } catch (e) { show(errText(e), true); return null; } finally { setBusy(null); } };
+  const connect = () => run('connect', () => api.put<PosView>('/pod/retailer/integration/pos', { kind, shop: f.shop, mode: kind === 'shopify' && f.way === 'token' ? 'token' : kind === 'shopify' ? 'client_credentials' : 'token', token: f.token || null, clientId: f.clientId || null, clientSecret: f.clientSecret || null }), () => 'Connected — the store answered').then((v) => { if (v) { setData(v); setF({ shop: '', token: '', clientId: '', clientSecret: '', way: 'app' }); } });
+  const oauth = (system: 'shopify' | 'lightspeed_r') => run('oauth', () => api.post<{ url: string }>(`/pod/retailer/integration/pos/oauth/${system}/start`, { shop: f.shop }), () => 'Opening the store to approve…').then((r) => { if (r?.url) window.location.href = r.url; });
+  const test = () => run('test', () => api.post<{ ok: boolean; account: string; locations: { id: string; name: string }[]; error?: string; view: PosView }>('/pod/retailer/integration/pos/test'), (r) => (r.ok ? `Connected to ${r.account}` : `Not connected: ${r.error}`)).then((r) => { if (r) { setLocations(r.locations); setData(r.view); } });
+  const disconnect = () => { if (confirm('Disconnect the store? Shipments stop syncing; nothing already in the store is removed.')) void run('disconnect', () => api.del<PosView>('/pod/retailer/integration/pos'), () => 'Disconnected').then((v) => v && setData(v)); };
+  const patch = (body: Record<string, unknown>) => run('patch', () => api.patch<PosView>('/pod/retailer/integration/pos', body), () => 'Saved').then((v) => v && setData(v));
+  if (!data) return null;
+  void pos;
+  return (
+    <div className="panel" style={{ borderColor: c ? 'var(--p-green)' : undefined }}>
+      <h3><Link2 size={18} style={{ verticalAlign: '-3px' }} /> Live connection {c ? <Pill tone={c.status === 'connected' ? 'green' : 'red'}>{c.status === 'connected' ? 'connected' : 'needs attention'}</Pill> : <Pill tone="slate">none</Pill>}</h3>
+      {c ? (
+        <>
+          <p className="dim" style={{ fontSize: '.88rem', margin: '.3rem 0 .6rem' }}><b>{data.kinds.find((k) => k.key === c.kind)?.label ?? c.kind}</b> · {c.shop} · stock lands at <b>{c.locationName ?? 'no location picked'}</b>{c.lastSyncAt ? ` · last push ${dateTime(c.lastSyncAt)}` : ''}</p>
+          {c.lastError && <div className="notice bad" style={{ marginBottom: '.6rem' }}>{c.lastError}</div>}
+          <div className="row" style={{ flexWrap: 'wrap', gap: '.6rem' }}>
+            <label className="switch"><input type="checkbox" checked={c.syncShipments} disabled={busy !== null} onChange={(e) => void patch({ syncShipments: e.target.checked })} /> Receive shipped copies into stock</label>
+            <label className="switch"><input type="checkbox" checked={c.syncOrders} disabled={busy !== null} onChange={(e) => void patch({ syncOrders: e.target.checked })} /> Create titles when I order them (zero stock, for pre-orders)</label>
+          </div>
+          {locations.length > 1 && <div className="field" style={{ marginTop: '.6rem' }}><label>Where stock lands</label><select className="inp" value={c.locationId ?? ''} onChange={(e) => void patch({ locationId: e.target.value })}>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>}
+          <div className="row" style={{ marginTop: '.6rem', flexWrap: 'wrap' }}>
+            <button className="pbtn soft sm" disabled={busy !== null} onClick={() => void test()}><RefreshCw size={14} /> Test connection{locations.length ? '' : ' / list locations'}</button>
+            <button className="pbtn ghost sm" disabled={busy !== null} onClick={() => disconnect()}><Trash2 size={14} /> Disconnect</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="dim" style={{ fontSize: '.88rem', margin: '.3rem 0 .6rem' }}>Connect Shopify or Lightspeed and every shipment is received into your inventory on its own: product created if new (SKU = our catalog id, barcode = UPC, cost = your wholesale price), copies added when the box ships.</p>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            <select className="inp" style={{ width: 'auto' }} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>{data.kinds.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}</select>
+          </div>
+          {kind === 'shopify' && (
+            <div style={{ marginTop: '.6rem' }}>
+              <div className="field"><label>Store address</label><input className="inp" placeholder="my-shop.myshopify.com" value={f.shop} onChange={(e) => setF((x) => ({ ...x, shop: e.target.value }))} /></div>
+              {data.oauth.shopify && <div className="row" style={{ marginTop: '.6rem' }}><button className="pbtn primary sm" disabled={busy !== null || !f.shop.trim()} onClick={() => void oauth('shopify')}><Link2 size={14} /> Connect with Shopify</button><span className="dim" style={{ fontSize: '.8rem' }}>Approve our app in your Shopify admin; nothing to paste.</span></div>}
+              <div className="seg" style={{ marginTop: '.75rem' }}><button className={f.way === 'app' ? 'on' : ''} onClick={() => setF((x) => ({ ...x, way: 'app' }))}>{data.oauth.shopify ? 'Or: an app you made' : 'An app you made'}</button><button className={f.way === 'token' ? 'on' : ''} onClick={() => setF((x) => ({ ...x, way: 'token' }))}>Legacy access token</button></div>
+              {f.way === 'app' ? (
+                <>
+                  <p className="dim" style={{ fontSize: '.8rem', margin: '.5rem 0' }}>In your Shopify Dev Dashboard create an app with scopes <code>write_products</code>, <code>write_inventory</code>, <code>read_locations</code>, install it on your store, then paste its client id and secret. We fetch 24-hour tokens from them as needed.</p>
+                  <div className="form-grid"><div className="field"><label>Client id</label><input className="inp mono" value={f.clientId} onChange={(e) => setF((x) => ({ ...x, clientId: e.target.value }))} /></div><div className="field"><label>Client secret</label><input className="inp mono" type="password" value={f.clientSecret} onChange={(e) => setF((x) => ({ ...x, clientSecret: e.target.value }))} /></div></div>
+                </>
+              ) : (
+                <>
+                  <p className="dim" style={{ fontSize: '.8rem', margin: '.5rem 0' }}>For a custom app made in the Shopify admin before 2026: Settings → Apps → Develop apps → your app → Admin API access token (starts with <code>shpat_</code>).</p>
+                  <div className="field"><label>Admin API access token</label><input className="inp mono" type="password" value={f.token} onChange={(e) => setF((x) => ({ ...x, token: e.target.value }))} /></div>
+                </>
+              )}
+              <button className="pbtn primary sm" style={{ marginTop: '.6rem' }} disabled={busy !== null || !f.shop.trim() || (f.way === 'token' ? !f.token.trim() : !f.clientId.trim() || !f.clientSecret.trim())} onClick={() => void connect()}>Connect</button>
+            </div>
+          )}
+          {kind === 'lightspeed_x' && (
+            <div style={{ marginTop: '.6rem' }}>
+              <p className="dim" style={{ fontSize: '.8rem', margin: '.3rem 0 .5rem' }}>In Lightspeed Retail (X-Series) go to Setup → Personal tokens (an admin, on the Plus plan) and make a token. Received copies go in as a supplier stock order marked received, with your cost.</p>
+              <div className="form-grid"><div className="field"><label>Store address</label><input className="inp" placeholder="my-shop.retail.lightspeed.app" value={f.shop} onChange={(e) => setF((x) => ({ ...x, shop: e.target.value }))} /></div><div className="field"><label>Personal token</label><input className="inp mono" type="password" value={f.token} onChange={(e) => setF((x) => ({ ...x, token: e.target.value }))} /></div></div>
+              <button className="pbtn primary sm" style={{ marginTop: '.6rem' }} disabled={busy !== null || !f.shop.trim() || !f.token.trim()} onClick={() => void connect()}>Connect</button>
+            </div>
+          )}
+          {kind === 'lightspeed_r' && (
+            <div style={{ marginTop: '.6rem' }}>
+              {data.oauth.lightspeed_r ? <><p className="dim" style={{ fontSize: '.8rem', margin: '.3rem 0 .5rem' }}>Lightspeed R-Series only connects through an approved app: click, sign in to Lightspeed, allow inventory access.</p><button className="pbtn primary sm" disabled={busy !== null} onClick={() => void oauth('lightspeed_r')}><Link2 size={14} /> Connect with Lightspeed</button></> : <p className="dim" style={{ fontSize: '.84rem' }}>R-Series connects through an app we register with Lightspeed; it is not switched on yet. Use the Lightspeed item-import file meanwhile, or write to us.</p>}
+            </div>
+          )}
+        </>
+      )}
+      {data.syncs.length > 0 && (
+        <div className="scroll-x" style={{ marginTop: '.75rem' }}>
+          <table className="ptable"><thead><tr><th>When</th><th>What</th><th>Result</th></tr></thead><tbody>
+            {data.syncs.map((s) => <tr key={s.id}><td className="dim" style={{ whiteSpace: 'nowrap' }}>{dateTime(s.createdAt)}</td><td className="mono">{s.kind}</td><td>{s.succeeded ? <span className="row" style={{ gap: '.3rem', color: 'var(--p-green)' }}><CheckCircle2 size={14} /> {s.summary}</span> : <span className="row" style={{ gap: '.3rem', color: 'var(--p-magenta)' }}><XCircle size={14} /> {s.summary}</span>}</td></tr>)}
+          </tbody></table>
+        </div>
+      )}
+    </div>
   );
 }

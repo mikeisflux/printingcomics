@@ -22,14 +22,17 @@ import { RETURN_REASONS, requestReturn, returnAllowance } from '../lib/pod/retur
 import { estimatePrintCost } from '../lib/pod/catalog.js';
 import { numbering } from '../lib/pod/events.js';
 import { FILE_KIND_LABELS } from '../lib/pod/present.js';
-import { actorOf, podEvents, recordPodEvent, slugify } from '../lib/pod/events.js';
+import { actorOf, podEvents, recordPodEvent, slugify, type Actor } from '../lib/pod/events.js';
 import { catalogCsv, parseOrderForm } from '../lib/pod/csv.js';
 import { pickTier, wholesaleUnit } from '../lib/pod/wholesale.js';
 import { ledgerSummary } from '../lib/pod/payouts.js';
 import { notifyStaff, notifyStaffListingSubmitted, notifyStaffPublisherApplied, notifyStaffRetailerApplied, sendPublisherApplicationReceivedEmail, sendRetailerOrderCancelledEmail, sendRetailerOrderEmail } from '../lib/pod/emails.js';
 import { newOrderNumber } from '../lib/checkout-order.js';
+import jwt from 'jsonwebtoken';
+import { config } from '../config.js';
 import { orderPayLink, orderPayable } from '../lib/manual-order.js';
 import { catalogDocument, dispatchRetailerWebhook, mintIntegrationKey, notifyRetailerSystem, orderDocument, publicBase, retailerForKey, revokeIntegrationKey, shipmentDocuments } from '../lib/pod/integration.js';
+import { connectPos, disconnectPos, posAfterOrder, posView, setPosOptions, syncOrderShipmentsToPos, testPos, getPosApps } from '../lib/pod/pos-sync.js';
 import { POS_FORMATS, POS_FORMAT_LABELS, catalogPosCsv, invoiceCsv, isPosFormat, posFileName, type PosFormat } from '../lib/pod/pos-files.js';
 import { clientIp } from '../middleware/botblocker.js';
 import { evaluateCoupon } from '../lib/coupons.js';
@@ -764,6 +767,7 @@ retailer.post('/orders', async (req, res) => {
       });
       const mail = await sendRetailerOrderEmail(order.id);
       notifyRetailerSystem(r.id, existing ? 'order.updated' : 'order.placed', order.id);
+      posAfterOrder(order.id);
   res.status(existing ? 200 : 201).json({ order: { id: order.id, number: order.number, subtotalCents: order.subtotalCents, totalCents: order.totalCents, creditApplied }, replaced: Boolean(existing), mail });
 });
 
@@ -938,6 +942,81 @@ retailer.get('/integration/whoami', async (req, res) => {
   res.json({ shop: { id: r.id, name: r.name, slug: r.slug }, viaKey: Boolean((req as Request & { integration?: boolean }).integration) });
 });
 
+// ---------------------------------------------------------------------------
+// Live POS connections (Shopify, Lightspeed): pushed to, not just downloaded.
+// Settings and credentials are portal-only; a key may read the status and
+// ask for a re-push.
+// ---------------------------------------------------------------------------
+
+const portalOnly = (req: Request) => { if ((req as Request & { integration?: boolean }).integration) throw new HttpError(403, 'Point-of-sale connections are managed from the portal, not with the key.'); };
+
+retailer.get('/integration/pos', async (req, res) => { res.json(await posView(retailerOf(req).id)); });
+
+/** Connect with credentials the shop pasted (X-Series personal token, Shopify Dev Dashboard app, legacy Shopify token). */
+retailer.put('/integration/pos', async (req, res) => {
+  portalOnly(req);
+  const body = z.object({
+    kind: z.enum(['shopify', 'lightspeed_x']), shop: str(200),
+    mode: z.enum(['client_credentials', 'token']).optional(),
+    token: opt(500), clientId: opt(200), clientSecret: opt(500), locationId: opt(120),
+  }).parse(req.body);
+  const r = retailerOf(req);
+  if (body.kind === 'shopify') {
+    const { normalizeShopifyDomain } = await import('../lib/pod/pos-connect/shopify.js');
+    const shop = normalizeShopifyDomain(body.shop);
+    if (!shop) throw new HttpError(400, 'Enter the store\'s myshopify.com address, like my-shop.myshopify.com');
+    if (body.mode === 'token' || (body.token && !body.clientId)) {
+      if (!body.token?.trim()) throw new HttpError(400, 'Paste the Admin API access token');
+      res.json(await connectPos(r.id, { kind: 'shopify', mode: 'token', shop, secrets: { accessToken: body.token.trim() }, locationId: body.locationId ?? null }, actorOf(req)));
+    } else {
+      if (!body.clientId?.trim() || !body.clientSecret?.trim()) throw new HttpError(400, 'Paste the app\'s client id and client secret');
+      res.json(await connectPos(r.id, { kind: 'shopify', mode: 'client_credentials', shop, secrets: { clientId: body.clientId.trim(), clientSecret: body.clientSecret.trim() }, locationId: body.locationId ?? null }, actorOf(req)));
+    }
+    return;
+  }
+  const { normalizeXPrefix } = await import('../lib/pod/pos-connect/lightspeed-x.js');
+  const prefix = normalizeXPrefix(body.shop);
+  if (!prefix) throw new HttpError(400, 'Enter the store\'s Lightspeed address, like my-shop.retail.lightspeed.app');
+  if (!body.token?.trim()) throw new HttpError(400, 'Paste the personal token');
+  res.json(await connectPos(r.id, { kind: 'lightspeed_x', mode: 'token', shop: prefix, secrets: { token: body.token.trim() }, locationId: body.locationId ?? null }, actorOf(req)));
+});
+
+retailer.patch('/integration/pos', async (req, res) => {
+  portalOnly(req);
+  const body = z.object({ locationId: opt(120), syncShipments: z.boolean().optional(), syncOrders: z.boolean().optional() }).parse(req.body ?? {});
+  res.json(await setPosOptions(retailerOf(req).id, body));
+});
+retailer.delete('/integration/pos', async (req, res) => { portalOnly(req); res.json(await disconnectPos(retailerOf(req).id, actorOf(req))); });
+retailer.post('/integration/pos/test', async (req, res) => { const t = await testPos(retailerOf(req).id); res.json({ ...t, view: await posView(retailerOf(req).id) }); });
+/** Push an order again (its shipments not yet received, or the titles alone when nothing shipped). */
+retailer.post('/integration/pos/sync/:number', async (req, res) => {
+  const results = await syncOrderShipmentsToPos(retailerOf(req).id, String(req.params.number));
+  res.json({ results, view: await posView(retailerOf(req).id) });
+});
+
+/** Where the Connect buttons send the shop: our app's authorize page, with a signed state that names the shop. */
+retailer.post('/integration/pos/oauth/:kind/start', async (req, res) => {
+  portalOnly(req);
+  const kind = String(req.params.kind);
+  const r = retailerOf(req);
+  const apps = await getPosApps();
+  const base = await publicBase();
+  const state = jwt.sign({ kind: 'pos-oauth', sub: r.id, system: kind }, config.jwtSecret, { expiresIn: '20m' });
+  if (kind === 'shopify') {
+    if (!apps.shopify.clientId || !apps.shopify.clientSecret) throw new HttpError(400, 'Shopify connect is not set up yet; paste a Dev Dashboard app or an access token instead.');
+    const { normalizeShopifyDomain, shopifyAuthorizeUrl } = await import('../lib/pod/pos-connect/shopify.js');
+    const shop = normalizeShopifyDomain(String(req.body?.shop ?? ''));
+    if (!shop) throw new HttpError(400, 'Enter the store\'s myshopify.com address');
+    return res.json({ url: shopifyAuthorizeUrl(shop, apps.shopify.clientId, `${base}/api/pod/pos/oauth/shopify/callback`, state) });
+  }
+  if (kind === 'lightspeed_r') {
+    if (!apps.lightspeedR.clientId || !apps.lightspeedR.clientSecret) throw new HttpError(400, 'Lightspeed R-Series connect is not set up yet.');
+    const { lightspeedRAuthorizeUrl } = await import('../lib/pod/pos-connect/lightspeed-r.js');
+    return res.json({ url: lightspeedRAuthorizeUrl(apps.lightspeedR.clientId, state) });
+  }
+  throw new HttpError(400, 'That system does not connect with a button');
+});
+
 const formatOf = (req: Request): PosFormat => { const f = String(req.query.format ?? 'generic'); if (!isPosFormat(f)) throw new HttpError(400, `format must be one of ${POS_FORMATS.join(', ')}`); return f; };
 const sendCsv = (res: Response, name: string, csv: string) => { res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="${name}"`); res.setHeader('Cache-Control', 'private, no-store'); res.send(csv); };
 const sinceOf = (req: Request): Date | null => {
@@ -979,6 +1058,44 @@ retailer.get('/exports/catalog/:cycleId.csv', async (req, res) => {
   sendCsv(res, posFileName('catalog', cycle.slug, format), catalogPosCsv({ catalogName: cycle.name, releaseDate: cycle.inStoreDate, lines }, format));
 });
 retailer.get('/exports/catalog/:cycleId', async (req, res) => { res.json(await catalogDocument(retailerOf(req), String(req.params.cycleId))); });
+
+/** The store sends the shop back here after approving our app. */
+router.get('/pos/oauth/:kind/callback', async (req, res) => {
+  const base = await publicBase();
+  const back = (msg: string, ok: boolean) => res.redirect(`${base}/retailer/integrations?pos=${ok ? 'connected' : 'failed'}&msg=${encodeURIComponent(msg)}`);
+  let claims: { kind?: string; sub?: string; system?: string };
+  try { claims = jwt.verify(String(req.query.state ?? ''), config.jwtSecret) as typeof claims; } catch { return back('The connect link expired; try again from the portal.', false); }
+  if (claims.kind !== 'pos-oauth' || !claims.sub || claims.system !== String(req.params.kind)) return back('That connect link is not valid.', false);
+  const retailerId = claims.sub;
+  const apps = await getPosApps();
+  const actor: Actor = { id: null, name: 'POS connect' };
+  try {
+    if (claims.system === 'shopify') {
+      const { normalizeShopifyDomain, shopifyExchangeCode } = await import('../lib/pod/pos-connect/shopify.js');
+      const shop = normalizeShopifyDomain(String(req.query.shop ?? ''));
+      const code = String(req.query.code ?? '');
+      if (!shop || !code) return back('Shopify did not send the store or the code back.', false);
+      // Shopify signs its redirect with the app secret; a forged redirect is refused.
+      const { hmac, ...rest } = req.query as Record<string, string>;
+      const message = Object.keys(rest).sort().map((k) => `${k}=${rest[k]}`).join('&');
+      const { createHmac, timingSafeEqual } = await import('node:crypto');
+      const expected = createHmac('sha256', apps.shopify.clientSecret).update(message).digest('hex');
+      if (!hmac || hmac.length !== expected.length || !timingSafeEqual(Buffer.from(hmac), Buffer.from(expected))) return back('The Shopify redirect could not be verified.', false);
+      const token = await shopifyExchangeCode(shop, apps.shopify.clientId, apps.shopify.clientSecret, code);
+      await connectPos(retailerId, { kind: 'shopify', mode: 'oauth', shop, secrets: { accessToken: token }, locationId: null }, actor);
+      return back('Shopify connected.', true);
+    }
+    if (claims.system === 'lightspeed_r') {
+      const { lightspeedRExchangeCode } = await import('../lib/pod/pos-connect/lightspeed-r.js');
+      const code = String(req.query.code ?? '');
+      if (!code) return back('Lightspeed did not send a code back.', false);
+      const t = await lightspeedRExchangeCode(apps.lightspeedR.clientId, apps.lightspeedR.clientSecret, code);
+      await connectPos(retailerId, { kind: 'lightspeed_r', mode: 'oauth', shop: t.accountId, secrets: { accessToken: t.accessToken, refreshToken: t.refreshToken, expiresAt: new Date(Date.now() + (t.expiresIn - 30) * 1000).toISOString() }, locationId: null }, actor);
+      return back('Lightspeed connected.', true);
+    }
+    return back('Unknown system.', false);
+  } catch (e: any) { return back(e?.message ?? 'Could not connect.', false); }
+});
 
 router.use('/retailer', retailer);
 

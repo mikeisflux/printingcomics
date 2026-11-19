@@ -13,9 +13,9 @@ const SYSTEMS: { name: string; format: string; how: string }[] = [
   { name: 'Manage Comics', format: 'Diamond invoice layout', how: 'Invoices → Import → Diamond CSV. Works with the Lightspeed, Shopify POS and RMH registers Manage Comics plugs into; it reads our catalog ids as item codes so series carry across months.' },
   { name: 'ComicHub', format: 'Diamond invoice layout', how: 'Distributor invoice import, Diamond file type. UPC and ISBN columns match titles already in the system.' },
   { name: 'Comic Shop Assistant', format: 'All columns (or Diamond)', how: 'Upload the invoice, map Item Code, UPC, Title, Quantity, MSRP and Unit Cost once, save the template.' },
-  { name: 'Shopify POS', format: 'Shopify product import', how: 'Products → Import. One product per title, barcode = UPC, cost per item = your wholesale price, inventory = copies shipped.' },
-  { name: 'Lightspeed Retail', format: 'Lightspeed item import', how: 'Inventory → Import Items. UPC and Custom SKU match existing items; quantities land as on-hand.' },
-  { name: 'Retail Management Hero and others', format: 'All columns', how: 'Every field under a plain header for any item or purchase-order importer.' },
+  { name: 'Shopify POS', format: 'Live connection (or Shopify product import)', how: 'Connect the store once; every shipment is received into inventory on its own, products created with barcode = UPC, SKU = our catalog id and cost = your wholesale price. The import file is the fallback.' },
+  { name: 'Lightspeed Retail', format: 'Live connection (or Lightspeed item import)', how: 'X-Series connects with a personal token, R-Series with a Connect button; shipped copies arrive as a received stock order with your cost. The import file is the fallback.' },
+  { name: 'Retail Management Hero', format: 'RMH item import / PO receive', how: 'The Import Utility layout (map once, save the mapping) and the received-PO layout (Code, Qty Rcv, Cost). Any other register takes the all-columns file.' },
 ];
 
 const Code = ({ children }: { children: string }) => <pre className="panel tight mono" style={{ fontSize: '.78rem', overflowX: 'auto', margin: '.5rem 0 1rem', whiteSpace: 'pre' }}>{children}</pre>;
@@ -35,11 +35,11 @@ export function PodPosGuide() {
       </section>
       <div className="container" style={{ padding: '1.5rem 1.25rem 4rem', maxWidth: 960 }}>
         <nav className="panel tight" style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '1rem' }}>
-          {[['systems', 'Your system'], ['files', 'The files'], ['key', 'Key & feeds'], ['webhooks', 'Webhooks'], ['api', 'API reference']].map(([id, l]) => <a key={id} href={`#${id}`} className="pbtn ghost xs">{l}</a>)}
+          {[['systems', 'Your system'], ['files', 'The files'], ['key', 'Key & feeds'], ['live', 'Live connections'], ['webhooks', 'Webhooks'], ['api', 'API reference']].map(([id, l]) => <a key={id} href={`#${id}`} className="pbtn ghost xs">{l}</a>)}
         </nav>
 
         <H id="systems" icon={<Plug size={22} style={{ color: 'var(--p-violet)' }} />}>Your system</H>
-        <p>Comic shop tools take distributor data as files you download and import; so do we. Pick your system on the POS &amp; integrations page of the portal and the right layout is chosen for you.</p>
+        <p>Comic shop tools (Manage Comics, ComicHub, Comic Shop Assistant) take distributor data as files you import; general registers (Shopify, Lightspeed) can be pushed to directly. Pick your system on the POS &amp; integrations page of the portal: the right layout is chosen for you, the invoice file rides along on every shipped email, and Shopify or Lightspeed can be connected so nothing needs importing at all.</p>
         <div className="grid cols-2" style={{ marginTop: '1rem' }}>
           {SYSTEMS.map((s) => <div key={s.name} className="panel"><b>{s.name}</b><div className="dim" style={{ fontSize: '.8rem', margin: '.15rem 0 .4rem' }}>{s.format}</div><p className="dim tight" style={{ fontSize: '.9rem' }}>{s.how}</p></div>)}
         </div>
@@ -50,14 +50,22 @@ export function PodPosGuide() {
           <li><b>Shipments</b> — everything that shipped to you in the last 7 or 30 days (or since a date), one invoice per order in a single file, only the copies that actually shipped, with carrier and tracking on the all-columns layout.</li>
           <li><b>Catalog</b> — every title in a published catalog at your price with the quantity left blank, so your POS can take pre-orders and subscriptions before the books arrive.</li>
         </ul>
-        <p>Four layouts, same data: <b>Diamond invoice layout</b> (Units Shipped, Item Code, Item Description, Retail Price, Unit Price, Invoice Amount, Category Code, Order Type, Processed As, Order Number, UPC, ISBN, EAN), <b>all columns</b> with plain headers, <b>Shopify product import</b>, and <b>Lightspeed item import</b>. The Item Code is our catalog id, SERIESCODE plus the last five digits of the UPC, which is the same month after month for a series.</p>
+        <p>Six layouts, same data: <b>Diamond invoice layout</b> (Units Shipped, Item Code, Item Description, Retail Price, Unit Price, Invoice Amount, Category Code, Order Type, Processed As, Order Number, UPC, ISBN, EAN), <b>all columns</b> with plain headers, <b>Shopify product import</b>, <b>Lightspeed item import</b>, <b>RMH item import</b> and <b>RMH PO receive</b> (Code, Qty Rcv, Cost). The Item Code is our catalog id, SERIESCODE plus the last five digits of the UPC, which is the same month after month for a series.</p>
 
         <H id="key" icon={<KeyRound size={22} style={{ color: 'var(--p-violet)' }} />}>Integration key and feed URLs</H>
         <p>Make a key on the POS &amp; integrations page. It stands for your shop: anything holding it can fetch your files and use the API as you, so treat it like a password. A tool that only takes a URL can fetch any file with <code>?key=</code>:</p>
         <Code>{`https://printingcomics.com/api/v1/retail/exports/shipments.csv?format=diamond&since=7d&key=pcr_…
 https://printingcomics.com/api/v1/retail/orders/PC-ABC123/invoice.csv?format=generic&key=pcr_…
 https://printingcomics.com/api/v1/retail/exports/catalog/CATALOG_ID.csv?format=shopify&key=pcr_…`}</Code>
-        <p><code>since</code> takes a date (<code>2026-01-31</code>) or a number of days (<code>30d</code>). <code>format</code> is <code>diamond</code>, <code>generic</code>, <code>shopify</code> or <code>lightspeed</code>.</p>
+        <p><code>since</code> takes a date (<code>2026-01-31</code>) or a number of days (<code>30d</code>). <code>format</code> is <code>diamond</code>, <code>generic</code>, <code>shopify</code>, <code>lightspeed</code>, <code>rmh</code> or <code>rmh_receive</code>.</p>
+
+        <H id="live" icon={<Plug size={22} style={{ color: 'var(--p-violet)' }} />}>Live connections (Shopify, Lightspeed)</H>
+        <p>Connect the store once under POS &amp; integrations and we push to it: when you order, the titles are created in your POS with zero stock (SKU = our catalog id, barcode = UPC, price = cover price, cost = your wholesale price) so pre-orders can be taken; when a box ships, the copies in that box are received into stock at the location you chose, once per box. Every push is logged on the page, and "Push to POS" on an order repeats it.</p>
+        <ul>
+          <li><b>Shopify</b> — "Connect with Shopify" (our app; approve it in your admin), or paste the client id and secret of an app you made in your own Dev Dashboard (we fetch its 24-hour tokens), or a legacy admin-created custom app's <code>shpat_</code> token. Scopes: <code>write_products</code>, <code>write_inventory</code>, <code>read_locations</code>. Stock is adjusted as "available", reason "received".</li>
+          <li><b>Lightspeed X-Series</b> — a personal token from Setup → Personal tokens (an admin on the Plus plan). Copies arrive as a supplier stock order marked received, with your cost, at the outlet you chose.</li>
+          <li><b>Lightspeed R-Series</b> — "Connect with Lightspeed" (our registered app, scope <code>employee:inventory</code>); items are matched by custom SKU then UPC, and quantity on hand at your shop is raised.</li>
+        </ul>
 
         <H id="webhooks" icon={<Webhook size={22} style={{ color: 'var(--p-violet)' }} />}>Webhooks</H>
         <p>Set an https URL and we POST JSON when something happens to one of your orders. Each call carries the event in <code>X-PC-Event</code> and, when you set a secret, an HMAC-SHA256 signature in <code>X-PC-Signature</code> as <code>t=&lt;unix seconds&gt;,v1=&lt;hex&gt;</code> over <code>{'<t>.<body>'}</code>.</p>

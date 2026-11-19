@@ -7,6 +7,7 @@
 import { prisma } from '../../db.js';
 import type { Actor } from './events.js';
 import { notifyRetailerSystem } from './integration.js';
+import { posAfterShipment } from './pos-sync.js';
 
 /** The publisher shipped a purchase order: a shipment lands on every shop order that holds its lines. */
 export async function recordPublisherShipment(purchaseOrderId: string, how: { carrier: string | null; trackingCode: string | null }, actor: Actor): Promise<{ ordersShipped: number; ordersWaiting: number }> {
@@ -23,7 +24,8 @@ export async function recordPublisherShipment(purchaseOrderId: string, how: { ca
   for (const o of orders) {
     const mine = o.items.filter((it) => it.listingId && listingIds.includes(it.listingId) && it.shipmentItems.length === 0);
     if (mine.length === 0) continue;
-    await prisma.shipment.create({ data: { orderId: o.id, carrier: how.carrier ?? 'Publisher', service: `Purchase order ${po.number}`, trackingCode: how.trackingCode, status: 'SHIPPED', items: { create: mine.map((it) => ({ orderItemId: it.id, quantity: it.quantity })) } } });
+    const shipment = await prisma.shipment.create({ data: { orderId: o.id, carrier: how.carrier ?? 'Publisher', service: `Purchase order ${po.number}`, trackingCode: how.trackingCode, status: 'SHIPPED', items: { create: mine.map((it) => ({ orderItemId: it.id, quantity: it.quantity })) } } });
+    posAfterShipment(shipment.id);
     await prisma.orderStatusEvent.create({ data: { orderId: o.id, kind: 'tracking', message: `${mine.length} line(s) shipped by the publisher (${po.number})${how.trackingCode ? ` · ${how.trackingCode}` : ''}`, actorId: actor.id, actorName: actor.name } });
     notifyRetailerSystem(o.retailerId, 'shipment.created', o.id);
     const done = await markShippedWhenComplete(o.id, how.trackingCode);
@@ -44,6 +46,13 @@ export async function markShippedWhenComplete(orderId: string, trackingCode: str
   await prisma.order.update({ where: { id: o.id }, data: { status: 'SHIPPED', trackingNumber: trackingCode ?? o.trackingNumber, events: { create: { kind: 'status', fromStatus: o.status, toStatus: 'SHIPPED', message: 'Every line has shipped' } } } });
   notifyRetailerSystem(o.retailerId, 'order.shipped', o.id);
   if (opts.notify === false) return { mail: null };
+  // A shop gets the wholesale shipped email with its POS invoice attached; anything else the storefront's.
+  if (o.source === 'retailer' && o.retailerId) {
+    const { sendRetailerShippedEmail } = await import('./emails.js');
+    const r = await sendRetailerShippedEmail(o.id);
+    await prisma.orderStatusEvent.create({ data: { orderId: o.id, kind: 'email', message: r.sent ? `Shipped email with the POS invoice sent to ${r.to}` : `Shipped email failed: ${r.error}` } }).catch(() => undefined);
+    return { mail: { sent: r.sent, error: r.error } };
+  }
   const { sendShippingNotificationEmail } = await import('../order-emails.js');
   const mail = await sendShippingNotificationEmail(o.id).then((sent) => (sent ? { sent: true } : { sent: false, error: 'no tracking number to send' })).catch((e: any) => ({ sent: false, error: e?.message }));
   return { mail };
